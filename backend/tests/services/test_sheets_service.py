@@ -51,11 +51,13 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
     ("Timestamp",           "__ignore__",   "ignore",       None),
     # Unknown → ignore
     ("Some Random Column",  "__ignore__",   "ignore",       None),
-    # Availability matrix rows
+    # Availability matrix rows — real forms have extra spaces
     ("Availability [8:00 AM - 10:00 AM]",
         "availability", "matrix_row", "8:00 AM - 10:00 AM"),
-    ("Availability from 5/21 to 5/23 [10:00 AM - NOON]",
-        "availability", "matrix_row", "10:00 AM - NOON"),
+    ("Availability from 5/21 to 5/23 [8:00 AM  - 10:00 AM]",
+        "availability", "matrix_row", "8:00 AM  - 10:00 AM"),
+    ("Availability from 5/21 to 5/23 [10:00 AM  -  NOON]",
+        "availability", "matrix_row", "10:00 AM  -  NOON"),
 ])
 def test_detect_field(svc, header, expected_field, expected_type, expected_row_key):
     result = svc._detect_field(header)

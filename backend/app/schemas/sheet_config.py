@@ -17,6 +17,9 @@ KNOWN_FIELDS: list[str] = [
     "phone",
     "shirt_size",
     "dietary_restriction",
+    "university",
+    "major",
+    "employer",
     # Membership fields (→ Membership table)
     "role_preference",
     "event_preference",

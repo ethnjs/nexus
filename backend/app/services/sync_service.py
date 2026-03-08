@@ -51,10 +51,13 @@ def _parse_time(raw: str) -> str:
 
 def _parse_time_range(row_key: str) -> tuple[str, str]:
     """
-    Parse row_key like "8:00 AM - 10:00 AM" or "NOON - 2:00 PM"
-    into ("08:00", "10:00").
+    Parse row_key like "8:00 AM - 10:00 AM" or "NOON - 2:00 PM".
+    Normalizes extra whitespace around the dash first.
+    Returns ("08:00", "10:00").
     """
-    parts = row_key.split(" - ", 1)
+    # Normalize multiple spaces to single space, then split on " - "
+    normalized = re.sub(r"\s+", " ", row_key.strip())
+    parts = normalized.split(" - ", 1)
     if len(parts) != 2:
         raise ValueError(f"Cannot parse time range: '{row_key}'")
     return _parse_time(parts[0]), _parse_time(parts[1])
@@ -332,7 +335,8 @@ def sync_sheet(
                         extra_data[extra_key] = processed
 
                 elif field in ("first_name", "last_name", "email", "phone",
-                               "shirt_size", "dietary_restriction"):
+                               "shirt_size", "dietary_restriction",
+                               "university", "major", "employer"):
                     if processed is not None:
                         user_fields[field] = processed
 

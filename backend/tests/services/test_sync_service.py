@@ -67,6 +67,11 @@ def test_parse_time_range_noon():
 def test_parse_time_range_pm():
     assert _parse_time_range("NOON - 2:00 PM") == ("12:00", "14:00")
 
+def test_parse_time_range_extra_spaces():
+    """Real Google Forms headers often have extra spaces around the dash."""
+    assert _parse_time_range("8:00 AM  - 10:00 AM") == ("08:00", "10:00")
+    assert _parse_time_range("10:00 AM  -  NOON") == ("10:00", "12:00")
+
 
 # ---------------------------------------------------------------------------
 # _parse_day_string

@@ -128,6 +128,9 @@ class User(Base):
     phone = Column(String(32), nullable=True)
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
+    university = Column(String(255), nullable=True)
+    major = Column(String(255), nullable=True)
+    employer = Column(String(255), nullable=True)
     hashed_password = Column(String(255), nullable=True)   # future login
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

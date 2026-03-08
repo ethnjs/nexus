@@ -20,38 +20,60 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 # ColumnMapping. More specific patterns must come before general ones.
 # ---------------------------------------------------------------------------
 HEADER_DETECTION_HINTS: list[tuple[str, ColumnMapping]] = [
-    # Identity — string fields
+    # Identity — string fields (more specific patterns first)
     ("first name",          ColumnMapping(field="first_name",  type="string")),
     ("last name",           ColumnMapping(field="last_name",   type="string")),
     ("email",               ColumnMapping(field="email",       type="string")),
     ("phone",               ColumnMapping(field="phone",       type="string")),
     ("shirt",               ColumnMapping(field="shirt_size",  type="string")),
+    ("t-shirt",             ColumnMapping(field="shirt_size",  type="string")),
     ("dietary",             ColumnMapping(field="dietary_restriction", type="string")),
     ("food",                ColumnMapping(field="dietary_restriction", type="string")),
     ("allerg",              ColumnMapping(field="dietary_restriction", type="string")),
 
+    # User profile — university/employer/major
+    ("university",          ColumnMapping(field="university",  type="string")),
+    ("current employer",    ColumnMapping(field="employer",    type="string")),
+    ("employer",            ColumnMapping(field="employer",    type="string")),
+    ("what year are you",   ColumnMapping(field="major",       type="string")),
+    ("major",               ColumnMapping(field="major",       type="string")),
+    ("field of study",      ColumnMapping(field="major",       type="string")),
+
     # Role & preference
     ("volunteering role preference", ColumnMapping(field="role_preference",  type="multi_select")),
     ("role preference",              ColumnMapping(field="role_preference",  type="multi_select")),
+    ("if interested in event",       ColumnMapping(field="event_preference", type="category_events")),
     ("which event",                  ColumnMapping(field="event_preference", type="category_events")),
     ("event preference",             ColumnMapping(field="event_preference", type="category_events")),
+    ("if you are interested in general", ColumnMapping(field="general_volunteer_interest", type="multi_select")),
     ("general volunteer",            ColumnMapping(field="general_volunteer_interest", type="multi_select")),
 
-    # Availability — matrix rows
-    # Detected by "availability" keyword — row_key filled in from the header text
-    # (handled specially in _detect_field, not from this list)
+    # Availability — matrix rows handled specially via AVAILABILITY_PATTERN
 
     # Logistics
     ("lunch",               ColumnMapping(field="lunch_order", type="string")),
     ("meal",                ColumnMapping(field="lunch_order", type="string")),
+    ("limitation",          ColumnMapping(field="notes",       type="string")),
     ("note",                ColumnMapping(field="notes",       type="string")),
     ("comment",             ColumnMapping(field="notes",       type="string")),
-    ("limitation",          ColumnMapping(field="notes",       type="string")),
 
-    # Always ignore
+    # Science Olympiad background — extra_data with standard keys
+    ("coming from",         ColumnMapping(field="extra_data",  type="string",  extra_key="location")),
+    ("conflict of interest",ColumnMapping(field="extra_data",  type="string",  extra_key="conflict_of_interest")),
+    ("competed in the past",ColumnMapping(field="extra_data",  type="boolean", extra_key="scioly_competed")),
+    ("competed in science", ColumnMapping(field="extra_data",  type="boolean", extra_key="scioly_competed")),
+    ("events competed in",  ColumnMapping(field="extra_data",  type="string",  extra_key="scioly_competed_events")),
+    ("schools you represented", ColumnMapping(field="extra_data", type="string", extra_key="scioly_schools")),
+    ("volunteered for past",ColumnMapping(field="extra_data",  type="boolean", extra_key="scioly_volunteered")),
+    ("volunteered for",     ColumnMapping(field="extra_data",  type="boolean", extra_key="scioly_volunteered")),
+    ("describe your experience", ColumnMapping(field="extra_data", type="string", extra_key="scioly_experience")),
+    ("expertise",           ColumnMapping(field="extra_data",  type="string",  extra_key="scioly_experience")),
+    ("how many people can you take", ColumnMapping(field="extra_data", type="integer", extra_key="carpool_seats")),
+    ("how will you get",    ColumnMapping(field="extra_data",  type="string",  extra_key="transportation")),
+
+    # Only ignore fields that are truly never useful
     ("timestamp",           ColumnMapping(field="__ignore__",  type="ignore")),
     ("how did you hear",    ColumnMapping(field="__ignore__",  type="ignore")),
-    ("which area",          ColumnMapping(field="__ignore__",  type="ignore")),
 ]
 
 # Regex to detect availability matrix row headers

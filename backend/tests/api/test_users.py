@@ -60,6 +60,38 @@ def test_create_user_minimal(client: TestClient):
     data = response.json()
     assert data["phone"] is None
     assert data["shirt_size"] is None
+    assert data["university"] is None
+    assert data["major"] is None
+    assert data["employer"] is None
+
+
+def test_create_user_with_profile(client: TestClient):
+    """University student profile fields."""
+    response = client.post("/api/v1/users/", json={
+        "first_name": "Carol",
+        "last_name": "Chen",
+        "email": "carol@example.com",
+        "university": "USC",
+        "major": "Computer Science",
+    })
+    assert response.status_code == 201
+    data = response.json()
+    assert data["university"] == "USC"
+    assert data["major"] == "Computer Science"
+    assert data["employer"] is None
+
+
+def test_update_user_university(client: TestClient):
+    created = _make_user(client).json()
+    response = client.patch(f"/api/v1/users/{created['id']}", json={
+        "university": "UCLA",
+        "major": "Biology",
+    })
+    assert response.status_code == 200
+    data = response.json()
+    assert data["university"] == "UCLA"
+    assert data["major"] == "Biology"
+    assert data["first_name"] == "Alice"  # unchanged
 
 
 # ---------------------------------------------------------------------------

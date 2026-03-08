@@ -11,6 +11,9 @@ class UserBase(BaseModel):
     phone: str | None = None
     shirt_size: str | None = None
     dietary_restriction: str | None = None
+    university: str | None = None
+    major: str | None = None
+    employer: str | None = None
 
     @field_validator("email")
     @classmethod
@@ -32,6 +35,12 @@ class UserUpdate(BaseModel):
     phone: str | None = None
     shirt_size: str | None = None
     dietary_restriction: str | None = None
+    university: str | None = None
+    major: str | None = None
+    employer: str | None = None
+    university: str | None = None
+    major: str | None = None
+    employer: str | None = None
 
 
 class UserRead(UserBase):
