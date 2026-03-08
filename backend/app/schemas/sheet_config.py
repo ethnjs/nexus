@@ -128,6 +128,7 @@ class SheetConfigRead(SheetConfigBase):
     tournament_id: int
     spreadsheet_id: str
     is_active: bool
+    last_synced_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -170,3 +171,20 @@ class SheetHeadersResponse(BaseModel):
     suggestions: dict[str, ColumnMapping]
     known_fields: list[str] = KNOWN_FIELDS
     valid_types: list[str] = list(VALID_MAPPING_TYPES)
+
+
+# ---------------------------------------------------------------------------
+# Sync response
+# ---------------------------------------------------------------------------
+class SyncError(BaseModel):
+    row: int
+    email: str | None
+    detail: str
+
+
+class SyncResult(BaseModel):
+    created: int
+    updated: int
+    skipped: int
+    errors: list[SyncError]
+    last_synced_at: datetime

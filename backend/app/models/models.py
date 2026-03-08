@@ -72,6 +72,7 @@ class SheetConfig(Base):
     sheet_name = Column(String(255), nullable=False)
     column_mappings = Column(JSON, nullable=False, default=dict)
     is_active = Column(Boolean, default=True)
+    last_synced_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 

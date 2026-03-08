@@ -13,6 +13,8 @@ from app.schemas.sheet_config import (
     SheetValidateResponse,
 )
 from app.services.sheets_service import SheetsService
+from app.services.sync_service import sync_sheet
+from app.schemas.sheet_config import SyncResult
 
 router = APIRouter(prefix="/sheets", tags=["sheets"])
 
@@ -155,3 +157,32 @@ def delete_sheet_config(config_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Sheet config not found")
     db.delete(config)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Sync
+# ---------------------------------------------------------------------------
+@router.post("/configs/{config_id}/sync", response_model=SyncResult)
+def sync_sheet_config(
+    config_id: int,
+    db: Session = Depends(get_db),
+    svc: SheetsService = Depends(get_sheets_service),
+):
+    """
+    Sync all rows from a sheet into Users + Memberships.
+    Full upsert — existing records are overwritten.
+    Returns a summary of created, updated, skipped, and errors.
+    """
+    config = db.query(SheetConfig).filter(SheetConfig.id == config_id).first()
+    if not config:
+        raise HTTPException(status_code=404, detail="Sheet config not found")
+
+    if not config.is_active:
+        raise HTTPException(status_code=400, detail="Sheet config is not active")
+
+    try:
+        return sync_sheet(config, db, svc)
+    except PermissionError as e:
+        raise HTTPException(status_code=403, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
