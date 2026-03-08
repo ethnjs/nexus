@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./nexus.db"
 
     google_service_account_file: str = "./credentials.json"
+    google_service_account_json: str = ""  # JSON string — used in production instead of file
 
     api_key: str = ""  # Required in production — set API_KEY in .env
 

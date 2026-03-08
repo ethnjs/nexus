@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import re
 from typing import Any
 from google.oauth2 import service_account
@@ -89,9 +90,19 @@ class SheetsService:
 
     def __init__(self) -> None:
         settings = get_settings()
-        credentials = service_account.Credentials.from_service_account_file(
-            settings.google_service_account_file, scopes=SCOPES
-        )
+
+        # Production: load credentials from JSON env var
+        # Development: load credentials from file
+        if settings.google_service_account_json:
+            service_account_info = json.loads(settings.google_service_account_json)
+            credentials = service_account.Credentials.from_service_account_info(
+                service_account_info, scopes=SCOPES
+            )
+        else:
+            credentials = service_account.Credentials.from_service_account_file(
+                settings.google_service_account_file, scopes=SCOPES
+            )
+
         self._client = build("sheets", "v4", credentials=credentials, cache_discovery=False)
 
     # ------------------------------------------------------------------
