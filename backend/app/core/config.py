@@ -14,6 +14,8 @@ class Settings(BaseSettings):
 
     google_service_account_file: str = "./credentials.json"
 
+    api_key: str = ""  # Required in production — set API_KEY in .env
+
 
 @lru_cache()
 def get_settings() -> Settings:
