@@ -10,8 +10,19 @@ from pydantic import BaseModel, model_validator, field_validator
 class TournamentBlock(BaseModel):
     number: int
     label: str
+    date: str   # "YYYY-MM-DD" — which day this block falls on
     start: str  # "HH:MM" 24hr format
     end: str    # "HH:MM" 24hr format
+
+    @field_validator("date")
+    @classmethod
+    def validate_date_format(cls, v: str) -> str:
+        from datetime import date as date_type
+        try:
+            date_type.fromisoformat(v)
+        except ValueError:
+            raise ValueError("date must be in YYYY-MM-DD format")
+        return v
 
     @field_validator("start", "end")
     @classmethod

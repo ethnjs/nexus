@@ -4,14 +4,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 SAMPLE_BLOCKS = [
-    {"number": 1, "label": "Block 1", "start": "08:00", "end": "09:00"},
-    {"number": 2, "label": "Block 2", "start": "09:15", "end": "10:15"},
-    {"number": 3, "label": "Block 3", "start": "10:30", "end": "11:30"},
-    {"number": 4, "label": "Block 4", "start": "12:30", "end": "13:30"},
-    {"number": 5, "label": "Block 5", "start": "13:45", "end": "14:45"},
-    {"number": 6, "label": "Block 6", "start": "15:00", "end": "16:00"},
-    {"number": 7, "label": "Scoring", "start": "16:15", "end": "17:15"},
-    {"number": 8, "label": "Awards",  "start": "17:30", "end": "18:30"},
+    {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
+    {"number": 2, "label": "Block 2", "date": "2025-11-15", "start": "09:15", "end": "10:15"},
+    {"number": 3, "label": "Block 3", "date": "2025-11-15", "start": "10:30", "end": "11:30"},
+    {"number": 4, "label": "Block 4", "date": "2025-11-15", "start": "12:30", "end": "13:30"},
+    {"number": 5, "label": "Block 5", "date": "2025-11-15", "start": "13:45", "end": "14:45"},
+    {"number": 6, "label": "Block 6", "date": "2025-11-15", "start": "15:00", "end": "16:00"},
+    {"number": 7, "label": "Scoring", "date": "2025-11-15", "start": "16:15", "end": "17:15"},
+    {"number": 8, "label": "Awards",  "date": "2025-11-15", "start": "17:30", "end": "18:30"},
 ]
 
 SAMPLE_VOLUNTEER_SCHEMA = {
@@ -107,11 +107,47 @@ def test_create_tournament_invalid_block_time(client: TestClient):
     payload = {
         "name": "Bad Block Time",
         "blocks": [
-            {"number": 1, "label": "Block 1", "start": "25:00", "end": "09:00"},
+            {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "25:00", "end": "09:00"},
         ]
     }
     response = client.post("/api/v1/tournaments/", json=payload)
     assert response.status_code == 422
+
+
+def test_create_tournament_invalid_block_date(client: TestClient):
+    payload = {
+        "name": "Bad Block Date",
+        "blocks": [
+            {"number": 1, "label": "Block 1", "date": "not-a-date", "start": "08:00", "end": "09:00"},
+        ]
+    }
+    response = client.post("/api/v1/tournaments/", json=payload)
+    assert response.status_code == 422
+
+
+def test_create_tournament_multiday_blocks(client: TestClient):
+    """Blocks can span multiple days for multi-day tournaments like nationals."""
+    payload = {
+        "name": "Nationals 2026",
+        "start_date": "2026-05-21T08:00:00",
+        "end_date": "2026-05-23T18:00:00",
+        "location": "USC",
+        "blocks": [
+            {"number": 1,  "label": "Thu Check-in",  "date": "2026-05-21", "start": "08:00", "end": "10:00"},
+            {"number": 2,  "label": "Thu Morning",   "date": "2026-05-21", "start": "10:00", "end": "12:00"},
+            {"number": 3,  "label": "Fri Check-in",  "date": "2026-05-22", "start": "08:00", "end": "10:00"},
+            {"number": 14, "label": "Sat Block 1",   "date": "2026-05-23", "start": "08:00", "end": "09:00"},
+            {"number": 20, "label": "Scoring",       "date": "2026-05-23", "start": "16:00", "end": "17:00"},
+            {"number": 21, "label": "Awards",        "date": "2026-05-23", "start": "17:30", "end": "18:30"},
+        ]
+    }
+    response = client.post("/api/v1/tournaments/", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data["blocks"]) == 6
+    # Verify dates are preserved per block
+    assert data["blocks"][0]["date"] == "2026-05-21"
+    assert data["blocks"][3]["date"] == "2026-05-23"
 
 
 def test_create_tournament_invalid_custom_field_type(client: TestClient):
