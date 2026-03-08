@@ -1,10 +1,3 @@
-"""
-SheetsService wraps the Google Sheets API.
-
-All Google API calls live here. Routes never touch the Google client directly.
-This makes the service easy to mock in tests.
-"""
-
 from __future__ import annotations
 import re
 from typing import Any
@@ -15,6 +8,7 @@ from googleapiclient.errors import HttpError
 from app.core.config import get_settings
 from app.schemas.sheet_config import (
     KNOWN_FIELDS,
+    ColumnMapping,
     SheetValidateResponse,
     SheetHeadersResponse,
 )
@@ -22,35 +16,53 @@ from app.schemas.sheet_config import (
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 # ---------------------------------------------------------------------------
-# Auto-detection: maps lowercase substrings found in a header to a DB field.
-# Order matters — more specific patterns should come first.
+# Auto-detection hints — maps lowercase substrings in a header to a
+# ColumnMapping. More specific patterns must come before general ones.
 # ---------------------------------------------------------------------------
-HEADER_DETECTION_HINTS: list[tuple[str, str]] = [
-    ("first name", "first_name"),
-    ("last name", "last_name"),
-    ("email", "email"),
-    ("phone", "phone"),
-    ("shirt", "shirt_size"),
-    ("dietary", "dietary_restriction"),
-    ("food", "dietary_restriction"),
-    ("allerg", "dietary_restriction"),
-    ("event expertise", "event_expertise"),
-    ("expertise", "event_expertise"),
-    ("event preference", "event_preference"),
-    ("prefer", "event_preference"),
-    ("availability", "availability"),
-    ("lunch", "lunch_order"),
-    ("meal", "lunch_order"),
-    ("note", "notes"),
-    ("comment", "notes"),
-    ("timestamp", "__ignore__"),
+HEADER_DETECTION_HINTS: list[tuple[str, ColumnMapping]] = [
+    # Identity — string fields
+    ("first name",          ColumnMapping(field="first_name",  type="string")),
+    ("last name",           ColumnMapping(field="last_name",   type="string")),
+    ("email",               ColumnMapping(field="email",       type="string")),
+    ("phone",               ColumnMapping(field="phone",       type="string")),
+    ("shirt",               ColumnMapping(field="shirt_size",  type="string")),
+    ("dietary",             ColumnMapping(field="dietary_restriction", type="string")),
+    ("food",                ColumnMapping(field="dietary_restriction", type="string")),
+    ("allerg",              ColumnMapping(field="dietary_restriction", type="string")),
+
+    # Role & preference
+    ("volunteering role preference", ColumnMapping(field="role_preference",  type="multi_select")),
+    ("role preference",              ColumnMapping(field="role_preference",  type="multi_select")),
+    ("which event",                  ColumnMapping(field="event_preference", type="category_events")),
+    ("event preference",             ColumnMapping(field="event_preference", type="category_events")),
+    ("general volunteer",            ColumnMapping(field="general_volunteer_interest", type="multi_select")),
+
+    # Availability — matrix rows
+    # Detected by "availability" keyword — row_key filled in from the header text
+    # (handled specially in _detect_field, not from this list)
+
+    # Logistics
+    ("lunch",               ColumnMapping(field="lunch_order", type="string")),
+    ("meal",                ColumnMapping(field="lunch_order", type="string")),
+    ("note",                ColumnMapping(field="notes",       type="string")),
+    ("comment",             ColumnMapping(field="notes",       type="string")),
+    ("limitation",          ColumnMapping(field="notes",       type="string")),
+
+    # Always ignore
+    ("timestamp",           ColumnMapping(field="__ignore__",  type="ignore")),
+    ("how did you hear",    ColumnMapping(field="__ignore__",  type="ignore")),
+    ("which area",          ColumnMapping(field="__ignore__",  type="ignore")),
 ]
+
+# Regex to detect availability matrix row headers
+# e.g. "Availability from 5/21 to 5/23 [8:00 AM - 10:00 AM]"
+AVAILABILITY_PATTERN = re.compile(r"availability.+\[(.+)\]", re.IGNORECASE)
 
 
 class SheetsService:
     """
-    Provides sheet validation, header extraction, and row reading.
-    Authenticates once using the hardcoded service account file.
+    Wraps the Google Sheets API.
+    All Google API calls live here — routes never touch the client directly.
     """
 
     def __init__(self) -> None:
@@ -65,23 +77,12 @@ class SheetsService:
     # ------------------------------------------------------------------
 
     def extract_spreadsheet_id(self, sheet_url: str) -> str:
-        """
-        Parse the spreadsheet ID out of a Google Sheets URL.
-
-        Supports both formats:
-          https://docs.google.com/spreadsheets/d/{ID}/edit#gid=0
-          https://docs.google.com/spreadsheets/d/{ID}/
-        """
         match = re.search(r"/spreadsheets/d/([a-zA-Z0-9_-]+)", sheet_url)
         if not match:
             raise ValueError(f"Could not extract spreadsheet ID from URL: {sheet_url}")
         return match.group(1)
 
     def validate_sheet_url(self, sheet_url: str) -> SheetValidateResponse:
-        """
-        Confirm the service account can access the spreadsheet.
-        Returns the title and list of sheet/tab names.
-        """
         spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
         try:
             metadata = (
@@ -109,10 +110,6 @@ class SheetsService:
         )
 
     def get_headers(self, sheet_url: str, sheet_name: str) -> SheetHeadersResponse:
-        """
-        Read the first row of the given tab and return headers.
-        Also returns auto-detected field suggestions for the mapper UI.
-        """
         spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
         range_notation = f"'{sheet_name}'!1:1"
 
@@ -130,8 +127,7 @@ class SheetsService:
 
         rows = result.get("values", [])
         headers: list[str] = rows[0] if rows else []
-
-        suggestions = {header: self._detect_field(header) for header in headers}
+        suggestions = {h: self._detect_field(h) for h in headers}
 
         return SheetHeadersResponse(
             sheet_name=sheet_name,
@@ -142,11 +138,6 @@ class SheetsService:
     def get_rows(
         self, spreadsheet_id: str, sheet_name: str, skip_header: bool = True
     ) -> list[dict[str, Any]]:
-        """
-        Read all rows from a sheet tab.
-        Returns a list of dicts keyed by column header (row 0).
-        Used later by the sync service to import volunteer data.
-        """
         range_notation = f"'{sheet_name}'"
         try:
             result = (
@@ -169,7 +160,6 @@ class SheetsService:
 
         result_dicts = []
         for row in data_rows:
-            # Pad short rows so every header has a value (Google omits trailing blanks)
             padded = row + [""] * (len(headers) - len(row))
             result_dicts.append(dict(zip(headers, padded)))
 
@@ -179,13 +169,23 @@ class SheetsService:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _detect_field(self, header: str) -> str:
+    def _detect_field(self, header: str) -> ColumnMapping:
         """
-        Fuzzy-match a column header to a known DB field.
-        Falls back to "__ignore__" if nothing matches.
+        Fuzzy-match a column header to a ColumnMapping.
+        Handles availability matrix rows specially.
+        Falls back to ignore if nothing matches.
         """
         lower = header.lower()
-        for pattern, field in HEADER_DETECTION_HINTS:
+
+        # Check for availability matrix row first
+        avail_match = AVAILABILITY_PATTERN.search(header)
+        if avail_match:
+            row_key = avail_match.group(1).strip()
+            return ColumnMapping(field="availability", type="matrix_row", row_key=row_key)
+
+        # Check hints in order
+        for pattern, mapping in HEADER_DETECTION_HINTS:
             if pattern in lower:
-                return field
-        return "__ignore__"
+                return mapping
+
+        return ColumnMapping(field="__ignore__", type="ignore")

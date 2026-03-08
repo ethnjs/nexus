@@ -28,3 +28,6 @@ htmlcov/
 
 # Alembic
 alembic/versions/*.pyc
+
+# Claude
+NEXUS_PROJECT_CONTEXT.md

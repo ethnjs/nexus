@@ -1,57 +1,100 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel, field_validator
-import re
+from pydantic import BaseModel, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Known DB field names the mapper UI will offer as options.
-# "__ignore__" is a special sentinel meaning "skip this column on import."
-# Add new fields here as the app grows — the frontend reads this list.
+# Core fields that map directly to User or Membership columns.
+# These are the only fields the sync service handles explicitly.
+# Everything else goes into extra_data via the custom field system.
 # ---------------------------------------------------------------------------
 KNOWN_FIELDS: list[str] = [
     "__ignore__",
-    # User identity
+    # User identity (→ User table)
     "first_name",
     "last_name",
     "email",
     "phone",
-    # Volunteer profile
     "shirt_size",
     "dietary_restriction",
-    "university",               # current employer or university
-    "age_verified",             # yes/no age confirmation
-    "conflict_of_interest",     # string, null if n/a
-    # Science Olympiad background (store as text blobs)
-    "scioly_competed",          # have you competed before? yes/no
-    "scioly_competed_events",   # which events/schools if competed
-    "scioly_volunteered",       # have you volunteered before? yes/no
-    "scioly_experience",        # free-text description of past experience + expertise
-    "event_expertise",          # multi-value: comma-separated event names
-    # Role & availability
-    "role_preference",          # multi-value: "event_volunteer,general_volunteer"
-    "event_preference",         # which event(s) they want to work (raw form string)
-    "general_volunteer_interest", # multi-value: stem expo, opening ceremony, etc.
-    "availability",             # time block availability (multi-value per time slot)
-    # Logistics
-    "transportation",           # how they're getting there (drives/uber/carpool etc.)
-    "is_driver",                # boolean derived from transportation answer
-    "carpool_seats",            # how many people they can take if driving
-    "limitations",              # physical/accessibility limitations
+    # Membership fields (→ Membership table)
+    "role_preference",
+    "event_preference",
+    "general_volunteer_interest",
+    "availability",
     "lunch_order",
-    # Meta
-    "notes",                    # catch-all for misc fields
+    "notes",
+    # Catch-all — stored in Membership.extra_data keyed by custom field key
+    "extra_data",
 ]
+
+# ---------------------------------------------------------------------------
+# Valid column mapping types — tells the sync service how to process a column
+# ---------------------------------------------------------------------------
+VALID_MAPPING_TYPES: set[str] = {
+    "string",           # store value as-is
+    "ignore",           # skip this column entirely
+    "boolean",          # "Yes"/"No" → True/False
+    "integer",          # parse to int
+    "multi_select",     # comma-separated → JSON array
+    "matrix_row",       # one row of a grid question → merged into availability JSON
+                        # requires row_key
+    "category_events",  # grouped event category string → list of specific event names
+}
 
 VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
 
 
+# ---------------------------------------------------------------------------
+# ColumnMapping — the rich mapping entry for a single column header
+# ---------------------------------------------------------------------------
+class ColumnMapping(BaseModel):
+    model_config = {"populate_by_name": True}
+
+    field: str          # target DB field name from KNOWN_FIELDS
+    type: str           # one of VALID_MAPPING_TYPES
+    row_key: str | None = None  # required for matrix_row — time label e.g. "8:00 AM - 10:00 AM"
+    extra_key: str | None = None  # for extra_data fields — key in the JSON blob
+
+    def model_dump(self, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(**kwargs)
+
+    @field_validator("field")
+    @classmethod
+    def validate_field(cls, v: str) -> str:
+        if v not in KNOWN_FIELDS:
+            raise ValueError(f"Unknown field '{v}'. Must be one of: {KNOWN_FIELDS}")
+        return v
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: str) -> str:
+        if v not in VALID_MAPPING_TYPES:
+            raise ValueError(f"type must be one of: {VALID_MAPPING_TYPES}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_matrix_row_key(self) -> ColumnMapping:
+        if self.type == "matrix_row" and not self.row_key:
+            raise ValueError("row_key is required for matrix_row type")
+        if self.type == "ignore" and self.field != "__ignore__":
+            raise ValueError("field must be '__ignore__' when type is 'ignore'")
+        if self.field == "extra_data" and not self.extra_key:
+            raise ValueError("extra_key is required when field is 'extra_data'")
+        return self
+
+
+# ---------------------------------------------------------------------------
+# SheetConfig schemas
+# ---------------------------------------------------------------------------
 class SheetConfigBase(BaseModel):
     label: str
     sheet_type: str
     sheet_url: str
     sheet_name: str
-    column_mappings: dict[str, str] = {}
+    # Rich mappings: header → ColumnMapping
+    column_mappings: dict[str, ColumnMapping] = {}
 
     @field_validator("sheet_type")
     @classmethod
@@ -67,14 +110,6 @@ class SheetConfigBase(BaseModel):
             raise ValueError("Must be a Google Sheets URL")
         return v
 
-    @field_validator("column_mappings")
-    @classmethod
-    def validate_column_mappings(cls, v: dict[str, str]) -> dict[str, str]:
-        invalid = [val for val in v.values() if val not in KNOWN_FIELDS]
-        if invalid:
-            raise ValueError(f"Unknown field values in mapping: {invalid}")
-        return v
-
 
 class SheetConfigCreate(SheetConfigBase):
     tournament_id: int
@@ -84,7 +119,7 @@ class SheetConfigUpdate(BaseModel):
     """Partial update — all fields optional."""
     label: str | None = None
     sheet_name: str | None = None
-    column_mappings: dict[str, str] | None = None
+    column_mappings: dict[str, ColumnMapping] | None = None
     is_active: bool | None = None
 
 
@@ -100,9 +135,8 @@ class SheetConfigRead(SheetConfigBase):
 
 
 # ---------------------------------------------------------------------------
-# Intermediate response shapes used during the wizard flow
+# Wizard step request/response shapes
 # ---------------------------------------------------------------------------
-
 class SheetValidateRequest(BaseModel):
     sheet_url: str
 
@@ -115,7 +149,6 @@ class SheetValidateRequest(BaseModel):
 
 
 class SheetValidateResponse(BaseModel):
-    """Returned after validating a sheet URL — lists available tabs."""
     spreadsheet_id: str
     spreadsheet_title: str
     sheet_names: list[str]
@@ -127,9 +160,13 @@ class SheetHeadersRequest(BaseModel):
 
 
 class SheetHeadersResponse(BaseModel):
-    """Returns column headers and auto-detected field suggestions."""
+    """
+    Returns column headers and auto-detected rich mapping suggestions.
+    suggestions maps each header to a ColumnMapping dict.
+    known_fields lists all valid field names for the UI dropdown.
+    """
     sheet_name: str
     headers: list[str]
-    # Auto-detected mapping suggestions: header → suggested field (may be "__ignore__")
-    suggestions: dict[str, str]
+    suggestions: dict[str, ColumnMapping]
     known_fields: list[str] = KNOWN_FIELDS
+    valid_types: list[str] = list(VALID_MAPPING_TYPES)

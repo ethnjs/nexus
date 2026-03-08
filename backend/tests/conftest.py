@@ -58,15 +58,22 @@ def db():
 
 
 @pytest.fixture(scope="function")
-def client(db):
+def mock_sheets_service() -> MagicMock:
+    """
+    Exposed fixture so sheet tests can override return values per-test.
+    Also used internally by the client fixture.
+    """
+    return _make_mock_sheets_service()
+
+
+@pytest.fixture(scope="function")
+def client(db, mock_sheets_service):
     """
     FastAPI TestClient with:
     - DB dependency swapped for the in-memory test DB session
     - SheetsService fully mocked via dependency_overrides
     """
     from app.main import app
-
-    svc = _make_mock_sheets_service()
 
     def override_get_db():
         try:
@@ -75,7 +82,7 @@ def client(db):
             pass
 
     def override_get_sheets_service():
-        return svc
+        return mock_sheets_service
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_sheets_service] = override_get_sheets_service
@@ -88,7 +95,7 @@ def client(db):
 
 def _make_mock_sheets_service() -> MagicMock:
     """Pre-configured mock SheetsService — no real Google API calls."""
-    from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse
+    from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
 
     svc = MagicMock(spec=SheetsService)
 
@@ -109,16 +116,18 @@ def _make_mock_sheets_service() -> MagicMock:
             "Last Name",
             "Phone Number",
             "T-Shirt Size",
-            "Event Expertise",
+            "Availability [8:00 AM - 10:00 AM]",
         ],
         suggestions={
-            "Timestamp": "__ignore__",
-            "Email Address": "email",
-            "First Name": "first_name",
-            "Last Name": "last_name",
-            "Phone Number": "phone",
-            "T-Shirt Size": "shirt_size",
-            "Event Expertise": "event_expertise",
+            "Timestamp":        ColumnMapping(field="__ignore__",  type="ignore"),
+            "Email Address":    ColumnMapping(field="email",       type="string"),
+            "First Name":       ColumnMapping(field="first_name",  type="string"),
+            "Last Name":        ColumnMapping(field="last_name",   type="string"),
+            "Phone Number":     ColumnMapping(field="phone",       type="string"),
+            "T-Shirt Size":     ColumnMapping(field="shirt_size",  type="string"),
+            "Availability [8:00 AM - 10:00 AM]": ColumnMapping(
+                field="availability", type="matrix_row", row_key="8:00 AM - 10:00 AM"
+            ),
         },
     )
 

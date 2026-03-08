@@ -80,6 +80,12 @@ def create_sheet_config(
 
     spreadsheet_id = svc.extract_spreadsheet_id(payload.sheet_url)
 
+    # Serialize ColumnMapping objects to plain dicts for JSON storage
+    serialized_mappings = {
+        header: mapping.model_dump(exclude_none=True)
+        for header, mapping in payload.column_mappings.items()
+    }
+
     config = SheetConfig(
         tournament_id=payload.tournament_id,
         label=payload.label,
@@ -87,7 +93,7 @@ def create_sheet_config(
         sheet_url=payload.sheet_url,
         spreadsheet_id=spreadsheet_id,
         sheet_name=payload.sheet_name,
-        column_mappings=payload.column_mappings,
+        column_mappings=serialized_mappings,
     )
     db.add(config)
     db.commit()
@@ -125,7 +131,16 @@ def update_sheet_config(
     if not config:
         raise HTTPException(status_code=404, detail="Sheet config not found")
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    update_data = payload.model_dump(exclude_none=True)
+    # Merge incoming column_mappings into existing ones rather than replacing
+    if "column_mappings" in update_data and payload.column_mappings:
+        merged = dict(config.column_mappings or {})
+        merged.update({
+            header: mapping.model_dump(exclude_none=True)
+            for header, mapping in payload.column_mappings.items()
+        })
+        update_data["column_mappings"] = merged
+    for field, value in update_data.items():
         setattr(config, field, value)
 
     db.commit()
