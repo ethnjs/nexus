@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
+from tests.conftest import login
 from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
@@ -36,7 +37,8 @@ def _make_config(client: TestClient, tournament_id: int, **overrides) -> dict:
 # Validate
 # ---------------------------------------------------------------------------
 
-def test_validate_sheet_url(client: TestClient, mock_sheets_service: MagicMock):
+def test_validate_sheet_url(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.validate_sheet_url.return_value = SheetValidateResponse(
         spreadsheet_id="fake123",
         spreadsheet_title="Interest Form 2026",
@@ -49,7 +51,8 @@ def test_validate_sheet_url(client: TestClient, mock_sheets_service: MagicMock):
     assert "Form Responses 1" in data["sheet_names"]
 
 
-def test_validate_invalid_url(client: TestClient, mock_sheets_service: MagicMock):
+def test_validate_invalid_url(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     response = client.post("/api/v1/sheets/validate", json={"sheet_url": "https://example.com"})
     assert response.status_code == 422
 
@@ -58,7 +61,8 @@ def test_validate_invalid_url(client: TestClient, mock_sheets_service: MagicMock
 # Headers
 # ---------------------------------------------------------------------------
 
-def test_get_headers(client: TestClient, mock_sheets_service: MagicMock):
+def test_get_headers(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.get_headers.return_value = SheetHeadersResponse(
         sheet_name="Form Responses 1",
         headers=["Timestamp", "Email Address", "First Name", "Availability [8:00 AM - 10:00 AM]"],
@@ -90,7 +94,8 @@ def test_get_headers(client: TestClient, mock_sheets_service: MagicMock):
 # Create config
 # ---------------------------------------------------------------------------
 
-def test_create_sheet_config(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     response = _make_config(client, t["id"])
@@ -99,13 +104,13 @@ def test_create_sheet_config(client: TestClient, mock_sheets_service: MagicMock)
     assert data["label"] == "Interest Form"
     assert data["sheet_type"] == "interest"
     assert data["spreadsheet_id"] == "fake123"
-    # Verify rich mappings stored correctly
     assert data["column_mappings"]["Email Address"]["field"] == "email"
     assert data["column_mappings"]["Email Address"]["type"] == "string"
     assert data["column_mappings"]["Timestamp"]["type"] == "ignore"
 
 
-def test_create_sheet_config_with_matrix_row(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_with_matrix_row(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     response = _make_config(client, t["id"], column_mappings={
@@ -125,7 +130,8 @@ def test_create_sheet_config_with_matrix_row(client: TestClient, mock_sheets_ser
     assert data["column_mappings"]["Availability [8:00 AM - 10:00 AM]"]["row_key"] == "8:00 AM - 10:00 AM"
 
 
-def test_create_sheet_config_with_extra_data(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_with_extra_data(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     response = _make_config(client, t["id"], column_mappings={
@@ -140,7 +146,8 @@ def test_create_sheet_config_with_extra_data(client: TestClient, mock_sheets_ser
     assert data["column_mappings"]["Transportation"]["extra_key"] == "transportation"
 
 
-def test_create_sheet_config_invalid_type(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_invalid_type(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     response = _make_config(client, t["id"], column_mappings={
         "Email Address": {"field": "email", "type": "bad_type"},
@@ -148,8 +155,9 @@ def test_create_sheet_config_invalid_type(client: TestClient, mock_sheets_servic
     assert response.status_code == 422
 
 
-def test_create_sheet_config_matrix_row_missing_row_key(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_matrix_row_missing_row_key(client: TestClient, td_user, mock_sheets_service: MagicMock):
     """matrix_row type requires row_key."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     response = _make_config(client, t["id"], column_mappings={
         "Availability [8:00 AM - 10:00 AM]": {
@@ -161,8 +169,9 @@ def test_create_sheet_config_matrix_row_missing_row_key(client: TestClient, mock
     assert response.status_code == 422
 
 
-def test_create_sheet_config_extra_data_missing_extra_key(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_extra_data_missing_extra_key(client: TestClient, td_user, mock_sheets_service: MagicMock):
     """extra_data field requires extra_key."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     response = _make_config(client, t["id"], column_mappings={
         "Transportation": {"field": "extra_data", "type": "string"},
@@ -170,13 +179,15 @@ def test_create_sheet_config_extra_data_missing_extra_key(client: TestClient, mo
     assert response.status_code == 422
 
 
-def test_create_sheet_config_tournament_not_found(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_tournament_not_found(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     response = _make_config(client, 9999)
     assert response.status_code == 404
 
 
-def test_create_sheet_config_invalid_sheet_type(client: TestClient, mock_sheets_service: MagicMock):
+def test_create_sheet_config_invalid_sheet_type(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     response = _make_config(client, t["id"], sheet_type="bad_type")
     assert response.status_code == 422
@@ -186,7 +197,8 @@ def test_create_sheet_config_invalid_sheet_type(client: TestClient, mock_sheets_
 # Get / List
 # ---------------------------------------------------------------------------
 
-def test_get_sheet_config(client: TestClient, mock_sheets_service: MagicMock):
+def test_get_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     created = _make_config(client, t["id"]).json()
@@ -195,11 +207,13 @@ def test_get_sheet_config(client: TestClient, mock_sheets_service: MagicMock):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_sheet_config_not_found(client: TestClient):
+def test_get_sheet_config_not_found(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.get("/api/v1/sheets/configs/9999").status_code == 404
 
 
-def test_list_sheet_configs(client: TestClient, mock_sheets_service: MagicMock):
+def test_list_sheet_configs(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     _make_config(client, t["id"], sheet_type="interest")
@@ -213,11 +227,11 @@ def test_list_sheet_configs(client: TestClient, mock_sheets_service: MagicMock):
 # Update
 # ---------------------------------------------------------------------------
 
-def test_update_sheet_config(client: TestClient, mock_sheets_service: MagicMock):
+def test_update_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     created = _make_config(client, t["id"]).json()
-    # Original config has: Email Address, First Name, Last Name, Timestamp
     response = client.patch(f"/api/v1/sheets/configs/{created['id']}", json={
         "label": "Updated Label",
         "column_mappings": {
@@ -227,7 +241,6 @@ def test_update_sheet_config(client: TestClient, mock_sheets_service: MagicMock)
     assert response.status_code == 200
     data = response.json()
     assert data["label"] == "Updated Label"
-    # New field added
     assert "Phone Number" in data["column_mappings"]
     assert data["column_mappings"]["Phone Number"]["type"] == "string"
     # Original fields preserved
@@ -239,7 +252,8 @@ def test_update_sheet_config(client: TestClient, mock_sheets_service: MagicMock)
 # Delete
 # ---------------------------------------------------------------------------
 
-def test_delete_sheet_config(client: TestClient, mock_sheets_service: MagicMock):
+def test_delete_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+    login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     t = _make_tournament(client)
     created = _make_config(client, t["id"]).json()

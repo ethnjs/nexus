@@ -41,9 +41,13 @@ class Tournament(Base):
     # {custom_fields: [{key, label, type}, ...]}
     volunteer_schema = Column(JSON, nullable=False, default=dict)
 
+    # Every tournament must belong to a TD or admin
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
+    owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
     sheet_configs = relationship(
         "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
     )
@@ -115,15 +119,17 @@ class Event(Base):
 
 # ---------------------------------------------------------------------------
 # [ACTIVE] User
-# Core volunteer identity — one record per person across all tournaments.
-# Populated via Google Sheet sync. Future: self-service login.
+# Core identity — volunteers, TDs, and admins all live here.
+# role = "admin" | "td" | "volunteer"
+# Volunteers synced from sheets have hashed_password=None and cannot log in
+# until the volunteer login phase is built.
 # ---------------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     phone = Column(String(32), nullable=True)
     shirt_size = Column(String(16), nullable=True)
@@ -131,12 +137,20 @@ class User(Base):
     university = Column(String(255), nullable=True)
     major = Column(String(255), nullable=True)
     employer = Column(String(255), nullable=True)
-    hashed_password = Column(String(255), nullable=True)   # future login
+
+    # Auth fields
+    hashed_password = Column(String(255), nullable=True)   # null = cannot log in
+    role = Column(String(32), nullable=False, default="volunteer")  # admin | td | volunteer
+    is_active = Column(Boolean, nullable=False, default=True)
+
     created_at = Column(DateTime, default=utcnow)
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     memberships = relationship(
         "Membership", back_populates="user", cascade="all, delete-orphan"
+    )
+    tournaments = relationship(
+        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
     )
 
 

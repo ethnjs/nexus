@@ -2,6 +2,7 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
+from tests.conftest import login
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 
@@ -66,8 +67,9 @@ def _make_config(client, tournament_id):
 # ---------------------------------------------------------------------------
 
 def test_sync_creates_user_and_membership(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     _make_event(client, t["id"])
     cfg = _make_config(client, t["id"])
@@ -96,14 +98,12 @@ def test_sync_creates_user_and_membership(
     assert data["errors"] == []
     assert data["last_synced_at"] is not None
 
-    # Verify user was created
     user_resp = client.get("/api/v1/users/by-email/alice@example.com")
     assert user_resp.status_code == 200
     user = user_resp.json()
     assert user["first_name"] == "Alice"
     assert user["shirt_size"] == "M"
 
-    # Verify membership was created
     memberships = client.get(f"/api/v1/memberships/tournament/{t['id']}").json()
     assert len(memberships) == 1
     m = memberships[0]
@@ -113,9 +113,10 @@ def test_sync_creates_user_and_membership(
 
 
 def test_sync_merges_contiguous_availability(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
     """8-10 and 10-noon on Thursday should merge into 8-noon."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
 
@@ -137,9 +138,10 @@ def test_sync_merges_contiguous_availability(
 
 
 def test_sync_none_availability_skipped(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
     """'None' in availability cell means not available — no slots generated."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
 
@@ -157,9 +159,10 @@ def test_sync_none_availability_skipped(
 
 
 def test_sync_updates_existing_user(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
     """Re-syncing the same email should update the user, not create a duplicate."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
 
@@ -172,7 +175,6 @@ def test_sync_updates_existing_user(
     mock_sheets_service.get_rows.return_value = [row]
     client.post(f"/api/v1/sheets/configs/{cfg['id']}/sync")
 
-    # Re-sync with updated shirt size
     mock_sheets_service.get_rows.return_value = [{**row, "T-Shirt Size": "L"}]
     response = client.post(f"/api/v1/sheets/configs/{cfg['id']}/sync")
     data = response.json()
@@ -184,15 +186,15 @@ def test_sync_updates_existing_user(
 
 
 def test_sync_skips_row_missing_email(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
 
     mock_sheets_service.get_rows.return_value = [{
         "First Name": "No",
         "Last Name": "Email",
-        # Email Address missing
     }]
 
     response = client.post(f"/api/v1/sheets/configs/{cfg['id']}/sync")
@@ -204,8 +206,9 @@ def test_sync_skips_row_missing_email(
 
 
 def test_sync_multiple_rows(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
 
@@ -225,8 +228,9 @@ def test_sync_multiple_rows(
 
 
 def test_sync_last_synced_at_updated(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
     assert cfg["last_synced_at"] is None
@@ -238,13 +242,15 @@ def test_sync_last_synced_at_updated(
     assert updated_cfg["last_synced_at"] is not None
 
 
-def test_sync_config_not_found(client: TestClient):
+def test_sync_config_not_found(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.post("/api/v1/sheets/configs/9999/sync").status_code == 404
 
 
 def test_sync_inactive_config(
-    client: TestClient, mock_sheets_service: MagicMock
+    client: TestClient, td_user, mock_sheets_service: MagicMock
 ):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
     client.patch(f"/api/v1/sheets/configs/{cfg['id']}", json={"is_active": False})

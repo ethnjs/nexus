@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+
+from app.core.auth import get_current_user, require_td_or_admin
 from app.db.session import get_db
-from app.models.models import Tournament
+from app.models.models import Tournament, User
 from app.schemas.tournament import TournamentCreate, TournamentRead, TournamentUpdate
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
@@ -20,25 +22,56 @@ def _serialize(tournament: Tournament) -> dict:
         "location": tournament.location,
         "blocks": tournament.blocks or [],
         "volunteer_schema": tournament.volunteer_schema or {"custom_fields": []},
+        "owner_id": tournament.owner_id,
         "created_at": tournament.created_at,
         "updated_at": tournament.updated_at,
     }
 
 
+def _get_tournament_or_404(
+    tournament_id: int,
+    db: Session,
+    current_user: User,
+) -> Tournament:
+    """
+    Fetch tournament by ID with ownership enforcement.
+    Admins can access any tournament.
+    TDs can only access their own.
+    Returns 404 (not 403) to avoid leaking existence of other TDs' tournaments.
+    """
+    q = db.query(Tournament).filter(Tournament.id == tournament_id)
+    if current_user.role != "admin":
+        q = q.filter(Tournament.owner_id == current_user.id)
+    tournament = q.first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    return tournament
+
+
 @router.get("/", response_model=list[TournamentRead])
-def list_tournaments(db: Session = Depends(get_db)):
-    tournaments = db.query(Tournament).order_by(Tournament.created_at.desc()).all()
+def list_tournaments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_td_or_admin),
+):
+    q = db.query(Tournament)
+    if current_user.role != "admin":
+        q = q.filter(Tournament.owner_id == current_user.id)
+    tournaments = q.order_by(Tournament.created_at.desc()).all()
     return [_serialize(t) for t in tournaments]
 
 
 @router.post("/", response_model=TournamentRead, status_code=status.HTTP_201_CREATED)
-def create_tournament(payload: TournamentCreate, db: Session = Depends(get_db)):
+def create_tournament(
+    payload: TournamentCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_td_or_admin),
+):
     data = payload.model_dump()
     # Serialize nested Pydantic models to plain dicts for JSON columns
     data["blocks"] = [b.model_dump() for b in payload.blocks]
     data["volunteer_schema"] = payload.volunteer_schema.model_dump()
 
-    tournament = Tournament(**data)
+    tournament = Tournament(**data, owner_id=current_user.id)
     db.add(tournament)
     db.commit()
     db.refresh(tournament)
@@ -46,11 +79,12 @@ def create_tournament(payload: TournamentCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{tournament_id}", response_model=TournamentRead)
-def get_tournament(tournament_id: int, db: Session = Depends(get_db)):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
-    return _serialize(tournament)
+def get_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_td_or_admin),
+):
+    return _serialize(_get_tournament_or_404(tournament_id, db, current_user))
 
 
 @router.patch("/{tournament_id}", response_model=TournamentRead)
@@ -58,10 +92,9 @@ def update_tournament(
     tournament_id: int,
     payload: TournamentUpdate,
     db: Session = Depends(get_db),
+    current_user: User = Depends(require_td_or_admin),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
+    tournament = _get_tournament_or_404(tournament_id, db, current_user)
 
     update_data = payload.model_dump(exclude_none=True)
 
@@ -80,9 +113,11 @@ def update_tournament(
 
 
 @router.delete("/{tournament_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_tournament(tournament_id: int, db: Session = Depends(get_db)):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
+def delete_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_td_or_admin),
+):
+    tournament = _get_tournament_or_404(tournament_id, db, current_user)
     db.delete(tournament)
     db.commit()

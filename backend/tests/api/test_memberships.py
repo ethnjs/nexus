@@ -2,6 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
+from tests.conftest import login
 
 
 def _make_tournament(client: TestClient) -> dict:
@@ -37,7 +38,8 @@ def _make_membership(client: TestClient, user_id: int, tournament_id: int, **ove
 # Create
 # ---------------------------------------------------------------------------
 
-def test_create_membership_minimal(client: TestClient):
+def test_create_membership_minimal(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     response = _make_membership(client, u["id"], t["id"])
@@ -50,7 +52,8 @@ def test_create_membership_minimal(client: TestClient):
     assert data["roles"] is None
 
 
-def test_create_membership_full(client: TestClient):
+def test_create_membership_full(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     e = _make_event(client, t["id"])
@@ -79,14 +82,16 @@ def test_create_membership_full(client: TestClient):
     assert data["extra_data"]["transportation"] == "Driving"
 
 
-def test_create_membership_invalid_status(client: TestClient):
+def test_create_membership_invalid_status(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     response = _make_membership(client, u["id"], t["id"], status="fake_status")
     assert response.status_code == 422
 
 
-def test_create_membership_invalid_role(client: TestClient):
+def test_create_membership_invalid_role(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     response = _make_membership(client, u["id"], t["id"],
@@ -95,20 +100,23 @@ def test_create_membership_invalid_role(client: TestClient):
     assert response.status_code == 422
 
 
-def test_create_membership_invalid_user(client: TestClient):
+def test_create_membership_invalid_user(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     response = _make_membership(client, 9999, t["id"])
     assert response.status_code == 404
 
 
-def test_create_membership_invalid_tournament(client: TestClient):
+def test_create_membership_invalid_tournament(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     u = _make_user(client)
     response = _make_membership(client, u["id"], 9999)
     assert response.status_code == 404
 
 
-def test_create_membership_event_wrong_tournament(client: TestClient):
+def test_create_membership_event_wrong_tournament(client: TestClient, td_user):
     """Assigned event must belong to the same tournament."""
+    login(client, "td@test.com", "tdpass")
     t1 = _make_tournament(client)
     t2 = client.post("/api/v1/tournaments/", json={"name": "Other Tournament"}).json()
     u = _make_user(client)
@@ -117,7 +125,8 @@ def test_create_membership_event_wrong_tournament(client: TestClient):
     assert response.status_code == 404
 
 
-def test_create_membership_duplicate(client: TestClient):
+def test_create_membership_duplicate(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     _make_membership(client, u["id"], t["id"])
@@ -129,7 +138,8 @@ def test_create_membership_duplicate(client: TestClient):
 # List
 # ---------------------------------------------------------------------------
 
-def test_list_memberships(client: TestClient):
+def test_list_memberships(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u1 = _make_user(client, "alice@example.com")
     u2 = _make_user(client, "bob@example.com")
@@ -140,7 +150,8 @@ def test_list_memberships(client: TestClient):
     assert len(response.json()) == 2
 
 
-def test_list_memberships_filter_by_status(client: TestClient):
+def test_list_memberships_filter_by_status(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u1 = _make_user(client, "alice@example.com")
     u2 = _make_user(client, "bob@example.com")
@@ -153,11 +164,13 @@ def test_list_memberships_filter_by_status(client: TestClient):
     assert data[0]["status"] == "confirmed"
 
 
-def test_list_memberships_invalid_tournament(client: TestClient):
+def test_list_memberships_invalid_tournament(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.get("/api/v1/memberships/tournament/9999").status_code == 404
 
 
-def test_list_memberships_empty(client: TestClient):
+def test_list_memberships_empty(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     assert client.get(f"/api/v1/memberships/tournament/{t['id']}").json() == []
 
@@ -166,7 +179,8 @@ def test_list_memberships_empty(client: TestClient):
 # Get
 # ---------------------------------------------------------------------------
 
-def test_get_membership(client: TestClient):
+def test_get_membership(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"]).json()
@@ -175,7 +189,8 @@ def test_get_membership(client: TestClient):
     assert response.json()["id"] == created["id"]
 
 
-def test_get_membership_not_found(client: TestClient):
+def test_get_membership_not_found(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.get("/api/v1/memberships/9999").status_code == 404
 
 
@@ -183,7 +198,8 @@ def test_get_membership_not_found(client: TestClient):
 # Update
 # ---------------------------------------------------------------------------
 
-def test_update_membership_status(client: TestClient):
+def test_update_membership_status(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"]).json()
@@ -194,7 +210,8 @@ def test_update_membership_status(client: TestClient):
     assert response.json()["status"] == "confirmed"
 
 
-def test_update_membership_assign_event(client: TestClient):
+def test_update_membership_assign_event(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     e = _make_event(client, t["id"])
@@ -213,8 +230,9 @@ def test_update_membership_assign_event(client: TestClient):
     assert data["roles"]["event_supervisor"] == [1, 2, 3, 4, 5, 6]
 
 
-def test_update_membership_roles_multiblock(client: TestClient):
+def test_update_membership_roles_multiblock(client: TestClient, td_user):
     """Alan is Lead ES for blocks 1-6, Score Counselor for block 7."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"]).json()
@@ -230,8 +248,9 @@ def test_update_membership_roles_multiblock(client: TestClient):
     assert roles["score_counselor"] == [7]
 
 
-def test_update_membership_roles_merges(client: TestClient):
+def test_update_membership_roles_merges(client: TestClient, td_user):
     """PATCHing roles should merge with existing roles, not replace them."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"],
@@ -242,13 +261,13 @@ def test_update_membership_roles_merges(client: TestClient):
     })
     assert response.status_code == 200
     roles = response.json()["roles"]
-    # Both roles should be present
     assert roles["event_supervisor"] == [1, 2, 3]
     assert roles["score_counselor"] == [7]
 
 
-def test_update_membership_extra_data_merges(client: TestClient):
+def test_update_membership_extra_data_merges(client: TestClient, td_user):
     """PATCHing extra_data should merge with existing keys, not replace them."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"],
@@ -259,12 +278,12 @@ def test_update_membership_extra_data_merges(client: TestClient):
     })
     assert response.status_code == 200
     extra = response.json()["extra_data"]
-    # Both keys should be present
     assert extra["transportation"] == "Driving"
     assert extra["carpool_seats"] == 3
 
 
-def test_update_membership_not_found(client: TestClient):
+def test_update_membership_not_found(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.patch("/api/v1/memberships/9999", json={"status": "confirmed"}).status_code == 404
 
 
@@ -272,7 +291,8 @@ def test_update_membership_not_found(client: TestClient):
 # Delete
 # ---------------------------------------------------------------------------
 
-def test_delete_membership(client: TestClient):
+def test_delete_membership(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     created = _make_membership(client, u["id"], t["id"]).json()
@@ -280,12 +300,14 @@ def test_delete_membership(client: TestClient):
     assert client.get(f"/api/v1/memberships/{created['id']}").status_code == 404
 
 
-def test_delete_membership_not_found(client: TestClient):
+def test_delete_membership_not_found(client: TestClient, td_user):
+    login(client, "td@test.com", "tdpass")
     assert client.delete("/api/v1/memberships/9999").status_code == 404
 
 
-def test_delete_user_cascades_memberships(client: TestClient):
+def test_delete_user_cascades_memberships(client: TestClient, td_user):
     """Deleting a user should remove all their memberships."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     m = _make_membership(client, u["id"], t["id"]).json()
@@ -293,8 +315,9 @@ def test_delete_user_cascades_memberships(client: TestClient):
     assert client.get(f"/api/v1/memberships/{m['id']}").status_code == 404
 
 
-def test_delete_tournament_cascades_memberships(client: TestClient):
+def test_delete_tournament_cascades_memberships(client: TestClient, td_user):
     """Deleting a tournament should remove all its memberships."""
+    login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     u = _make_user(client)
     m = _make_membership(client, u["id"], t["id"]).json()

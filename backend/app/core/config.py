@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     google_service_account_file: str = "./credentials.json"
     google_service_account_json: str = ""  # JSON string — used in production instead of file
 
-    api_key: str = ""  # Required in production — set API_KEY in .env
+    api_key: str = ""  # For direct API access / Swagger only
+
+    # Must be set to a long random string in production — never commit the real value
+    jwt_secret: str = "dev-secret-change-in-production"
 
 
 @lru_cache()
