@@ -52,6 +52,9 @@ class Tournament(Base):
     sheet_configs = relationship(
         "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
     )
+    events = relationship(
+        "Event", back_populates="tournament", cascade="all, delete-orphan"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +89,52 @@ class SheetConfig(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "sheet_type", name="uq_tournament_sheet_type"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# [BETA] Event
+# A Science Olympiad event specific to a tournament.
+# Can be standard or trial, division B or C.
+# blocks: JSON array of block numbers this event runs e.g. [1,2,3,4,5,6]
+# category: used for matching volunteer event preferences e.g. "Technology & Engineering"
+# ---------------------------------------------------------------------------
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(255), nullable=False)
+
+    # "B" | "C"
+    division = Column(String(4), nullable=False)
+
+    # "standard" | "trial"
+    event_type = Column(String(32), nullable=False, default="standard")
+
+    # Category group from the interest form e.g. "Technology & Engineering"
+    # Used to match a volunteer's grouped preference back to specific events
+    category = Column(String(255), nullable=True)
+
+    building = Column(String(255), nullable=True)
+    room = Column(String(64), nullable=True)
+    floor = Column(String(64), nullable=True)
+    volunteers_needed = Column(Integer, nullable=False, default=2)
+
+    # Block numbers this event runs — defaults to all competition blocks
+    # e.g. [1, 2, 3, 4, 5, 6]
+    blocks = Column(JSON, nullable=False, default=list)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="events")
+
+    __table_args__ = (
+        # Event names must be unique within a tournament + division combo
+        UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
     )
 
 

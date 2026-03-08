@@ -16,19 +16,34 @@ KNOWN_FIELDS: list[str] = [
     "last_name",
     "email",
     "phone",
-    # Volunteer preferences
+    # Volunteer profile
     "shirt_size",
     "dietary_restriction",
-    "event_expertise",   # multi-value: comma-separated event names from form
-    # Membership / per-tournament
-    "availability",      # all_day | am | pm
+    "university",               # current employer or university
+    "age_verified",             # yes/no age confirmation
+    "conflict_of_interest",     # string, null if n/a
+    # Science Olympiad background (store as text blobs)
+    "scioly_competed",          # have you competed before? yes/no
+    "scioly_competed_events",   # which events/schools if competed
+    "scioly_volunteered",       # have you volunteered before? yes/no
+    "scioly_experience",        # free-text description of past experience + expertise
+    "event_expertise",          # multi-value: comma-separated event names
+    # Role & availability
+    "role_preference",          # multi-value: "event_volunteer,general_volunteer"
+    "event_preference",         # which event(s) they want to work (raw form string)
+    "general_volunteer_interest", # multi-value: stem expo, opening ceremony, etc.
+    "availability",             # time block availability (multi-value per time slot)
+    # Logistics
+    "transportation",           # how they're getting there (drives/uber/carpool etc.)
+    "is_driver",                # boolean derived from transportation answer
+    "carpool_seats",            # how many people they can take if driving
+    "limitations",              # physical/accessibility limitations
     "lunch_order",
-    "event_preference",  # which event they'd like to work
     # Meta
-    "notes",
+    "notes",                    # catch-all for misc fields
 ]
 
-VALID_SHEET_TYPES = {"interest", "confirmation"}
+VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
 
 
 class SheetConfigBase(BaseModel):

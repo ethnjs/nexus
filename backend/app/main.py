@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import get_settings
 from app.db.init_db import init_db
-from app.api.routes import tournaments, sheets
+from app.api.routes import tournaments, sheets, events
 
 settings = get_settings()
 
@@ -41,6 +41,7 @@ app.add_middleware(
 # Register routers
 app.include_router(tournaments.router, prefix="/api/v1")
 app.include_router(sheets.router, prefix="/api/v1")
+app.include_router(events.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["meta"])
