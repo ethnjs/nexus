@@ -230,6 +230,40 @@ def test_update_membership_roles_multiblock(client: TestClient):
     assert roles["score_counselor"] == [7]
 
 
+def test_update_membership_roles_merges(client: TestClient):
+    """PATCHing roles should merge with existing roles, not replace them."""
+    t = _make_tournament(client)
+    u = _make_user(client)
+    created = _make_membership(client, u["id"], t["id"],
+        roles={"event_supervisor": [1, 2, 3]}
+    ).json()
+    response = client.patch(f"/api/v1/memberships/{created['id']}", json={
+        "roles": {"score_counselor": [7]}
+    })
+    assert response.status_code == 200
+    roles = response.json()["roles"]
+    # Both roles should be present
+    assert roles["event_supervisor"] == [1, 2, 3]
+    assert roles["score_counselor"] == [7]
+
+
+def test_update_membership_extra_data_merges(client: TestClient):
+    """PATCHing extra_data should merge with existing keys, not replace them."""
+    t = _make_tournament(client)
+    u = _make_user(client)
+    created = _make_membership(client, u["id"], t["id"],
+        extra_data={"transportation": "Driving"}
+    ).json()
+    response = client.patch(f"/api/v1/memberships/{created['id']}", json={
+        "extra_data": {"carpool_seats": 3}
+    })
+    assert response.status_code == 200
+    extra = response.json()["extra_data"]
+    # Both keys should be present
+    assert extra["transportation"] == "Driving"
+    assert extra["carpool_seats"] == 3
+
+
 def test_update_membership_not_found(client: TestClient):
     assert client.patch("/api/v1/memberships/9999", json={"status": "confirmed"}).status_code == 404
 

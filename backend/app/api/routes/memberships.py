@@ -122,8 +122,21 @@ def update_membership(
             raise HTTPException(status_code=404, detail="Event not found in this tournament")
 
     update_data = payload.model_dump(exclude_none=True)
+
     if "availability" in update_data and payload.availability:
         update_data["availability"] = [s.model_dump() for s in payload.availability]
+
+    # Merge roles — adding a new role shouldn't wipe existing ones
+    if "roles" in update_data and payload.roles:
+        merged_roles = dict(m.roles or {})
+        merged_roles.update(payload.roles)
+        update_data["roles"] = merged_roles
+
+    # Merge extra_data — tournament-specific fields accumulate over time
+    if "extra_data" in update_data and payload.extra_data:
+        merged_extra = dict(m.extra_data or {})
+        merged_extra.update(payload.extra_data)
+        update_data["extra_data"] = merged_extra
 
     for field, value in update_data.items():
         setattr(m, field, value)
