@@ -6,51 +6,78 @@ type Variant = 'primary' | 'secondary' | 'ghost' | 'danger'
 type Size    = 'sm' | 'md' | 'lg'
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: Variant
-  size?:    Size
-  loading?: boolean
+  variant?:   Variant
+  size?:      Size
+  loading?:   boolean
   fullWidth?: boolean
 }
 
-const variantStyles: Record<Variant, string> = {
-  primary:   'bg-accent text-inverse border-accent hover:bg-accent-hover hover:border-accent-hover',
-  secondary: 'bg-surface text-primary border-border hover:border-border-strong hover:bg-accent-subtle',
-  ghost:     'bg-transparent text-primary border-transparent hover:bg-accent-subtle hover:border-border',
-  danger:    'bg-danger text-inverse border-danger hover:opacity-90',
+const variantStyles: Record<Variant, React.CSSProperties> = {
+  primary: {
+    background: '#0A0A0A',
+    color: '#FFFFFF',
+    border: '1px solid #0A0A0A',
+  },
+  secondary: {
+    background: 'var(--color-surface)',
+    color: 'var(--color-text-primary)',
+    border: '1px solid var(--color-border)',
+  },
+  ghost: {
+    background: 'transparent',
+    color: 'var(--color-text-primary)',
+    border: '1px solid transparent',
+  },
+  danger: {
+    background: 'var(--color-danger)',
+    color: '#FFFFFF',
+    border: '1px solid var(--color-danger)',
+  },
 }
 
-const sizeStyles: Record<Size, string> = {
-  sm: 'h-7 px-3 text-xs gap-1.5',
-  md: 'h-8 px-4 text-sm gap-2',
-  lg: 'h-10 px-5 text-base gap-2',
+const sizeStyles: Record<Size, React.CSSProperties> = {
+  sm: { height: '32px', padding: '0 12px', fontSize: '13px', gap: '6px' },
+  md: { height: '38px', padding: '0 16px', fontSize: '14px', gap: '8px' },
+  lg: { height: '48px', padding: '0 20px', fontSize: '15px', gap: '8px' },
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ variant = 'primary', size = 'md', loading, fullWidth, className = '', children, disabled, ...props }, ref) => {
+  ({ variant = 'primary', size = 'md', loading, fullWidth, style, children, disabled, ...props }, ref) => {
     return (
       <button
         ref={ref}
         disabled={disabled || loading}
-        className={[
-          // Base
-          'inline-flex items-center justify-center font-sans font-medium',
-          'border rounded-sm transition-all duration-base',
-          'disabled:opacity-40 disabled:cursor-not-allowed',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
-          // Variant
-          variantStyles[variant],
-          // Size
-          sizeStyles[size],
-          // Full width
-          fullWidth ? 'w-full' : '',
-          className,
-        ].join(' ')}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'var(--font-display)',
+          fontWeight: 600,
+          letterSpacing: '0.01em',
+          borderRadius: 'var(--radius-sm)',
+          cursor: disabled || loading ? 'not-allowed' : 'pointer',
+          opacity: disabled || loading ? 0.6 : 1,
+          transition: 'opacity 150ms ease, background 150ms ease, border-color 150ms ease',
+          width: fullWidth ? '100%' : undefined,
+          ...variantStyles[variant],
+          ...sizeStyles[size],
+          ...style,
+        }}
         {...props}
       >
         {loading && (
-          <span className="inline-block w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span style={{
+            width: '14px',
+            height: '14px',
+            border: '2px solid rgba(255,255,255,0.4)',
+            borderTopColor: '#fff',
+            borderRadius: '50%',
+            display: 'inline-block',
+            animation: 'spin 600ms linear infinite',
+          }} />
         )}
         {children}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </button>
     )
   }

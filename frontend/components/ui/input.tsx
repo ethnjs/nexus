@@ -3,9 +3,9 @@
 import { forwardRef, InputHTMLAttributes, useId } from 'react'
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?:   string
-  error?:   string
-  helper?:  string
+  label?:     string
+  error?:     string
+  helper?:    string
   fullWidth?: boolean
 }
 
@@ -15,11 +15,16 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const inputId = id ?? generatedId
 
     return (
-      <div className={['flex flex-col gap-1.5', fullWidth ? 'w-full' : ''].join(' ')}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: fullWidth ? '100%' : undefined }}>
         {label && (
           <label
             htmlFor={inputId}
-            className="text-xs font-medium text-secondary uppercase tracking-wider"
+            style={{
+              fontFamily: 'var(--font-display)',
+              fontSize: '13px',
+              fontWeight: 400,
+              color: 'var(--color-text-secondary)',
+            }}
           >
             {label}
           </label>
@@ -27,27 +32,38 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
-          className={[
-            'h-8 px-3 text-sm',
-            'bg-surface text-primary',
-            'border rounded-sm',
-            'transition-all duration-base',
-            'placeholder:text-tertiary',
-            'focus:outline-none focus:ring-1',
-            error
-              ? 'border-danger focus:border-danger focus:ring-danger'
-              : 'border-border focus:border-accent focus:ring-accent',
-            'disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-accent-subtle',
-            fullWidth ? 'w-full' : '',
-            className,
-          ].join(' ')}
+          style={{
+            height: '44px',
+            paddingLeft: '16px',
+            paddingRight: '16px',
+            fontFamily: 'var(--font-sans)',
+            fontSize: '14px',
+            background: 'var(--color-surface)',
+            color: 'var(--color-text-primary)',
+            border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
+            borderRadius: 'var(--radius-sm)',
+            outline: 'none',
+            width: fullWidth ? '100%' : undefined,
+            transition: 'border-color 150ms ease',
+          }}
+          onFocus={e => {
+            e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
+          }}
+          onBlur={e => {
+            e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
+          }}
+          className={className}
           {...props}
         />
         {error && (
-          <p className="text-xs text-danger">{error}</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--color-danger)' }}>
+            {error}
+          </p>
         )}
         {helper && !error && (
-          <p className="text-xs text-tertiary">{helper}</p>
+          <p style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
+            {helper}
+          </p>
         )}
       </div>
     )
