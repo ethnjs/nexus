@@ -46,7 +46,7 @@ export default function HomePage() {
         />
 
         {/* Content */}
-        <div className="relative z-10 flex flex-col items-center gap-6 text-center px-6">
+        <div className="relative z-10 flex flex-col items-center gap-2 text-center px-6">
           <h1 style={{
             fontFamily: 'var(--font-serif)',
             fontSize: 'clamp(80px, 16vw, 172px)',
@@ -61,7 +61,7 @@ export default function HomePage() {
 
           <p style={{
             fontFamily: 'var(--font-display)',
-            fontSize: '16px',
+            fontSize: '20px',
             fontWeight: 400,
             letterSpacing: '0.01em',
             color: 'var(--color-text-secondary)',
@@ -152,49 +152,62 @@ function LoginForm() {
   const [email, setEmail]       = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState<string | null>(null)
+  const [errors, setErrors]     = useState<{ email?: string; password?: string; form?: string }>({})
+
+  function validate() {
+    const e: typeof errors = {}
+    if (!email.trim())    e.email    = 'Email is required'
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = 'Enter a valid email'
+    if (!password.trim()) e.password = 'Password is required'
+    return e
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setError(null)
+    const validation = validate()
+    if (Object.keys(validation).length > 0) {
+      setErrors(validation)
+      return
+    }
+    setErrors({})
     setLoading(true)
     try {
       const { authApi } = await import('@/lib/api')
       await authApi.login(email, password)
       window.location.href = '/dashboard'
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong')
+      setErrors({ form: err instanceof Error ? err.message : 'Something went wrong' })
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <Input
         label="Email"
         type="email"
         placeholder="you@example.com"
         value={email}
-        onChange={e => setEmail(e.target.value)}
+        onChange={e => { setEmail(e.target.value); setErrors(ev => ({ ...ev, email: undefined })) }}
         autoComplete="email"
+        error={errors.email}
         fullWidth
-        required
       />
       <Input
         label="Password"
         type="password"
         placeholder="••••••••"
         value={password}
-        onChange={e => setPassword(e.target.value)}
+        onChange={e => { setPassword(e.target.value); setErrors(ev => ({ ...ev, password: undefined })) }}
         autoComplete="current-password"
+        error={errors.password}
         fullWidth
-        required
       />
 
-      {error && (
+      {errors.form && (
         <p style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--color-danger)' }}>
-          {error}
+          {errors.form}
         </p>
       )}
 
