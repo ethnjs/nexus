@@ -44,12 +44,12 @@ app.add_middleware(
 
 api_key_dependency = Depends(verify_api_key)
 
-app.include_router(auth.router,        prefix="/api/v1")
-app.include_router(tournaments.router, prefix="/api/v1", dependencies=[api_key_dependency])
-app.include_router(sheets.router,      prefix="/api/v1", dependencies=[api_key_dependency])
-app.include_router(events.router,      prefix="/api/v1", dependencies=[api_key_dependency])
-app.include_router(users.router,       prefix="/api/v1", dependencies=[api_key_dependency])
-app.include_router(memberships.router, prefix="/api/v1", dependencies=[api_key_dependency])
+app.include_router(auth.router,        prefix="")
+app.include_router(tournaments.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
+app.include_router(events.router,      prefix="", dependencies=[api_key_dependency])
+app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
+app.include_router(memberships.router, prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

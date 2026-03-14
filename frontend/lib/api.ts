@@ -66,16 +66,16 @@ export interface AuthUser {
 
 export const authApi = {
   login:    (email: string, password: string) =>
-    api.post<AuthUser>('/api/v1/auth/login', { email, password }),
+    api.post<AuthUser>('/auth/login', { email, password }),
 
   logout:   () =>
-    api.post<void>('/api/v1/auth/logout', {}),
+    api.post<void>('/auth/logout', {}),
 
   me:       () =>
-    api.get<AuthUser>('/api/v1/auth/me'),
+    api.get<AuthUser>('/auth/me'),
 
   register: (body: { email: string; password: string; first_name?: string; last_name?: string; role?: string }) =>
-    api.post<AuthUser>('/api/v1/auth/register', body),
+    api.post<AuthUser>('/auth/register', body),
 }
 
 // -------------------------------------------------------------------------
@@ -109,9 +109,9 @@ export interface CustomField {
 }
 
 export const tournamentsApi = {
-  list:   ()                                    => api.get<Tournament[]>('/api/v1/tournaments/'),
-  get:    (id: number)                          => api.get<Tournament>(`/api/v1/tournaments/${id}`),
-  create: (body: Partial<Tournament>)           => api.post<Tournament>('/api/v1/tournaments/', body),
-  update: (id: number, body: Partial<Tournament>) => api.patch<Tournament>(`/api/v1/tournaments/${id}`, body),
-  delete: (id: number)                          => api.delete<void>(`/api/v1/tournaments/${id}`),
+  list:   ()                                    => api.get<Tournament[]>('/tournaments/'),
+  get:    (id: number)                          => api.get<Tournament>(`/tournaments/${id}`),
+  create: (body: Partial<Tournament>)           => api.post<Tournament>('/tournaments/', body),
+  update: (id: number, body: Partial<Tournament>) => api.patch<Tournament>(`/tournaments/${id}`, body),
+  delete: (id: number)                          => api.delete<void>(`/tournaments/${id}`),
 }
