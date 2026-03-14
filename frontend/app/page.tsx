@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { ApiError } from '@/lib/api'
 
 export default function HomePage() {
   const [loginVisible, setLoginVisible] = useState(false)
@@ -25,7 +26,6 @@ export default function HomePage() {
         className="relative h-screen flex flex-col items-center justify-center overflow-hidden"
         style={{ background: 'var(--color-bg)' }}
       >
-        {/* Grid */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -37,7 +37,6 @@ export default function HomePage() {
             opacity: 0.5,
           }}
         />
-        {/* Radial fade */}
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
@@ -45,8 +44,7 @@ export default function HomePage() {
           }}
         />
 
-        {/* Content */}
-        <div className="relative z-10 flex flex-col items-center gap-2 text-center px-6">
+        <div className="relative z-10 flex flex-col items-center gap-6 text-center px-6">
           <h1 style={{
             fontFamily: 'var(--font-serif)',
             fontSize: 'clamp(80px, 16vw, 172px)',
@@ -61,7 +59,7 @@ export default function HomePage() {
 
           <p style={{
             fontFamily: 'var(--font-display)',
-            fontSize: '20px',
+            fontSize: '16px',
             fontWeight: 400,
             letterSpacing: '0.01em',
             color: 'var(--color-text-secondary)',
@@ -72,7 +70,6 @@ export default function HomePage() {
           </p>
         </div>
 
-        {/* Arrow */}
         <div
           className="absolute bottom-10 left-1/2 -translate-x-1/2"
           style={{ animation: 'fade-in 600ms ease 900ms forwards', opacity: 0 }}
@@ -176,7 +173,11 @@ function LoginForm() {
       await authApi.login(email, password)
       window.location.href = '/dashboard'
     } catch (err: unknown) {
-      setErrors({ form: err instanceof Error ? err.message : 'Something went wrong' })
+      if (err instanceof ApiError && err.status === 401) {
+        setErrors({ form: 'Invalid email or password' })
+      } else {
+        setErrors({ form: 'Something went wrong — please try again' })
+      }
     } finally {
       setLoading(false)
     }
@@ -205,11 +206,18 @@ function LoginForm() {
         fullWidth
       />
 
-      {errors.form && (
-        <p style={{ fontFamily: 'var(--font-display)', fontSize: '13px', color: 'var(--color-danger)' }}>
-          {errors.form}
-        </p>
-      )}
+      {/* Reserved space prevents layout shift */}
+      <div style={{ minHeight: '20px' }}>
+        {errors.form && (
+          <p style={{
+            fontFamily: 'var(--font-display)',
+            fontSize: '13px',
+            color: 'var(--color-danger)',
+          }}>
+            {errors.form}
+          </p>
+        )}
+      </div>
 
       <Button
         type="submit"
@@ -217,7 +225,6 @@ function LoginForm() {
         size="lg"
         loading={loading}
         fullWidth
-        style={{ marginTop: '4px' }}
       >
         Sign in
       </Button>
