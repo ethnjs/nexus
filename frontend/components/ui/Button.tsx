@@ -51,7 +51,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           display: 'inline-flex',
           alignItems: 'center',
           justifyContent: 'center',
-          fontFamily: 'var(--font-display)',
+          fontFamily: 'var(--font-sans)',
           fontWeight: 600,
           letterSpacing: '0.01em',
           borderRadius: 'var(--radius-sm)',

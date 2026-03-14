@@ -58,7 +58,7 @@ export default function HomePage() {
           </h1>
 
           <p style={{
-            fontFamily: 'var(--font-display)',
+            fontFamily: 'var(--font-sans)',
             fontSize: '16px',
             fontWeight: 400,
             letterSpacing: '0.01em',
@@ -210,7 +210,7 @@ function LoginForm() {
       <div style={{ minHeight: '20px' }}>
         {errors.form && (
           <p style={{
-            fontFamily: 'var(--font-display)',
+            fontFamily: 'var(--font-sans)',
             fontSize: '13px',
             color: 'var(--color-danger)',
           }}>

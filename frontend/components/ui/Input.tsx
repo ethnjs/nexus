@@ -20,7 +20,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <label
             htmlFor={inputId}
             style={{
-              fontFamily: 'var(--font-display)',
+              fontFamily: 'var(--font-sans)',
               fontSize: '13px',
               fontWeight: 400,
               color: 'var(--color-text-secondary)',
@@ -36,7 +36,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             height: '44px',
             paddingLeft: '16px',
             paddingRight: '16px',
-            fontFamily: 'var(--font-sans)',
+            fontFamily: 'var(--font-display)',
             fontSize: '14px',
             background: 'var(--color-surface)',
             color: 'var(--color-text-primary)',

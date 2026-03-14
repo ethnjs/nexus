@@ -36,10 +36,14 @@
   --color-status-assigned:   #1D4ED8;
   --color-status-removed:    #9B9B93;
 
-  /* Typography */
-  --font-sans:    'DM Mono', 'Courier New', monospace;
-  --font-serif:   'Instrument Serif', Georgia, serif;
-  --font-display: 'DM Sans', system-ui, sans-serif;
+  /* Typography
+     --font-mono      → DM Mono       (body text, inputs, data values, code)
+     --font-sans      → DM Sans       (UI labels, buttons, nav, subheadings)
+     --font-serif     → Instrument Serif (h1, h2, hero, wordmarks)
+  */
+  --font-mono:  'DM Mono', 'Courier New', monospace;
+  --font-sans:  'DM Sans', system-ui, sans-serif;
+  --font-serif: 'Instrument Serif', Georgia, serif;
 
   /* Spacing scale */
   --space-1:  4px;
@@ -69,8 +73,8 @@
   --transition-slow: 250ms ease;
 
   /* Layout */
-  --sidebar-width:  52px;
-  --topbar-height:  52px;
+  --sidebar-width: 52px;
+  --topbar-height: 52px;
 }
 
 /* -------------------------------------------------------------------------
@@ -90,13 +94,14 @@ html {
 }
 
 body {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
   background-color: var(--color-bg);
   color: var(--color-text-primary);
   line-height: 1.5;
   min-height: 100vh;
 }
 
+/* h1, h2 → Instrument Serif */
 h1, h2 {
   font-family: var(--font-serif);
   font-weight: 400;
@@ -104,6 +109,7 @@ h1, h2 {
   letter-spacing: -0.02em;
 }
 
+/* h3–h6 → DM Sans */
 h3, h4, h5, h6 {
   font-family: var(--font-sans);
   font-weight: 500;
@@ -115,13 +121,14 @@ a {
   text-decoration: none;
 }
 
+/* Buttons and inputs default to DM Sans */
 button {
   cursor: pointer;
   font-family: var(--font-sans);
 }
 
 input, textarea, select {
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
 }
 
 /* -------------------------------------------------------------------------
@@ -148,7 +155,9 @@ input, textarea, select {
 /* -------------------------------------------------------------------------
    Utilities
    ------------------------------------------------------------------------- */
-.font-serif   { font-family: var(--font-serif); }
+.font-serif     { font-family: var(--font-serif); }
+.font-sans      { font-family: var(--font-sans); }
+.font-mono      { font-family: var(--font-mono); }
 .text-secondary { color: var(--color-text-secondary); }
 .text-tertiary  { color: var(--color-text-tertiary); }
 
