@@ -34,6 +34,16 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     )
 
 
+def _clear_auth_cookie(response: Response) -> None:
+    settings = get_settings()
+    is_prod = settings.app_env == "production"
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        domain=".ethanshih.com" if is_prod else None,
+    )
+
+
 @router.post("/login", response_model=UserResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
@@ -67,7 +77,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 @router.post("/logout", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
-    response.delete_cookie(key=COOKIE_NAME, path="/")
+    _clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
 
