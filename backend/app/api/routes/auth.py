@@ -30,6 +30,7 @@ def _set_auth_cookie(response: Response, token: str) -> None:
         samesite="lax" if not is_prod else "none",  # "none" required for cross-origin in prod
         max_age=COOKIE_MAX_AGE,
         path="/",
+        domain=".ethanshih.com" if is_prod else None,
     )
 
 
