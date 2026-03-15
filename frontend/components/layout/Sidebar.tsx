@@ -6,6 +6,15 @@ import { usePathname } from "next/navigation";
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
+function IconHome() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+      <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M7 18v-6h6v6" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconAssign() {
   return (
     <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
@@ -41,47 +50,18 @@ function IconVolunteers() {
   );
 }
 
-// Proper gear icon — outer ring with teeth, inner circle cutout
-function IconSettings() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M10 13a3 3 0 100-6 3 3 0 000 6z"
-        stroke="currentColor" strokeWidth="1.5"
-      />
-      <path
-        d="M10 2v1.5M10 16.5V18M2 10h1.5M16.5 10H18M4.1 4.1l1.1 1.1M14.8 14.8l1.1 1.1M4.1 15.9l1.1-1.1M14.8 5.2l1.1-1.1"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
-      />
-      <path
-        d="M7.5 2.9A8 8 0 002.9 7.5H2a8 8 0 000 5h.9a8 8 0 004.6 4.6v.9a8 8 0 005 0v-.9a8 8 0 004.6-4.6h.9a8 8 0 000-5h-.9A8 8 0 0012.5 2.9V2a8 8 0 00-5 0v.9z"
-        stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"
-        style={{ display: "none" }}
-      />
-    </svg>
-  );
-}
-
-// A cleaner gear: use clipPath approach with a ring + notches
 function GearIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-      <path
-        d="M12 15a3 3 0 100-6 3 3 0 000 6z"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-      />
-      <path
-        d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"
-        stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
-      />
+      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
 
 function IconChevron({ expanded }: { expanded: boolean }) {
   return (
-    <svg
-      width="14" height="14" viewBox="0 0 14 14" fill="none"
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
       style={{ flexShrink: 0, transition: "transform 0.2s ease", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
     >
       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -90,106 +70,83 @@ function IconChevron({ expanded }: { expanded: boolean }) {
 }
 
 const NAV_ITEMS = [
-  { href: "/dashboard",            icon: <IconAssign />,    label: "Assignments" },
-  { href: "/dashboard/events",     icon: <IconEvents />,    label: "Events" },
-  { href: "/dashboard/volunteers", icon: <IconVolunteers />, label: "Volunteers" },
-  { href: "/dashboard/settings",   icon: <GearIcon />,      label: "Settings" },
+  { segment: "overview",    icon: <IconHome />,       label: "Overview" },
+  { segment: "assignments", icon: <IconAssign />,     label: "Assignments" },
+  { segment: "events",      icon: <IconEvents />,     label: "Events" },
+  { segment: "volunteers",  icon: <IconVolunteers />, label: "Volunteers" },
+  { segment: "settings",    icon: <GearIcon />,       label: "Settings" },
 ];
 
 interface SidebarProps {
   expanded: boolean;
   onToggle: () => void;
+  tournamentId: string | number;
 }
 
-export function Sidebar({ expanded, onToggle }: SidebarProps) {
+export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
   const pathname = usePathname();
   const width = expanded ? EXPANDED_W : COLLAPSED_W;
+  const base = `/dashboard/${tournamentId}`;
 
   return (
-    <aside
-      style={{
-        width,
-        minHeight: "100vh",
-        background: "var(--color-surface)",
-        borderRight: "1px solid var(--color-border)",
+    <aside style={{
+      width,
+      flexShrink: 0,
+      height: "100vh",
+      position: "sticky",
+      top: 0,
+      background: "var(--color-surface)",
+      borderRight: "1px solid var(--color-border)",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: expanded ? "stretch" : "center",
+      transition: "width 0.2s ease",
+      overflow: "hidden",
+      zIndex: 50,
+    }}>
+      {/* Header */}
+      <div style={{
+        height: "52px",
+        borderBottom: "1px solid var(--color-border)",
         display: "flex",
-        flexDirection: "column",
-        alignItems: expanded ? "stretch" : "center",
+        alignItems: "center",
+        justifyContent: "center",
         flexShrink: 0,
-        position: "fixed",
-        top: 0,
-        left: 0,
-        zIndex: 50,
-        transition: "width 0.2s ease",
-        overflow: "hidden",
-      }}
-    >
-      {/* Header — same height as topbar, wordmark only, no toggle here */}
-      <div
-        style={{
-          height: "52px",
-          borderBottom: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-          paddingLeft: expanded ? "16px" : "0",
-          paddingRight: expanded ? "16px" : "0",
-        }}
-      >
-        {expanded ? (
-          <span style={{
-            fontFamily: "var(--font-serif)",
-            fontSize: "15px",
-            letterSpacing: "0.18em",
-            textTransform: "uppercase",
-            color: "var(--color-text-primary)",
-            userSelect: "none",
-            whiteSpace: "nowrap",
-          }}>
-            NEXUS
-          </span>
-        ) : (
-          <span style={{
-            fontFamily: "var(--font-serif)",
-            fontSize: "13px",
-            letterSpacing: "0.12em",
-            textTransform: "uppercase",
-            color: "var(--color-text-primary)",
-            userSelect: "none",
-          }}>
-            NX
-          </span>
-        )}
+        paddingLeft:  expanded ? "16px" : "0",
+        paddingRight: expanded ? "16px" : "0",
+      }}>
+        <Link href="/dashboard" style={{ textDecoration: "none" }}>
+          {expanded ? (
+            <span style={{ fontFamily: "var(--font-serif)", fontSize: "15px", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--color-text-primary)", userSelect: "none", whiteSpace: "nowrap" }}>
+              NEXUS
+            </span>
+          ) : (
+            <span style={{ fontFamily: "var(--font-serif)", fontSize: "13px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-text-primary)", userSelect: "none" }}>
+              NX
+            </span>
+          )}
+        </Link>
       </div>
 
-      {/* Nav items */}
-      <nav
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "2px",
-          flex: 1,
-          padding: "10px 6px",
-          alignItems: expanded ? "stretch" : "center",
-        }}
-      >
-        {NAV_ITEMS.map(({ href, icon, label }) => {
-          const isActive =
-            href === "/dashboard"
-              ? pathname === "/dashboard"
-              : pathname.startsWith(href);
+      {/* Nav */}
+      <nav style={{
+        display: "flex", flexDirection: "column", gap: "2px",
+        flex: 1, padding: "10px 6px",
+        alignItems: expanded ? "stretch" : "center",
+      }}>
+        {NAV_ITEMS.map(({ segment, icon, label }) => {
+          const href = `${base}/${segment}`;
+          const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
             <Link
-              key={href}
+              key={segment}
               href={href}
               title={expanded ? undefined : label}
               style={{
                 height: "38px",
                 borderRadius: "var(--radius-md)",
-                display: "flex",
-                alignItems: "center",
+                display: "flex", alignItems: "center",
                 gap: "10px",
                 paddingLeft:  expanded ? "10px" : "0",
                 paddingRight: expanded ? "10px" : "0",
@@ -217,25 +174,14 @@ export function Sidebar({ expanded, onToggle }: SidebarProps) {
             >
               {isActive && (
                 <div style={{
-                  position: "absolute",
-                  left: 0,
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  width: "3px",
-                  height: "20px",
-                  background: "var(--color-accent)",
-                  borderRadius: "0 3px 3px 0",
+                  position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)",
+                  width: "3px", height: "20px",
+                  background: "var(--color-accent)", borderRadius: "0 3px 3px 0",
                 }} />
               )}
               {icon}
               {expanded && (
-                <span style={{
-                  fontFamily: "var(--font-sans)",
-                  fontSize: "13px",
-                  fontWeight: isActive ? 600 : 400,
-                  whiteSpace: "nowrap",
-                  letterSpacing: "0.01em",
-                }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: isActive ? 600 : 400, whiteSpace: "nowrap", letterSpacing: "0.01em" }}>
                   {label}
                 </span>
               )}
@@ -244,32 +190,23 @@ export function Sidebar({ expanded, onToggle }: SidebarProps) {
         })}
       </nav>
 
-      {/* Toggle button — pinned to bottom */}
-      <div
-        style={{
-          padding: "10px 6px",
-          borderTop: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: expanded ? "flex-end" : "center",
-          paddingRight: expanded ? "10px" : "6px",
-        }}
-      >
+      {/* Toggle — pinned to bottom */}
+      <div style={{
+        padding: "10px 6px",
+        borderTop: "1px solid var(--color-border)",
+        display: "flex", alignItems: "center",
+        justifyContent: expanded ? "flex-end" : "center",
+        paddingRight: expanded ? "10px" : "6px",
+      }}>
         <button
           onClick={onToggle}
           title={expanded ? "Collapse sidebar" : "Expand sidebar"}
           style={{
-            width: "38px",
-            height: "38px",
+            width: "38px", height: "38px",
             borderRadius: "var(--radius-md)",
-            border: "none",
-            background: "transparent",
-            color: "var(--color-text-tertiary)",
-            cursor: "pointer",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            border: "none", background: "transparent",
+            color: "var(--color-text-tertiary)", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
             transition: "background var(--transition-fast), color var(--transition-fast)",
           }}
           onMouseEnter={(e) => {
