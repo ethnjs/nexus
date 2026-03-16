@@ -25,9 +25,9 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        httponly=True,                          # not accessible to JS — XSS protection
-        secure=is_prod,                         # HTTPS only in prod
-        samesite="lax" if not is_prod else "none",  # "none" required for cross-origin in prod
+        httponly=True,
+        secure=is_prod,
+        samesite="lax" if not is_prod else "none",
         max_age=COOKIE_MAX_AGE,
         path="/",
         domain=".ethanshih.com" if is_prod else None,
@@ -44,7 +44,7 @@ def _clear_auth_cookie(response: Response) -> None:
     )
 
 
-@router.post("/login", response_model=UserResponse)
+@router.post("/login/", response_model=UserResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
@@ -55,8 +55,6 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         User.is_active == True,
     ).first()
 
-    # Deliberate: same error message whether email or password is wrong
-    # prevents user enumeration attacks
     if not user or not user.hashed_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -74,20 +72,20 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     return user
 
 
-@router.post("/logout", status_code=status.HTTP_200_OK)
+@router.post("/logout/", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
     _clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get("/me/", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user."""
     return current_user
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(
     body: RegisterRequest,
     db: Session = Depends(get_db),
