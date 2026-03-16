@@ -1,4 +1,6 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8001'
+// In dev:  NEXT_PUBLIC_API_URL=http://localhost:8001 → hits backend directly
+// In prod: NEXT_PUBLIC_API_URL is unset → goes through /api/proxy → Next.js adds API key server-side
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
 
 type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
 
@@ -20,7 +22,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    credentials: 'include',  // send JWT cookie cross-origin
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...headers,
@@ -37,7 +39,6 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     throw new ApiError(res.status, detail)
   }
 
-  // 204 No Content
   if (res.status === 204) return undefined as T
 
   return res.json()
@@ -48,7 +49,7 @@ export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
-  delete: <T>(path: string)                => request<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string)               => request<T>(path, { method: 'DELETE' }),
 }
 
 // -------------------------------------------------------------------------
@@ -130,7 +131,7 @@ export interface Event {
   room:              string | null
   floor:             string | null
   volunteers_needed: number
-  blocks:            number[]   // block numbers
+  blocks:            number[]
   created_at:        string
   updated_at:        string
 }
@@ -138,18 +139,10 @@ export interface Event {
 export const eventsApi = {
   listByTournament: (tournamentId: number) =>
     api.get<Event[]>(`/events/tournament/${tournamentId}`),
-
-  get: (id: number) =>
-    api.get<Event>(`/events/${id}`),
-
-  create: (body: Partial<Event>) =>
-    api.post<Event>('/events/', body),
-
-  update: (id: number, body: Partial<Event>) =>
-    api.patch<Event>(`/events/${id}`, body),
-
-  delete: (id: number) =>
-    api.delete<void>(`/events/${id}`),
+  get:    (id: number)                      => api.get<Event>(`/events/${id}`),
+  create: (body: Partial<Event>)            => api.post<Event>('/events/', body),
+  update: (id: number, body: Partial<Event>) => api.patch<Event>(`/events/${id}`, body),
+  delete: (id: number)                      => api.delete<void>(`/events/${id}`),
 }
 
 // -------------------------------------------------------------------------
@@ -173,20 +166,11 @@ export interface User {
 }
 
 export const usersApi = {
-  list: () =>
-    api.get<User[]>('/users/'),
-
-  get: (id: number) =>
-    api.get<User>(`/users/${id}`),
-
-  getByEmail: (email: string) =>
-    api.get<User>(`/users/by-email/${encodeURIComponent(email)}`),
-
-  update: (id: number, body: Partial<User>) =>
-    api.patch<User>(`/users/${id}`, body),
-
-  delete: (id: number) =>
-    api.delete<void>(`/users/${id}`),
+  list:       ()                              => api.get<User[]>('/users/'),
+  get:        (id: number)                   => api.get<User>(`/users/${id}`),
+  getByEmail: (email: string)                => api.get<User>(`/users/by-email/${encodeURIComponent(email)}`),
+  update:     (id: number, body: Partial<User>) => api.patch<User>(`/users/${id}`, body),
+  delete:     (id: number)                   => api.delete<void>(`/users/${id}`),
 }
 
 // -------------------------------------------------------------------------
@@ -195,9 +179,9 @@ export const usersApi = {
 export type MembershipStatus = 'interested' | 'confirmed' | 'declined' | 'assigned' | 'removed'
 
 export interface AvailabilitySlot {
-  date:  string   // YYYY-MM-DD
-  start: string   // HH:MM
-  end:   string   // HH:MM
+  date:  string
+  start: string
+  end:   string
 }
 
 export interface Membership {
@@ -216,27 +200,16 @@ export interface Membership {
   extra_data:                 Record<string, unknown>
   created_at:                 string
   updated_at:                 string
-  // joined fields (when API includes them)
   user?:                      User
 }
 
 export const membershipsApi = {
   listByTournament: (tournamentId: number, status?: MembershipStatus) =>
-    api.get<Membership[]>(
-      `/memberships/tournament/${tournamentId}${status ? `?status=${status}` : ''}`
-    ),
-
-  get: (id: number) =>
-    api.get<Membership>(`/memberships/${id}`),
-
-  create: (body: Partial<Membership>) =>
-    api.post<Membership>('/memberships/', body),
-
-  update: (id: number, body: Partial<Membership>) =>
-    api.patch<Membership>(`/memberships/${id}`, body),
-
-  delete: (id: number) =>
-    api.delete<void>(`/memberships/${id}`),
+    api.get<Membership[]>(`/memberships/tournament/${tournamentId}${status ? `?status=${status}` : ''}`),
+  get:    (id: number)                          => api.get<Membership>(`/memberships/${id}`),
+  create: (body: Partial<Membership>)           => api.post<Membership>('/memberships/', body),
+  update: (id: number, body: Partial<Membership>) => api.patch<Membership>(`/memberships/${id}`, body),
+  delete: (id: number)                          => api.delete<void>(`/memberships/${id}`),
 }
 
 // -------------------------------------------------------------------------
@@ -275,30 +248,14 @@ export interface SyncResult {
 }
 
 export const sheetsApi = {
-  validate: (sheet_url: string) =>
+  validate:     (sheet_url: string) =>
     api.post<{ spreadsheet_id: string; title: string }>('/sheets/validate', { sheet_url }),
-
-  headers: (spreadsheet_id: string, sheet_name: string) =>
-    api.post<{ headers: string[]; suggested_mappings: Record<string, ColumnMapping> }>(
-      '/sheets/headers',
-      { spreadsheet_id, sheet_name }
-    ),
-
-  listConfigs: (tournamentId: number) =>
-    api.get<SheetConfig[]>(`/sheets/configs/tournament/${tournamentId}`),
-
-  getConfig: (id: number) =>
-    api.get<SheetConfig>(`/sheets/configs/${id}`),
-
-  createConfig: (body: Partial<SheetConfig>) =>
-    api.post<SheetConfig>('/sheets/configs', body),
-
-  updateConfig: (id: number, body: Partial<SheetConfig>) =>
-    api.patch<SheetConfig>(`/sheets/configs/${id}`, body),
-
-  deleteConfig: (id: number) =>
-    api.delete<void>(`/sheets/configs/${id}`),
-
-  sync: (configId: number) =>
-    api.post<SyncResult>(`/sheets/configs/${configId}/sync`, {}),
+  headers:      (spreadsheet_id: string, sheet_name: string) =>
+    api.post<{ headers: string[]; suggested_mappings: Record<string, ColumnMapping> }>('/sheets/headers', { spreadsheet_id, sheet_name }),
+  listConfigs:  (tournamentId: number)              => api.get<SheetConfig[]>(`/sheets/configs/tournament/${tournamentId}`),
+  getConfig:    (id: number)                        => api.get<SheetConfig>(`/sheets/configs/${id}`),
+  createConfig: (body: Partial<SheetConfig>)        => api.post<SheetConfig>('/sheets/configs', body),
+  updateConfig: (id: number, body: Partial<SheetConfig>) => api.patch<SheetConfig>(`/sheets/configs/${id}`, body),
+  deleteConfig: (id: number)                        => api.delete<void>(`/sheets/configs/${id}`),
+  sync:         (configId: number)                  => api.post<SyncResult>(`/sheets/configs/${configId}/sync`, {}),
 }
