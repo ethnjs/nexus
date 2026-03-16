@@ -8,7 +8,7 @@ async function proxy(
   pathSegments: string[],
   method: string,
 ): Promise<NextResponse> {
-  const path   = pathSegments.join('/')
+  const path   = pathSegments.filter(Boolean).join('/')
   const search = req.nextUrl.search
 
   // Forward the raw Cookie header from the browser request — simpler and more
