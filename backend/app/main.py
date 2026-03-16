@@ -29,6 +29,7 @@ app = FastAPI(
     description="Backend API for NEXUS — Science Olympiad tournament management",
     version="0.1.0-beta",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 app.add_middleware(
