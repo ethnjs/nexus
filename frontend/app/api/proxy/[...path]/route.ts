@@ -1,39 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
 
-const API_URL = process.env.API_URL   ?? 'http://localhost:8001'
-const API_KEY = process.env.API_KEY   ?? ''
+const API_URL = process.env.API_URL ?? 'http://localhost:8001'
+const API_KEY = process.env.API_KEY ?? ''
 
 async function proxy(
   req: NextRequest,
   pathSegments: string[],
   method: string,
 ): Promise<NextResponse> {
-  const path   = pathSegments.join('/')
+  const path   = pathSegments.join('/') + '/'
   const search = req.nextUrl.search
 
-  const cookieStore = await cookies()
-  const token = cookieStore.get('access_token')?.value
+  // Forward the raw Cookie header from the browser request — simpler and more
+  // reliable than reading individual cookies via next/headers
+  const cookieHeader = req.headers.get('cookie') ?? ''
 
   const upstream = await fetch(`${API_URL}/${path}${search}`, {
     method,
     headers: {
       'Content-Type': 'application/json',
       ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
-      // Forward the JWT cookie to the backend as a Cookie header
-      ...(token ? { Cookie: `access_token=${token}` } : {}),
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
     },
     body: method !== 'GET' && method !== 'DELETE'
       ? await req.text()
       : undefined,
   })
 
-  // Forward the raw body
   const body = upstream.status === 204 ? null : await upstream.text()
 
   const res = new NextResponse(body, { status: upstream.status })
 
-  // Forward any Set-Cookie headers from the backend (login / logout)
+  // Forward Set-Cookie headers from backend (login / logout)
   upstream.headers.forEach((value, key) => {
     if (key.toLowerCase() === 'set-cookie') {
       res.headers.append('Set-Cookie', value)
