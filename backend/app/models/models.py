@@ -38,10 +38,16 @@ class Tournament(Base):
     # [{number, label, date, start, end}, ...]
     blocks = Column(JSON, nullable=False, default=list)
 
-    # {custom_fields: [{key, label, type}, ...]}
+    # {
+    #   custom_fields: [{key, label, type}, ...],
+    #   positions: [{key, label, permissions: [...]}, ...]
+    # }
+    # Positions are auto-populated from DEFAULT_POSITIONS on tournament create.
+    # TDs can customise per-tournament at any time.
     volunteer_schema = Column(JSON, nullable=False, default=dict)
 
-    # Every tournament must belong to a TD or admin
+    # The user who created this tournament.
+    # Always has a membership with positions=["tournament_director"].
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     created_at = Column(DateTime, default=utcnow)
@@ -56,6 +62,131 @@ class Tournament(Base):
     )
     memberships = relationship(
         "Membership", back_populates="tournament", cascade="all, delete-orphan"
+    )
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] User
+# Core identity — volunteers, TDs, and admins all live here.
+#
+# role = "admin" | "user"
+#   "admin" — superuser, bypasses all tournament-level permission checks.
+#             Used for testing and platform management. Can still hold
+#             memberships in tournaments like any other user.
+#   "user"  — everyone else. Tournament-level access is determined entirely
+#             by Membership.positions and the permissions defined in that
+#             tournament's volunteer_schema.
+#
+# Volunteers synced from sheets have hashed_password=None and cannot log in
+# until the volunteer login phase is built.
+# ---------------------------------------------------------------------------
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(32), nullable=True)
+    shirt_size = Column(String(16), nullable=True)
+    dietary_restriction = Column(String(255), nullable=True)
+    university = Column(String(255), nullable=True)
+    major = Column(String(255), nullable=True)
+    employer = Column(String(255), nullable=True)
+
+    # Auth fields
+    hashed_password = Column(String(255), nullable=True)   # null = cannot log in
+    role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
+    is_active = Column(Boolean, nullable=False, default=True)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    memberships = relationship(
+        "Membership", back_populates="user", cascade="all, delete-orphan"
+    )
+    tournaments = relationship(
+        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
+    )
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] Membership
+# Links a User to a Tournament — their full volunteer record for that event.
+#
+# positions: list of position keys (e.g. ["tournament_director", "test_writer"])
+#   Drives both the user's title and their system permissions within this
+#   tournament. Position definitions (including permissions) live in
+#   Tournament.volunteer_schema["positions"] and can be customised per-tournament.
+#
+# schedule: day-of block assignments (e.g. [{"block": 1, "duty": "event_supervisor"}])
+#   Only populated for volunteers with day-of duties. One entry per block.
+#   Separate from positions — a volunteer_coordinator might be an event_supervisor
+#   during competition blocks.
+#
+# Tournament-specific free-form data (e.g. general_volunteer_interest, transportation,
+# carpool_seats, t-shirt preferences, etc.) lives in extra_data. The keys and labels
+# are defined per-tournament in Tournament.volunteer_schema["custom_fields"], making
+# the system flexible for any tournament's arbitrary form data.
+# ---------------------------------------------------------------------------
+class Membership(Base):
+    __tablename__ = "memberships"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    assigned_event_id = Column(
+        Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Title(s) + permission level within this tournament.
+    # List of position keys defined in tournament.volunteer_schema["positions"].
+    # e.g. ["lead_event_supervisor", "test_writer"]
+    positions = Column(JSON, nullable=True)
+
+    # Day-of block schedule — [{block: int, duty: str}, ...]
+    # One entry per block. duty is a free string (typically a position key).
+    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
+    schedule = Column(JSON, nullable=True)
+
+    # Volunteer availability/assignment status
+    # "interested" | "confirmed" | "declined" | "assigned" | "removed"
+    status = Column(String(32), nullable=False, default="interested")
+
+    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
+    role_preference = Column(JSON, nullable=True)
+
+    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
+    event_preference = Column(JSON, nullable=True)
+
+    # Normalized availability — [{date, start, end}, ...]
+    # Parsed from form at sync time to match block format for easy comparison
+    availability = Column(JSON, nullable=True)
+
+    lunch_order = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+
+    # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
+    # Anything that doesn't map to a standard field lives here — e.g. transportation,
+    # carpool_seats, general_volunteer_interest, dietary restrictions override, etc.
+    # Keys match the custom_field.key defined in the tournament's volunteer_schema.
+    extra_data = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    # Relationships
+    user = relationship("User", back_populates="memberships")
+    tournament = relationship("Tournament", back_populates="memberships")
+    assigned_event = relationship("Event", back_populates="memberships")
+
+    __table_args__ = (
+        # One membership per user per tournament
+        UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
     )
 
 
@@ -114,98 +245,4 @@ class Event(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
-    )
-
-
-# ---------------------------------------------------------------------------
-# [ACTIVE] User
-# Core identity — volunteers, TDs, and admins all live here.
-# role = "admin" | "td" | "volunteer"
-# Volunteers synced from sheets have hashed_password=None and cannot log in
-# until the volunteer login phase is built.
-# ---------------------------------------------------------------------------
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=True)
-    last_name = Column(String(100), nullable=True)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    phone = Column(String(32), nullable=True)
-    shirt_size = Column(String(16), nullable=True)
-    dietary_restriction = Column(String(255), nullable=True)
-    university = Column(String(255), nullable=True)
-    major = Column(String(255), nullable=True)
-    employer = Column(String(255), nullable=True)
-
-    # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in
-    role = Column(String(32), nullable=False, default="volunteer")  # admin | td | volunteer
-    is_active = Column(Boolean, nullable=False, default=True)
-
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-
-    memberships = relationship(
-        "Membership", back_populates="user", cascade="all, delete-orphan"
-    )
-    tournaments = relationship(
-        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
-    )
-
-
-# ---------------------------------------------------------------------------
-# [ACTIVE] Membership
-# Links a User to a Tournament — their full volunteer record for that event.
-# ---------------------------------------------------------------------------
-class Membership(Base):
-    __tablename__ = "memberships"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
-    )
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
-    )
-    assigned_event_id = Column(
-        Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True
-    )
-
-    # "interested" | "confirmed" | "declined" | "assigned" | "removed"
-    status = Column(String(32), nullable=False, default="interested")
-
-    # What the TD assigned them — {"event_supervisor": [1,2,3,4,5,6], "score_counselor": [7]}
-    roles = Column(JSON, nullable=True)
-
-    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
-    role_preference = Column(JSON, nullable=True)
-
-    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
-    event_preference = Column(JSON, nullable=True)
-
-    # General volunteer activities they want — ["STEM Expo", "Lunch Delivery"]
-    general_volunteer_interest = Column(JSON, nullable=True)
-
-    # Normalized availability — [{date, start, end}, ...]
-    # Parsed from form at sync time to match block format for easy comparison
-    availability = Column(JSON, nullable=True)
-
-    lunch_order = Column(String(255), nullable=True)
-    notes = Column(Text, nullable=True)
-
-    # Catch-all for tournament-specific fields defined in volunteer_schema
-    extra_data = Column(JSON, nullable=True)
-
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
-
-    # Relationships
-    user = relationship("User", back_populates="memberships")
-    tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("Event", back_populates="memberships")
-
-    __table_args__ = (
-        # One membership per user per tournament
-        UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
     )

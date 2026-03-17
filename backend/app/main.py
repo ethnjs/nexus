@@ -46,12 +46,14 @@ app.add_middleware(
 
 api_key_dependency = Depends(verify_api_key)
 
-app.include_router(auth.router,        prefix="")
+# All routes require API key — including auth (login, logout, register).
+# In development with API_KEY unset, security.py skips the check automatically.
+app.include_router(auth.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournaments.router, prefix="", dependencies=[api_key_dependency])
-app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router,      prefix="", dependencies=[api_key_dependency])
-app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
 app.include_router(memberships.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
+app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

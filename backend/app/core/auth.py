@@ -3,7 +3,9 @@ Core auth utilities.
 
 - Password hashing via bcrypt (passlib)
 - JWT creation/decoding via python-jose
-- FastAPI dependencies: get_current_user, require_role
+- FastAPI dependencies: get_current_user, require_admin
+
+Tournament-level permission checking lives in app/core/permissions.py.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -94,24 +96,17 @@ def get_current_user(
     return user
 
 
-def require_role(*roles: str):
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
     """
-    Dependency factory — gates a route to users with specific roles.
+    Dependency — restricts a route to admin users only.
+    Used for site-wide admin operations (e.g. GET /users/, POST /auth/register).
 
-    Usage:
-        Depends(require_role("admin"))
-        Depends(require_role("admin", "td"))
+    For tournament-level permission checks use require_permission() from
+    app.core.permissions instead.
     """
-    def _check(current_user: User = Depends(get_current_user)) -> User:
-        if current_user.role not in roles:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return current_user
-    return _check
-
-
-# Convenience pre-built dependencies
-require_td_or_admin = require_role("admin", "td")
-require_admin = require_role("admin")
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+    return current_user

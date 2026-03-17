@@ -3,33 +3,34 @@ Shared pytest fixtures.
 
 Uses an in-memory SQLite DB for all tests — fast, isolated, no cleanup needed.
 The Google Sheets service is mocked so tests never hit the real API.
+
+Fixture hierarchy:
+  admin_user       — role="admin", bypasses all permission checks
+  td_user          — role="user", has tournament_director membership in td_tournament
+  other_user       — role="user", has tournament_director membership in other_tournament
+  td_tournament    — tournament owned by td_user, default positions in schema
+  other_tournament — tournament owned by other_user
 """
 
 import os
 import pytest
 
-# Ensure API key auth is skipped in tests — security.py bypasses when
-# APP_ENV=development and API_KEY is blank.
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("API_KEY", "")
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 from unittest.mock import MagicMock
 
-# Must import models before Base.metadata is used so all tables are registered
 from app.db.session import Base, get_db
 from app.models import models  # noqa: F401
 from app.api.routes.sheets import get_sheets_service
 from app.services.sheets_service import SheetsService
 from app.core.auth import hash_password
-from app.models.models import User
+from app.core.permissions import DEFAULT_POSITIONS
+from app.models.models import Membership, Tournament, User
 
-# ---------------------------------------------------------------------------
-# In-memory SQLite — use a single shared connection so all sessions see the
-# same in-memory database. Without this, each new connection gets a blank DB.
-# ---------------------------------------------------------------------------
 test_engine = create_engine(
     "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
@@ -45,17 +46,10 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 @pytest.fixture(scope="function")
 def db():
-    """
-    Create all tables on a single connection and bind the session to it.
-    Rolls back after each test so state never leaks between tests.
-    """
     connection = test_engine.connect()
     transaction = connection.begin()
-
     Base.metadata.create_all(bind=connection)
-
     session = Session(bind=connection)
-
     try:
         yield session
     finally:
@@ -92,7 +86,7 @@ def td_user(db):
         hashed_password=hash_password("tdpass"),
         first_name="TD",
         last_name="User",
-        role="td",
+        role="user",
         is_active=True,
     )
     db.add(user)
@@ -102,13 +96,13 @@ def td_user(db):
 
 
 @pytest.fixture
-def other_td(db):
+def other_user(db):
     user = User(
         email="other@test.com",
         hashed_password=hash_password("otherpass"),
         first_name="Other",
-        last_name="TD",
-        role="td",
+        last_name="User",
+        role="user",
         is_active=True,
     )
     db.add(user)
@@ -118,15 +112,57 @@ def other_td(db):
 
 
 # ---------------------------------------------------------------------------
+# Tournament + membership fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def td_tournament(db, td_user):
+    tournament = Tournament(
+        name="TD Test Tournament",
+        owner_id=td_user.id,
+        blocks=[],
+        volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
+    )
+    db.add(tournament)
+    db.flush()
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
+    db.refresh(tournament)
+    return tournament
+
+
+@pytest.fixture
+def other_tournament(db, other_user):
+    tournament = Tournament(
+        name="Other Test Tournament",
+        owner_id=other_user.id,
+        blocks=[],
+        volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
+    )
+    db.add(tournament)
+    db.flush()
+    db.add(Membership(
+        user_id=other_user.id,
+        tournament_id=tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
+    db.refresh(tournament)
+    return tournament
+
+
+# ---------------------------------------------------------------------------
 # Sheets mock
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
 def mock_sheets_service() -> MagicMock:
-    """
-    Exposed fixture so sheet tests can override return values per-test.
-    Also used internally by the client fixture.
-    """
     return _make_mock_sheets_service()
 
 
@@ -136,13 +172,6 @@ def mock_sheets_service() -> MagicMock:
 
 @pytest.fixture(scope="function")
 def client(db, mock_sheets_service):
-    """
-    FastAPI TestClient with:
-    - DB dependency swapped for the in-memory test DB session
-    - SheetsService fully mocked via dependency_overrides
-    - Cookie jar active so auth cookie set on login persists across requests
-    - API key auth skipped via APP_ENV=development + blank API_KEY
-    """
     from app.main import app
 
     def override_get_db():
@@ -164,30 +193,29 @@ def client(db, mock_sheets_service):
 
 
 # ---------------------------------------------------------------------------
-# Auth helper — plain function (not a fixture) for use inside tests
+# Auth helper
 # ---------------------------------------------------------------------------
 
 def login(client: TestClient, email: str, password: str):
-    """POST /auth/login/ and store the resulting cookie on the client."""
+    """POST /auth/login and store the resulting cookie on the client."""
     return client.post("/auth/login/", json={"email": email, "password": password})
 
 
 # ---------------------------------------------------------------------------
-# Sheets mock factory (internal)
+# Sheets mock factory
 # ---------------------------------------------------------------------------
 
 def _make_mock_sheets_service() -> MagicMock:
-    """Pre-configured mock SheetsService — no real Google API calls."""
     mock = MagicMock(spec=SheetsService)
     mock.extract_spreadsheet_id.return_value = "fake_spreadsheet_id"
-    mock.validate_sheet_url.return_value = MagicMock(
-        spreadsheet_id="fake_spreadsheet_id",
-        spreadsheet_title="Fake Sheet",
-        sheet_names=["Form Responses 1"],
-    )
-    mock.get_headers.return_value = MagicMock(
-        headers=["Email Address", "First Name", "Last Name"],
-        suggested_mappings={},
-    )
+    mock.validate_sheet_url.return_value = {
+        "spreadsheet_id": "fake_spreadsheet_id",
+        "title": "Fake Sheet",
+        "tabs": ["Form Responses 1"],
+    }
+    mock.get_headers.return_value = {
+        "headers": ["Email Address", "First Name", "Last Name"],
+        "suggested_mappings": {},
+    }
     mock.get_rows.return_value = []
     return mock

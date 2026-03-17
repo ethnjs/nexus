@@ -25,9 +25,9 @@ def _set_auth_cookie(response: Response, token: str) -> None:
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        httponly=True,
-        secure=is_prod,
-        samesite="lax" if not is_prod else "none",
+        httponly=True,                               # not accessible to JS — XSS protection
+        secure=is_prod,                              # HTTPS only in prod
+        samesite="lax" if not is_prod else "none",   # "none" required for cross-origin in prod
         max_age=COOKIE_MAX_AGE,
         path="/",
         domain=".ethanshih.com" if is_prod else None,
@@ -55,6 +55,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         User.is_active == True,
     ).first()
 
+    # Deliberate: same error whether email or password is wrong — prevents enumeration
     if not user or not user.hashed_password:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -92,15 +93,11 @@ def register(
     _: User = Depends(require_admin),
 ):
     """
-    Create a new TD (or admin) account.
-    Admin-only — TDs cannot self-register.
+    Create a new user account.
+    Admin-only. All registered users get role="user".
+    Admin accounts are created directly in the DB or via a future
+    admin-promotion endpoint.
     """
-    if body.role not in ("admin", "td", "volunteer"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="role must be one of: admin, td, volunteer",
-        )
-
     existing = db.query(User).filter(User.email == body.email.lower()).first()
     if existing:
         raise HTTPException(
@@ -113,7 +110,7 @@ def register(
         hashed_password=hash_password(body.password),
         first_name=body.first_name,
         last_name=body.last_name,
-        role=body.role,
+        role="user",
         is_active=True,
     )
     db.add(user)
