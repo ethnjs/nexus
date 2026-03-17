@@ -1,7 +1,5 @@
 """
-Tests for /api/v1/auth routes.
-
-Covers: login, logout, /me, /register
+Tests for auth routes: /auth/login/, /auth/logout/, /auth/me/, /auth/register/
 """
 import pytest
 from fastapi.testclient import TestClient
@@ -10,10 +8,6 @@ from tests.conftest import login
 from app.core.auth import hash_password
 from app.models.models import User
 
-
-# ---------------------------------------------------------------------------
-# Extra fixtures local to auth tests
-# ---------------------------------------------------------------------------
 
 @pytest.fixture
 def inactive_user(db):
@@ -40,7 +34,7 @@ def volunteer_no_password(db):
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/login
+# POST /auth/login/
 # ---------------------------------------------------------------------------
 
 class TestLogin:
@@ -75,47 +69,47 @@ class TestLogin:
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/logout
+# POST /auth/logout/
 # ---------------------------------------------------------------------------
 
 class TestLogout:
     def test_logout_clears_cookie(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/api/v1/auth/logout")
+        res = client.post("/auth/logout/")
         assert res.status_code == 200
         assert res.cookies.get("access_token", "") == ""
 
     def test_cannot_access_me_after_logout(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        client.post("/api/v1/auth/logout")
-        res = client.get("/api/v1/auth/me")
+        client.post("/auth/logout/")
+        res = client.get("/auth/me/")
         assert res.status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# GET /auth/me
+# GET /auth/me/
 # ---------------------------------------------------------------------------
 
 class TestMe:
     def test_me_returns_current_user(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.get("/api/v1/auth/me")
+        res = client.get("/auth/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
 
     def test_me_unauthenticated(self, client):
-        res = client.get("/api/v1/auth/me")
+        res = client.get("/auth/me/")
         assert res.status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/register
+# POST /auth/register/
 # ---------------------------------------------------------------------------
 
 class TestRegister:
     def test_admin_can_register_td(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/api/v1/auth/register", json={
+        res = client.post("/auth/register/", json={
             "email": "newtd@test.com",
             "password": "newpass123",
             "first_name": "New",
@@ -128,7 +122,7 @@ class TestRegister:
 
     def test_td_cannot_register_others(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.post("/api/v1/auth/register", json={
+        res = client.post("/auth/register/", json={
             "email": "another@test.com",
             "password": "pass",
             "role": "td",
@@ -136,7 +130,7 @@ class TestRegister:
         assert res.status_code == 403
 
     def test_unauthenticated_cannot_register(self, client):
-        res = client.post("/api/v1/auth/register", json={
+        res = client.post("/auth/register/", json={
             "email": "new@test.com",
             "password": "pass",
             "role": "td",
@@ -145,7 +139,7 @@ class TestRegister:
 
     def test_duplicate_email_rejected(self, client, admin_user, td_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/api/v1/auth/register", json={
+        res = client.post("/auth/register/", json={
             "email": "td@test.com",  # already exists
             "password": "pass",
             "role": "td",
@@ -154,7 +148,7 @@ class TestRegister:
 
     def test_invalid_role_rejected(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/api/v1/auth/register", json={
+        res = client.post("/auth/register/", json={
             "email": "new@test.com",
             "password": "pass",
             "role": "superuser",  # invalid
@@ -163,13 +157,12 @@ class TestRegister:
 
     def test_registered_user_can_login(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        client.post("/api/v1/auth/register", json={
+        client.post("/auth/register/", json={
             "email": "brand@new.com",
             "password": "securepass",
             "role": "td",
         })
-        # Log out admin, log in as new TD
-        client.post("/api/v1/auth/logout")
+        client.post("/auth/logout/")
         res = login(client, "brand@new.com", "securepass")
         assert res.status_code == 200
         assert res.json()["role"] == "td"

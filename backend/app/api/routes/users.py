@@ -28,15 +28,7 @@ def create_user(payload: UserCreate, db: Session = Depends(get_db)):
     return user
 
 
-@router.get("/{user_id}", response_model=UserRead)
-def get_user(user_id: int, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    return user
-
-
-@router.get("/by-email/{email}", response_model=UserRead)
+@router.get("/by-email/{email}/", response_model=UserRead)
 def get_user_by_email(email: str, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == email.lower().strip()).first()
     if not user:
@@ -44,25 +36,27 @@ def get_user_by_email(email: str, db: Session = Depends(get_db)):
     return user
 
 
-@router.patch("/{user_id}", response_model=UserRead)
-def update_user(
-    user_id: int,
-    payload: UserUpdate,
-    db: Session = Depends(get_db),
-):
+@router.get("/{user_id}/", response_model=UserRead)
+def get_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return user
 
+
+@router.patch("/{user_id}/", response_model=UserRead)
+def update_user(user_id: int, payload: UserUpdate, db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(user, field, value)
-
     db.commit()
     db.refresh(user)
     return user
 
 
-@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{user_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_user(user_id: int, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.id == user_id).first()
     if not user:

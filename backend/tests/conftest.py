@@ -52,7 +52,6 @@ def db():
     connection = test_engine.connect()
     transaction = connection.begin()
 
-    # Create tables on THIS connection so the session below can see them
     Base.metadata.create_all(bind=connection)
 
     session = Session(bind=connection)
@@ -67,7 +66,7 @@ def db():
 
 
 # ---------------------------------------------------------------------------
-# Auth fixtures — available to all test modules via conftest
+# Auth fixtures
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
@@ -142,7 +141,7 @@ def client(db, mock_sheets_service):
     - DB dependency swapped for the in-memory test DB session
     - SheetsService fully mocked via dependency_overrides
     - Cookie jar active so auth cookie set on login persists across requests
-    - API key auth skipped via APP_ENV=development + blank API_KEY (set in pytest.ini)
+    - API key auth skipped via APP_ENV=development + blank API_KEY
     """
     from app.main import app
 
@@ -169,8 +168,8 @@ def client(db, mock_sheets_service):
 # ---------------------------------------------------------------------------
 
 def login(client: TestClient, email: str, password: str):
-    """POST /auth/login and store the resulting cookie on the client."""
-    return client.post("/api/v1/auth/login", json={"email": email, "password": password})
+    """POST /auth/login/ and store the resulting cookie on the client."""
+    return client.post("/auth/login/", json={"email": email, "password": password})
 
 
 # ---------------------------------------------------------------------------
@@ -179,40 +178,16 @@ def login(client: TestClient, email: str, password: str):
 
 def _make_mock_sheets_service() -> MagicMock:
     """Pre-configured mock SheetsService — no real Google API calls."""
-    from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
-
-    svc = MagicMock(spec=SheetsService)
-
-    svc.extract_spreadsheet_id.return_value = "fake_spreadsheet_id_abc123"
-
-    svc.validate_sheet_url.return_value = SheetValidateResponse(
-        spreadsheet_id="fake_spreadsheet_id_abc123",
-        spreadsheet_title="2025 Volunteer Interest Form (Responses)",
-        sheet_names=["Form Responses 1", "Sheet2"],
+    mock = MagicMock(spec=SheetsService)
+    mock.extract_spreadsheet_id.return_value = "fake_spreadsheet_id"
+    mock.validate_sheet_url.return_value = MagicMock(
+        spreadsheet_id="fake_spreadsheet_id",
+        spreadsheet_title="Fake Sheet",
+        sheet_names=["Form Responses 1"],
     )
-
-    svc.get_headers.return_value = SheetHeadersResponse(
-        sheet_name="Form Responses 1",
-        headers=[
-            "Timestamp",
-            "Email Address",
-            "First Name",
-            "Last Name",
-            "Phone Number",
-            "T-Shirt Size",
-            "Availability [8:00 AM - 10:00 AM]",
-        ],
-        suggestions={
-            "Timestamp":        ColumnMapping(field="__ignore__",  type="ignore"),
-            "Email Address":    ColumnMapping(field="email",       type="string"),
-            "First Name":       ColumnMapping(field="first_name",  type="string"),
-            "Last Name":        ColumnMapping(field="last_name",   type="string"),
-            "Phone Number":     ColumnMapping(field="phone",       type="string"),
-            "T-Shirt Size":     ColumnMapping(field="shirt_size",  type="string"),
-            "Availability [8:00 AM - 10:00 AM]": ColumnMapping(
-                field="availability", type="matrix_row", row_key="8:00 AM - 10:00 AM"
-            ),
-        },
+    mock.get_headers.return_value = MagicMock(
+        headers=["Email Address", "First Name", "Last Name"],
+        suggested_mappings={},
     )
-
-    return svc
+    mock.get_rows.return_value = []
+    return mock

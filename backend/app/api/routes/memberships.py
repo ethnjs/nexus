@@ -1,15 +1,14 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.models import Membership, User, Tournament, Event
-from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadWithUser
+from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate
 
 router = APIRouter(prefix="/memberships", tags=["memberships"])
 
 
 def _serialize(m: Membership) -> dict:
-    """Serialize membership, converting availability slots to dicts."""
     return {
         "id": m.id,
         "user_id": m.user_id,
@@ -29,30 +28,23 @@ def _serialize(m: Membership) -> dict:
     }
 
 
-@router.get("/tournament/{tournament_id}", response_model=list[MembershipRead])
+@router.get("/tournament/{tournament_id}/", response_model=list[MembershipRead])
 def list_memberships(
     tournament_id: int,
     status: str | None = None,
     db: Session = Depends(get_db),
 ):
-    """
-    List all memberships for a tournament.
-    Optionally filter by status e.g. ?status=confirmed
-    """
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
-
     query = db.query(Membership).filter(Membership.tournament_id == tournament_id)
     if status:
         query = query.filter(Membership.status == status)
-
     return [_serialize(m) for m in query.order_by(Membership.id).all()]
 
 
 @router.post("/", response_model=MembershipRead, status_code=status.HTTP_201_CREATED)
 def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
-    # Validate user and tournament exist
     user = db.query(User).filter(User.id == payload.user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -61,7 +53,6 @@ def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    # Validate assigned event belongs to this tournament
     if payload.assigned_event_id:
         event = db.query(Event).filter(
             Event.id == payload.assigned_event_id,
@@ -70,19 +61,14 @@ def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
         if not event:
             raise HTTPException(status_code=404, detail="Event not found in this tournament")
 
-    # Check for duplicate membership
     existing = db.query(Membership).filter(
         Membership.user_id == payload.user_id,
         Membership.tournament_id == payload.tournament_id,
     ).first()
     if existing:
-        raise HTTPException(
-            status_code=409,
-            detail="Membership already exists for this user and tournament"
-        )
+        raise HTTPException(status_code=409, detail="Membership already exists for this user and tournament")
 
     data = payload.model_dump()
-    # Serialize availability slots to plain dicts for JSON storage
     if data.get("availability"):
         data["availability"] = [s.model_dump() for s in payload.availability]
 
@@ -93,7 +79,7 @@ def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
     return _serialize(membership)
 
 
-@router.get("/{membership_id}", response_model=MembershipRead)
+@router.get("/{membership_id}/", response_model=MembershipRead)
 def get_membership(membership_id: int, db: Session = Depends(get_db)):
     m = db.query(Membership).filter(Membership.id == membership_id).first()
     if not m:
@@ -101,18 +87,12 @@ def get_membership(membership_id: int, db: Session = Depends(get_db)):
     return _serialize(m)
 
 
-@router.patch("/{membership_id}", response_model=MembershipRead)
-def update_membership(
-    membership_id: int,
-    payload: MembershipUpdate,
-    db: Session = Depends(get_db),
-):
-    """TD manual override — can update any field."""
+@router.patch("/{membership_id}/", response_model=MembershipRead)
+def update_membership(membership_id: int, payload: MembershipUpdate, db: Session = Depends(get_db)):
     m = db.query(Membership).filter(Membership.id == membership_id).first()
     if not m:
         raise HTTPException(status_code=404, detail="Membership not found")
 
-    # Validate new assigned event belongs to this tournament
     if payload.assigned_event_id is not None:
         event = db.query(Event).filter(
             Event.id == payload.assigned_event_id,
@@ -126,13 +106,11 @@ def update_membership(
     if "availability" in update_data and payload.availability:
         update_data["availability"] = [s.model_dump() for s in payload.availability]
 
-    # Merge roles — adding a new role shouldn't wipe existing ones
     if "roles" in update_data and payload.roles:
         merged_roles = dict(m.roles or {})
         merged_roles.update(payload.roles)
         update_data["roles"] = merged_roles
 
-    # Merge extra_data — tournament-specific fields accumulate over time
     if "extra_data" in update_data and payload.extra_data:
         merged_extra = dict(m.extra_data or {})
         merged_extra.update(payload.extra_data)
@@ -146,7 +124,7 @@ def update_membership(
     return _serialize(m)
 
 
-@router.delete("/{membership_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{membership_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_membership(membership_id: int, db: Session = Depends(get_db)):
     m = db.query(Membership).filter(Membership.id == membership_id).first()
     if not m:

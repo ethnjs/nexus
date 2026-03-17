@@ -10,10 +10,6 @@ router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
 def _serialize(tournament: Tournament) -> dict:
-    """
-    Convert JSON columns (blocks, volunteer_schema) from their stored dict/list
-    form into the nested Pydantic-compatible structure for TournamentRead.
-    """
     return {
         "id": tournament.id,
         "name": tournament.name,
@@ -28,17 +24,7 @@ def _serialize(tournament: Tournament) -> dict:
     }
 
 
-def _get_tournament_or_404(
-    tournament_id: int,
-    db: Session,
-    current_user: User,
-) -> Tournament:
-    """
-    Fetch tournament by ID with ownership enforcement.
-    Admins can access any tournament.
-    TDs can only access their own.
-    Returns 404 (not 403) to avoid leaking existence of other TDs' tournaments.
-    """
+def _get_tournament_or_404(tournament_id: int, db: Session, current_user: User) -> Tournament:
     q = db.query(Tournament).filter(Tournament.id == tournament_id)
     if current_user.role != "admin":
         q = q.filter(Tournament.owner_id == current_user.id)
@@ -67,10 +53,8 @@ def create_tournament(
     current_user: User = Depends(require_td_or_admin),
 ):
     data = payload.model_dump()
-    # Serialize nested Pydantic models to plain dicts for JSON columns
     data["blocks"] = [b.model_dump() for b in payload.blocks]
     data["volunteer_schema"] = payload.volunteer_schema.model_dump()
-
     tournament = Tournament(**data, owner_id=current_user.id)
     db.add(tournament)
     db.commit()
@@ -78,7 +62,7 @@ def create_tournament(
     return _serialize(tournament)
 
 
-@router.get("/{tournament_id}", response_model=TournamentRead)
+@router.get("/{tournament_id}/", response_model=TournamentRead)
 def get_tournament(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -87,7 +71,7 @@ def get_tournament(
     return _serialize(_get_tournament_or_404(tournament_id, db, current_user))
 
 
-@router.patch("/{tournament_id}", response_model=TournamentRead)
+@router.patch("/{tournament_id}/", response_model=TournamentRead)
 def update_tournament(
     tournament_id: int,
     payload: TournamentUpdate,
@@ -95,24 +79,19 @@ def update_tournament(
     current_user: User = Depends(require_td_or_admin),
 ):
     tournament = _get_tournament_or_404(tournament_id, db, current_user)
-
     update_data = payload.model_dump(exclude_none=True)
-
-    # Serialize nested models before storing
     if "blocks" in update_data:
         update_data["blocks"] = [b.model_dump() for b in payload.blocks]
     if "volunteer_schema" in update_data:
         update_data["volunteer_schema"] = payload.volunteer_schema.model_dump()
-
     for field, value in update_data.items():
         setattr(tournament, field, value)
-
     db.commit()
     db.refresh(tournament)
     return _serialize(tournament)
 
 
-@router.delete("/{tournament_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{tournament_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_tournament(
     tournament_id: int,
     db: Session = Depends(get_db),

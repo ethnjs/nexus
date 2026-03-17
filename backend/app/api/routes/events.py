@@ -26,9 +26,8 @@ def _serialize(event: Event) -> dict:
     }
 
 
-@router.get("/tournament/{tournament_id}", response_model=list[EventRead])
+@router.get("/tournament/{tournament_id}/", response_model=list[EventRead])
 def list_events(tournament_id: int, db: Session = Depends(get_db)):
-    """List all events for a tournament, ordered by division then name."""
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
@@ -47,7 +46,6 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db)):
     if not tournament:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    # Check for duplicate before inserting to avoid transaction corruption
     existing = db.query(Event).filter(
         Event.tournament_id == payload.tournament_id,
         Event.name == payload.name,
@@ -66,7 +64,7 @@ def create_event(payload: EventCreate, db: Session = Depends(get_db)):
     return _serialize(event)
 
 
-@router.get("/{event_id}", response_model=EventRead)
+@router.get("/{event_id}/", response_model=EventRead)
 def get_event(event_id: int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
@@ -74,25 +72,19 @@ def get_event(event_id: int, db: Session = Depends(get_db)):
     return _serialize(event)
 
 
-@router.patch("/{event_id}", response_model=EventRead)
-def update_event(
-    event_id: int,
-    payload: EventUpdate,
-    db: Session = Depends(get_db),
-):
+@router.patch("/{event_id}/", response_model=EventRead)
+def update_event(event_id: int, payload: EventUpdate, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Event not found")
-
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(event, field, value)
-
     db.commit()
     db.refresh(event)
     return _serialize(event)
 
 
-@router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(event_id: int, db: Session = Depends(get_db)):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
