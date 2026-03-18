@@ -2,6 +2,9 @@
 fastapi==0.115.5
 uvicorn[standard]==0.32.1
 
+# Scalar API References
+scalar-fastapi==1.8.0
+
 # Database
 sqlalchemy==2.0.36
 alembic==1.14.0

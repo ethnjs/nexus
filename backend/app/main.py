@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from scalar_fastapi import get_scalar_api_reference
 
 from app.core.config import get_settings
 from app.core.security import verify_api_key
@@ -46,14 +47,24 @@ app.add_middleware(
 
 api_key_dependency = Depends(verify_api_key)
 
-app.include_router(auth.router,        prefix="")
+# All routes require API key — including auth (login, logout, register).
+# In development with API_KEY unset, security.py skips the check automatically.
+app.include_router(auth.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournaments.router, prefix="", dependencies=[api_key_dependency])
-app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router,      prefix="", dependencies=[api_key_dependency])
-app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
 app.include_router(memberships.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
+app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])
 def health_check():
     return {"status": "ok", "env": settings.app_env}
+
+
+@app.get("/reference", include_in_schema=False)
+async def scalar_reference():
+    return get_scalar_api_reference(
+        openapi_url="/openapi.json",
+        title="NEXUS API Reference",
+    )
