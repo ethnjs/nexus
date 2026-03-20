@@ -30,7 +30,6 @@ htmlcov/
 alembic/versions/*.pyc
 
 # Claude
-NEXUS_PROJECT_CONTEXT.md
 CLAUDE_OUTPUT_BEHAVIOR.md
 
 # Misc
