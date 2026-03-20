@@ -169,7 +169,13 @@ function NewTournamentModal({ onClose, onCreated }: { onClose: () => void; onCre
     if (!name.trim()) { setError("Name is required"); return; }
     setLoading(true); setError("");
     try {
-      const t = await tournamentsApi.create({ name: name.trim(), location: location.trim() || null, start_date: startDate || null, end_date: endDate || null, blocks: [] });
+      const t = await tournamentsApi.create({
+        name: name.trim(),
+        location: location.trim() || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        blocks: [],
+      });
       onCreated(t);
     } catch { setError("Failed to create tournament"); }
     finally { setLoading(false); }
@@ -275,6 +281,8 @@ export default function DashboardPage() {
   const [showModal, setShowModal]     = useState(false);
 
   useEffect(() => {
+    // tournamentsApi.list() now calls GET /tournaments/me/
+    // Returns tournaments where the current user has any membership
     tournamentsApi.list().then((data) => {
       setTournaments(data);
       setLoading(false);
