@@ -22,12 +22,13 @@ COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
 def _set_auth_cookie(response: Response, token: str) -> None:
     settings = get_settings()
     is_prod = settings.app_env == "production"
+    is_preview = settings.app_env == "preview"
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,
-        httponly=True,                               # not accessible to JS — XSS protection
-        secure=is_prod,                              # HTTPS only in prod
-        samesite="lax" if not is_prod else "none",   # "none" required for cross-origin in prod
+        httponly=True,
+        secure=is_prod or is_preview,
+        samesite="none" if (is_prod or is_preview) else "lax",
         max_age=COOKIE_MAX_AGE,
         path="/",
         domain=".ethanshih.com" if is_prod else None,
