@@ -1,8 +1,8 @@
-# Nexus
+# NEXUS
 
 A full-stack web dashboard for Science Olympiad tournament directors to manage volunteer logistics, event assignments, and tournament data.
 
-**Data flow:** Google Forms → Google Sheets → Nexus
+**Data flow:** Google Forms → Google Sheets → NEXUS
 
 **Live:** [nexus.ethanshih.com](https://nexus.ethanshih.com)
 
@@ -10,7 +10,7 @@ A full-stack web dashboard for Science Olympiad tournament directors to manage v
 
 ## What it does
 
-Tournament directors use Nexus to:
+Tournament directors use NEXUS to:
 - Connect a Google Sheets interest form and sync volunteer responses into the system
 - Manage events, time blocks, and volunteer assignments for a tournament
 - Track volunteer availability, preferences, and assignment status

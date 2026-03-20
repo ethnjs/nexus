@@ -1,13 +1,17 @@
-# Nexus — Science Olympiad Tournament Manager
+# NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
 *Last updated: phase-8-merged + preview environments set up*
+
+> **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
+
+> **API version:** `0.2.0`
 
 ---
 
 ## Overview
-Full-stack web dashboard for Science Olympiad tournament directors to manage volunteer logistics, event assignments, and tournament data. Data flows: **Google Forms → Google Sheets → Nexus app**.
+Full-stack web dashboard for Science Olympiad tournament directors to manage volunteer logistics, event assignments, and tournament data. Data flows: **Google Forms → Google Sheets → NEXUS**.
 
-- **Project name:** Nexus
+- **Project name:** NEXUS
 - **Root directory:** `nexus/` with `backend/` and `frontend/` subdirectories
 - **Backend working directory:** `nexus/backend/`
 - **Run server:** `uvicorn app.main:app --reload --port 8001` (port 8000 is blocked)
