@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NEXUS",
     description="Backend API for NEXUS — Science Olympiad tournament management",
-    version="0.1.0-beta",
+    version="0.2.0",
     lifespan=lifespan,
     redirect_slashes=False,
 )
