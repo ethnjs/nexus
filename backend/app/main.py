@@ -37,8 +37,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://nexus.ethanshih.com"
+        "https://nexus.ethanshih.com",
     ],
+    allow_origin_regex=r"https://nexus-.*\.ethanshih\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
