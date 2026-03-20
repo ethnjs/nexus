@@ -1,165 +1,218 @@
-"""Tests for event routes."""
-
+"""Tests for /tournaments/{tournament_id}/events endpoints."""
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
+from app.models.models import Membership
 
 
-def _make_tournament(client: TestClient) -> dict:
-    return client.post("/tournaments/", json={"name": "Test Tournament"}).json()
-
-
-def _make_event(client: TestClient, tournament_id: int, **overrides) -> dict:
+def _make_event(client, tournament_id, **overrides):
     payload = {
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "event_type": "standard",
-        "category": "Technology & Engineering",
-        "building": "VKC",
-        "room": "101",
-        "volunteers_needed": 2,
-        "blocks": [14, 15],
+        "blocks": [1, 2, 3, 4, 5, 6],
     }
     payload.update(overrides)
-    return client.post("/events/", json=payload)
+    return client.post(f"/tournaments/{tournament_id}/events/", json=payload)
 
 
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
 
-def test_create_event(client: TestClient, td_user):
+def test_create_event_minimal(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = _make_event(client, t["id"])
+    response = _make_event(client, td_tournament.id)
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Boomilever"
     assert data["division"] == "C"
-    assert data["blocks"] == [14, 15]
+    assert data["tournament_id"] == td_tournament.id
+    assert data["event_type"] == "standard"
+    assert data["volunteers_needed"] == 2
 
 
-def test_create_event_minimal(client: TestClient, td_user):
+def test_create_event_full(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = client.post("/events/", json={
-        "tournament_id": t["id"],
-        "name": "Hovercraft",
-        "division": "B",
-    })
+    response = _make_event(client, td_tournament.id,
+        name="Hovercraft", division="B", event_type="trial",
+        category="Technology & Engineering", building="Main Hall",
+        room="101", floor="1", volunteers_needed=3, blocks=[1, 2, 3],
+    )
     assert response.status_code == 201
     data = response.json()
-    assert data["volunteers_needed"] == 2  # default
-    assert data["blocks"] == []
+    assert data["category"] == "Technology & Engineering"
+    assert data["volunteers_needed"] == 3
+    assert data["event_type"] == "trial"
 
 
-def test_create_event_duplicate(client: TestClient, td_user):
+def test_create_event_duplicate_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    _make_event(client, t["id"])
-    response = _make_event(client, t["id"])  # same name + division + tournament
-    assert response.status_code == 409
+    _make_event(client, td_tournament.id)
+    assert _make_event(client, td_tournament.id).status_code == 409
 
 
-def test_create_event_invalid_division(client: TestClient, td_user):
+def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = _make_event(client, t["id"], division="D")
-    assert response.status_code == 422
+    response = client.post(f"/tournaments/{td_tournament.id}/events/", json={
+        "tournament_id": 9999,
+        "name": "Boomilever",
+        "division": "C",
+        "blocks": [],
+    })
+    assert response.status_code == 400
 
 
-def test_create_event_tournament_not_found(client: TestClient, td_user):
+def test_create_event_non_member_forbidden(client, td_user, other_tournament):
+    """Non-members get 403 on write routes — permission check fires before existence check."""
     login(client, "td@test.com", "tdpass")
-    response = _make_event(client, 9999)
-    assert response.status_code == 404
+    assert _make_event(client, other_tournament.id).status_code == 403
+
+
+def test_create_event_volunteer_member_forbidden(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert _make_event(client, other_tournament.id).status_code == 403
+
+
+def test_create_event_unauthenticated(client, td_tournament):
+    assert _make_event(client, td_tournament.id).status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# Get / List
+# List
 # ---------------------------------------------------------------------------
 
-def test_get_event(client: TestClient, td_user):
+def test_list_events(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    created = _make_event(client, t["id"]).json()
-    response = client.get(f"/events/{created['id']}/")
-    assert response.status_code == 200
-    assert response.json()["name"] == "Boomilever"
-
-
-def test_get_event_not_found(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    assert client.get("/events/9999/").status_code == 404
-
-
-def test_list_events_by_tournament(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    _make_event(client, t["id"], name="Boomilever", division="C")
-    _make_event(client, t["id"], name="Hovercraft", division="B")
-    response = client.get(f"/events/tournament/{t['id']}/")
+    _make_event(client, td_tournament.id, name="Boomilever", division="C")
+    _make_event(client, td_tournament.id, name="Hovercraft", division="C")
+    response = client.get(f"/tournaments/{td_tournament.id}/events/")
     assert response.status_code == 200
     assert len(response.json()) == 2
 
 
-def test_list_events_empty(client: TestClient, td_user):
+def test_list_events_ordered_by_division_name(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = client.get(f"/events/tournament/{t['id']}/")
+    _make_event(client, td_tournament.id, name="Hovercraft", division="C")
+    _make_event(client, td_tournament.id, name="Boomilever", division="C")
+    _make_event(client, td_tournament.id, name="Anatomy", division="B")
+    names = [e["name"] for e in client.get(f"/tournaments/{td_tournament.id}/events/").json()]
+    assert names[0] == "Anatomy"
+    assert names[1] == "Boomilever"
+    assert names[2] == "Hovercraft"
+
+
+def test_list_events_view_events_permission_sufficient(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 200
+
+
+def test_list_events_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Get single
+# ---------------------------------------------------------------------------
+
+def test_get_event(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.get(f"/tournaments/{td_tournament.id}/events/{created['id']}/")
     assert response.status_code == 200
-    assert response.json() == []
+    assert response.json()["name"] == "Boomilever"
 
 
-def test_list_events_tournament_not_found(client: TestClient, td_user):
+def test_get_event_wrong_tournament_404(
+    client, td_user, td_tournament, other_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
     login(client, "td@test.com", "tdpass")
-    assert client.get("/events/tournament/9999/").status_code == 404
+    event = _make_event(client, td_tournament.id).json()
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/events/{event['id']}/"
+    ).status_code == 404
+
+
+def test_get_event_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{td_tournament.id}/events/9999/").status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# Update
+# PATCH
 # ---------------------------------------------------------------------------
 
-def test_update_event(client: TestClient, td_user):
+def test_update_event(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    created = _make_event(client, t["id"]).json()
-    response = client.patch(f"/events/{created['id']}/", json={
-        "room": "205",
-        "volunteers_needed": 3,
-    })
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"building": "Science Hall", "room": "204"},
+    )
     assert response.status_code == 200
-    data = response.json()
-    assert data["room"] == "205"
-    assert data["volunteers_needed"] == 3
-    assert data["name"] == "Boomilever"  # unchanged
+    assert response.json()["building"] == "Science Hall"
 
 
-def test_update_event_not_found(client: TestClient, td_user):
+def test_update_event_volunteer_cannot_patch(
+    client, td_user, other_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    event = _make_event(client, other_tournament.id).json()
     login(client, "td@test.com", "tdpass")
-    assert client.patch("/events/9999/", json={"room": "101"}).status_code == 404
+    assert client.patch(
+        f"/tournaments/{other_tournament.id}/events/{event['id']}/",
+        json={"room": "999"},
+    ).status_code == 403
 
 
 # ---------------------------------------------------------------------------
-# Delete
+# DELETE
 # ---------------------------------------------------------------------------
 
-def test_delete_event(client: TestClient, td_user):
+def test_delete_event(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    created = _make_event(client, t["id"]).json()
-    assert client.delete(f"/events/{created['id']}/").status_code == 204
-    assert client.get(f"/events/{created['id']}/").status_code == 404
+    created = _make_event(client, td_tournament.id).json()
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/"
+    ).status_code == 204
+    assert client.get(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/"
+    ).status_code == 404
 
 
-def test_delete_event_not_found(client: TestClient, td_user):
+def test_delete_event_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.delete("/events/9999/").status_code == 404
-
-
-def test_delete_tournament_cascades_events(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    e = _make_event(client, t["id"]).json()
-    client.delete(f"/tournaments/{t['id']}/")
-    assert client.get(f"/events/{e['id']}/").status_code == 404
+    assert client.delete(f"/tournaments/{td_tournament.id}/events/9999/").status_code == 404

@@ -26,10 +26,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // Calls GET /auth/me/ — returns current user or 401
     authApi.me()
       .then(setUser)
       .catch((err: unknown) => {
-        // 401 means no valid session — middleware will redirect, just clear state
         if (err instanceof ApiError && err.status === 401) {
           setUser(null)
         }

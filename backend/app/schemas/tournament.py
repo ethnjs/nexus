@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Any
 from pydantic import BaseModel, model_validator, field_validator
+from app.core.permissions import ALL_PERMISSIONS
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,7 @@ class TournamentBlock(BaseModel):
 # ---------------------------------------------------------------------------
 VALID_CUSTOM_FIELD_TYPES = {"string", "boolean", "integer", "multi_select", "matrix"}
 
+
 class CustomField(BaseModel):
     key: str        # snake_case identifier used in extra_data
     label: str      # human-readable label shown in the UI
@@ -63,8 +64,48 @@ class CustomField(BaseModel):
         return v
 
 
+# ---------------------------------------------------------------------------
+# Position definition schema — one entry in volunteer_schema.positions
+#
+# Positions define both the human-readable title shown in the UI and the
+# system permissions granted to anyone assigned that position in a tournament.
+#
+# The default list is auto-populated from DEFAULT_POSITIONS in permissions.py
+# when a tournament is created. TDs can add, edit, or remove positions at any
+# time via PATCH /tournaments/{id}.
+# ---------------------------------------------------------------------------
+class PositionDefinition(BaseModel):
+    key: str                    # snake_case identifier, matches Membership.positions entries
+    label: str                  # human-readable name shown in the UI
+    permissions: list[str] = [] # subset of ALL_PERMISSIONS from permissions.py
+
+    @field_validator("key")
+    @classmethod
+    def validate_key(cls, v: str) -> str:
+        if not v.replace("_", "").isalnum():
+            raise ValueError("key must be snake_case alphanumeric")
+        return v
+
+    @field_validator("permissions")
+    @classmethod
+    def validate_permissions(cls, v: list[str]) -> list[str]:
+        invalid = [p for p in v if p not in ALL_PERMISSIONS]
+        if invalid:
+            raise ValueError(
+                f"Invalid permissions: {invalid}. Must be one of: {ALL_PERMISSIONS}"
+            )
+        return v
+
+
+# ---------------------------------------------------------------------------
+# VolunteerSchema — top-level structure stored in Tournament.volunteer_schema
+# ---------------------------------------------------------------------------
 class VolunteerSchema(BaseModel):
     custom_fields: list[CustomField] = []
+    # Positions are intentionally not required on input — the backend
+    # auto-populates them from DEFAULT_POSITIONS on tournament create.
+    # TDs can then customise at any time.
+    positions: list[PositionDefinition] = []
 
 
 # ---------------------------------------------------------------------------

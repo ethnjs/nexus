@@ -1,10 +1,10 @@
-"""Tests for sheets routes."""
-
+"""Tests for /tournaments/{tournament_id}/sheets endpoints."""
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from tests.conftest import login
 from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
+from app.models.models import Membership
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 
@@ -16,11 +16,7 @@ SAMPLE_MAPPINGS = {
 }
 
 
-def _make_tournament(client: TestClient) -> dict:
-    return client.post("/tournaments/", json={"name": "Test Tournament"}).json()
-
-
-def _make_config(client: TestClient, tournament_id: int, **overrides) -> dict:
+def _make_config(client, tournament_id, **overrides):
     payload = {
         "tournament_id": tournament_id,
         "label": "Interest Form",
@@ -30,138 +26,160 @@ def _make_config(client: TestClient, tournament_id: int, **overrides) -> dict:
         "column_mappings": SAMPLE_MAPPINGS,
     }
     payload.update(overrides)
-    return client.post("/sheets/configs/", json=payload)
+    return client.post(f"/tournaments/{tournament_id}/sheets/configs/", json=payload)
 
 
 # ---------------------------------------------------------------------------
 # Validate
 # ---------------------------------------------------------------------------
 
-def test_validate_sheet_url(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_validate_sheet_url(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.validate_sheet_url.return_value = SheetValidateResponse(
         spreadsheet_id="fake123",
         spreadsheet_title="Interest Form 2026",
         sheet_names=["Form Responses 1", "Sheet2"],
     )
-    response = client.post("/sheets/validate/", json={"sheet_url": FAKE_URL})
-    assert response.status_code == 200
-    data = response.json()
-    assert data["spreadsheet_id"] == "fake123"
-    assert "Form Responses 1" in data["sheet_names"]
-
-
-def test_validate_sheet_url_invalid(client: TestClient, td_user, mock_sheets_service: MagicMock):
-    login(client, "td@test.com", "tdpass")
-    # Pydantic validates the URL before the route runs — returns 422
-    response = client.post("/sheets/validate/", json={"sheet_url": "not-a-url"})
-    assert response.status_code == 422
-
-
-# ---------------------------------------------------------------------------
-# Headers
-# ---------------------------------------------------------------------------
-
-def test_get_sheet_headers(client: TestClient, td_user, mock_sheets_service: MagicMock):
-    login(client, "td@test.com", "tdpass")
-    mock_sheets_service.get_headers.return_value = SheetHeadersResponse(
-        sheet_name="Form Responses 1",
-        headers=["Email Address", "First Name", "Last Name"],
-        suggestions={
-            "Email Address": ColumnMapping(field="email",      type="string"),
-            "First Name":    ColumnMapping(field="first_name", type="string"),
-        },
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/validate/",
+        json={"sheet_url": FAKE_URL},
     )
-    response = client.post("/sheets/headers/", json={
-        "sheet_url": FAKE_URL,
-        "sheet_name": "Form Responses 1",
-    })
     assert response.status_code == 200
-    data = response.json()
-    assert "Email Address" in data["headers"]
-    assert data["suggestions"]["Email Address"]["field"] == "email"
-    assert data["sheet_name"] == "Form Responses 1"
+    assert response.json()["spreadsheet_id"] == "fake123"
+
+
+def test_validate_non_member_gets_404(client, td_user, other_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(
+        f"/tournaments/{other_tournament.id}/sheets/validate/",
+        json={"sheet_url": FAKE_URL},
+    ).status_code == 404
+
+
+def test_validate_volunteer_member_forbidden(
+    client, td_user, other_tournament, db, mock_sheets_service
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert client.post(
+        f"/tournaments/{other_tournament.id}/sheets/validate/",
+        json={"sheet_url": FAKE_URL},
+    ).status_code == 403
 
 
 # ---------------------------------------------------------------------------
 # Create config
 # ---------------------------------------------------------------------------
 
-def test_create_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_create_sheet_config(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    t = _make_tournament(client)
-    response = _make_config(client, t["id"])
+    response = _make_config(client, td_tournament.id)
     assert response.status_code == 201
     data = response.json()
     assert data["label"] == "Interest Form"
-    assert data["sheet_type"] == "interest"
     assert data["spreadsheet_id"] == "fake123"
-    assert "Email Address" in data["column_mappings"]
+    assert data["column_mappings"]["Email Address"]["field"] == "email"
 
 
-def test_create_sheet_config_matrix_row_missing_row_key(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_create_sheet_config_tournament_id_mismatch(
+    client, td_user, td_tournament, mock_sheets_service
+):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = _make_config(client, t["id"], column_mappings={
+    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/configs/",
+        json={**{k: v for k, v in {
+            "tournament_id": 9999,
+            "label": "Interest Form",
+            "sheet_type": "interest",
+            "sheet_url": FAKE_URL,
+            "sheet_name": "Form Responses 1",
+            "column_mappings": SAMPLE_MAPPINGS,
+        }.items()}},
+    )
+    assert response.status_code == 400
+
+
+def test_create_sheet_config_matrix_row_missing_row_key(
+    client, td_user, td_tournament, mock_sheets_service
+):
+    login(client, "td@test.com", "tdpass")
+    response = _make_config(client, td_tournament.id, column_mappings={
         "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability",
-            "type": "matrix_row",
-            # row_key missing
+            "field": "availability", "type": "matrix_row",
         },
     })
     assert response.status_code == 422
 
 
-def test_create_sheet_config_extra_data_missing_extra_key(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_create_sheet_config_invalid_sheet_type(
+    client, td_user, td_tournament, mock_sheets_service
+):
     login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = _make_config(client, t["id"], column_mappings={
-        "Transportation": {"field": "extra_data", "type": "string"},
-    })
-    assert response.status_code == 422
+    assert _make_config(client, td_tournament.id, sheet_type="bad_type").status_code == 422
 
 
-def test_create_sheet_config_tournament_not_found(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_create_sheet_config_non_member_forbidden(
+    client, td_user, other_tournament, mock_sheets_service
+):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    response = _make_config(client, 9999)
-    assert response.status_code == 404
-
-
-def test_create_sheet_config_invalid_sheet_type(client: TestClient, td_user, mock_sheets_service: MagicMock):
-    login(client, "td@test.com", "tdpass")
-    t = _make_tournament(client)
-    response = _make_config(client, t["id"], sheet_type="bad_type")
-    assert response.status_code == 422
+    assert _make_config(client, other_tournament.id).status_code == 404
 
 
 # ---------------------------------------------------------------------------
 # Get / List
 # ---------------------------------------------------------------------------
 
-def test_get_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_get_sheet_config(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    t = _make_tournament(client)
-    created = _make_config(client, t["id"]).json()
-    response = client.get(f"/sheets/configs/{created['id']}/")
+    created = _make_config(client, td_tournament.id).json()
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/"
+    )
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
 
 
-def test_get_sheet_config_not_found(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    assert client.get("/sheets/configs/9999/").status_code == 404
-
-
-def test_list_sheet_configs(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_get_sheet_config_wrong_tournament_404(
+    client, td_user, td_tournament, other_tournament, db, mock_sheets_service
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    t = _make_tournament(client)
-    _make_config(client, t["id"], sheet_type="interest")
-    _make_config(client, t["id"], sheet_type="confirmation")
-    response = client.get(f"/sheets/configs/tournament/{t['id']}/")
+    created = _make_config(client, td_tournament.id).json()
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/sheets/configs/{created['id']}/"
+    ).status_code == 404
+
+
+def test_get_sheet_config_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{td_tournament.id}/sheets/configs/9999/"
+    ).status_code == 404
+
+
+def test_list_sheet_configs(client, td_user, td_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
+    _make_config(client, td_tournament.id, sheet_type="interest")
+    _make_config(client, td_tournament.id, sheet_type="confirmation")
+    response = client.get(f"/tournaments/{td_tournament.id}/sheets/configs/")
     assert response.status_code == 200
     assert len(response.json()) == 2
 
@@ -170,32 +188,59 @@ def test_list_sheet_configs(client: TestClient, td_user, mock_sheets_service: Ma
 # Update
 # ---------------------------------------------------------------------------
 
-def test_update_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_update_sheet_config(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    t = _make_tournament(client)
-    created = _make_config(client, t["id"]).json()
-    response = client.patch(f"/sheets/configs/{created['id']}/", json={
-        "label": "Updated Label",
-        "column_mappings": {
-            "Phone Number": {"field": "phone", "type": "string"},
+    created = _make_config(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/",
+        json={
+            "label": "Updated Label",
+            "column_mappings": {"Phone Number": {"field": "phone", "type": "string"}},
         },
-    })
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["label"] == "Updated Label"
     assert "Phone Number" in data["column_mappings"]
-    assert "Email Address" in data["column_mappings"]  # original preserved
+    assert "Email Address" in data["column_mappings"]
 
 
 # ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
 
-def test_delete_sheet_config(client: TestClient, td_user, mock_sheets_service: MagicMock):
+def test_delete_sheet_config(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    t = _make_tournament(client)
-    created = _make_config(client, t["id"]).json()
-    assert client.delete(f"/sheets/configs/{created['id']}/").status_code == 204
-    assert client.get(f"/sheets/configs/{created['id']}/").status_code == 404
+    created = _make_config(client, td_tournament.id).json()
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/"
+    ).status_code == 204
+    assert client.get(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/"
+    ).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Sync
+# ---------------------------------------------------------------------------
+
+def test_sync_inactive_config(client, td_user, td_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
+    created = _make_config(client, td_tournament.id).json()
+    client.patch(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/",
+        json={"is_active": False},
+    )
+    assert client.post(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/sync/"
+    ).status_code == 400
+
+
+def test_sync_config_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(
+        f"/tournaments/{td_tournament.id}/sheets/configs/9999/sync/"
+    ).status_code == 404

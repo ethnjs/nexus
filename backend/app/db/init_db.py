@@ -24,21 +24,26 @@ def init_db() -> None:
 def seed_dev_data(db: Session) -> None:
     """
     Seed dev database with:
-    - 1 admin account
-    - 1 TD account
-    - 1 sample tournament owned by the TD
+    - 1 admin account  (role="admin")
+    - 1 regular user account  (role="user", tournament_director membership)
+    - 1 sample tournament owned by the regular user
+    - TD membership for the regular user (positions=["tournament_director"])
+    - Volunteer membership for the admin (positions=["event_supervisor"])
+      — demonstrates that admin can also hold a per-tournament membership
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import User, Tournament
+    from app.models.models import Membership, Tournament, User
     from app.core.auth import hash_password
+    from app.core.permissions import DEFAULT_POSITIONS
+    from datetime import datetime
 
     # Skip if already seeded
     if db.query(User).filter(User.email == "admin@nexus.dev").first():
         print("✓ Dev seed already exists, skipping.")
         return
 
-    # Admin account — full access to everything
+    # Admin account — full site-wide access, bypasses all tournament checks.
     admin = User(
         email="admin@nexus.dev",
         hashed_password=hash_password("admin1234"),
@@ -49,20 +54,21 @@ def seed_dev_data(db: Session) -> None:
     )
     db.add(admin)
 
-    # TD account — scoped to their own tournaments
+    # Regular user account — tournament access determined by membership positions.
+    # Previously "td@nexus.dev" with role="td"; now role="user" with a
+    # tournament_director membership on the sample tournament.
     td = User(
         email="td@nexus.dev",
         hashed_password=hash_password("td1234"),
         first_name="Tournament",
         last_name="Director",
-        role="td",
+        role="user",
         is_active=True,
     )
     db.add(td)
-    db.flush()  # get IDs before creating tournament
+    db.flush()  # get IDs before creating tournament + memberships
 
-    # Sample tournament owned by the TD
-    from datetime import datetime
+    # Sample tournament owned by the regular user
     tournament = Tournament(
         name="Nexus Beta Invitational 2025",
         start_date=datetime(2025, 11, 15, 8, 0),
@@ -79,14 +85,38 @@ def seed_dev_data(db: Session) -> None:
             {"number": 7, "label": "Scoring",  "date": "2025-11-15", "start": "16:15", "end": "17:15"},
             {"number": 8, "label": "Awards",   "date": "2025-11-15", "start": "17:30", "end": "18:30"},
         ],
-        volunteer_schema={"custom_fields": []},
+        volunteer_schema={
+            "custom_fields": [],
+            "positions": DEFAULT_POSITIONS,
+        },
     )
     db.add(tournament)
+    db.flush()  # get tournament.id before creating memberships
+
+    # TD membership for the regular user — full manage_tournament access
+    td_membership = Membership(
+        user_id=td.id,
+        tournament_id=tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    )
+    db.add(td_membership)
+
+    # Volunteer membership for admin — demonstrates cross-role scenario:
+    # admin has site-wide access AND a volunteer-level membership here
+    admin_membership = Membership(
+        user_id=admin.id,
+        tournament_id=tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    )
+    db.add(admin_membership)
+
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234")
-    print("✓ Seeded: td@nexus.dev / td1234")
-    print(f"✓ Seeded tournament: '{tournament.name}' (owner: td@nexus.dev)")
+    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, event_supervisor in sample tournament)")
+    print("✓ Seeded: td@nexus.dev / td1234  (role=user, tournament_director in sample tournament)")
+    print(f"✓ Seeded tournament: '{tournament.name}'")
 
 
 if __name__ == "__main__":

@@ -1,24 +1,34 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from app.core.auth import get_current_user
+from app.core.permissions import (
+    MANAGE_TOURNAMENT,
+    MANAGE_VOLUNTEERS,
+    VIEW_VOLUNTEERS,
+    has_permission,
+    require_permission,
+)
 from app.db.session import get_db
-from app.models.models import Membership, User, Tournament, Event
-from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate
+from app.models.models import Event, Membership, Tournament, User
+from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadWithUser
 
-router = APIRouter(prefix="/memberships", tags=["memberships"])
+# Routes nested: /tournaments/{tournament_id}/memberships/...
+router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])
 
 
 def _serialize(m: Membership) -> dict:
+    """Serialize membership, converting availability and schedule slots to dicts."""
     return {
         "id": m.id,
         "user_id": m.user_id,
         "tournament_id": m.tournament_id,
         "assigned_event_id": m.assigned_event_id,
+        "positions": m.positions,
+        "schedule": m.schedule,
         "status": m.status,
-        "roles": m.roles,
         "role_preference": m.role_preference,
         "event_preference": m.event_preference,
-        "general_volunteer_interest": m.general_volunteer_interest,
         "availability": m.availability,
         "lunch_order": m.lunch_order,
         "notes": m.notes,
@@ -28,49 +38,130 @@ def _serialize(m: Membership) -> dict:
     }
 
 
-@router.get("/tournament/{tournament_id}/", response_model=list[MembershipRead])
+def _require_read_permission(user: User, tournament_id: int, db: Session) -> None:
+    """Raises 403 unless user has view_volunteers, manage_volunteers, or manage_tournament."""
+    if not (
+        has_permission(user, tournament_id, VIEW_VOLUNTEERS, db)
+        or has_permission(user, tournament_id, MANAGE_VOLUNTEERS, db)
+        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+
+def _require_write_permission(user: User, tournament_id: int, db: Session) -> None:
+    """Raises 403 unless user has manage_volunteers or manage_tournament."""
+    if not (
+        has_permission(user, tournament_id, MANAGE_VOLUNTEERS, db)
+        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions",
+        )
+
+
+def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) -> Membership:
+    """Fetch membership and validate it belongs to the given tournament."""
+    m = db.query(Membership).filter(Membership.id == membership_id).first()
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+    if m.tournament_id != tournament_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+    return m
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/ — view_volunteers+
+# ---------------------------------------------------------------------------
+@router.get("/", response_model=list[MembershipRead])
 def list_memberships(
     tournament_id: int,
-    status: str | None = None,
+    status_filter: str | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
+    """List all memberships for a tournament. Optionally filter by ?status=confirmed"""
+    _require_read_permission(current_user, tournament_id, db)
+
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
     query = db.query(Membership).filter(Membership.tournament_id == tournament_id)
-    if status:
-        query = query.filter(Membership.status == status)
+    if status_filter:
+        query = query.filter(Membership.status == status_filter)
+
     return [_serialize(m) for m in query.order_by(Membership.id).all()]
 
 
-@router.post("/", response_model=MembershipRead, status_code=status.HTTP_201_CREATED)
-def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.id == payload.user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/{membership_id} — view_volunteers+
+# ---------------------------------------------------------------------------
+@router.get("/{membership_id}/", response_model=MembershipRead)
+def get_membership(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_read_permission(current_user, tournament_id, db)
+    m = _get_membership_or_404(membership_id, tournament_id, db)
+    return _serialize(m)
 
-    tournament = db.query(Tournament).filter(Tournament.id == payload.tournament_id).first()
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/memberships/ — manage_volunteers+
+# ---------------------------------------------------------------------------
+@router.post("/", response_model=MembershipRead, status_code=status.HTTP_201_CREATED)
+def create_membership(
+    tournament_id: int,
+    payload: MembershipCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_write_permission(current_user, tournament_id, db)
+
+    # Validate tournament_id in body matches path
+    if payload.tournament_id != tournament_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="tournament_id in body does not match URL",
+        )
+
+    user = db.query(User).filter(User.id == payload.user_id).first()  # type: ignore[arg-type]
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
-        raise HTTPException(status_code=404, detail="Tournament not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     if payload.assigned_event_id:
         event = db.query(Event).filter(
             Event.id == payload.assigned_event_id,
-            Event.tournament_id == payload.tournament_id,
+            Event.tournament_id == tournament_id,
         ).first()
         if not event:
-            raise HTTPException(status_code=404, detail="Event not found in this tournament")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
 
     existing = db.query(Membership).filter(
         Membership.user_id == payload.user_id,
-        Membership.tournament_id == payload.tournament_id,
+        Membership.tournament_id == tournament_id,
     ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="Membership already exists for this user and tournament")
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Membership already exists for this user and tournament",
+        )
 
     data = payload.model_dump()
     if data.get("availability"):
         data["availability"] = [s.model_dump() for s in payload.availability]
+    if data.get("schedule"):
+        data["schedule"] = [s.model_dump() for s in payload.schedule]
 
     membership = Membership(**data)
     db.add(membership)
@@ -79,38 +170,38 @@ def create_membership(payload: MembershipCreate, db: Session = Depends(get_db)):
     return _serialize(membership)
 
 
-@router.get("/{membership_id}/", response_model=MembershipRead)
-def get_membership(membership_id: int, db: Session = Depends(get_db)):
-    m = db.query(Membership).filter(Membership.id == membership_id).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Membership not found")
-    return _serialize(m)
-
-
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_volunteers+
+# ---------------------------------------------------------------------------
 @router.patch("/{membership_id}/", response_model=MembershipRead)
-def update_membership(membership_id: int, payload: MembershipUpdate, db: Session = Depends(get_db)):
-    m = db.query(Membership).filter(Membership.id == membership_id).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Membership not found")
+def update_membership(
+    tournament_id: int,
+    membership_id: int,
+    payload: MembershipUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """TD/volunteer-coordinator manual override — can update any field."""
+    _require_write_permission(current_user, tournament_id, db)
+    m = _get_membership_or_404(membership_id, tournament_id, db)
 
     if payload.assigned_event_id is not None:
         event = db.query(Event).filter(
             Event.id == payload.assigned_event_id,
-            Event.tournament_id == m.tournament_id,
+            Event.tournament_id == tournament_id,
         ).first()
         if not event:
-            raise HTTPException(status_code=404, detail="Event not found in this tournament")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
 
     update_data = payload.model_dump(exclude_none=True)
 
     if "availability" in update_data and payload.availability:
         update_data["availability"] = [s.model_dump() for s in payload.availability]
 
-    if "roles" in update_data and payload.roles:
-        merged_roles = dict(m.roles or {})
-        merged_roles.update(payload.roles)
-        update_data["roles"] = merged_roles
+    if "schedule" in update_data and payload.schedule:
+        update_data["schedule"] = [s.model_dump() for s in payload.schedule]
 
+    # Merge extra_data — tournament-specific fields accumulate over time
     if "extra_data" in update_data and payload.extra_data:
         merged_extra = dict(m.extra_data or {})
         merged_extra.update(payload.extra_data)
@@ -124,10 +215,17 @@ def update_membership(membership_id: int, payload: MembershipUpdate, db: Session
     return _serialize(m)
 
 
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_volunteers+
+# ---------------------------------------------------------------------------
 @router.delete("/{membership_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_membership(membership_id: int, db: Session = Depends(get_db)):
-    m = db.query(Membership).filter(Membership.id == membership_id).first()
-    if not m:
-        raise HTTPException(status_code=404, detail="Membership not found")
+def delete_membership(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_write_permission(current_user, tournament_id, db)
+    m = _get_membership_or_404(membership_id, tournament_id, db)
     db.delete(m)
     db.commit()

@@ -1,10 +1,7 @@
-"""
-Tests for auth routes: /auth/login/, /auth/logout/, /auth/me/, /auth/register/
-"""
+"""Tests for /auth routes."""
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
-
 from app.core.auth import hash_password
 from app.models.models import User
 
@@ -14,7 +11,7 @@ def inactive_user(db):
     user = User(
         email="inactive@test.com",
         hashed_password=hash_password("pass"),
-        role="td",
+        role="user",
         is_active=False,
     )
     db.add(user)
@@ -25,8 +22,7 @@ def inactive_user(db):
 
 @pytest.fixture
 def volunteer_no_password(db):
-    """Volunteer synced from sheet — has no password set."""
-    user = User(email="vol@test.com", role="volunteer", is_active=True)
+    user = User(email="vol@test.com", role="user", is_active=True)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -44,28 +40,28 @@ class TestLogin:
         assert "access_token" in res.cookies
         data = res.json()
         assert data["email"] == "td@test.com"
-        assert data["role"] == "td"
+        assert data["role"] == "user"
         assert "hashed_password" not in data
 
     def test_login_wrong_password(self, client, td_user):
-        res = login(client, "td@test.com", "wrongpass")
-        assert res.status_code == 401
+        assert login(client, "td@test.com", "wrongpass").status_code == 401
 
     def test_login_wrong_email(self, client):
-        res = login(client, "nobody@test.com", "pass")
-        assert res.status_code == 401
+        assert login(client, "nobody@test.com", "pass").status_code == 401
 
     def test_login_inactive_user(self, client, inactive_user):
-        res = login(client, "inactive@test.com", "pass")
-        assert res.status_code == 401
+        assert login(client, "inactive@test.com", "pass").status_code == 401
 
     def test_login_no_password_set(self, client, volunteer_no_password):
-        res = login(client, "vol@test.com", "anything")
-        assert res.status_code == 401
+        assert login(client, "vol@test.com", "anything").status_code == 401
 
     def test_login_case_insensitive_email(self, client, td_user):
-        res = login(client, "TD@TEST.COM", "tdpass")
+        assert login(client, "TD@TEST.COM", "tdpass").status_code == 200
+
+    def test_admin_login_returns_admin_role(self, client, admin_user):
+        res = login(client, "admin@test.com", "adminpass")
         assert res.status_code == 200
+        assert res.json()["role"] == "admin"
 
 
 # ---------------------------------------------------------------------------
@@ -82,8 +78,7 @@ class TestLogout:
     def test_cannot_access_me_after_logout(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         client.post("/auth/logout/")
-        res = client.get("/auth/me/")
-        assert res.status_code == 401
+        assert client.get("/auth/me/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +91,16 @@ class TestMe:
         res = client.get("/auth/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
+        assert res.json()["role"] == "user"
 
     def test_me_unauthenticated(self, client):
+        assert client.get("/auth/me/").status_code == 401
+
+    def test_me_admin_role(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
         res = client.get("/auth/me/")
-        assert res.status_code == 401
+        assert res.status_code == 200
+        assert res.json()["role"] == "admin"
 
 
 # ---------------------------------------------------------------------------
@@ -107,62 +108,52 @@ class TestMe:
 # ---------------------------------------------------------------------------
 
 class TestRegister:
-    def test_admin_can_register_td(self, client, admin_user):
+    def test_admin_can_register_user(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         res = client.post("/auth/register/", json={
-            "email": "newtd@test.com",
+            "email": "newuser@test.com",
             "password": "newpass123",
             "first_name": "New",
-            "last_name": "TD",
-            "role": "td",
+            "last_name": "User",
         })
         assert res.status_code == 201
-        assert res.json()["role"] == "td"
-        assert res.json()["email"] == "newtd@test.com"
+        assert res.json()["role"] == "user"
+        assert res.json()["email"] == "newuser@test.com"
 
-    def test_td_cannot_register_others(self, client, td_user):
+    def test_registered_user_role_is_always_user(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/auth/register/", json={
+            "email": "another@test.com",
+            "password": "pass",
+        })
+        assert res.status_code == 201
+        assert res.json()["role"] == "user"
+
+    def test_non_admin_cannot_register(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         res = client.post("/auth/register/", json={
             "email": "another@test.com",
             "password": "pass",
-            "role": "td",
         })
         assert res.status_code == 403
 
     def test_unauthenticated_cannot_register(self, client):
-        res = client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": "pass",
-            "role": "td",
-        })
-        assert res.status_code == 401
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "pass",
+        }).status_code == 401
 
     def test_duplicate_email_rejected(self, client, admin_user, td_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/auth/register/", json={
-            "email": "td@test.com",  # already exists
-            "password": "pass",
-            "role": "td",
-        })
-        assert res.status_code == 409
-
-    def test_invalid_role_rejected(self, client, admin_user):
-        login(client, "admin@test.com", "adminpass")
-        res = client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "password": "pass",
-            "role": "superuser",  # invalid
-        })
-        assert res.status_code == 422
+        assert client.post("/auth/register/", json={
+            "email": "td@test.com", "password": "pass",
+        }).status_code == 409
 
     def test_registered_user_can_login(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         client.post("/auth/register/", json={
-            "email": "brand@new.com",
-            "password": "securepass",
-            "role": "td",
+            "email": "brand@new.com", "password": "securepass",
         })
         client.post("/auth/logout/")
         res = login(client, "brand@new.com", "securepass")
         assert res.status_code == 200
-        assert res.json()["role"] == "td"
+        assert res.json()["role"] == "user"

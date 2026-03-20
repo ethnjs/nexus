@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NEXUS",
     description="Backend API for NEXUS — Science Olympiad tournament management",
-    version="0.1.0-beta",
+    version="0.2.0",
     lifespan=lifespan,
     redirect_slashes=False,
 )
@@ -38,8 +38,9 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:3001",
-        "https://nexus.ethanshih.com"
+        "https://nexus.ethanshih.com",
     ],
+    allow_origin_regex=r"https://nexus-.*\.ethanshih\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

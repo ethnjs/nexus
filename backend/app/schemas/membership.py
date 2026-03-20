@@ -5,18 +5,6 @@ from app.schemas.user import UserRead
 
 VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
 
-VALID_ROLES = {
-    "event_supervisor",
-    "lead_event_supervisor",
-    "tournament_director",
-    "runner",
-    "scoremaster",
-    "score_counselor",
-    "photography",
-    "awards",
-    "general_volunteer",
-}
-
 
 class AvailabilitySlot(BaseModel):
     """A single parsed availability window matching block format."""
@@ -25,18 +13,44 @@ class AvailabilitySlot(BaseModel):
     end: str    # "HH:MM"
 
 
+class ScheduleSlot(BaseModel):
+    """A single day-of block assignment."""
+    block: int   # block number
+    duty: str    # position key or free string, e.g. "event_supervisor"
+
+
 class MembershipBase(BaseModel):
     user_id: int
     tournament_id: int
     assigned_event_id: int | None = None
+
+    # Position keys from tournament.volunteer_schema["positions"].
+    # Drives both title and system permissions within this tournament.
+    # e.g. ["lead_event_supervisor", "test_writer"]
+    positions: list[str] | None = None
+
+    # Day-of block schedule — one entry per block.
+    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
+    schedule: list[ScheduleSlot] | None = None
+
     status: str = "interested"
-    roles: dict[str, list[int]] | None = None
+
+    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
     role_preference: list[str] | None = None
+
+    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
     event_preference: list[str] | None = None
-    general_volunteer_interest: list[str] | None = None
+
+    # Normalized availability — [{date, start, end}, ...]
     availability: list[AvailabilitySlot] | None = None
+
     lunch_order: str | None = None
     notes: str | None = None
+
+    # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
+    # Anything tournament-specific that doesn't map to a standard field lives here —
+    # e.g. transportation, carpool_seats, general_volunteer_interest, etc.
+    # Keys match custom_field.key in the tournament's volunteer_schema.
     extra_data: dict | None = None
 
     @field_validator("status")
@@ -46,29 +60,19 @@ class MembershipBase(BaseModel):
             raise ValueError(f"status must be one of: {VALID_STATUSES}")
         return v
 
-    @field_validator("roles")
-    @classmethod
-    def validate_roles(cls, v: dict | None) -> dict | None:
-        if v is None:
-            return v
-        invalid = [r for r in v.keys() if r not in VALID_ROLES]
-        if invalid:
-            raise ValueError(f"Invalid roles: {invalid}. Must be one of: {VALID_ROLES}")
-        return v
-
 
 class MembershipCreate(MembershipBase):
     pass
 
 
 class MembershipUpdate(BaseModel):
-    """Partial update — TD manual override for any field."""
+    """Partial update — TD/coordinator manual override for any field."""
     assigned_event_id: int | None = None
+    positions: list[str] | None = None
+    schedule: list[ScheduleSlot] | None = None
     status: str | None = None
-    roles: dict[str, list[int]] | None = None
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None
-    general_volunteer_interest: list[str] | None = None
     availability: list[AvailabilitySlot] | None = None
     lunch_order: str | None = None
     notes: str | None = None

@@ -23,6 +23,10 @@ export interface Tournament {
     start: string;
     end: string;
   }>;
+  volunteer_schema: {
+    custom_fields: Array<{ key: string; label: string; type: string }>;
+    positions: Array<{ key: string; label: string; permissions: string[] }>;
+  };
   owner_id: number;
   created_at: string;
   updated_at: string;
@@ -47,6 +51,8 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      // Calls GET /tournaments/me/ — returns tournaments the current user
+      // has any membership in (admin sees all tournaments)
       const data = await tournamentsApi.list();
       setTournaments(data);
 

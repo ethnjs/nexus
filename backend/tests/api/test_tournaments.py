@@ -1,8 +1,9 @@
-"""Tests for tournament routes."""
-
+"""Tests for /tournaments endpoints."""
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
+from app.core.permissions import DEFAULT_POSITIONS
+from app.models.models import Membership, Tournament
 
 SAMPLE_BLOCKS = [
     {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
@@ -25,144 +26,279 @@ SAMPLE_VOLUNTEER_SCHEMA = {
 
 
 # ---------------------------------------------------------------------------
-# Basic CRUD
+# GET /tournaments/ — admin only
 # ---------------------------------------------------------------------------
 
-def test_list_tournaments_empty(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
+def test_list_all_tournaments_admin_only(client, admin_user, td_user, td_tournament):
+    login(client, "admin@test.com", "adminpass")
     response = client.get("/tournaments/")
     assert response.status_code == 200
-    assert response.json() == []
+    assert any(t["id"] == td_tournament.id for t in response.json())
 
 
-def test_create_tournament_minimal(client: TestClient, td_user):
+def test_list_all_tournaments_non_admin_forbidden(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get("/tournaments/").status_code == 403
+
+
+def test_list_all_tournaments_unauthenticated(client):
+    assert client.get("/tournaments/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/me/ — user's own tournaments
+# ---------------------------------------------------------------------------
+
+def test_list_my_tournaments_returns_own(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.get("/tournaments/me/")
+    assert response.status_code == 200
+    assert td_tournament.id in [t["id"] for t in response.json()]
+
+
+def test_list_my_tournaments_excludes_others(
+    client, td_user, td_tournament, other_user, other_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    ids = [t["id"] for t in client.get("/tournaments/me/").json()]
+    assert td_tournament.id in ids
+    assert other_tournament.id not in ids
+
+
+def test_list_my_tournaments_includes_volunteer_membership(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    ids = [t["id"] for t in client.get("/tournaments/me/").json()]
+    assert other_tournament.id in ids
+
+
+def test_list_my_tournaments_admin_sees_all(
+    client, admin_user, td_tournament, other_tournament
+):
+    login(client, "admin@test.com", "adminpass")
+    ids = [t["id"] for t in client.get("/tournaments/me/").json()]
+    assert td_tournament.id in ids
+    assert other_tournament.id in ids
+
+
+def test_list_my_tournaments_unauthenticated(client):
+    assert client.get("/tournaments/me/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/ — any authenticated user
+# ---------------------------------------------------------------------------
+
+def test_create_tournament_minimal(client, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={"name": "Minimal Tournament"})
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Minimal Tournament"
-    assert data["start_date"] is None
-    assert data["end_date"] is None
-    assert data["location"] is None
     assert data["blocks"] == []
-    assert data["volunteer_schema"] == {"custom_fields": []}
 
 
-def test_create_tournament_full(client: TestClient, td_user):
+def test_create_tournament_auto_populates_default_positions(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    response = client.post("/tournaments/", json={"name": "Auto Positions"})
+    assert response.status_code == 201
+    schema = response.json()["volunteer_schema"]
+    assert "positions" in schema
+    keys = [p["key"] for p in schema["positions"]]
+    assert "tournament_director" in keys
+    assert "event_supervisor" in keys
+
+
+def test_create_tournament_auto_creates_td_membership(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    response = client.post("/tournaments/", json={"name": "Auto Membership"})
+    assert response.status_code == 201
+    tournament_id = response.json()["id"]
+    membership = db.query(Membership).filter(
+        Membership.user_id == td_user.id,
+        Membership.tournament_id == tournament_id,
+    ).first()
+    assert membership is not None
+    assert "tournament_director" in membership.positions
+
+
+def test_create_tournament_full(client, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={
-        "name": "Full Tournament",
-        "location": "USC, Los Angeles CA",
-        "start_date": "2026-05-21T08:00:00",
-        "end_date": "2026-05-23T18:00:00",
+        "name": "Nationals 2025",
+        "start_date": "2025-05-21T08:00:00",
+        "end_date": "2025-05-23T18:00:00",
+        "location": "USC",
         "blocks": SAMPLE_BLOCKS,
         "volunteer_schema": SAMPLE_VOLUNTEER_SCHEMA,
     })
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Full Tournament"
-    assert data["location"] == "USC, Los Angeles CA"
+    assert data["name"] == "Nationals 2025"
     assert len(data["blocks"]) == 8
     assert len(data["volunteer_schema"]["custom_fields"]) == 3
 
 
-def test_get_tournament(client: TestClient, td_user):
+def test_create_tournament_invalid_dates(client, td_user):
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "Fetch Me"}).json()
-    response = client.get(f"/tournaments/{created['id']}/")
-    assert response.status_code == 200
-    assert response.json()["name"] == "Fetch Me"
+    assert client.post("/tournaments/", json={
+        "name": "Bad Dates",
+        "start_date": "2025-11-15T08:00:00",
+        "end_date": "2025-11-14T08:00:00",
+    }).status_code == 422
 
 
-def test_get_tournament_not_found(client: TestClient, td_user):
+def test_create_tournament_duplicate_block_numbers(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.get("/tournaments/9999/")
-    assert response.status_code == 404
+    assert client.post("/tournaments/", json={
+        "name": "Bad Blocks",
+        "blocks": [
+            {"number": 1, "label": "B1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
+            {"number": 1, "label": "B1 Again", "date": "2025-11-15", "start": "09:00", "end": "10:00"},
+        ]
+    }).status_code == 422
 
 
-def test_list_tournaments_multiple(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    client.post("/tournaments/", json={"name": "Tournament A"})
-    client.post("/tournaments/", json={"name": "Tournament B"})
-    response = client.get("/tournaments/")
-    assert response.status_code == 200
-    assert len(response.json()) == 2
+def test_create_tournament_unauthenticated(client):
+    assert client.post("/tournaments/", json={"name": "Sneaky"}).status_code == 401
 
 
 # ---------------------------------------------------------------------------
-# PATCH
+# GET /tournaments/{id}/ — any member
 # ---------------------------------------------------------------------------
 
-def test_update_tournament_name(client: TestClient, td_user):
+def test_get_tournament_member_can_access(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "Old Name"}).json()
-    response = client.patch(f"/tournaments/{created['id']}/", json={"name": "New Name"})
+    response = client.get(f"/tournaments/{td_tournament.id}/")
+    assert response.status_code == 200
+    assert response.json()["name"] == td_tournament.name
+
+
+def test_get_tournament_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/").status_code == 404
+
+
+def test_get_tournament_admin_can_access_any(client, admin_user, td_tournament):
+    login(client, "admin@test.com", "adminpass")
+    assert client.get(f"/tournaments/{td_tournament.id}/").status_code == 200
+
+
+def test_get_tournament_volunteer_member_can_access(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/").status_code == 200
+
+
+def test_get_tournament_not_found(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.get("/tournaments/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{id}/ — manage_tournament only
+# ---------------------------------------------------------------------------
+
+def test_update_tournament_td_can_patch(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={"name": "New Name"})
     assert response.status_code == 200
     assert response.json()["name"] == "New Name"
 
 
-def test_update_tournament_add_blocks(client: TestClient, td_user):
+def test_update_tournament_volunteer_member_cannot_patch(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "No Blocks Yet"}).json()
-    assert created["blocks"] == []
-    response = client.patch(f"/tournaments/{created['id']}/", json={"blocks": SAMPLE_BLOCKS})
+    assert client.patch(
+        f"/tournaments/{other_tournament.id}/", json={"name": "Sneaky"}
+    ).status_code == 403
+
+
+def test_update_tournament_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.patch(
+        f"/tournaments/{other_tournament.id}/", json={"name": "Ghost"}
+    ).status_code == 404
+
+
+def test_update_tournament_add_blocks(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={"blocks": SAMPLE_BLOCKS})
     assert response.status_code == 200
     assert len(response.json()["blocks"]) == 8
 
 
-def test_update_tournament_add_custom_fields(client: TestClient, td_user):
+def test_update_tournament_positions(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "No Schema Yet"}).json()
-    response = client.patch(
-        f"/tournaments/{created['id']}/",
-        json={"volunteer_schema": SAMPLE_VOLUNTEER_SCHEMA}
-    )
+    custom_positions = [
+        {"key": "tournament_director", "label": "TD", "permissions": ["manage_tournament"]},
+        {"key": "my_custom_role", "label": "Custom Role", "permissions": []},
+    ]
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={
+        "volunteer_schema": {"custom_fields": [], "positions": custom_positions}
+    })
     assert response.status_code == 200
-    assert len(response.json()["volunteer_schema"]["custom_fields"]) == 3
-
-
-def test_update_tournament_not_found(client: TestClient, td_user):
-    login(client, "td@test.com", "tdpass")
-    response = client.patch("/tournaments/9999/", json={"name": "Ghost"})
-    assert response.status_code == 404
+    keys = [p["key"] for p in response.json()["volunteer_schema"]["positions"]]
+    assert "my_custom_role" in keys
 
 
 # ---------------------------------------------------------------------------
-# DELETE
+# DELETE /tournaments/{id}/ — owner or admin only
 # ---------------------------------------------------------------------------
 
-def test_delete_tournament(client: TestClient, td_user):
+def test_delete_tournament_owner_can_delete(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "Delete Me"}).json()
-    assert client.delete(f"/tournaments/{created['id']}/").status_code == 204
-    assert client.get(f"/tournaments/{created['id']}/").status_code == 404
+    assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 204
 
 
-def test_delete_tournament_not_found(client: TestClient, td_user):
+def test_delete_tournament_admin_can_delete(client, admin_user, td_tournament):
+    login(client, "admin@test.com", "adminpass")
+    assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 204
+
+
+def test_delete_tournament_non_owner_member_cannot_delete(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
     login(client, "td@test.com", "tdpass")
-    response = client.delete("/tournaments/9999/")
-    assert response.status_code == 404
+    assert client.delete(f"/tournaments/{other_tournament.id}/").status_code == 403
 
 
-# ---------------------------------------------------------------------------
-# Auth enforcement
-# ---------------------------------------------------------------------------
-
-def test_unauthenticated_cannot_list(client: TestClient):
-    response = client.get("/tournaments/")
-    assert response.status_code == 401
-
-
-def test_unauthenticated_cannot_create(client: TestClient):
-    response = client.post("/tournaments/", json={"name": "Sneaky"})
-    assert response.status_code == 401
-
-
-def test_td_cannot_access_other_tournament(client: TestClient, td_user, other_td, db):
+def test_delete_tournament_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    created = client.post("/tournaments/", json={"name": "Mine"}).json()
-    client.post("/auth/logout/")
+    assert client.delete(f"/tournaments/{other_tournament.id}/").status_code == 404
 
-    login(client, "other@test.com", "otherpass")
-    response = client.get(f"/tournaments/{created['id']}/")
-    assert response.status_code == 404
+
+def test_delete_tournament_not_found(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.delete("/tournaments/9999/").status_code == 404

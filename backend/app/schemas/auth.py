@@ -13,7 +13,9 @@ class RegisterRequest(BaseModel):
     password: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    role: str = "td"
+    # role is intentionally excluded — all registered users are "user".
+    # Admin accounts are created directly in the DB or via a future
+    # admin-promotion endpoint.
 
 
 class UserResponse(BaseModel):
@@ -21,7 +23,7 @@ class UserResponse(BaseModel):
     email: str
     first_name: Optional[str]
     last_name: Optional[str]
-    role: str
+    role: str          # "admin" | "user"
     is_active: bool
     created_at: datetime
 

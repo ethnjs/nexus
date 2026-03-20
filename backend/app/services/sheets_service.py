@@ -46,8 +46,8 @@ HEADER_DETECTION_HINTS: list[tuple[str, ColumnMapping]] = [
     ("if interested in event",       ColumnMapping(field="event_preference", type="category_events")),
     ("which event",                  ColumnMapping(field="event_preference", type="category_events")),
     ("event preference",             ColumnMapping(field="event_preference", type="category_events")),
-    ("if you are interested in general", ColumnMapping(field="general_volunteer_interest", type="multi_select")),
-    ("general volunteer",            ColumnMapping(field="general_volunteer_interest", type="multi_select")),
+    ("if you are interested in general", ColumnMapping(field="extra_data", type="multi_select", extra_key="general_volunteer_interest")),
+    ("general volunteer",            ColumnMapping(field="extra_data", type="multi_select", extra_key="general_volunteer_interest")),
 
     # Availability — matrix rows handled specially via AVAILABILITY_PATTERN
 

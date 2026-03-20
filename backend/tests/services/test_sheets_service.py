@@ -43,7 +43,7 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
     # Role & preference
     ("Volunteering Role Preference", "role_preference", "multi_select", None),
     ("Which event would you like?",  "event_preference","category_events", None),
-    ("General Volunteer Interest",   "general_volunteer_interest", "multi_select", None),
+    ("General Volunteer Interest",   "extra_data", "multi_select", None),
     # Logistics
     ("Lunch Order",         "lunch_order",  "string",       None),
     ("Additional Notes",    "notes",        "string",       None),
