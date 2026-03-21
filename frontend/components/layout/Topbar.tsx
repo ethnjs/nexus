@@ -5,31 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament, Tournament } from "@/lib/useTournament";
 import { tournamentsApi } from "@/lib/api";
-
-function ChevronDown() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M9 10l3-3-3-3M12 7H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
+import { IconChevronDown, IconLogout, IconPlus } from "@/components/ui/Icons";
 
 const fieldLabel: React.CSSProperties = {
   fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
@@ -129,7 +105,6 @@ export function Topbar({ tournamentId }: TopbarProps) {
 
   return (
     <>
-      {/* Sticky topbar — stays in normal flow, scrolls with the column but sticks to top */}
       <header style={{
         height: "52px",
         background: "var(--color-surface)",
@@ -158,7 +133,7 @@ export function Topbar({ tournamentId }: TopbarProps) {
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>
               {selectedTournament ? selectedTournament.name : "Select tournament…"}
             </span>
-            <ChevronDown />
+            <IconChevronDown />
           </button>
 
           {tournamentOpen && (
@@ -197,7 +172,7 @@ export function Topbar({ tournamentId }: TopbarProps) {
                 onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >
-                <PlusIcon />
+                <IconPlus />
                 New tournament
               </button>
             </div>
@@ -244,7 +219,7 @@ export function Topbar({ tournamentId }: TopbarProps) {
                 onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-danger-subtle)"; }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
               >
-                <LogoutIcon />
+                <IconLogout />
                 Sign out
               </button>
             </div>

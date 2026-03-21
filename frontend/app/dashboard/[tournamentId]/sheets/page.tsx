@@ -3,32 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SheetIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
-      <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function SyncIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-      <path d="M14 8A6 6 0 112 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M14 4v4h-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+import { IconPlus, IconSheets, IconSync } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
   interest: "Interest Form",
@@ -81,7 +56,7 @@ export default function SheetsPage() {
           onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-accent-hover)"; }}
           onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-accent)"; }}
         >
-          <PlusIcon />
+          <IconPlus />
           Add Sheet
         </button>
       </div>
@@ -109,7 +84,7 @@ export default function SheetsPage() {
           background: "var(--color-surface)",
         }}>
           <div style={{ color: "var(--color-text-tertiary)" }}>
-            <SheetIcon />
+            <IconSheets size={24} />
           </div>
           <p style={{ fontFamily: "var(--font-serif)", fontSize: "20px", color: "var(--color-text-primary)" }}>
             No sheets connected
@@ -127,7 +102,7 @@ export default function SheetsPage() {
               color: "var(--color-text-primary)", display: "flex", alignItems: "center", gap: "7px",
             }}
           >
-            <PlusIcon />
+            <IconPlus />
             Add your first sheet
           </button>
         </div>
@@ -242,7 +217,7 @@ function ConfigCard({ cfg, tournamentId }: { cfg: SheetConfig; tournamentId: str
             onMouseEnter={(e) => { if (!syncing) e.currentTarget.style.borderColor = "var(--color-border-strong)"; }}
             onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)"; }}
           >
-            <SyncIcon />
+            <IconSync />
             {syncing ? "Syncing…" : "Sync"}
           </button>
         )}

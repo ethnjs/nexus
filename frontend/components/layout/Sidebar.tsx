@@ -2,89 +2,26 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import {
+  IconHome,
+  IconAssignments,
+  IconEvents,
+  IconVolunteers,
+  IconSheets,
+  IconSettings,
+  IconChevronRight,
+} from "@/components/ui/Icons";
 
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
-function IconHome() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M3 9.5L10 3l7 6.5V17a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M7 18v-6h6v6" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconAssign() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="2" y="3" width="16" height="2" rx="1" fill="currentColor" />
-      <rect x="2" y="9" width="10" height="2" rx="1" fill="currentColor" />
-      <rect x="2" y="15" width="12" height="2" rx="1" fill="currentColor" />
-      <circle cx="16" cy="14" r="3" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M14.5 14l1 1 2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconEvents() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="3" y="4" width="14" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7 2v4M13 2v4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M3 9h14" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="6" y="12" width="3" height="2" rx="0.5" fill="currentColor" />
-      <rect x="11" y="12" width="3" height="2" rx="0.5" fill="currentColor" />
-    </svg>
-  );
-}
-
-function IconVolunteers() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <circle cx="8" cy="6" r="3" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M2 17c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="15" cy="7" r="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M18 17c0-2.21-1.343-4-3-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function IconSheets() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
-      <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-      <path d="M12 15a3 3 0 100-6 3 3 0 000 6z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconChevron({ expanded }: { expanded: boolean }) {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none"
-      style={{ flexShrink: 0, transition: "transform 0.2s ease", transform: expanded ? "rotate(180deg)" : "rotate(0deg)" }}
-    >
-      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 const NAV_ITEMS = [
-  { segment: "overview",    icon: <IconHome />,       label: "Overview" },
-  { segment: "assignments", icon: <IconAssign />,     label: "Assignments" },
-  { segment: "events",      icon: <IconEvents />,     label: "Events" },
-  { segment: "volunteers",  icon: <IconVolunteers />, label: "Volunteers" },
-  { segment: "sheets",      icon: <IconSheets />,     label: "Sheets" },
-  { segment: "settings",    icon: <GearIcon />,       label: "Settings" },
+  { segment: "overview",    icon: <IconHome />,               label: "Overview" },
+  { segment: "assignments", icon: <IconAssignments />,        label: "Assignments" },
+  { segment: "events",      icon: <IconEvents />,             label: "Events" },
+  { segment: "volunteers",  icon: <IconVolunteers />,         label: "Volunteers" },
+  { segment: "sheets",      icon: <IconSheets />,             label: "Sheets" },
+  { segment: "settings",    icon: <IconSettings size={18} />, label: "Settings" },
 ];
 
 interface SidebarProps {
@@ -146,7 +83,6 @@ export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
       }}>
         {NAV_ITEMS.map(({ segment, icon, label }) => {
           const href = `${base}/${segment}`;
-          // Active if exact match OR starts with the href (covers /sheets/new etc.)
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
@@ -229,7 +165,7 @@ export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
             e.currentTarget.style.color = "var(--color-text-tertiary)";
           }}
         >
-          <IconChevron expanded={expanded} />
+          <IconChevronRight expanded={expanded} />
         </button>
       </div>
     </aside>

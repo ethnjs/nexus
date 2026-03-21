@@ -3,6 +3,9 @@
 import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, ColumnMapping } from "@/lib/api";
+import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,63 +44,48 @@ type MappingRow = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SHEET_TYPES = [
-  { value: "interest", label: "Interest Form" },
-  { value: "confirmation", label: "Confirmation Form" },
-  { value: "events", label: "Events" },
+  { value: "interest",      label: "Interest Form" },
+  { value: "confirmation",  label: "Confirmation Form" },
+  { value: "events",        label: "Events" },
 ];
 
 const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__": "Ignore",
-  "first_name": "First Name",
-  "last_name": "Last Name",
-  "email": "Email",
-  "phone": "Phone",
-  "shirt_size": "Shirt Size",
-  "dietary_restriction": "Dietary Restriction",
-  "university": "University",
-  "major": "Major",
-  "employer": "Employer",
-  "role_preference": "Role Preference",
-  "event_preference": "Event Preference",
-  "availability": "Availability",
-  "lunch_order": "Lunch Order",
-  "notes": "Notes",
-  "extra_data": "Extra Data",
+  "__ignore__":         "Ignore",
+  "first_name":         "First Name",
+  "last_name":          "Last Name",
+  "email":              "Email",
+  "phone":              "Phone",
+  "shirt_size":         "Shirt Size",
+  "dietary_restriction":"Dietary Restriction",
+  "university":         "University",
+  "major":              "Major",
+  "employer":           "Employer",
+  "role_preference":    "Role Preference",
+  "event_preference":   "Event Preference",
+  "availability":       "Availability",
+  "lunch_order":        "Lunch Order",
+  "notes":              "Notes",
+  "extra_data":         "Extra Data",
 };
 
 const TYPE_LABELS: Record<string, string> = {
-  string: "Text",
-  ignore: "Ignore",
-  boolean: "Yes/No",
-  integer: "Number",
-  multi_select: "Multi-select",
-  matrix_row: "Availability Row",
+  string:          "Text",
+  ignore:          "Ignore",
+  boolean:         "Yes/No",
+  integer:         "Number",
+  multi_select:    "Multi-select",
+  matrix_row:      "Availability Row",
   category_events: "Category Events",
 };
 
 const STEPS: { key: Step; label: string }[] = [
-  { key: "url", label: "URL" },
+  { key: "url",          label: "URL" },
   { key: "sheet-select", label: "Select Sheet" },
-  { key: "mapping", label: "Map Columns" },
-  { key: "results", label: "Done" },
+  { key: "mapping",      label: "Map Columns" },
+  { key: "results",      label: "Done" },
 ];
 
-// ─── Shared Styles ────────────────────────────────────────────────────────────
-
-const inputStyle: React.CSSProperties = {
-  width: "100%", height: "44px", padding: "0 14px",
-  border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-  fontFamily: "var(--font-mono)", fontSize: "13px",
-  color: "var(--color-text-primary)", background: "var(--color-bg)",
-  outline: "none", boxSizing: "border-box",
-  transition: "border-color 150ms ease",
-};
-
-const labelStyle: React.CSSProperties = {
-  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-  textTransform: "uppercase" as const, letterSpacing: "0.07em",
-  color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
-};
+// ─── Shared select style ──────────────────────────────────────────────────────
 
 const selectStyle: React.CSSProperties = {
   height: "36px", padding: "0 10px",
@@ -114,7 +102,7 @@ function StepIndicator({ current }: { current: Step }) {
   const currentIdx = displaySteps.findIndex((s) => s.key === current);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "0", marginBottom: "36px" }}>
+    <div style={{ display: "flex", alignItems: "center", marginBottom: "36px" }}>
       {displaySteps.map((step, idx) => {
         const done = idx < currentIdx;
         const active = idx === currentIdx;
@@ -126,7 +114,7 @@ function StepIndicator({ current }: { current: Step }) {
                 display: "flex", alignItems: "center", justifyContent: "center",
                 fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
                 flexShrink: 0,
-                background: done ? "var(--color-accent)" : active ? "var(--color-accent)" : "transparent",
+                background: done || active ? "var(--color-accent)" : "transparent",
                 color: done || active ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
                 border: done || active ? "none" : "1px solid var(--color-border)",
               }}>
@@ -162,13 +150,13 @@ export default function NewSheetPage() {
 
   const [step, setStep] = useState<Step>("url");
 
-  // Step 1 state
+  // Step 1
   const [sheetUrl, setSheetUrl] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
 
-  // Step 2 state
+  // Step 2
   const [selectedSheet, setSelectedSheet] = useState("");
   const [sheetType, setSheetType] = useState("interest");
   const [sheetLabel, setSheetLabel] = useState("");
@@ -176,12 +164,12 @@ export default function NewSheetPage() {
   const [headersError, setHeadersError] = useState("");
   const [headersResult, setHeadersResult] = useState<HeadersResult | null>(null);
 
-  // Step 3 state — rows derived from headersResult
+  // Step 3
   const [mappingRows, setMappingRows] = useState<MappingRow[]>([]);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  // Results state
+  // Results
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   // ── Step 1: Validate URL ──────────────────────────────────────────────────
@@ -196,12 +184,14 @@ export default function NewSheetPage() {
       setSelectedSheet(result.sheet_names[0] ?? "");
       setStep("sheet-select");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to validate sheet URL.";
-      setUrlError(msg.includes("403") || msg.includes("access")
-        ? "The service account doesn't have access to this sheet. Make sure you've shared it with the service account."
-        : msg.includes("404") || msg.includes("not found")
-        ? "Spreadsheet not found. Double-check the URL."
-        : "Failed to validate sheet URL. Check the URL and try again.");
+      const msg = e instanceof Error ? e.message : "";
+      setUrlError(
+        msg.includes("403") || msg.includes("access")
+          ? "The service account doesn't have access to this sheet. Make sure you've shared it with the service account."
+          : msg.includes("404") || msg.includes("not found")
+          ? "Spreadsheet not found. Double-check the URL."
+          : "Failed to validate sheet URL. Check the URL and try again."
+      );
     } finally {
       setUrlLoading(false);
     }
@@ -216,19 +206,17 @@ export default function NewSheetPage() {
     try {
       const result = await sheetsApi.headers(tournamentId, sheetUrl.trim(), selectedSheet);
       setHeadersResult(result);
-      // Build initial mapping rows from suggestions
       const rows: MappingRow[] = result.headers.map((header) => {
-        const suggestion = result.suggestions[header];
+        const s = result.suggestions[header];
         return {
           header,
-          field: suggestion?.field ?? "__ignore__",
-          type: suggestion?.type ?? "ignore",
-          row_key: suggestion?.row_key ?? "",
-          extra_key: suggestion?.extra_key ?? "",
+          field:     s?.field    ?? "__ignore__",
+          type:      s?.type     ?? "ignore",
+          row_key:   s?.row_key  ?? "",
+          extra_key: s?.extra_key ?? "",
         };
       });
       setMappingRows(rows);
-      // Auto-label from spreadsheet title if empty
       if (!sheetLabel) setSheetLabel(validateResult?.spreadsheet_title ?? "");
       setStep("mapping");
     } catch {
@@ -256,23 +244,19 @@ export default function NewSheetPage() {
     setSaveError("");
     setStep("syncing");
     try {
-      const columnMappings = buildColumnMappings();
-      // Save config
       const config = await sheetsApi.createConfig(tournamentId, {
         tournament_id: tournamentId,
         label: sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
         sheet_type: sheetType as "interest" | "confirmation" | "events",
         sheet_url: sheetUrl.trim(),
         sheet_name: selectedSheet,
-        column_mappings: columnMappings,
+        column_mappings: buildColumnMappings(),
       });
-      // Auto-sync
       const result = await sheetsApi.sync(tournamentId, config.id);
       setSyncResult(result);
       setStep("results");
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "Failed to save sheet configuration.";
-      setSaveError(msg);
+      setSaveError(e instanceof Error ? e.message : "Failed to save sheet configuration.");
       setStep("mapping");
     } finally {
       setSaveLoading(false);
@@ -298,9 +282,7 @@ export default function NewSheetPage() {
         onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-text-primary)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
       >
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-          <path d="M9 2L4 7l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <IconArrowLeft />
         Back to Sheets
       </button>
 
@@ -314,32 +296,22 @@ export default function NewSheetPage() {
       {/* ── STEP 1: URL ── */}
       {step === "url" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <Input
+            label="Google Sheets URL"
+            type="url"
+            placeholder="https://docs.google.com/spreadsheets/d/..."
+            value={sheetUrl}
+            onChange={(e) => { setSheetUrl(e.target.value); setUrlError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleValidateUrl(); }}
+            error={urlError}
+            helper="Make sure the sheet is shared with the NEXUS service account before continuing."
+            fullWidth
+            autoFocus
+          />
           <div>
-            <label style={labelStyle}>Google Sheets URL</label>
-            <input
-              style={inputStyle}
-              type="url"
-              placeholder="https://docs.google.com/spreadsheets/d/..."
-              value={sheetUrl}
-              onChange={(e) => { setSheetUrl(e.target.value); setUrlError(""); }}
-              onFocus={(e) => { e.target.style.borderColor = "var(--color-border-strong)"; }}
-              onBlur={(e) => { e.target.style.borderColor = "var(--color-border)"; }}
-              onKeyDown={(e) => { if (e.key === "Enter") handleValidateUrl(); }}
-              autoFocus
-            />
-            {urlError && (
-              <p style={{ marginTop: "8px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
-                {urlError}
-              </p>
-            )}
-            <p style={{ marginTop: "8px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-              Make sure the sheet is shared with the NEXUS service account before continuing.
-            </p>
-          </div>
-          <div>
-            <PrimaryButton onClick={handleValidateUrl} loading={urlLoading} disabled={!sheetUrl.trim()}>
+            <Button variant="primary" size="lg" loading={urlLoading} disabled={!sheetUrl.trim()} onClick={handleValidateUrl}>
               Validate URL
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       )}
@@ -354,10 +326,7 @@ export default function NewSheetPage() {
             display: "flex", gap: "12px", alignItems: "flex-start",
           }}>
             <div style={{ color: "var(--color-success)", marginTop: "2px" }}>
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <IconCheckCircle />
             </div>
             <div>
               <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
@@ -370,25 +339,21 @@ export default function NewSheetPage() {
           </div>
 
           {/* Label */}
-          <div>
-            <label style={labelStyle}>Sheet Label</label>
-            <input
-              style={inputStyle}
-              placeholder="e.g. 2026 Nationals Interest Form"
-              value={sheetLabel}
-              onChange={(e) => setSheetLabel(e.target.value)}
-              onFocus={(e) => { e.target.style.borderColor = "var(--color-border-strong)"; }}
-              onBlur={(e) => { e.target.style.borderColor = "var(--color-border)"; }}
-            />
-            <p style={{ marginTop: "6px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-              A friendly name to identify this sheet in NEXUS.
-            </p>
-          </div>
+          <Input
+            label="Sheet Label"
+            placeholder="e.g. 2026 Nationals Interest Form"
+            value={sheetLabel}
+            onChange={(e) => setSheetLabel(e.target.value)}
+            helper="A friendly name to identify this sheet in NEXUS."
+            fullWidth
+          />
 
           {/* Sheet name + type in a 2-col grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
-              <label style={labelStyle}>Sheet Tab</label>
+              <label style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400, color: "var(--color-text-secondary)", display: "block", marginBottom: "8px" }}>
+                Sheet Tab
+              </label>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {validateResult.sheet_names.map((name) => (
                   <label key={name} style={{
@@ -413,7 +378,9 @@ export default function NewSheetPage() {
               </div>
             </div>
             <div>
-              <label style={labelStyle}>Sheet Type</label>
+              <label style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400, color: "var(--color-text-secondary)", display: "block", marginBottom: "8px" }}>
+                Sheet Type
+              </label>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {SHEET_TYPES.map(({ value, label }) => (
                   <label key={value} style={{
@@ -446,10 +413,10 @@ export default function NewSheetPage() {
           )}
 
           <div style={{ display: "flex", gap: "10px" }}>
-            <SecondaryButton onClick={() => setStep("url")}>Back</SecondaryButton>
-            <PrimaryButton onClick={handleFetchHeaders} loading={headersLoading} disabled={!selectedSheet}>
+            <Button variant="secondary" size="lg" onClick={() => setStep("url")}>Back</Button>
+            <Button variant="primary" size="lg" loading={headersLoading} disabled={!selectedSheet} onClick={handleFetchHeaders}>
               Next — Map Columns
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       )}
@@ -457,18 +424,12 @@ export default function NewSheetPage() {
       {/* ── STEP 3: Column Mapping ── */}
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <div>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "4px" }}>
-              Review and adjust how each column maps to NEXUS fields.
-              Ignored columns are dimmed — they won&apos;t be imported.
-            </p>
-          </div>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            Review and adjust how each column maps to NEXUS fields.
+            Ignored columns are dimmed — they won&apos;t be imported.
+          </p>
 
-          {/* Table */}
-          <div style={{
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-            overflow: "hidden",
-          }}>
+          <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
             {/* Header row */}
             <div style={{
               display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
@@ -483,14 +444,12 @@ export default function NewSheetPage() {
               ))}
             </div>
 
-            {/* Rows */}
             {mappingRows.map((row, idx) => {
               const isIgnored = row.type === "ignore" || row.field === "__ignore__";
               return (
                 <MappingTableRow
                   key={row.header}
                   row={row}
-                  idx={idx}
                   isIgnored={isIgnored}
                   knownFields={headersResult.known_fields}
                   validTypes={headersResult.valid_types}
@@ -508,10 +467,10 @@ export default function NewSheetPage() {
           )}
 
           <div style={{ display: "flex", gap: "10px" }}>
-            <SecondaryButton onClick={() => setStep("sheet-select")}>Back</SecondaryButton>
-            <PrimaryButton onClick={handleSaveAndSync} loading={saveLoading}>
-              Save & Sync
-            </PrimaryButton>
+            <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
+            <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync}>
+              Save &amp; Sync
+            </Button>
           </div>
         </div>
       )}
@@ -531,7 +490,7 @@ export default function NewSheetPage() {
           }} />
           <div>
             <p style={{ fontFamily: "var(--font-serif)", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "6px" }}>
-              Saving & syncing…
+              Saving &amp; syncing…
             </p>
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
               Importing volunteer data from your sheet. This may take a moment.
@@ -546,7 +505,6 @@ export default function NewSheetPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <StepIndicator current="results" />
 
-          {/* Summary cards */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
             {[
               { label: "Created", value: syncResult.created, color: "var(--color-success)" },
@@ -555,8 +513,7 @@ export default function NewSheetPage() {
             ].map(({ label, value, color }) => (
               <div key={label} style={{
                 background: "var(--color-surface)", border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)", padding: "20px",
-                textAlign: "center",
+                borderRadius: "var(--radius-md)", padding: "20px", textAlign: "center",
               }}>
                 <div style={{ fontFamily: "var(--font-serif)", fontSize: "36px", color, lineHeight: 1, marginBottom: "6px" }}>
                   {value}
@@ -568,16 +525,9 @@ export default function NewSheetPage() {
             ))}
           </div>
 
-          {/* Errors */}
-          {syncResult.errors.length > 0 && (
-            <div style={{
-              border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)",
-              overflow: "hidden",
-            }}>
-              <div style={{
-                padding: "10px 16px", background: "var(--color-danger-subtle)",
-                borderBottom: syncResult.errors.length > 0 ? "1px solid var(--color-danger)" : "none",
-              }}>
+          {syncResult.errors.length > 0 ? (
+            <div style={{ border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+              <div style={{ padding: "10px 16px", background: "var(--color-danger-subtle)", borderBottom: "1px solid var(--color-danger)" }}>
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-danger)" }}>
                   {syncResult.errors.length} row{syncResult.errors.length !== 1 ? "s" : ""} had errors
                 </span>
@@ -589,35 +539,20 @@ export default function NewSheetPage() {
                     borderBottom: i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none",
                     display: "flex", gap: "12px",
                   }}>
-                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>
-                      Row {err.row}
-                    </span>
-                    {err.email && (
-                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0 }}>
-                        {err.email}
-                      </span>
-                    )}
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>
-                      {err.detail}
-                    </span>
+                    <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>Row {err.row}</span>
+                    {err.email && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0 }}>{err.email}</span>}
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>{err.detail}</span>
                   </div>
                 ))}
               </div>
             </div>
-          )}
-
-          {syncResult.errors.length === 0 && (
+          ) : (
             <div style={{
               background: "var(--color-surface)", border: "1px solid var(--color-border)",
               borderRadius: "var(--radius-md)", padding: "16px",
               display: "flex", alignItems: "center", gap: "10px",
             }}>
-              <span style={{ color: "var(--color-success)" }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-                  <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
-                  <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </span>
+              <span style={{ color: "var(--color-success)" }}><IconCheckCircle /></span>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
                 All rows imported successfully — no errors.
               </span>
@@ -625,9 +560,9 @@ export default function NewSheetPage() {
           )}
 
           <div>
-            <PrimaryButton onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>
+            <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>
               Back to Sheets
-            </PrimaryButton>
+            </Button>
           </div>
         </div>
       )}
@@ -638,176 +573,83 @@ export default function NewSheetPage() {
 // ─── Mapping Table Row ────────────────────────────────────────────────────────
 
 function MappingTableRow({
-  row, idx, isIgnored, knownFields, validTypes, onChange, isLast,
+  row, isIgnored, knownFields, validTypes, onChange, isLast,
 }: {
   row: MappingRow;
-  idx: number;
   isIgnored: boolean;
   knownFields: string[];
   validTypes: string[];
   onChange: (patch: Partial<MappingRow>) => void;
   isLast: boolean;
 }) {
-  const needsRowKey = row.type === "matrix_row";
+  const needsRowKey  = row.type === "matrix_row";
   const needsExtraKey = row.field === "extra_data";
 
-  // When field changes, auto-set type for known pairings
   function handleFieldChange(field: string) {
     let type = row.type;
-    if (field === "__ignore__") type = "ignore";
-    else if (field === "availability") type = "matrix_row";
+    if (field === "__ignore__")                            type = "ignore";
+    else if (field === "availability")                     type = "matrix_row";
     else if (field === "role_preference" || field === "event_preference") type = "multi_select";
-    else if (field === "extra_data") {
-      // keep current type or default to string
-      if (type === "ignore") type = "string";
-    } else {
-      if (type === "ignore") type = "string";
-    }
+    else if (type === "ignore")                            type = "string";
     onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
 
   function handleTypeChange(type: string) {
-    const patch: Partial<MappingRow> = { type };
-    if (type === "ignore") patch.field = "__ignore__";
-    onChange(patch);
+    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
   }
 
-  const rowBg = isIgnored ? "var(--color-bg)" : "var(--color-surface)";
-  const textOpacity = isIgnored ? 0.4 : 1;
-
-  // What to show in the "Extra Key / Row Key" column
-  const keyColContent = needsRowKey ? (
-    <input
-      style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: textOpacity }}
-      placeholder="e.g. 8:00 AM - 10:00 AM"
-      value={row.row_key}
-      onChange={(e) => onChange({ row_key: e.target.value })}
-    />
-  ) : needsExtraKey ? (
-    <input
-      style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: textOpacity }}
-      placeholder="extra_key name"
-      value={row.extra_key}
-      onChange={(e) => onChange({ extra_key: e.target.value })}
-    />
-  ) : null;
+  const opacity = isIgnored ? 0.4 : 1;
 
   return (
     <div style={{
       display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
       padding: "10px 16px", alignItems: "center", gap: "8px",
-      background: rowBg,
+      background: isIgnored ? "var(--color-bg)" : "var(--color-surface)",
       borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-      transition: "background 120ms ease",
     }}>
       {/* Column header name */}
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "12px",
-        color: "var(--color-text-primary)", opacity: textOpacity,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        paddingRight: "8px",
+        color: "var(--color-text-primary)", opacity,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "8px",
       }} title={row.header}>
         {row.header}
       </span>
 
-      {/* Field select */}
-      <select
-        value={row.field}
-        onChange={(e) => handleFieldChange(e.target.value)}
-        style={{ ...selectStyle, width: "100%", opacity: textOpacity }}
-      >
+      {/* Field */}
+      <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }}>
         {knownFields.map((f) => (
           <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>
         ))}
       </select>
 
-      {/* Type select */}
-      <select
-        value={row.type}
-        onChange={(e) => handleTypeChange(e.target.value)}
-        style={{ ...selectStyle, width: "100%", opacity: textOpacity }}
-        disabled={row.field === "__ignore__"}
-      >
+      {/* Type */}
+      <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }} disabled={row.field === "__ignore__"}>
         {validTypes.map((t) => (
           <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
         ))}
       </select>
 
-      {/* Extra/row key */}
-      <div style={{ opacity: textOpacity }}>
-        {keyColContent ?? (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-            —
-          </span>
+      {/* Extra / row key */}
+      <div style={{ opacity }}>
+        {needsRowKey ? (
+          <input
+            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
+            placeholder="e.g. 8:00 AM - 10:00 AM"
+            value={row.row_key}
+            onChange={(e) => onChange({ row_key: e.target.value })}
+          />
+        ) : needsExtraKey ? (
+          <input
+            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
+            placeholder="extra_key name"
+            value={row.extra_key}
+            onChange={(e) => onChange({ extra_key: e.target.value })}
+          />
+        ) : (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>
         )}
       </div>
     </div>
-  );
-}
-
-// ─── Button Helpers ───────────────────────────────────────────────────────────
-
-function PrimaryButton({
-  onClick, loading, disabled, children,
-}: { onClick: () => void; loading?: boolean; disabled?: boolean; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled || loading}
-      style={{
-        height: "44px", padding: "0 20px",
-        border: "none", borderRadius: "var(--radius-md)",
-        background: disabled || loading ? "var(--color-text-tertiary)" : "var(--color-accent)",
-        color: "var(--color-text-inverse)",
-        fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600,
-        cursor: disabled || loading ? "not-allowed" : "pointer",
-        display: "flex", alignItems: "center", gap: "8px",
-        transition: "background 150ms ease",
-      }}
-      onMouseEnter={(e) => {
-        if (!disabled && !loading) e.currentTarget.style.background = "var(--color-accent-hover)";
-      }}
-      onMouseLeave={(e) => {
-        if (!disabled && !loading) e.currentTarget.style.background = "var(--color-accent)";
-      }}
-    >
-      {loading && (
-        <span style={{
-          width: "14px", height: "14px",
-          border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff",
-          borderRadius: "50%", display: "inline-block",
-          animation: "spin 600ms linear infinite",
-        }} />
-      )}
-      {children}
-      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-    </button>
-  );
-}
-
-function SecondaryButton({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        height: "44px", padding: "0 20px",
-        border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-        background: "transparent",
-        color: "var(--color-text-secondary)",
-        fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500,
-        cursor: "pointer",
-        transition: "border-color 150ms ease, color 150ms ease",
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = "var(--color-border-strong)";
-        e.currentTarget.style.color = "var(--color-text-primary)";
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = "var(--color-border)";
-        e.currentTarget.style.color = "var(--color-text-secondary)";
-      }}
-    >
-      {children}
-    </button>
   );
 }

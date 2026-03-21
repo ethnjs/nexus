@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { IconArrowDown } from '@/components/ui/Icons'
 import { ApiError } from '@/lib/api'
 
 export default function HomePage() {
@@ -74,7 +75,13 @@ export default function HomePage() {
           className="absolute bottom-10 left-1/2 -translate-x-1/2"
           style={{ animation: 'fade-in 600ms ease 900ms forwards', opacity: 0 }}
         >
-          <ArrowDown />
+          <IconArrowDown
+            size={22}
+            style={{
+              animation: 'arrow-bounce 2s ease-in-out infinite',
+              color: 'var(--color-text-tertiary)',
+            }}
+          />
         </div>
       </section>
 
@@ -124,24 +131,6 @@ export default function HomePage() {
         input::placeholder { color: var(--color-text-tertiary); }
       `}</style>
     </main>
-  )
-}
-
-function ArrowDown() {
-  return (
-    <svg
-      width="22" height="22" viewBox="0 0 22 22" fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      style={{ animation: 'arrow-bounce 2s ease-in-out infinite' }}
-    >
-      <path
-        d="M11 4v14M4 11l7 7 7-7"
-        stroke="var(--color-text-tertiary)"
-        strokeWidth="1.25"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
   )
 }
 
@@ -206,7 +195,6 @@ function LoginForm() {
         fullWidth
       />
 
-      {/* Reserved space prevents layout shift */}
       <div style={{ minHeight: '20px' }}>
         {errors.form && (
           <p style={{

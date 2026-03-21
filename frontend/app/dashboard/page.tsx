@@ -4,45 +4,9 @@ import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { tournamentsApi, eventsApi, membershipsApi, Tournament } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { IconPlus, IconCalendar, IconLocation, IconLogout, IconArrowDown } from "@/components/ui/Icons";
 
-// ─── Icons ────────────────────────────────────────────────────────────────
-
-function PlusIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-      <path d="M8 2v12M2 8h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function CalendarIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-      <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M5 1v3M11 1v3M2 7h12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function LocationIcon() {
-  return (
-    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
-      <path d="M8 1.5A4.5 4.5 0 003.5 6c0 3 4.5 8.5 4.5 8.5S12.5 9 12.5 6A4.5 4.5 0 008 1.5z" stroke="currentColor" strokeWidth="1.3" />
-      <circle cx="8" cy="6" r="1.5" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-function LogoutIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-      <path d="M5 2H3a1 1 0 00-1 1v8a1 1 0 001 1h2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <path d="M9 10l3-3-3-3M12 7H5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-// ─── Topbar ───────────────────────────────────────────────────────────────
+// ─── Topbar (dashboard-level, no sidebar) ────────────────────────────────────
 
 function DashboardTopbar() {
   const { user, logout } = useAuth();
@@ -131,7 +95,7 @@ function DashboardTopbar() {
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-danger-subtle)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
-              <LogoutIcon />
+              <IconLogout />
               Sign out
             </button>
           </div>
@@ -141,7 +105,20 @@ function DashboardTopbar() {
   );
 }
 
-// ─── New Tournament Modal ─────────────────────────────────────────────────
+// ─── New Tournament Modal ─────────────────────────────────────────────────────
+
+const fieldLabel: React.CSSProperties = {
+  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.07em",
+  color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
+};
+const inputStyle: React.CSSProperties = {
+  width: "100%", height: "44px", padding: "0 14px",
+  border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+  fontFamily: "var(--font-sans)", fontSize: "14px",
+  color: "var(--color-text-primary)", background: "var(--color-bg)",
+  outline: "none", boxSizing: "border-box",
+};
 
 function NewTournamentModal({ onClose, onCreated }: { onClose: () => void; onCreated: (t: Tournament) => void }) {
   const [name, setName]           = useState("");
@@ -150,19 +127,6 @@ function NewTournamentModal({ onClose, onCreated }: { onClose: () => void; onCre
   const [endDate, setEndDate]     = useState("");
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState("");
-
-  const fieldLabel: React.CSSProperties = {
-    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-    textTransform: "uppercase", letterSpacing: "0.07em",
-    color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
-  };
-  const inputStyle: React.CSSProperties = {
-    width: "100%", height: "44px", padding: "0 14px",
-    border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-    fontFamily: "var(--font-sans)", fontSize: "14px",
-    color: "var(--color-text-primary)", background: "var(--color-bg)",
-    outline: "none", boxSizing: "border-box",
-  };
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -203,7 +167,7 @@ function NewTournamentModal({ onClose, onCreated }: { onClose: () => void; onCre
   );
 }
 
-// ─── Tournament Card ──────────────────────────────────────────────────────
+// ─── Tournament Card ──────────────────────────────────────────────────────────
 
 interface CardCounts { events: number | null; volunteers: number | null; }
 
@@ -241,13 +205,13 @@ function TournamentCard({ tournament, counts, onClick }: { tournament: Tournamen
       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
         {tournament.location && (
           <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
-            <LocationIcon />
+            <IconLocation />
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{tournament.location}</span>
           </div>
         )}
         {dateRange && (
           <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-tertiary)" }}>
-            <CalendarIcon />
+            <IconCalendar />
             <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{dateRange}</span>
           </div>
         )}
@@ -271,7 +235,7 @@ function TournamentCard({ tournament, counts, onClick }: { tournament: Tournamen
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -281,8 +245,6 @@ export default function DashboardPage() {
   const [showModal, setShowModal]     = useState(false);
 
   useEffect(() => {
-    // tournamentsApi.list() now calls GET /tournaments/me/
-    // Returns tournaments where the current user has any membership
     tournamentsApi.list().then((data) => {
       setTournaments(data);
       setLoading(false);
@@ -329,7 +291,7 @@ export default function DashboardPage() {
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-accent-hover)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-accent)"; }}
             >
-              <PlusIcon />
+              <IconPlus />
               Add Tournament
             </button>
           </div>
@@ -345,7 +307,7 @@ export default function DashboardPage() {
               <p style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)" }}>No tournaments yet</p>
               <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", maxWidth: "280px" }}>Create your first tournament to get started.</p>
               <button onClick={() => setShowModal(true)} style={{ marginTop: "8px", height: "40px", padding: "0 20px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", background: "transparent", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, color: "var(--color-text-primary)", cursor: "pointer", display: "flex", alignItems: "center", gap: "7px" }}>
-                <PlusIcon />
+                <IconPlus />
                 Create tournament
               </button>
             </div>
