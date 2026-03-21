@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-9 + staging branch workflow*
+*Last updated: phase-7e-sheets-ui-in-progress*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -35,56 +35,6 @@ Full-stack web dashboard for Science Olympiad tournament directors to manage vol
 - **Backend:** `nexus-api.ethanshih.com` → Railway (prototype)
 - **Future permanent domain:** `nexus.socalscioly.org`
 - Domains managed through Vercel DNS
-
----
-
-## Branch Strategy & Workflow
-
-Three-tier branch model for collaborating with multiple contributors:
-
-```
-feature/my-feature  →  staging  →  main
-```
-
-### Branches
-- **`main`** — production. Never commit directly. Only receives PRs from `staging`.
-- **`staging`** — integration branch. All feature branches merge here first. Vercel auto-deploys every push as a preview URL; Railway preview backend is wired to this branch.
-- **feature branches** — short-lived, one feature per branch. Branch off `staging`, PR back to `staging`.
-
-### Day-to-day workflow
-```bash
-# Start a new feature
-git checkout staging
-git pull origin staging
-git checkout -b feature/my-feature
-
-# ... do work, commit ...
-
-# Open PR targeting staging (not main)
-# After review + merge to staging, test on the Vercel/Railway preview URLs
-# When staging is stable, open PR from staging → main
-```
-
-### GitHub ruleset summary
-| Branch | Require PR | Required approvals | Force push | Deletions |
-|---|---|---|---|---|
-| `main` | Yes | 1 (collaborator must approve) | Blocked | Blocked |
-| `staging` | Yes | 0 (PR required, no approval gate) | Blocked | Blocked |
-
-- GitHub default branch is set to `staging` so new PRs pre-select it as the base
-- Neither contributor can merge to `main` unilaterally — the other must approve
-- `staging` is lighter: PRs are required for history/CI, but no approval needed for fast iteration
-
-### Key discipline rules
-- **Never let `staging` drift far from `main`** — merge `staging → main` frequently, after each feature batch
-- **Always branch off `staging`**, not `main` — keeps your feature branch up to date with integrated work
-- **Rebase feature branches on `staging`** if staging has moved on while you were working
-
-### Vercel preview notes
-- Vercel free tier auto-deploys all branches without a named "staging" environment
-- The `staging` branch gets a Vercel preview URL just like any other branch push
-- `API_URL` for all preview deployments points to `nexus-preview.up.railway.app`
-- No Vercel Pro upgrade needed
 
 ---
 
@@ -162,13 +112,18 @@ nexus/
     │           ├── assignments/page.tsx
     │           ├── events/page.tsx
     │           ├── volunteers/page.tsx
-    │           └── settings/page.tsx
+    │           ├── settings/page.tsx
+    │           └── sheets/
+    │               ├── page.tsx       # Sheets index — lists configs, per-card sync button
+    │               └── new/
+    │                   └── page.tsx   # Add Sheet wizard (4 steps: URL → select → mapping → results)
     ├── components/
     │   ├── ui/
     │   │   ├── Button.tsx             # primary/secondary/ghost/danger, DM Sans, loading state
     │   │   ├── Input.tsx              # label, error, helper, 16px left padding
     │   │   ├── Card.tsx               # surface container
-    │   │   └── Badge.tsx              # status badges (confirmed, declined, assigned, etc.)
+    │   │   ├── Badge.tsx              # status badges (confirmed, declined, assigned, etc.)
+    │   │   └── Icons.tsx              # ALL shared SVG icons — import from here, never define inline
     │   └── layout/
     │       ├── Sidebar.tsx            # Sticky, in normal flow, expandable 52px→192px, tournamentId prop
     │       └── Topbar.tsx             # Sticky, tournament dropdown (280px), user avatar, tournamentId prop
@@ -421,6 +376,9 @@ Events, memberships, and sheets are nested under `/tournaments/{tournament_id}/`
 ### Email as join key
 When syncing sheets, if user with that email exists → update. If not → create.
 
+### Icon components
+All SVG icons live in `components/ui/Icons.tsx` — never define icons inline in page/component files. Import from there. All icons accept `size`, `style`, and `className` props.
+
 ---
 
 ## column_mappings — Rich ColumnMapping Structure
@@ -557,7 +515,7 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
   - [x] **7b** — Landing page (hero, grid bg, scroll animation, login form)
   - [x] **7c** — Auth wiring (JWT cookie, middleware, useAuth, dashboard stub)
   - [x] **7d** — App shell (tournament list page, sidebar, topbar, routing restructure to /dashboard/[tournamentId]/*)
-  - [ ] **7e** — Tournament settings (blocks editor, sheet config wizard, sync)
+  - [ ] **7e** — Sheets UI (in progress — see below)
   - [ ] **7f** — Events + volunteers tables
   - [ ] **7g** — Assignment dashboard
 - [x] **Phase 8 — Architecture: membership-based permissions**
@@ -581,13 +539,25 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
   - Prod DB copied to preview via `pg_dump | psql` using public Railway URLs
   - Vercel preview auto-deploys every branch push; `API_URL` + `API_KEY` set for Preview environment
   - GitHub branch ruleset on `main` — PRs required, force push blocked, branch deletion blocked
-- [x] **Phase 10 — Staging branch + collaborator workflow**
-  - Added `staging` branch as integration layer between feature branches and `main`
-  - GitHub default branch changed to `staging`
-  - Ruleset on `staging`: PR required, 0 approvals, force push blocked, deletions blocked
-  - Ruleset on `main`: PR required, 1 approval required, force push blocked, deletions blocked
-  - Vercel free tier auto-deploys `staging` as a preview URL (no Pro upgrade needed)
-  - Railway preview backend serves all Vercel preview deployments including `staging`
+
+### Phase 7e — Sheets UI (in progress)
+Branch: `feature/sheets-ui`
+
+**Completed:**
+- Sheets index page (`/dashboard/[id]/sheets`) — lists existing configs, per-card Sync button, empty state
+- Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow:
+  1. URL input → `POST /sheets/validate/` → shows spreadsheet title + tabs
+  2. Sheet tab selection (radio) + sheet type (radio) + label input → `POST /sheets/headers/`
+  3. Column mapping table — all headers shown, ignored rows dimmed, field/type dropdowns, extra_key/row_key inputs
+  4. Save (`POST /sheets/configs/`) → auto-sync (`POST /sheets/configs/{id}/sync/`) → results page (created/updated/skipped + error list)
+- Sheets nav item added to Sidebar (between Volunteers and Settings), active state covers `/sheets/*`
+- All SVG icons centralized into `components/ui/Icons.tsx` — removed all inline icon definitions from Sidebar, Topbar, dashboard/page, sheets pages, landing page
+- Pages use `width: 100%` (not fixed maxWidth) so they flex with sidebar expand/collapse
+
+**Still needed (7e):**
+- End-to-end testing with a real Google Sheet
+- UI polish pass after testing (edge cases, error states, loading states)
+- Possible: sheet config edit/delete from the index page
 
 ---
 
@@ -613,12 +583,11 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
 - Root directory: `frontend`
 - Server-side env vars: `API_URL`, `API_KEY` (not `NEXT_PUBLIC_*` — kept server-side via proxy route)
 - Custom domain: `nexus.ethanshih.com`
-- Every branch push auto-generates a preview deployment (including `staging`)
+- Every branch push auto-generates a preview deployment
 - Must redeploy manually after adding/changing env vars
 
 ### Preview environment
 - Railway preview service: `nexus-preview.up.railway.app`
-- Serves all Vercel preview deployments (all branches, including `staging`)
 - To refresh preview DB from prod: `pg_dump <PROD_PUBLIC_URL> | psql <PREVIEW_PUBLIC_URL>`
   - Drop existing tables first: `psql <PREVIEW_PUBLIC_URL> -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`
 - Railway preview public DB URL: `postgresql://postgres:...@yamanote.proxy.rlwy.net:31907/railway`
@@ -651,6 +620,7 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
 - `Input` — DM Sans label, 44px height, 16px left padding, error state
 - `Card` — surface container with optional hover state
 - `Badge` — status tags: interested, confirmed, declined, assigned, removed, admin, user
+- `Icons` — all shared SVG icons. Always import from here, never define icons inline.
 
 ---
 
@@ -676,15 +646,29 @@ Sleek, clean, black and white, techy — futuristic modern dashboard / control p
 - **Sidebar** — sticky, in normal flow (expanding pushes content right, no overlay)
   - Collapsed: 52px wide, icons only
   - Expanded: 192px wide, icons + DM Sans labels
-  - Icons: Overview (house), Assignments, Events, Volunteers, Settings (gear)
+  - Icons: Overview, Assignments, Events, Volunteers, Sheets, Settings
   - NEXUS/NX wordmark at top links back to `/dashboard`
   - Expand/collapse toggle pinned to bottom
+  - Active state covers sub-routes (e.g. `/sheets/new` keeps Sheets highlighted)
 - **Topbar** — sticky, tournament selector dropdown (280px, navigates preserving current segment), user avatar/logout
-- **Main content** — 12px top / 14px left padding, no fixed positioning offsets
+- **Main content** — `width: 100%`, 12px top / 14px left padding, flexes with sidebar
 - **URL param drives selected tournament** — navigating directly to `/dashboard/2/overview` always loads tournament 2 via `tournamentsApi.get(id)`
 
 ### /dashboard/[tournamentId]/overview
 - Blank for now — placeholder for tournament summary/stats
+
+### /dashboard/[tournamentId]/sheets
+- Lists all sheet configs for the tournament as cards
+- Each card: label, sheet type badge, tab name, mapped column count, last synced date, Sync button
+- Empty state with "Add your first sheet" CTA
+- "Add Sheet" button → `/sheets/new`
+
+### /dashboard/[tournamentId]/sheets/new — Add Sheet Wizard
+4-step flow, sidebar visible throughout, `width: 100%` layout:
+1. **URL** — paste Google Sheets URL, validate with backend
+2. **Select Sheet** — pick tab (radio), set sheet type (radio), set label
+3. **Map Columns** — table of all headers with Field + Type dropdowns; ignored rows dimmed; extra_key/row_key inputs shown contextually
+4. **Results** — created/updated/skipped stat cards + error list; auto-sync runs immediately on save
 
 ### /dashboard/[tournamentId]/assignments (Phase 7g)
 The primary assignment view. Single page, dynamic, no full reloads — everything via panels and modals.
@@ -720,19 +704,9 @@ The primary assignment view. Single page, dynamic, no full reloads — everythin
 - Sortable, filterable by status
 - Click row → volunteer detail side panel
 
-### /dashboard/[tournamentId]/settings (Phase 7e)
-Where the TD configures a tournament before using the assignment dashboard.
-
-**Steps:**
-1. **Basic info** — name, location, start date, end date
-2. **Time blocks** — TD defines blocks (number, label, date, start time, end time)
-3. **Sheet config wizard** — connect Google Sheets:
-   - Enter sheet URL → validate
-   - Select sheet name → fetch headers
-   - Review suggested column mappings — all headers displayed with their mapped field, type, and any extra config
-   - All mapping fields are editable inline
-   - Save → calls `POST /tournaments/{id}/sheets/configs/`
-4. **Sync** — once config is saved, TD can trigger a sync to pull volunteer data
+### /dashboard/[tournamentId]/settings (Phase 7e — future)
+- Basic info editing (name, location, dates)
+- Time blocks editor
 
 ---
 
