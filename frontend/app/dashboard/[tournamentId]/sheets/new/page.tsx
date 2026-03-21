@@ -673,8 +673,8 @@ function MappingTableRow({
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "12px",
         color: "var(--color-text-primary)", opacity,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "8px",
-      }} title={row.header}>
+        wordBreak: "break-word", paddingRight: "8px",
+      }}>
         {row.header}
       </span>
 
