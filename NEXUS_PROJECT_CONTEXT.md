@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-7e-sheets-ui-in-progress*
+*Last updated: phase-7e-frontend-refactor*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -100,14 +100,14 @@ nexus/
 │   └── .gitignore
 └── frontend/
     ├── app/
-    │   ├── globals.css                # Design tokens, DM Mono + DM Sans + Instrument Serif
+    │   ├── globals.css                # Design tokens, Geist Sans + Geist Mono + Georgia
     │   ├── layout.tsx                 # Root layout
     │   ├── page.tsx                   # Landing page + login form
     │   └── dashboard/
     │       ├── layout.tsx             # AuthProvider only — no chrome
-    │       ├── page.tsx               # Tournament card grid, own topbar (NEXUS wordmark + avatar)
+    │       ├── page.tsx               # Tournament card grid, uses unified Topbar (showWordmark showAvatar)
     │       └── [tournamentId]/
-    │           ├── layout.tsx         # TournamentProvider + Sidebar + Topbar + main
+    │           ├── layout.tsx         # TournamentProvider + Sidebar + Topbar (showDropdown showAvatar) + main
     │           ├── overview/page.tsx  # Blank for now
     │           ├── assignments/page.tsx
     │           ├── events/page.tsx
@@ -119,21 +119,32 @@ nexus/
     │                   └── page.tsx   # Add Sheet wizard (4 steps: URL → select → mapping → results)
     ├── components/
     │   ├── ui/
-    │   │   ├── Button.tsx             # primary/secondary/ghost/danger, DM Sans, loading state
+    │   │   ├── Button.tsx             # primary/secondary/ghost/danger, radius-md, loading state
     │   │   ├── Input.tsx              # label, error, helper, 16px left padding
     │   │   ├── Card.tsx               # surface container
     │   │   ├── Badge.tsx              # status badges (confirmed, declined, assigned, etc.)
-    │   │   └── Icons.tsx              # ALL shared SVG icons — import from here, never define inline
+    │   │   ├── Icons.tsx              # ALL shared SVG icons — import from here, never define inline
+    │   │   ├── Modal.tsx              # base modal wrapper with backdrop, Escape-to-close, title slot
+    │   │   ├── NewTournamentModal.tsx # tournament creation form modal — used in Topbar and dashboard/page
+    │   │   ├── FieldLabel.tsx         # uppercase 11px form field label
+    │   │   ├── PageHeader.tsx         # title + subtitle + optional action button
+    │   │   ├── StepIndicator.tsx      # wizard step bar, accepts any steps array
+    │   │   ├── RadioOption.tsx        # styled radio card with border highlight
+    │   │   ├── StatCard.tsx           # big number + label card (sync results, future stats)
+    │   │   ├── EmptyState.tsx         # centered empty state with icon, title, description, action
+    │   │   └── UserAvatar.tsx         # avatar button + name/email/role dropdown + sign out
     │   └── layout/
     │       ├── Sidebar.tsx            # Sticky, in normal flow, expandable 52px→192px, tournamentId prop
-    │       └── Topbar.tsx             # Sticky, tournament dropdown (280px), user avatar, tournamentId prop
+    │       └── Topbar.tsx             # Unified topbar — showWordmark, showDropdown, showAvatar props
+    │                                  # showDropdown renders TournamentDropdown (isolated so useTournament
+    │                                  # only called when TournamentProvider is in tree)
     ├── lib/
     │   ├── api.ts                     # ApiError, authApi, tournamentsApi, eventsApi, usersApi, membershipsApi, sheetsApi + full types
     │   ├── useAuth.tsx                # AuthProvider + useAuth hook
     │   └── useTournament.tsx          # TournamentProvider + useTournament hook, persists selection to localStorage
     ├── middleware.ts                  # Protect /dashboard/*, redirect if logged in on /
     │                                  # NOTE: exported as `proxy` (not `middleware`) per Vercel deprecation
-    ├── tailwind.config.ts
+    ├── tailwind.config.ts             # fontFamily: sans=Geist, mono=Geist Mono, serif=Georgia
     ├── next.config.ts
     ├── .env.local                     # NEXT_PUBLIC_API_URL=http://localhost:8001
     └── package.json
@@ -216,7 +227,6 @@ filterwarnings =
   - `production` — `httpOnly=True`, `secure=True`, `samesite=none`, `domain=".ethanshih.com"`
   - `preview` — `httpOnly=True`, `secure=True`, `samesite=none`, `domain=None`
   - `development` — `httpOnly=True`, `secure=False`, `samesite=lax`, `domain=None`
-- **Why preview needs `domain=None`:** frontend is on `.vercel.app`, backend is on `.railway.app` — different domains entirely. The Next.js proxy forwards the cookie server-side so the browser only ever sees the Vercel domain. `domain=None` scopes the cookie to the Vercel preview URL automatically.
 - **Routes:** `/auth/login/`, `/auth/logout/`, `/auth/me/`, `/auth/register/` (admin-only)
 - **Dependencies:** `get_current_user`, `require_admin` (site-wide), `require_permission(perm)` (tournament-scoped)
 - **Frontend middleware:** checks cookie presence — no cookie → redirect to `/`, has cookie → allow through
@@ -270,8 +280,6 @@ Tournament-level access is determined entirely by `Membership.positions` and the
 | `test_writer` | Test Writer | `["view_events"]` |
 | `test_reviewer` | Test Reviewer | `["view_events"]` |
 
-TDs can add/edit/remove positions for their tournament at any time via `PATCH /tournaments/{id}/`. The `DEFAULT_POSITIONS` list in `permissions.py` is the canonical source — edit there to change defaults globally.
-
 ---
 
 ## Database Models (all active)
@@ -284,9 +292,8 @@ end_date (DateTime, nullable)
 location (nullable)
 blocks: JSON           # [{number, label, date, start, end}, ...]
 volunteer_schema: JSON # {custom_fields: [...], positions: [{key, label, permissions}, ...]}
-owner_id (FK→users)    # user who created the tournament — always has tournament_director membership
+owner_id (FK→users)
 created_at, updated_at
-# relationships: sheet_configs, events, memberships (all cascade delete)
 ```
 
 ### SheetConfig
@@ -339,7 +346,6 @@ event_preference: JSON   # ["Boomilever", "Hovercraft"]
 availability: JSON       # [{date, start, end}, ...]
 lunch_order, notes (nullable)
 extra_data: JSON         # all tournament-specific arbitrary data
-                         # e.g. {"transportation": "Driving", "general_volunteer_interest": ["STEM Expo"]}
 created_at, updated_at
 UNIQUE: (user_id, tournament_id)
 ```
@@ -356,8 +362,7 @@ UNIQUE: (user_id, tournament_id)
 - Creating a tournament auto-creates a `tournament_director` membership for the creator
 
 ### Route nesting
-Events, memberships, and sheets are nested under `/tournaments/{tournament_id}/`:
-- `tournament_id` is always in the path → clean permission checks without object lookups
+- Events, memberships, and sheets are nested under `/tournaments/{tournament_id}/`
 - `tournament_id` in the URL is validated against `tournament_id` in the request body (400 if mismatch)
 - No `/api/v1` prefix — routes are bare: `/tournaments/`, `/auth/login/`, etc.
 - All routes have trailing slashes
@@ -369,15 +374,22 @@ Events, memberships, and sheets are nested under `/tournaments/{tournament_id}/`
 - All scalar fields — replace on PATCH
 
 ### Tournament access pattern
-- Non-members get **404** (not 403) on read routes — don't leak that a tournament exists
-- Non-members get **403** on write routes — permission check fires before existence check
+- Non-members get **404** (not 403) on read routes
+- Non-members get **403** on write routes
 - `admin` always gets access regardless of membership
 
-### Email as join key
-When syncing sheets, if user with that email exists → update. If not → create.
+### Frontend component conventions
+- **Always use `Button` from `components/ui/Button`** — never inline button elements for actions
+- **Always use `PageHeader` from `components/ui/PageHeader`** — for page title + subtitle + action
+- **Always use `EmptyState` from `components/ui/EmptyState`** — for empty list states
+- **All SVG icons in `components/ui/Icons.tsx`** — never define icons inline
+- **`Modal` + specific modal components** — base `Modal.tsx` wraps content, `NewTournamentModal` is the shared tournament creation form
+- **`Topbar` is unified** — use `showWordmark` for dashboard, `showDropdown` for tournament pages. `useTournament` is only called inside `TournamentDropdown` child so it's safe to use without a provider when `showDropdown=false`
 
-### Icon components
-All SVG icons live in `components/ui/Icons.tsx` — never define icons inline in page/component files. Import from there. All icons accept `size`, `style`, and `className` props.
+### Font stack
+- `--font-serif`: Georgia, serif — h1, h2, page titles, big numbers, wordmarks
+- `--font-sans`: Geist (via @font-face + jsDelivr CDN) — UI labels, buttons, nav, badges
+- `--font-mono`: Geist Mono (via @font-face + jsDelivr CDN) — body text, inputs, data values
 
 ---
 
@@ -394,17 +406,11 @@ All SVG icons live in `components/ui/Icons.tsx` — never define icons inline in
 | `matrix_row` | One row of availability grid → merged into availability JSON. Requires `row_key` |
 | `category_events` | Grouped event category string → list of specific event names |
 
-**KNOWN_FIELDS** (in `schemas/sheet_config.py`):
-`__ignore__`, `first_name`, `last_name`, `email`, `phone`, `shirt_size`, `dietary_restriction`, `university`, `major`, `employer`, `role_preference`, `event_preference`, `availability`, `lunch_order`, `notes`, `extra_data`
-
-Note: `general_volunteer_interest` was removed from KNOWN_FIELDS. Columns matching "general volunteer" now auto-suggest `field="extra_data"` with `extra_key="general_volunteer_interest"`.
+**KNOWN_FIELDS:** `__ignore__`, `first_name`, `last_name`, `email`, `phone`, `shirt_size`, `dietary_restriction`, `university`, `major`, `employer`, `role_preference`, `event_preference`, `availability`, `lunch_order`, `notes`, `extra_data`
 
 ---
 
 ## API Endpoints
-
-All routes require `X-API-Key` header (skipped in dev when `API_KEY` is blank).
-No `/api/v1` prefix — all routes are bare paths with trailing slashes.
 
 ```
 GET    /health
@@ -413,50 +419,48 @@ GET    /health
 POST   /auth/login/
 POST   /auth/logout/
 GET    /auth/me/
-POST   /auth/register/                                     # admin only — always creates role="user"
+POST   /auth/register/                                     # admin only
 
 # Tournaments
-GET    /tournaments/                                        # admin only — all tournaments
-GET    /tournaments/me/                                     # authenticated — tournaments with any membership
-POST   /tournaments/                                        # authenticated — auto-creates tournament_director membership
+GET    /tournaments/                                        # admin only
+GET    /tournaments/me/                                     # authenticated
+POST   /tournaments/                                        # authenticated
 GET    /tournaments/{id}/                                   # any member
 PATCH  /tournaments/{id}/                                   # manage_tournament
 DELETE /tournaments/{id}/                                   # owner or admin only
 
-# Events (nested under tournament)
+# Events
 GET    /tournaments/{id}/events/                            # view_events
 GET    /tournaments/{id}/events/{event_id}/                 # view_events
 POST   /tournaments/{id}/events/                            # manage_events or manage_tournament
 PATCH  /tournaments/{id}/events/{event_id}/                 # manage_events or manage_tournament
 DELETE /tournaments/{id}/events/{event_id}/                 # manage_events or manage_tournament
 
-# Memberships (nested under tournament)
-GET    /tournaments/{id}/memberships/                       # view_volunteers or manage_volunteers or manage_tournament
-GET    /tournaments/{id}/memberships/{membership_id}/       # view_volunteers or manage_volunteers or manage_tournament
-POST   /tournaments/{id}/memberships/                       # manage_volunteers or manage_tournament
-PATCH  /tournaments/{id}/memberships/{membership_id}/       # manage_volunteers or manage_tournament
-DELETE /tournaments/{id}/memberships/{membership_id}/       # manage_volunteers or manage_tournament
+# Memberships
+GET    /tournaments/{id}/memberships/                       # view_volunteers+
+GET    /tournaments/{id}/memberships/{membership_id}/       # view_volunteers+
+POST   /tournaments/{id}/memberships/                       # manage_volunteers+
+PATCH  /tournaments/{id}/memberships/{membership_id}/       # manage_volunteers+
+DELETE /tournaments/{id}/memberships/{membership_id}/       # manage_volunteers+
 
-# Users (global — admin only)
+# Users (admin only)
 GET    /users/
 POST   /users/
 GET    /users/{id}/
 GET    /users/by-email/{email}/
 PATCH  /users/{id}/
 DELETE /users/{id}/
-
-# Tournament-scoped user lookup
 GET    /tournaments/{id}/users/{user_id}/                   # manage_volunteers or manage_tournament
 
-# Sheets (nested under tournament — all require manage_tournament)
-POST   /tournaments/{id}/sheets/validate/
-POST   /tournaments/{id}/sheets/headers/
-GET    /tournaments/{id}/sheets/configs/
-POST   /tournaments/{id}/sheets/configs/
-GET    /tournaments/{id}/sheets/configs/{config_id}/
-PATCH  /tournaments/{id}/sheets/configs/{config_id}/
-DELETE /tournaments/{id}/sheets/configs/{config_id}/
-POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
+# Sheets
+POST   /tournaments/{id}/sheets/validate/                  # manage_tournament
+POST   /tournaments/{id}/sheets/headers/                   # manage_tournament
+GET    /tournaments/{id}/sheets/configs/                   # manage_tournament
+POST   /tournaments/{id}/sheets/configs/                   # manage_tournament
+GET    /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
+PATCH  /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
+DELETE /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
+POST   /tournaments/{id}/sheets/configs/{config_id}/sync/  # manage_tournament
 ```
 
 ---
@@ -467,35 +471,8 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
 - `db` — in-memory SQLite with foreign keys ON, transaction rollback after each test
 - `mock_sheets_service` — MagicMock(spec=SheetsService)
 - `client` — TestClient with get_db, get_sheets_service overrides
-- `admin_user` — role="admin"
-- `td_user` — role="user", tournament_director membership in `td_tournament`
-- `other_user` — role="user", tournament_director membership in `other_tournament`
-- `td_tournament` — tournament owned by td_user, default positions in volunteer_schema
-- `other_tournament` — tournament owned by other_user, td_user has no membership here
-- `login(client, email, password)` — helper function, posts to `/auth/login/`
-
-**Important test patterns:**
-- User creation in tests: use `db` fixture directly — `POST /users/` is admin-only
-- Sync test user verification: use `db.query(User)` directly — `GET /users/by-email/` is admin-only
-- Non-members on write routes → 403 (permission check fires first)
-- Non-members on read routes → 404 (don't leak existence)
-
----
-
-## Sync Service (`app/services/sync_service.py`)
-
-**Endpoint:** `POST /tournaments/{id}/sheets/configs/{config_id}/sync/`
-
-**Logic per row:**
-1. Parse all columns by `ColumnMapping` type
-2. Upsert User by email
-3. Upsert Membership by (user_id, tournament_id)
-4. Merge availability slots — contiguous slots on same date merged
-5. Merge extra_data into existing blob
-6. Update `SheetConfig.last_synced_at`
-7. Return `SyncResult`
-
-**Note:** Synced memberships do not get `positions` set — they start as `positions=None` (no system permissions). TDs assign positions manually after sync.
+- `admin_user`, `td_user`, `other_user`, `td_tournament`, `other_tournament`
+- `login(client, email, password)` — helper function
 
 ---
 
@@ -515,44 +492,31 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
   - [x] **7b** — Landing page (hero, grid bg, scroll animation, login form)
   - [x] **7c** — Auth wiring (JWT cookie, middleware, useAuth, dashboard stub)
   - [x] **7d** — App shell (tournament list page, sidebar, topbar, routing restructure to /dashboard/[tournamentId]/*)
-  - [ ] **7e** — Sheets UI (in progress — see below)
+  - [ ] **7e** — Sheets UI + frontend refactor (in progress — see below)
   - [ ] **7f** — Events + volunteers tables
   - [ ] **7g** — Assignment dashboard
 - [x] **Phase 8 — Architecture: membership-based permissions**
-  - Replace `User.role` (admin|td|volunteer) with `User.role` (admin|user)
-  - Add `Membership.positions` (replaces `roles` column) — drives title + permissions
-  - Add `Membership.schedule` — day-of block assignments `[{block, duty}]`
-  - Remove `Membership.general_volunteer_interest` — now lives in `extra_data`
-  - Add `app/core/permissions.py` — permission constants, DEFAULT_POSITIONS, dependency factories
-  - Nest events, memberships, sheets routes under `/tournaments/{id}/`
-  - Remove `/api/v1` prefix, add trailing slashes to all routes
-  - API key now required on all routes including auth
-  - `POST /tournaments/` auto-creates `tournament_director` membership + populates `DEFAULT_POSITIONS`
-  - `GET /tournaments/` admin-only; `GET /tournaments/me/` returns user's memberships
-  - `DELETE /tournaments/{id}/` restricted to owner or admin
-  - Alembic migration: drop `roles` + `general_volunteer_interest`, add `positions` + `schedule`, migrate user roles
-  - Frontend `api.ts` updated: all routes, types, `tournamentsApi.list()` → `GET /tournaments/me/`
-  - Cookie fix for preview environment (`APP_ENV=preview` → `domain=None`, `samesite=none`, `secure=True`)
-  - CORS updated: `allow_origin_regex` covers all `nexus-*.ethanshih.vercel.app` preview URLs
 - [x] **Phase 9 — Preview environments**
-  - Railway preview environment (`nexus-preview.up.railway.app`) with separate PostgreSQL
-  - Prod DB copied to preview via `pg_dump | psql` using public Railway URLs
-  - Vercel preview auto-deploys every branch push; `API_URL` + `API_KEY` set for Preview environment
-  - GitHub branch ruleset on `main` — PRs required, force push blocked, branch deletion blocked
 
-### Phase 7e — Sheets UI (in progress)
+### Phase 7e — Sheets UI + Frontend Refactor (in progress)
 Branch: `feature/sheets-ui`
 
 **Completed:**
 - Sheets index page (`/dashboard/[id]/sheets`) — lists existing configs, per-card Sync button, empty state
 - Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow:
-  1. URL input → `POST /sheets/validate/` → shows spreadsheet title + tabs
-  2. Sheet tab selection (radio) + sheet type (radio) + label input → `POST /sheets/headers/`
-  3. Column mapping table — all headers shown, ignored rows dimmed, field/type dropdowns, extra_key/row_key inputs
-  4. Save (`POST /sheets/configs/`) → auto-sync (`POST /sheets/configs/{id}/sync/`) → results page (created/updated/skipped + error list)
-- Sheets nav item added to Sidebar (between Volunteers and Settings), active state covers `/sheets/*`
-- All SVG icons centralized into `components/ui/Icons.tsx` — removed all inline icon definitions from Sidebar, Topbar, dashboard/page, sheets pages, landing page
-- Pages use `width: 100%` (not fixed maxWidth) so they flex with sidebar expand/collapse
+  1. URL input → validate → shows spreadsheet title + tabs
+  2. Sheet tab selection + sheet type + label input
+  3. Column mapping table — all headers shown, ignored rows dimmed, field/type dropdowns
+  4. Save → auto-sync → results page (created/updated/skipped + error list)
+- Sheets nav item added to Sidebar
+- **Font refactor:** replaced DM Sans/DM Mono with Geist Sans/Geist Mono (via @font-face + jsDelivr CDN); replaced Instrument Serif with Georgia (was never loading, falling back to Georgia anyway)
+- **Button component fix:** border radius updated from `radius-sm` to `radius-md`
+- **Component library refactor:** extracted reusable components from inline page code:
+  - `Modal.tsx`, `NewTournamentModal.tsx`, `FieldLabel.tsx`, `PageHeader.tsx`
+  - `StepIndicator.tsx`, `RadioOption.tsx`, `StatCard.tsx`, `EmptyState.tsx`
+  - `UserAvatar.tsx` (in `components/ui/`)
+- **Topbar unification:** single `Topbar` component with `showWordmark` / `showDropdown` / `showAvatar` props replaces separate dashboard and tournament topbars. `TournamentDropdown` is an isolated child so `useTournament` is only called when a `TournamentProvider` is present.
+- All pages refactored to use shared components
 
 **Still needed (7e):**
 - End-to-end testing with a real Google Sheet
@@ -581,32 +545,24 @@ Branch: `feature/sheets-ui`
 
 ### Frontend (Vercel)
 - Root directory: `frontend`
-- Server-side env vars: `API_URL`, `API_KEY` (not `NEXT_PUBLIC_*` — kept server-side via proxy route)
+- Server-side env vars: `API_URL`, `API_KEY`
 - Custom domain: `nexus.ethanshih.com`
 - Every branch push auto-generates a preview deployment
-- Must redeploy manually after adding/changing env vars
 
 ### Preview environment
 - Railway preview service: `nexus-preview.up.railway.app`
-- To refresh preview DB from prod: `pg_dump <PROD_PUBLIC_URL> | psql <PREVIEW_PUBLIC_URL>`
-  - Drop existing tables first: `psql <PREVIEW_PUBLIC_URL> -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`
+- To refresh preview DB: drop schema + pg_dump prod into preview
 - Railway preview public DB URL: `postgresql://postgres:...@yamanote.proxy.rlwy.net:31907/railway`
 - Railway prod public DB URL: `postgresql://postgres:...@interchange.proxy.rlwy.net:19714/railway`
-
-### Cross-subdomain cookie notes
-- Production: both domains share `.ethanshih.com` — `domain=".ethanshih.com"` enables cookie sharing
-- Preview: frontend on `.vercel.app`, backend on `.railway.app` — proxy handles everything server-side, `domain=None` works
-- `credentials: 'include'` must be set on all fetch calls in `api.ts`
-- Next.js middleware reads the cookie server-side to protect `/dashboard` routes
 
 ---
 
 ## Frontend Design System
 
 ### Fonts
-- **`--font-serif`** → Instrument Serif — h1, h2, page titles, big numbers, wordmarks
-- **`--font-sans`** → DM Sans — UI labels, buttons, nav labels, subheadings, badges
-- **`--font-mono`** → DM Mono — body text, inputs, data values, emails, dates, code
+- **`--font-serif`** → Georgia — h1, h2, page titles, big numbers, wordmarks
+- **`--font-sans`** → Geist — UI labels, buttons, nav labels, subheadings, badges
+- **`--font-mono`** → Geist Mono — body text, inputs, data values, emails, dates, code
 
 ### Colors (CSS variables)
 - `--color-bg`: `#F7F7F5` | `--color-surface`: `#FFFFFF`
@@ -615,113 +571,25 @@ Branch: `feature/sheets-ui`
 - `--color-border`: `#E2E2DE` | `--color-border-strong`: `#C8C8C2`
 - `--color-text-primary`: `#0A0A0A` | `--color-text-secondary`: `#6B6B65` | `--color-text-tertiary`: `#9B9B93`
 
-### Components (`components/ui/`)
-- `Button` — variants: primary (black), secondary, ghost, danger. Sizes: sm/md/lg. Loading spinner.
-- `Input` — DM Sans label, 44px height, 16px left padding, error state
+### Component conventions
+- `Button` — variants: primary (black), secondary, ghost, danger. Sizes: sm/md/lg. `border-radius: var(--radius-md)`.
+- `Input` — Geist label, 44px height, 16px left padding, error state
 - `Card` — surface container with optional hover state
 - `Badge` — status tags: interested, confirmed, declined, assigned, removed, admin, user
-- `Icons` — all shared SVG icons. Always import from here, never define icons inline.
+- `PageHeader` — always use for page title + subtitle + action button
+- `EmptyState` — always use for empty list states
+- `Modal` — base wrapper; `NewTournamentModal` is the shared tournament creation form
+- `StepIndicator` — wizard step bar, pass any `steps` array
+- `RadioOption` — styled radio card with border highlight, `mono` prop for monospace label
+- `StatCard` — big number + label, used for sync results and future dashboard stats
+- `UserAvatar` — avatar + dropdown in `components/ui/`
+- `Icons` — all SVG icons in `components/ui/Icons.tsx`, never define inline
 
----
-
-## Dashboard Design & UX
-
-### Overall Aesthetic
-Sleek, clean, black and white, techy — futuristic modern dashboard / control panel feel. Every surface should feel intentional and dense with information without being cluttered.
-
-### Landing Page (`/`)
-- Simple hero section (NEXUS wordmark + tagline)
-- Login form appears on scroll
-- No tournament data is public — user must log in to access their tournaments
-- Implemented in Phase 7b/7c
-
-### /dashboard — Tournament List
-- No sidebar. Own topbar: NEXUS wordmark (left), user avatar/logout (right).
-- Card grid of all tournaments the user has any membership in (calls `GET /tournaments/me/`)
-- Each card shows: name, location, date range, event count, volunteer count (fetched in parallel after list loads)
-- "Add Tournament" button → modal → navigates to `/dashboard/[id]/overview` on create
-- Clicking a card navigates to `/dashboard/[id]/overview`
-
-### /dashboard/[tournamentId] — Tournament Shell
-- **Sidebar** — sticky, in normal flow (expanding pushes content right, no overlay)
-  - Collapsed: 52px wide, icons only
-  - Expanded: 192px wide, icons + DM Sans labels
-  - Icons: Overview, Assignments, Events, Volunteers, Sheets, Settings
-  - NEXUS/NX wordmark at top links back to `/dashboard`
-  - Expand/collapse toggle pinned to bottom
-  - Active state covers sub-routes (e.g. `/sheets/new` keeps Sheets highlighted)
-- **Topbar** — sticky, tournament selector dropdown (280px, navigates preserving current segment), user avatar/logout
-- **Main content** — `width: 100%`, 12px top / 14px left padding, flexes with sidebar
-- **URL param drives selected tournament** — navigating directly to `/dashboard/2/overview` always loads tournament 2 via `tournamentsApi.get(id)`
-
-### /dashboard/[tournamentId]/overview
-- Blank for now — placeholder for tournament summary/stats
-
-### /dashboard/[tournamentId]/sheets
-- Lists all sheet configs for the tournament as cards
-- Each card: label, sheet type badge, tab name, mapped column count, last synced date, Sync button
-- Empty state with "Add your first sheet" CTA
-- "Add Sheet" button → `/sheets/new`
-
-### /dashboard/[tournamentId]/sheets/new — Add Sheet Wizard
-4-step flow, sidebar visible throughout, `width: 100%` layout:
-1. **URL** — paste Google Sheets URL, validate with backend
-2. **Select Sheet** — pick tab (radio), set sheet type (radio), set label
-3. **Map Columns** — table of all headers with Field + Type dropdowns; ignored rows dimmed; extra_key/row_key inputs shown contextually
-4. **Results** — created/updated/skipped stat cards + error list; auto-sync runs immediately on save
-
-### /dashboard/[tournamentId]/assignments (Phase 7g)
-The primary assignment view. Single page, dynamic, no full reloads — everything via panels and modals.
-
-**Layout:**
-- **Center** — rows of events, one per event. Each row shows event name, division, block(s), volunteers needed, currently assigned volunteers
-- **Day tabs** — if tournament has multiple days, tabs at the top to switch (Thu / Fri / Sat). Each tab filters events by the blocks running that day
-- **Right collapsible panel** — volunteer cards, scrollable list. Panel can be collapsed to give more horizontal space to event rows
-
-**Volunteer cards (right panel):**
-- Volunteer name (prominent)
-- Tags for event preferences
-- Tags for expertise/experience
-- Availability indicator (available for current day/block being viewed)
-- Cards are draggable — drag onto an event row to assign
-- Once assigned, card disappears from right panel and appears in the event row
-
-**Event rows (center):**
-- Event name + division badge (B/C)
-- Block number(s) it runs
-- Volunteer slots — empty slots shown as placeholders, filled slots show assigned volunteer name
-- Click event row → side panel or modal with full event details + all assigned volunteers
-
-### /dashboard/[tournamentId]/events (Phase 7f)
-- Table view of all events for the selected tournament
-- Columns: name, division, category, building/room, blocks, volunteers needed, assigned count
-- Sortable, filterable
-- Click row → edit event modal
-
-### /dashboard/[tournamentId]/volunteers (Phase 7f)
-- Table view of all volunteers (memberships) for the selected tournament
-- Columns: name, email, status badge, role preference, availability summary, assigned event
-- Sortable, filterable by status
-- Click row → volunteer detail side panel
-
-### /dashboard/[tournamentId]/settings (Phase 7e — future)
-- Basic info editing (name, location, dates)
-- Time blocks editor
-
----
-
-## Sync Service (`app/services/sync_service.py`)
-
-**Endpoint:** `POST /tournaments/{id}/sheets/configs/{config_id}/sync/`
-
-**Logic per row:**
-1. Parse all columns by `ColumnMapping` type
-2. Upsert User by email
-3. Upsert Membership by (user_id, tournament_id)
-4. Merge availability slots — contiguous slots on same date merged
-5. Merge extra_data into existing blob
-6. Update `SheetConfig.last_synced_at`
-7. Return `SyncResult`
+### Dashboard design
+- **`/dashboard`** — tournament card grid, `Topbar showWordmark showAvatar`
+- **`/dashboard/[id]/*`** — sidebar + `Topbar showDropdown showAvatar`
+- Sidebar: 52px collapsed / 192px expanded, in normal flow (pushes content, no overlay)
+- All pages use `width: 100%` so they flex with sidebar expand/collapse
 
 ---
 
@@ -752,6 +620,6 @@ The primary assignment view. Single page, dynamic, no full reloads — everythin
 - `Availability from 5/21 to 5/23 [6:00 PM - 8:00 PM]`
 - `If interested in event volunteering, which event(s) would you prefer helping with?`
 - `If you are interested in general volunteer, which activities would you be interested in helping with?`
-- `Are there any limitations we should know about to better support your volunteer experience? (Ex. can't carry heavy objects, limited mobility, etc.)`
+- `Are there any limitations we should know about to better support your volunteer experience?`
 - `How many people can you take?`
 - `How did you hear about us?`
