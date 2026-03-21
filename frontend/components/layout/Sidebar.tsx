@@ -50,6 +50,15 @@ function IconVolunteers() {
   );
 }
 
+function IconSheets() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0 }}>
+      <rect x="3" y="2" width="14" height="16" rx="2" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 7h6M7 10h6M7 13h4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function GearIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
@@ -74,6 +83,7 @@ const NAV_ITEMS = [
   { segment: "assignments", icon: <IconAssign />,     label: "Assignments" },
   { segment: "events",      icon: <IconEvents />,     label: "Events" },
   { segment: "volunteers",  icon: <IconVolunteers />, label: "Volunteers" },
+  { segment: "sheets",      icon: <IconSheets />,     label: "Sheets" },
   { segment: "settings",    icon: <GearIcon />,       label: "Settings" },
 ];
 
@@ -136,6 +146,7 @@ export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
       }}>
         {NAV_ITEMS.map(({ segment, icon, label }) => {
           const href = `${base}/${segment}`;
+          // Active if exact match OR starts with the href (covers /sheets/new etc.)
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
           return (
