@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSheets, IconSync } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
-  interest: "Interest Form",
+  interest:     "Interest Form",
   confirmation: "Confirmation Form",
-  events: "Events",
+  events:       "Events",
 };
 
 function fmtDate(iso: string) {
@@ -36,26 +38,21 @@ export default function SheetsPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "28px" }}>
-        <div>
-          <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>Sheets</h1>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            Connect Google Sheets to sync volunteer data into NEXUS.
-          </p>
-        </div>
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-          style={{ flexShrink: 0 }}
-        >
-          <IconPlus />
-          Add Sheet
-        </Button>
-      </div>
+      <PageHeader
+        title="Sheets"
+        subtitle="Connect Google Sheets to sync volunteer data into NEXUS."
+        action={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+          >
+            <IconPlus />
+            Add Sheet
+          </Button>
+        }
+      />
 
-      {/* Content */}
       {loading ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {[1, 2].map((i) => (
@@ -71,31 +68,21 @@ export default function SheetsPage() {
       ) : error ? (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
       ) : configs.length === 0 ? (
-        <div style={{
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-          height: "240px", gap: "12px", textAlign: "center",
-          border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)",
-          background: "var(--color-surface)",
-        }}>
-          <div style={{ color: "var(--color-text-tertiary)" }}>
-            <IconSheets size={24} />
-          </div>
-          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)" }}>
-            No sheets connected
-          </p>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", maxWidth: "260px" }}>
-            Connect a Google Sheet to start importing volunteer responses.
-          </p>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-            style={{ marginTop: "4px" }}
-          >
-            <IconPlus />
-            Add your first sheet
-          </Button>
-        </div>
+        <EmptyState
+          icon={<IconSheets size={24} />}
+          title="No sheets connected"
+          description="Connect a Google Sheet to start importing volunteer responses."
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+            >
+              <IconPlus />
+              Add your first sheet
+            </Button>
+          }
+        />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {configs.map((cfg) => (
@@ -138,7 +125,6 @@ function ConfigCard({ cfg, tournamentId }: { cfg: SheetConfig; tournamentId: str
       padding: "16px 20px",
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
-        {/* Left: info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)" }}>
@@ -189,7 +175,6 @@ function ConfigCard({ cfg, tournamentId }: { cfg: SheetConfig; tournamentId: str
           )}
         </div>
 
-        {/* Right: sync button */}
         {cfg.is_active && (
           <Button
             variant="secondary"

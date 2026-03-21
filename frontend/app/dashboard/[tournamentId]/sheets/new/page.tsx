@@ -6,6 +6,10 @@ import { sheetsApi, ColumnMapping } from "@/lib/api";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { StepIndicator } from "@/components/ui/StepIndicator";
+import { RadioOption } from "@/components/ui/RadioOption";
+import { StatCard } from "@/components/ui/StatCard";
+import { FieldLabel } from "@/components/ui/FieldLabel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -44,28 +48,28 @@ type MappingRow = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const SHEET_TYPES = [
-  { value: "interest",      label: "Interest Form" },
-  { value: "confirmation",  label: "Confirmation Form" },
-  { value: "events",        label: "Events" },
+  { value: "interest",     label: "Interest Form" },
+  { value: "confirmation", label: "Confirmation Form" },
+  { value: "events",       label: "Events" },
 ];
 
 const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":         "Ignore",
-  "first_name":         "First Name",
-  "last_name":          "Last Name",
-  "email":              "Email",
-  "phone":              "Phone",
-  "shirt_size":         "Shirt Size",
-  "dietary_restriction":"Dietary Restriction",
-  "university":         "University",
-  "major":              "Major",
-  "employer":           "Employer",
-  "role_preference":    "Role Preference",
-  "event_preference":   "Event Preference",
-  "availability":       "Availability",
-  "lunch_order":        "Lunch Order",
-  "notes":              "Notes",
-  "extra_data":         "Extra Data",
+  "__ignore__":          "Ignore",
+  "first_name":          "First Name",
+  "last_name":           "Last Name",
+  "email":               "Email",
+  "phone":               "Phone",
+  "shirt_size":          "Shirt Size",
+  "dietary_restriction": "Dietary Restriction",
+  "university":          "University",
+  "major":               "Major",
+  "employer":            "Employer",
+  "role_preference":     "Role Preference",
+  "event_preference":    "Event Preference",
+  "availability":        "Availability",
+  "lunch_order":         "Lunch Order",
+  "notes":               "Notes",
+  "extra_data":          "Extra Data",
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -78,7 +82,7 @@ const TYPE_LABELS: Record<string, string> = {
   category_events: "Category Events",
 };
 
-const STEPS: { key: Step; label: string }[] = [
+const WIZARD_STEPS = [
   { key: "url",          label: "URL" },
   { key: "sheet-select", label: "Select Sheet" },
   { key: "mapping",      label: "Map Columns" },
@@ -94,52 +98,6 @@ const selectStyle: React.CSSProperties = {
   color: "var(--color-text-primary)", background: "var(--color-bg)",
   outline: "none", cursor: "pointer",
 };
-
-// ─── Step Indicator ───────────────────────────────────────────────────────────
-
-function StepIndicator({ current }: { current: Step }) {
-  const displaySteps = STEPS.filter((s) => s.key !== "syncing");
-  const currentIdx = displaySteps.findIndex((s) => s.key === current);
-
-  return (
-    <div style={{ display: "flex", alignItems: "center", marginBottom: "36px" }}>
-      {displaySteps.map((step, idx) => {
-        const done = idx < currentIdx;
-        const active = idx === currentIdx;
-        return (
-          <div key={step.key} style={{ display: "flex", alignItems: "center", flex: idx < displaySteps.length - 1 ? 1 : undefined }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <div style={{
-                width: "24px", height: "24px", borderRadius: "50%",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
-                flexShrink: 0,
-                background: done || active ? "var(--color-accent)" : "transparent",
-                color: done || active ? "var(--color-text-inverse)" : "var(--color-text-tertiary)",
-                border: done || active ? "none" : "1px solid var(--color-border)",
-              }}>
-                {done ? "✓" : idx + 1}
-              </div>
-              <span style={{
-                fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: active ? 600 : 400,
-                color: active ? "var(--color-text-primary)" : done ? "var(--color-text-secondary)" : "var(--color-text-tertiary)",
-                whiteSpace: "nowrap",
-              }}>
-                {step.label}
-              </span>
-            </div>
-            {idx < displaySteps.length - 1 && (
-              <div style={{
-                flex: 1, height: "1px", margin: "0 12px",
-                background: done ? "var(--color-accent)" : "var(--color-border)",
-              }} />
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -210,9 +168,9 @@ export default function NewSheetPage() {
         const s = result.suggestions[header];
         return {
           header,
-          field:     s?.field    ?? "__ignore__",
-          type:      s?.type     ?? "ignore",
-          row_key:   s?.row_key  ?? "",
+          field:     s?.field     ?? "__ignore__",
+          type:      s?.type      ?? "ignore",
+          row_key:   s?.row_key   ?? "",
           extra_key: s?.extra_key ?? "",
         };
       });
@@ -267,6 +225,9 @@ export default function NewSheetPage() {
     setMappingRows((prev) => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
   }
 
+  // Derive display step key — map "syncing" to "mapping" for indicator
+  const indicatorStep = step === "syncing" ? "mapping" : step;
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -291,7 +252,9 @@ export default function NewSheetPage() {
         Connect a Google Sheet to import volunteer data.
       </p>
 
-      {step !== "syncing" && step !== "results" && <StepIndicator current={step} />}
+      {step !== "syncing" && (
+        <StepIndicator steps={WIZARD_STEPS} current={indicatorStep} />
+      )}
 
       {/* ── STEP 1: URL ── */}
       {step === "url" && (
@@ -351,56 +314,33 @@ export default function NewSheetPage() {
           {/* Sheet name + type in a 2-col grid */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
-              <label style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400, color: "var(--color-text-secondary)", display: "block", marginBottom: "8px" }}>
-                Sheet Tab
-              </label>
+              <FieldLabel>Sheet Tab</FieldLabel>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {validateResult.sheet_names.map((name) => (
-                  <label key={name} style={{
-                    display: "flex", alignItems: "center", gap: "10px",
-                    padding: "10px 12px",
-                    border: `1px solid ${selectedSheet === name ? "var(--color-accent)" : "var(--color-border)"}`,
-                    borderRadius: "var(--radius-sm)",
-                    background: selectedSheet === name ? "var(--color-accent-subtle)" : "var(--color-bg)",
-                    cursor: "pointer",
-                    fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-primary)",
-                    transition: "border-color 120ms ease, background 120ms ease",
-                  }}>
-                    <input
-                      type="radio" name="sheet_name" value={name}
-                      checked={selectedSheet === name}
-                      onChange={() => setSelectedSheet(name)}
-                      style={{ accentColor: "var(--color-accent)" }}
-                    />
-                    {name}
-                  </label>
+                  <RadioOption
+                    key={name}
+                    name="sheet_name"
+                    value={name}
+                    checked={selectedSheet === name}
+                    onChange={setSelectedSheet}
+                    label={name}
+                    mono
+                  />
                 ))}
               </div>
             </div>
             <div>
-              <label style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400, color: "var(--color-text-secondary)", display: "block", marginBottom: "8px" }}>
-                Sheet Type
-              </label>
+              <FieldLabel>Sheet Type</FieldLabel>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {SHEET_TYPES.map(({ value, label }) => (
-                  <label key={value} style={{
-                    display: "flex", alignItems: "center", gap: "10px",
-                    padding: "10px 12px",
-                    border: `1px solid ${sheetType === value ? "var(--color-accent)" : "var(--color-border)"}`,
-                    borderRadius: "var(--radius-sm)",
-                    background: sheetType === value ? "var(--color-accent-subtle)" : "var(--color-bg)",
-                    cursor: "pointer",
-                    fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)",
-                    transition: "border-color 120ms ease, background 120ms ease",
-                  }}>
-                    <input
-                      type="radio" name="sheet_type" value={value}
-                      checked={sheetType === value}
-                      onChange={() => setSheetType(value)}
-                      style={{ accentColor: "var(--color-accent)" }}
-                    />
-                    {label}
-                  </label>
+                  <RadioOption
+                    key={value}
+                    name="sheet_type"
+                    value={value}
+                    checked={sheetType === value}
+                    onChange={setSheetType}
+                    label={label}
+                  />
                 ))}
               </div>
             </div>
@@ -489,7 +429,7 @@ export default function NewSheetPage() {
             animation: "spin 700ms linear infinite",
           }} />
           <div>
-            <p style={{ fontFamily: "var(--font-serif)", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "6px" }}>
+            <p style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "6px" }}>
               Saving &amp; syncing…
             </p>
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
@@ -503,26 +443,10 @@ export default function NewSheetPage() {
       {/* ── RESULTS ── */}
       {step === "results" && syncResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <StepIndicator current="results" />
-
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
-            {[
-              { label: "Created", value: syncResult.created, color: "var(--color-success)" },
-              { label: "Updated", value: syncResult.updated, color: "var(--color-text-primary)" },
-              { label: "Skipped", value: syncResult.skipped, color: "var(--color-warning)" },
-            ].map(({ label, value, color }) => (
-              <div key={label} style={{
-                background: "var(--color-surface)", border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)", padding: "20px", textAlign: "center",
-              }}>
-                <div style={{ fontFamily: "var(--font-serif)", fontSize: "36px", color, lineHeight: 1, marginBottom: "6px" }}>
-                  {value}
-                </div>
-                <div style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-                  {label}
-                </div>
-              </div>
-            ))}
+            <StatCard label="Created" value={syncResult.created} color="var(--color-success)" />
+            <StatCard label="Updated" value={syncResult.updated} />
+            <StatCard label="Skipped" value={syncResult.skipped} color="var(--color-warning)" />
           </div>
 
           {syncResult.errors.length > 0 ? (
@@ -582,15 +506,15 @@ function MappingTableRow({
   onChange: (patch: Partial<MappingRow>) => void;
   isLast: boolean;
 }) {
-  const needsRowKey  = row.type === "matrix_row";
+  const needsRowKey   = row.type === "matrix_row";
   const needsExtraKey = row.field === "extra_data";
 
   function handleFieldChange(field: string) {
     let type = row.type;
-    if (field === "__ignore__")                            type = "ignore";
-    else if (field === "availability")                     type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference") type = "multi_select";
-    else if (type === "ignore")                            type = "string";
+    if (field === "__ignore__")                                              type = "ignore";
+    else if (field === "availability")                                       type = "matrix_row";
+    else if (field === "role_preference" || field === "event_preference")    type = "multi_select";
+    else if (type === "ignore")                                              type = "string";
     onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
 
@@ -607,7 +531,6 @@ function MappingTableRow({
       background: isIgnored ? "var(--color-bg)" : "var(--color-surface)",
       borderBottom: isLast ? "none" : "1px solid var(--color-border)",
     }}>
-      {/* Column header name */}
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "12px",
         color: "var(--color-text-primary)", opacity,
@@ -616,21 +539,18 @@ function MappingTableRow({
         {row.header}
       </span>
 
-      {/* Field */}
       <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }}>
         {knownFields.map((f) => (
           <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>
         ))}
       </select>
 
-      {/* Type */}
       <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }} disabled={row.field === "__ignore__"}>
         {validTypes.map((t) => (
           <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
         ))}
       </select>
 
-      {/* Extra / row key */}
       <div style={{ opacity }}>
         {needsRowKey ? (
           <input
