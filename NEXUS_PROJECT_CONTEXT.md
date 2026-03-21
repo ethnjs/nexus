@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-7e-frontend-refactor*
+*Last updated: phase-7e-sheets-duplicate-tab-ux*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -378,6 +378,15 @@ UNIQUE: (user_id, tournament_id)
 - Non-members get **403** on write routes
 - `admin` always gets access regardless of membership
 
+### Duplicate sheet tab handling
+- Multiple `SheetConfig`s pointing at the same `(spreadsheet_id, sheet_name)` within a tournament are **allowed** — this is a valid advanced use case (e.g. two configs with different column mappings importing different subsets of fields).
+- The upsert-by-email sync logic is safe: no data corruption, last sync wins per field.
+- **UX guards (frontend-only, no DB constraint):**
+  - **Sheets index page:** cards with a duplicate tab get a yellow ⚠ warning banner and a yellow card border, naming the other config(s) sharing the tab.
+  - **Add Sheet wizard (step 2):** if the selected tab is already connected, a yellow ⚠ warning banner appears inline.
+  - **Sync confirmation dialog:** triggered on both sync (index page) and Save & Sync (wizard) when duplicates exist, requiring explicit confirmation before proceeding.
+- **If we want to change this later:** options include (a) adding a DB unique constraint on `(tournament_id, spreadsheet_id, sheet_name)` and returning 409 from the backend, or (b) blocking the save entirely in the wizard if a duplicate is detected. The frontend detection logic (`getDuplicatesForSelection` / `getDuplicates`) is already isolated and easy to repurpose.
+
 ### Frontend component conventions
 - **Always use `Button` from `components/ui/Button`** — never inline button elements for actions
 - **Always use `PageHeader` from `components/ui/PageHeader`** — for page title + subtitle + action
@@ -525,12 +534,34 @@ Branch: `feature/sheets-ui`
 
 ---
 
+## Branch Strategy & Issue Tracking
+
+### Branch separation — backend vs frontend
+Backend and frontend changes are developed on **separate feature branches** and PRed independently. This is required because the Railway preview environment is only connected to `staging` — backend changes need to be live on `staging` before frontend changes that depend on them can be tested end-to-end.
+
+```
+feature/backend-*   →  staging  →  main   (backend changes)
+feature/frontend-*  →  staging  →  main   (frontend changes)
+```
+
+Never mix backend and frontend changes in the same branch unless they are trivially coupled and both safe to ship together.
+
+### Backend issues found during frontend work
+When a backend bug or missing feature is discovered while working on the frontend:
+1. **Document it in this context doc** under Known Issues / Future Work with enough detail to fix it later (error message, file, line, suggested fix).
+2. **Open a GitHub issue** so it's tracked and doesn't get lost between sessions.
+
+Do not block frontend progress on backend fixes unless the frontend literally cannot function without them.
+
+---
+
 ## Known Issues / Future Work
 - `role_preference` stores full question text — needs option mapping to normalize values
 - `event_preference` not parsing correctly in real data — needs investigation
 - Some `extra_data` booleans store full sentence instead of true/false
 - Full sheet sync on every run — "sync only new rows" is a future optimization
 - Railway trial period ends — may migrate backend to Render
+- **[GitHub issue opened] Remove `UNIQUE(tournament_id, sheet_type)` constraint from `sheet_configs`** — the constraint is too restrictive; `sheet_type` is display metadata, not a meaningful uniqueness boundary. A TD may legitimately want multiple configs with the same type but different column mappings. Currently triggers an unhandled 500 when violated. Fix: drop the constraint via a new Alembic migration and remove `UniqueConstraint("tournament_id", "sheet_type", ...)` from `app/models/models.py`. Duplicate-config UX is already handled entirely on the frontend via warning banners and confirmation dialogs. Labels: `backend` `database` `breaking-change`.
 
 ---
 
