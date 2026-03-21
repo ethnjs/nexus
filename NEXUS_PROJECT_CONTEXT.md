@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-8-merged + preview environments set up*
+*Last updated: phase-9 + staging branch workflow*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -35,6 +35,56 @@ Full-stack web dashboard for Science Olympiad tournament directors to manage vol
 - **Backend:** `nexus-api.ethanshih.com` → Railway (prototype)
 - **Future permanent domain:** `nexus.socalscioly.org`
 - Domains managed through Vercel DNS
+
+---
+
+## Branch Strategy & Workflow
+
+Three-tier branch model for collaborating with multiple contributors:
+
+```
+feature/my-feature  →  staging  →  main
+```
+
+### Branches
+- **`main`** — production. Never commit directly. Only receives PRs from `staging`.
+- **`staging`** — integration branch. All feature branches merge here first. Vercel auto-deploys every push as a preview URL; Railway preview backend is wired to this branch.
+- **feature branches** — short-lived, one feature per branch. Branch off `staging`, PR back to `staging`.
+
+### Day-to-day workflow
+```bash
+# Start a new feature
+git checkout staging
+git pull origin staging
+git checkout -b feature/my-feature
+
+# ... do work, commit ...
+
+# Open PR targeting staging (not main)
+# After review + merge to staging, test on the Vercel/Railway preview URLs
+# When staging is stable, open PR from staging → main
+```
+
+### GitHub ruleset summary
+| Branch | Require PR | Required approvals | Force push | Deletions |
+|---|---|---|---|---|
+| `main` | Yes | 1 (collaborator must approve) | Blocked | Blocked |
+| `staging` | Yes | 0 (PR required, no approval gate) | Blocked | Blocked |
+
+- GitHub default branch is set to `staging` so new PRs pre-select it as the base
+- Neither contributor can merge to `main` unilaterally — the other must approve
+- `staging` is lighter: PRs are required for history/CI, but no approval needed for fast iteration
+
+### Key discipline rules
+- **Never let `staging` drift far from `main`** — merge `staging → main` frequently, after each feature batch
+- **Always branch off `staging`**, not `main` — keeps your feature branch up to date with integrated work
+- **Rebase feature branches on `staging`** if staging has moved on while you were working
+
+### Vercel preview notes
+- Vercel free tier auto-deploys all branches without a named "staging" environment
+- The `staging` branch gets a Vercel preview URL just like any other branch push
+- `API_URL` for all preview deployments points to `nexus-preview.up.railway.app`
+- No Vercel Pro upgrade needed
 
 ---
 
@@ -531,6 +581,13 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
   - Prod DB copied to preview via `pg_dump | psql` using public Railway URLs
   - Vercel preview auto-deploys every branch push; `API_URL` + `API_KEY` set for Preview environment
   - GitHub branch ruleset on `main` — PRs required, force push blocked, branch deletion blocked
+- [x] **Phase 10 — Staging branch + collaborator workflow**
+  - Added `staging` branch as integration layer between feature branches and `main`
+  - GitHub default branch changed to `staging`
+  - Ruleset on `staging`: PR required, 0 approvals, force push blocked, deletions blocked
+  - Ruleset on `main`: PR required, 1 approval required, force push blocked, deletions blocked
+  - Vercel free tier auto-deploys `staging` as a preview URL (no Pro upgrade needed)
+  - Railway preview backend serves all Vercel preview deployments including `staging`
 
 ---
 
@@ -556,11 +613,12 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/
 - Root directory: `frontend`
 - Server-side env vars: `API_URL`, `API_KEY` (not `NEXT_PUBLIC_*` — kept server-side via proxy route)
 - Custom domain: `nexus.ethanshih.com`
-- Every branch push auto-generates a preview deployment
+- Every branch push auto-generates a preview deployment (including `staging`)
 - Must redeploy manually after adding/changing env vars
 
 ### Preview environment
 - Railway preview service: `nexus-preview.up.railway.app`
+- Serves all Vercel preview deployments (all branches, including `staging`)
 - To refresh preview DB from prod: `pg_dump <PROD_PUBLIC_URL> | psql <PREVIEW_PUBLIC_URL>`
   - Drop existing tables first: `psql <PREVIEW_PUBLIC_URL> -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"`
 - Railway preview public DB URL: `postgresql://postgres:...@yamanote.proxy.rlwy.net:31907/railway`

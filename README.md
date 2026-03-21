@@ -132,17 +132,54 @@ alembic revision --autogenerate -m "description"
 
 ---
 
-## Deployment
+## Contributing
 
-### Backend (Railway)
+### Branch strategy
+
+We use a three-tier model:
+
+```
+feature/your-feature  →  staging  →  main
+```
+
+- **`main`** — production only. Never commit directly.
+- **`staging`** — integration branch. All feature branches merge here first, get tested, then get promoted to `main`.
+- **feature branches** — one per feature, branched off `staging`.
+
+### Workflow
+
+```bash
+# Start a new feature
+git checkout staging
+git pull origin staging
+git checkout -b feature/your-feature
+
+# ... do work ...
+
+# Open a PR targeting staging (not main)
+# After review and merge, test on the Vercel preview URL
+# When staging is stable, open a PR from staging → main (requires 1 approval)
+```
+
+### Rules
+
+- PRs are required to merge into both `staging` and `main` — no direct commits
+- Merging to `main` requires approval from the other contributor
+- Force pushes and deletions are blocked on both branches
+- The GitHub default branch is `staging` — new PRs will pre-select it as the base
+
+### Deployment
+
+**Backend (Railway)**
 - Root directory: `backend`
 - Start command defined in `Procfile`
 - Required env vars: `APP_ENV`, `DATABASE_URL`, `API_KEY`, `JWT_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 
-### Frontend (Vercel)
+**Frontend (Vercel)**
 - Root directory: `frontend`
 - Required env vars (server-side only): `API_URL`, `API_KEY`
 - All API calls are proxied through `/api/proxy` — the API key is never exposed to the browser
+- Every branch push (including `staging`) gets a Vercel preview deployment automatically
 
 ---
 
@@ -153,14 +190,3 @@ alembic revision --autogenerate -m "description"
 **Sheet sync** upserts users and memberships by email. Contiguous availability slots are merged automatically. Synced volunteers start with no system permissions — TDs assign positions manually.
 
 **All routes** require an `X-API-Key` header (skipped in development when `API_KEY` is blank). Auth routes additionally issue a JWT as an httpOnly cookie.
-
----
-
-## Contributing
-
-All changes to `main` must go through a pull request. Direct pushes are blocked.
-
-1. Branch off `main`
-2. Make your changes
-3. Open a PR against `main`
-4. Merge after review
