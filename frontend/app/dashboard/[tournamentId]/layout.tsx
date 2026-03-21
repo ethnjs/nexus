@@ -34,7 +34,7 @@ function TournamentShell({
       {/* Right column — topbar + content stacked */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
         <Topbar tournamentId={tournamentId} />
-        <main style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+        <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
           {children}
         </main>
       </div>
