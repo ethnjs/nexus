@@ -30,7 +30,7 @@ const config: Config = {
       },
       fontFamily: {
         sans:    ['Geist', 'system-ui', 'sans-serif'],
-        serif:   ['Instrument Serif', 'Georgia', 'serif'],
+        serif:   ['Georgia', 'serif'],
         display: ['Geist', 'system-ui', 'sans-serif'],
         mono:    ['Geist Mono', 'Courier New', 'monospace'],
       },

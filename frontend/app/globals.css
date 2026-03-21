@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap');
 @import "tailwindcss";
 
 /* Geist fonts via NPM-hosted CDN */
@@ -126,11 +125,11 @@
   /* Typography
      --font-mono      → Geist Mono   (body text, inputs, data values, code)
      --font-sans      → Geist Sans   (UI labels, buttons, nav, subheadings)
-     --font-serif     → Instrument Serif (h1, h2, hero, wordmarks)
+     --font-serif     → Georgia      (h1, h2, hero, wordmarks)
   */
   --font-mono:  'Geist Mono', 'Courier New', monospace;
   --font-sans:  'Geist', system-ui, sans-serif;
-  --font-serif: 'Instrument Serif', Georgia, serif;
+  --font-serif: Georgia, serif;
 
   /* Spacing scale */
   --space-1:  4px;
@@ -188,7 +187,7 @@ body {
   min-height: 100vh;
 }
 
-/* h1, h2 → Instrument Serif */
+/* h1, h2 → Georgia */
 h1, h2 {
   font-family: var(--font-serif);
   font-weight: 400;
