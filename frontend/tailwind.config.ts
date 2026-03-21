@@ -29,10 +29,10 @@ const config: Config = {
         inverse:   'var(--color-text-inverse)',
       },
       fontFamily: {
-        sans:    ['DM Mono', 'Courier New', 'monospace'],
+        sans:    ['Geist', 'system-ui', 'sans-serif'],
         serif:   ['Instrument Serif', 'Georgia', 'serif'],
-        display: ['DM Sans', 'system-ui', 'sans-serif'],
-        mono:    ['DM Mono', 'Courier New', 'monospace'],
+        display: ['Geist', 'system-ui', 'sans-serif'],
+        mono:    ['Geist Mono', 'Courier New', 'monospace'],
       },
       fontSize: {
         '2xs': ['11px', { lineHeight: '16px' }],
