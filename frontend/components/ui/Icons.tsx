@@ -159,6 +159,21 @@ export function IconCheckCircle({ size = 16, ...props }: IconProps) {
   );
 }
 
+export function IconWarning({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <path
+        d="M7.08 2.48a1.05 1.05 0 0 1 1.84 0l5.6 9.8A1.05 1.05 0 0 1 13.6 14H2.4a1.05 1.05 0 0 1-.92-1.72l5.6-9.8z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      <path d="M8 6.5v3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="8" cy="11.5" r="0.75" fill="currentColor" />
+    </svg>
+  );
+}
+
 // ─── Content ─────────────────────────────────────────────────────────────────
 
 export function IconCalendar({ size = 13, ...props }: IconProps) {

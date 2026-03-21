@@ -2,8 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping } from "@/lib/api";
-import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
+import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
+import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -99,6 +99,77 @@ const selectStyle: React.CSSProperties = {
   outline: "none", cursor: "pointer",
 };
 
+// ─── Save Confirmation Modal ──────────────────────────────────────────────────
+
+function SaveConfirmModal({
+  duplicates,
+  onConfirm,
+  onCancel,
+}: {
+  duplicates: SheetConfig[];
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0,
+        background: "rgba(0,0,0,0.35)",
+        zIndex: 200,
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "28px",
+          width: 420,
+          maxWidth: "calc(100vw - 32px)",
+          boxShadow: "var(--shadow-lg)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "12px" }}>
+          Add duplicate sheet tab?
+        </h2>
+        <div style={{
+          background: "var(--color-warning-subtle)",
+          border: "1px solid var(--color-warning)",
+          borderRadius: "var(--radius-md)",
+          padding: "12px 14px",
+          marginBottom: "20px",
+        }}>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+            <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
+            This tab is already connected as:
+          </p>
+          <ul style={{ margin: 0, paddingLeft: "18px" }}>
+            {duplicates.map((d) => (
+              <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                <strong>{d.label}</strong> ({d.sheet_name})
+              </li>
+            ))}
+          </ul>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+            Having multiple configs pointing at the same sheet tab is allowed, but syncing them may overwrite each other&apos;s data if they map to the same fields. Make sure this is intentional.
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
+            Go back
+          </Button>
+          <Button variant="primary" size="md" fullWidth onClick={onConfirm}>
+            Add anyway
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function NewSheetPage() {
@@ -113,6 +184,7 @@ export default function NewSheetPage() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
+  const [existingConfigs, setExistingConfigs] = useState<SheetConfig[]>([]);
 
   // Step 2
   const [selectedSheet, setSelectedSheet] = useState("");
@@ -126,9 +198,22 @@ export default function NewSheetPage() {
   const [mappingRows, setMappingRows] = useState<MappingRow[]>([]);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
 
   // Results
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+
+  // ── Duplicate detection ───────────────────────────────────────────────────
+
+  /** Configs that share the same spreadsheet_id + sheet_name as the current selection. */
+  function getDuplicatesForSelection(): SheetConfig[] {
+    if (!validateResult || !selectedSheet) return [];
+    return existingConfigs.filter(
+      (c) =>
+        c.spreadsheet_id === validateResult.spreadsheet_id &&
+        c.sheet_name === selectedSheet
+    );
+  }
 
   // ── Step 1: Validate URL ──────────────────────────────────────────────────
 
@@ -137,8 +222,12 @@ export default function NewSheetPage() {
     setUrlLoading(true);
     setUrlError("");
     try {
-      const result = await sheetsApi.validate(tournamentId, sheetUrl.trim());
+      const [result, configs] = await Promise.all([
+        sheetsApi.validate(tournamentId, sheetUrl.trim()),
+        sheetsApi.listConfigs(tournamentId),
+      ]);
       setValidateResult(result);
+      setExistingConfigs(configs);
       setSelectedSheet(result.sheet_names[0] ?? "");
       setStep("sheet-select");
     } catch (e: unknown) {
@@ -197,7 +286,8 @@ export default function NewSheetPage() {
     return result;
   }, [mappingRows]);
 
-  async function handleSaveAndSync() {
+  async function doSaveAndSync() {
+    setShowSaveConfirm(false);
     setSaveLoading(true);
     setSaveError("");
     setStep("syncing");
@@ -221,12 +311,24 @@ export default function NewSheetPage() {
     }
   }
 
+  function handleSaveAndSync() {
+    const dupes = getDuplicatesForSelection();
+    if (dupes.length > 0) {
+      setShowSaveConfirm(true);
+    } else {
+      doSaveAndSync();
+    }
+  }
+
   function updateRow(idx: number, patch: Partial<MappingRow>) {
     setMappingRows((prev) => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
   }
 
   // Derive display step key — map "syncing" to "mapping" for indicator
   const indicatorStep = step === "syncing" ? "mapping" : step;
+
+  // Duplicates for the current sheet-select step
+  const selectStepDuplicates = step === "sheet-select" ? getDuplicatesForSelection() : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -300,6 +402,34 @@ export default function NewSheetPage() {
               </div>
             </div>
           </div>
+
+          {/* Duplicate tab warning — shown when selected sheet already exists */}
+          {selectStepDuplicates.length > 0 && (
+            <div style={{
+              display: "flex", alignItems: "flex-start", gap: "8px",
+              background: "var(--color-warning-subtle)",
+              border: "1px solid var(--color-warning)",
+              borderRadius: "var(--radius-md)",
+              padding: "12px 14px",
+            }}>
+              <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "2px" }} />
+              <div>
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)", marginBottom: "4px" }}>
+                  This tab is already connected
+                </p>
+                <ul style={{ margin: 0, paddingLeft: "18px" }}>
+                  {selectStepDuplicates.map((d) => (
+                    <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                      <strong>{d.label}</strong> · {d.sheet_name}
+                    </li>
+                  ))}
+                </ul>
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "6px" }}>
+                  You can still proceed, but syncing both configs may overwrite each other&apos;s data.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Label */}
           <Input
@@ -489,6 +619,15 @@ export default function NewSheetPage() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* ── Save confirmation modal for duplicate tab ── */}
+      {showSaveConfirm && (
+        <SaveConfirmModal
+          duplicates={getDuplicatesForSelection()}
+          onConfirm={doSaveAndSync}
+          onCancel={() => setShowSaveConfirm(false)}
+        />
       )}
     </div>
   );
