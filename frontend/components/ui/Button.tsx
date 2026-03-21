@@ -36,7 +36,7 @@ const variantStyles: Record<Variant, React.CSSProperties> = {
 }
 
 const sizeStyles: Record<Size, React.CSSProperties> = {
-  sm: { height: '32px', padding: '0 12px', fontSize: '13px', gap: '6px' },
+  sm: { height: '36px', padding: '0 14px', fontSize: '13px', gap: '7px' },
   md: { height: '38px', padding: '0 16px', fontSize: '14px', gap: '8px' },
   lg: { height: '48px', padding: '0 20px', fontSize: '15px', gap: '8px' },
 }
@@ -54,7 +54,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           fontFamily: 'var(--font-sans)',
           fontWeight: 600,
           letterSpacing: '0.01em',
-          borderRadius: 'var(--radius-sm)',
+          borderRadius: 'var(--radius-md)',
           cursor: disabled || loading ? 'not-allowed' : 'pointer',
           opacity: disabled || loading ? 0.6 : 1,
           transition: 'opacity 150ms ease, background 150ms ease, border-color 150ms ease',
@@ -70,7 +70,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             width: '14px',
             height: '14px',
             border: '2px solid rgba(255,255,255,0.4)',
-            borderTopColor: '#fff',
+            borderTopColor: variant === 'primary' ? '#fff' : 'var(--color-text-primary)',
             borderRadius: '50%',
             display: 'inline-block',
             animation: 'spin 600ms linear infinite',

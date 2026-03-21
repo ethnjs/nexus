@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 import { IconPlus, IconSheets, IconSync } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
@@ -43,22 +44,15 @@ export default function SheetsPage() {
             Connect Google Sheets to sync volunteer data into NEXUS.
           </p>
         </div>
-        <button
+        <Button
+          variant="primary"
+          size="sm"
           onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-          style={{
-            height: "36px", padding: "0 14px",
-            border: "none", borderRadius: "var(--radius-md)",
-            background: "var(--color-accent)", color: "var(--color-text-inverse)",
-            fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600,
-            display: "flex", alignItems: "center", gap: "7px", cursor: "pointer",
-            flexShrink: 0,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-accent-hover)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "var(--color-accent)"; }}
+          style={{ flexShrink: 0 }}
         >
           <IconPlus />
           Add Sheet
-        </button>
+        </Button>
       </div>
 
       {/* Content */}
@@ -86,25 +80,21 @@ export default function SheetsPage() {
           <div style={{ color: "var(--color-text-tertiary)" }}>
             <IconSheets size={24} />
           </div>
-          <p style={{ fontFamily: "var(--font-serif)", fontSize: "20px", color: "var(--color-text-primary)" }}>
+          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)" }}>
             No sheets connected
           </p>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", maxWidth: "260px" }}>
             Connect a Google Sheet to start importing volunteer responses.
           </p>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-            style={{
-              marginTop: "4px", height: "36px", padding: "0 16px",
-              border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-              background: "transparent", cursor: "pointer",
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-              color: "var(--color-text-primary)", display: "flex", alignItems: "center", gap: "7px",
-            }}
+            style={{ marginTop: "4px" }}
           >
             <IconPlus />
             Add your first sheet
-          </button>
+          </Button>
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
@@ -147,7 +137,7 @@ function ConfigCard({ cfg, tournamentId }: { cfg: SheetConfig; tournamentId: str
       borderRadius: "var(--radius-md)",
       padding: "16px 20px",
     }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}>
         {/* Left: info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "6px" }}>
@@ -201,25 +191,16 @@ function ConfigCard({ cfg, tournamentId }: { cfg: SheetConfig; tournamentId: str
 
         {/* Right: sync button */}
         {cfg.is_active && (
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={handleSync}
-            disabled={syncing}
-            title="Sync now"
-            style={{
-              height: "32px", padding: "0 12px",
-              border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-              background: "transparent", cursor: syncing ? "not-allowed" : "pointer",
-              fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
-              color: syncing ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
-              display: "flex", alignItems: "center", gap: "6px", flexShrink: 0,
-              opacity: syncing ? 0.6 : 1,
-            }}
-            onMouseEnter={(e) => { if (!syncing) e.currentTarget.style.borderColor = "var(--color-border-strong)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)"; }}
+            loading={syncing}
+            style={{ flexShrink: 0 }}
           >
             <IconSync />
             {syncing ? "Syncing…" : "Sync"}
-          </button>
+          </Button>
         )}
       </div>
     </div>
