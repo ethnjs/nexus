@@ -16,14 +16,11 @@ const SHEET_TYPE_LABELS: Record<string, string> = {
 };
 
 function fmtDateTime(iso: string) {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  });
+  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'
+  return new Date(normalized).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  })
 }
 
 /** Returns true if two configs point at the exact same Google Sheet tab. */
