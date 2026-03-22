@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { SplitButton } from "@/components/ui/SplitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSheets, IconSync, IconWarning } from "@/components/ui/Icons";
@@ -35,83 +36,47 @@ function getDuplicates(cfg: SheetConfig, all: SheetConfig[]): SheetConfig[] {
   return all.filter((c) => c.id !== cfg.id && isSameTab(c, cfg));
 }
 
-export default function SheetsPage() {
-  const router = useRouter();
-  const params = useParams();
-  const tournamentId = params.tournamentId as string;
+// ─── Export helpers ───────────────────────────────────────────────────────────
 
-  const [configs, setConfigs] = useState<SheetConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+function exportJson(cfg: SheetConfig) {
+  const payload = {
+    label: cfg.label,
+    sheet_type: cfg.sheet_type,
+    sheet_name: cfg.sheet_name,
+    column_mappings: cfg.column_mappings,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
-  useEffect(() => {
-    sheetsApi.listConfigs(Number(tournamentId))
-      .then(setConfigs)
-      .catch(() => setError("Failed to load sheet configurations."))
-      .finally(() => setLoading(false));
-  }, [tournamentId]);
-
-  return (
-    <div style={{ width: "100%" }}>
-      <PageHeader
-        title="Sheets"
-        subtitle="Connect Google Sheets to sync volunteer data into NEXUS."
-        action={
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-          >
-            <IconPlus />
-            Add Sheet
-          </Button>
-        }
-      />
-
-      {loading ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {[1, 2].map((i) => (
-            <div key={i} style={{
-              height: "80px",
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              opacity: 0.5,
-            }} />
-          ))}
-        </div>
-      ) : error ? (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
-      ) : configs.length === 0 ? (
-        <EmptyState
-          icon={<IconSheets size={24} />}
-          title="No sheets connected"
-          description="Connect a Google Sheet to start importing volunteer responses."
-          action={
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
-            >
-              <IconPlus />
-              Add your first sheet
-            </Button>
-          }
-        />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {configs.map((cfg) => (
-            <ConfigCard
-              key={cfg.id}
-              cfg={cfg}
-              tournamentId={tournamentId}
-              duplicates={getDuplicates(cfg, configs)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
+function exportCsv(cfg: SheetConfig) {
+  const rows: string[][] = [
+    ["header", "field", "type", "row_key", "extra_key"],
+  ];
+  for (const [header, mapping] of Object.entries(cfg.column_mappings)) {
+    rows.push([
+      header,
+      mapping.field,
+      mapping.type,
+      mapping.row_key ?? "",
+      mapping.extra_key ?? "",
+    ]);
+  }
+  const csv = rows
+    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Sync Confirmation Modal ──────────────────────────────────────────────────
@@ -315,18 +280,31 @@ function ConfigCard({
             )}
           </div>
 
-          {cfg.is_active && (
-            <Button
+          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
+            {/* Export — SplitButton: primary action = JSON, dropdown adds CSV */}
+            <SplitButton
+              label="Export"
+              onClick={() => exportJson(cfg)}
               variant="secondary"
               size="sm"
-              onClick={handleSyncClick}
-              loading={syncing}
-              style={{ flexShrink: 0 }}
-            >
-              <IconSync />
-              {syncing ? "Syncing…" : "Sync"}
-            </Button>
-          )}
+              options={[
+                { label: "Export JSON", action: () => exportJson(cfg) },
+                { label: "Export CSV",  action: () => exportCsv(cfg) },
+              ]}
+            />
+
+            {cfg.is_active && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleSyncClick}
+                loading={syncing}
+              >
+                <IconSync />
+                {syncing ? "Syncing…" : "Sync"}
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -339,5 +317,86 @@ function ConfigCard({
         />
       )}
     </>
+  );
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function SheetsPage() {
+  const router = useRouter();
+  const params = useParams();
+  const tournamentId = params.tournamentId as string;
+
+  const [configs, setConfigs] = useState<SheetConfig[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    sheetsApi.listConfigs(Number(tournamentId))
+      .then(setConfigs)
+      .catch(() => setError("Failed to load sheet configurations."))
+      .finally(() => setLoading(false));
+  }, [tournamentId]);
+
+  return (
+    <div style={{ width: "100%" }}>
+      <PageHeader
+        title="Sheets"
+        subtitle="Connect Google Sheets to sync volunteer data into NEXUS."
+        action={
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+          >
+            <IconPlus />
+            Add Sheet
+          </Button>
+        }
+      />
+
+      {loading ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {[1, 2].map((i) => (
+            <div key={i} style={{
+              height: "80px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              opacity: 0.5,
+            }} />
+          ))}
+        </div>
+      ) : error ? (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
+      ) : configs.length === 0 ? (
+        <EmptyState
+          icon={<IconSheets size={24} />}
+          title="No sheets connected"
+          description="Connect a Google Sheet to start importing volunteer responses."
+          action={
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+            >
+              <IconPlus />
+              Add your first sheet
+            </Button>
+          }
+        />
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          {configs.map((cfg) => (
+            <ConfigCard
+              key={cfg.id}
+              cfg={cfg}
+              tournamentId={tournamentId}
+              duplicates={getDuplicates(cfg, configs)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

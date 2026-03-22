@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
 import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
+import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -99,7 +100,116 @@ const selectStyle: React.CSSProperties = {
   outline: "none", cursor: "pointer",
 };
 
-// ─── Save Confirmation Modal ──────────────────────────────────────────────────
+// ─── Import parsers ───────────────────────────────────────────────────────────
+
+interface MappingsExport {
+  label?: string;
+  sheet_type?: string;
+  sheet_name?: string;
+  column_mappings: Record<string, ColumnMapping>;
+}
+
+function parseMappingsJson(text: string): MappingsExport | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || !parsed.column_mappings) return null;
+    return parsed as MappingsExport;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a CSV exported by our exportCsv helper.
+ * Expected header row: header, field, type, row_key, extra_key
+ */
+function parseMappingsCsv(text: string): MappingsExport | null {
+  try {
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) return null;
+
+    function parseLine(line: string): string[] {
+      const cells: string[] = [];
+      let cur = "";
+      let inQuote = false;
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (ch === '"') {
+          if (inQuote && line[i + 1] === '"') { cur += '"'; i++; }
+          else inQuote = !inQuote;
+        } else if (ch === ',' && !inQuote) {
+          cells.push(cur); cur = "";
+        } else {
+          cur += ch;
+        }
+      }
+      cells.push(cur);
+      return cells;
+    }
+
+    const header = parseLine(lines[0]).map((h) => h.trim().toLowerCase());
+    const headerIdx   = header.indexOf("header");
+    const fieldIdx    = header.indexOf("field");
+    const typeIdx     = header.indexOf("type");
+    const rowKeyIdx   = header.indexOf("row_key");
+    const extraKeyIdx = header.indexOf("extra_key");
+
+    if (headerIdx === -1 || fieldIdx === -1 || typeIdx === -1) return null;
+
+    const column_mappings: Record<string, ColumnMapping> = {};
+    for (let i = 1; i < lines.length; i++) {
+      if (!lines[i].trim()) continue;
+      const cells = parseLine(lines[i]);
+      const colHeader = cells[headerIdx]?.trim();
+      if (!colHeader) continue;
+      const mapping: ColumnMapping = {
+        field: cells[fieldIdx]?.trim() ?? "__ignore__",
+        type:  (cells[typeIdx]?.trim() ?? "ignore") as ColumnMapping["type"],
+      };
+      if (rowKeyIdx !== -1 && cells[rowKeyIdx]?.trim()) mapping.row_key = cells[rowKeyIdx].trim();
+      if (extraKeyIdx !== -1 && cells[extraKeyIdx]?.trim()) mapping.extra_key = cells[extraKeyIdx].trim();
+      column_mappings[colHeader] = mapping;
+    }
+
+    return { column_mappings };
+  } catch {
+    return null;
+  }
+}
+
+// ─── Import success toast ─────────────────────────────────────────────────────
+
+function ImportToast({ count, onDismiss }: { count: number; onDismiss: () => void }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: "10px",
+      background: "var(--color-surface)",
+      border: "1px solid var(--color-success)",
+      borderRadius: "var(--radius-md)",
+      padding: "10px 14px",
+      boxShadow: "var(--shadow-sm)",
+    }}>
+      <span style={{ color: "var(--color-success)", flexShrink: 0 }}>
+        <IconCheckCircle size={15} />
+      </span>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", flex: 1 }}>
+        Mappings imported — <strong>{count}</strong> column{count !== 1 ? "s" : ""} updated.
+      </span>
+      <button
+        onClick={onDismiss}
+        style={{
+          background: "none", border: "none", cursor: "pointer",
+          fontFamily: "var(--font-sans)", fontSize: "12px",
+          color: "var(--color-text-tertiary)", padding: "0 2px", lineHeight: 1,
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+// ─── Save Confirmation Modal (duplicate tab) ──────────────────────────────────
 
 function SaveConfirmModal({
   duplicates,
@@ -199,13 +309,15 @@ export default function NewSheetPage() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [importToast, setImportToast] = useState<{ count: number } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   // Results
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
 
   // ── Duplicate detection ───────────────────────────────────────────────────
 
-  /** Configs that share the same spreadsheet_id + sheet_name as the current selection. */
   function getDuplicatesForSelection(): SheetConfig[] {
     if (!validateResult || !selectedSheet) return [];
     return existingConfigs.filter(
@@ -273,6 +385,67 @@ export default function NewSheetPage() {
     }
   }
 
+  // ── Step 3: Import file ───────────────────────────────────────────────────
+
+  function triggerImport(accept: string) {
+    setImportError("");
+    setImportToast(null);
+    if (importInputRef.current) {
+      importInputRef.current.accept = accept;
+      importInputRef.current.click();
+    }
+  }
+
+  function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = ""; // reset so same file can be re-imported
+
+    const isJson = file.name.endsWith(".json") || file.type === "application/json";
+    const isCsv  = file.name.endsWith(".csv")  || file.type === "text/csv";
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target?.result as string;
+      let parsed: MappingsExport | null = null;
+
+      if (isJson) {
+        parsed = parseMappingsJson(text);
+        if (!parsed) { setImportError("Invalid JSON file — expected { column_mappings: { ... } }"); return; }
+      } else if (isCsv) {
+        parsed = parseMappingsCsv(text);
+        if (!parsed) { setImportError("Invalid CSV file — expected columns: header, field, type, row_key, extra_key"); return; }
+      } else {
+        setImportError("Unsupported file type. Please upload a .json or .csv file.");
+        return;
+      }
+
+      const importedMappings = parsed.column_mappings;
+      let updatedCount = 0;
+
+      setMappingRows((prev) =>
+        prev.map((row) => {
+          const m = importedMappings[row.header];
+          if (!m) return row;
+          updatedCount++;
+          return {
+            header: row.header,
+            field:     m.field     ?? row.field,
+            type:      m.type      ?? row.type,
+            row_key:   m.row_key   ?? "",
+            extra_key: m.extra_key ?? "",
+          };
+        })
+      );
+
+      if (parsed.label && !sheetLabel) setSheetLabel(parsed.label);
+      if (parsed.sheet_type) setSheetType(parsed.sheet_type);
+      setImportError("");
+      setImportToast({ count: updatedCount });
+    };
+    reader.readAsText(file);
+  }
+
   // ── Step 3: Save + Sync ───────────────────────────────────────────────────
 
   const buildColumnMappings = useCallback((): Record<string, ColumnMapping> => {
@@ -324,10 +497,7 @@ export default function NewSheetPage() {
     setMappingRows((prev) => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
   }
 
-  // Derive display step key — map "syncing" to "mapping" for indicator
   const indicatorStep = step === "syncing" ? "mapping" : step;
-
-  // Duplicates for the current sheet-select step
   const selectStepDuplicates = step === "sheet-select" ? getDuplicatesForSelection() : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -452,7 +622,7 @@ export default function NewSheetPage() {
                     name="sheet_name"
                     value={name}
                     checked={selectedSheet === name}
-                    onChange={setSelectedSheet}
+                    onChange={(v) => { setSelectedSheet(v); }}
                     label={name}
                     mono
                   />
@@ -494,10 +664,43 @@ export default function NewSheetPage() {
       {/* ── STEP 3: Column Mapping ── */}
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            Review and adjust how each column maps to NEXUS fields.
-            Ignored columns are dimmed — they won&apos;t be imported.
-          </p>
+          {/* Toolbar row */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
+              Review and adjust how each column maps to NEXUS fields.
+              Ignored columns are dimmed — they won&apos;t be imported.
+            </p>
+            {/* Import — SplitButton: primary action = JSON, dropdown adds CSV */}
+            <div style={{ flexShrink: 0 }}>
+              <SplitButton
+                label="Import"
+                onClick={() => triggerImport(".json,application/json")}
+                variant="secondary"
+                size="sm"
+                options={[
+                  { label: "Import JSON", action: () => triggerImport(".json,application/json") },
+                  { label: "Import CSV",  action: () => triggerImport(".csv,text/csv") },
+                ]}
+              />
+              <input
+                ref={importInputRef}
+                type="file"
+                accept=".json,.csv,application/json,text/csv"
+                style={{ display: "none" }}
+                onChange={handleImportFile}
+              />
+            </div>
+          </div>
+
+          {/* Import feedback */}
+          {importToast && (
+            <ImportToast count={importToast.count} onDismiss={() => setImportToast(null)} />
+          )}
+          {importError && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "-12px" }}>
+              {importError}
+            </p>
+          )}
 
           <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
             {/* Header row */}
@@ -621,7 +824,7 @@ export default function NewSheetPage() {
         </div>
       )}
 
-      {/* ── Save confirmation modal for duplicate tab ── */}
+      {/* Save confirmation modal for duplicate tab */}
       {showSaveConfirm && (
         <SaveConfirmModal
           duplicates={getDuplicatesForSelection()}
@@ -673,8 +876,8 @@ function MappingTableRow({
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "12px",
         color: "var(--color-text-primary)", opacity,
-        wordBreak: "break-word", paddingRight: "8px",
-      }}>
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "8px",
+      }} title={row.header}>
         {row.header}
       </span>
 
