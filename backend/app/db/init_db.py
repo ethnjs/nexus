@@ -124,6 +124,6 @@ if __name__ == "__main__":
 
     init_db()
 
-    if settings.app_env == "development":
+    if settings.app_env in ("development", "preview"):
         with SessionLocal() as db:
             seed_dev_data(db)
