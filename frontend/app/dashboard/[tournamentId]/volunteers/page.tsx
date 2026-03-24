@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { membershipsApi, usersApi, Membership, User } from "@/lib/api";
+import { membershipsApi, Membership, User } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 
@@ -52,20 +52,9 @@ export default function VolunteersPage() {
       setLoading(true);
       setError("");
       try {
+        // User data is now embedded by the list endpoint — no per-membership fetches needed.
         const ms = await membershipsApi.listByTournament(tournamentId);
-
-        // Fetch users in parallel for display names / emails
-        const withUsers = await Promise.all(
-          ms.map(async (m) => {
-            try {
-              const user = await usersApi.getForTournament(tournamentId, m.user_id);
-              return { ...m, user };
-            } catch {
-              return { ...m };
-            }
-          })
-        );
-        setMemberships(withUsers);
+        setMemberships(ms as MembershipWithUser[]);
       } catch {
         setError("Failed to load volunteers.");
       } finally {
