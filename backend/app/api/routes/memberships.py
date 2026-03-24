@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.permissions import (
     MANAGE_TOURNAMENT,
@@ -17,9 +17,13 @@ from app.schemas.membership import MembershipCreate, MembershipRead, MembershipU
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])
 
 
-def _serialize(m: Membership) -> dict:
-    """Serialize membership, converting availability and schedule slots to dicts."""
-    return {
+def _serialize(m: Membership, include_user: bool = False) -> dict:
+    """Serialize membership, converting availability and schedule slots to dicts.
+
+    Pass include_user=True in list views to embed user name/email inline,
+    avoiding O(n) follow-up requests from the frontend.
+    """
+    data = {
         "id": m.id,
         "user_id": m.user_id,
         "tournament_id": m.tournament_id,
@@ -36,6 +40,21 @@ def _serialize(m: Membership) -> dict:
         "created_at": m.created_at,
         "updated_at": m.updated_at,
     }
+
+    if include_user:
+        data["user"] = (
+            {
+                "id": m.user.id,
+                "email": m.user.email,
+                "first_name": m.user.first_name,
+                "last_name": m.user.last_name,
+                "role": m.user.role,
+            }
+            if m.user
+            else None
+        )
+
+    return data
 
 
 def _require_read_permission(user: User, tournament_id: int, db: Session) -> None:
@@ -75,26 +94,36 @@ def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) 
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/memberships/ — view_volunteers+
+# Returns MembershipReadWithUser: user name/email embedded via JOIN (1 query).
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[MembershipRead])
+@router.get("/", response_model=list[MembershipReadWithUser])
 def list_memberships(
     tournament_id: int,
     status_filter: str | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all memberships for a tournament. Optionally filter by ?status=confirmed"""
+    """List all memberships for a tournament, with user info embedded inline.
+
+    Uses joinedload so SQLAlchemy fetches users in a single JOIN rather than
+    issuing a separate SELECT per membership (fixes O(n) query issue #4).
+    Optionally filter by ?status=confirmed.
+    """
     _require_read_permission(current_user, tournament_id, db)
 
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    query = db.query(Membership).filter(Membership.tournament_id == tournament_id)
+    query = (
+        db.query(Membership)
+        .options(joinedload(Membership.user))
+        .filter(Membership.tournament_id == tournament_id)
+    )
     if status_filter:
         query = query.filter(Membership.status == status_filter)
 
-    return [_serialize(m) for m in query.order_by(Membership.id).all()]
+    return [_serialize(m, include_user=True) for m in query.order_by(Membership.id).all()]
 
 
 # ---------------------------------------------------------------------------
