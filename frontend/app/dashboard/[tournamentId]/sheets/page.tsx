@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { SplitButton } from "@/components/ui/SplitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconPlus, IconSheets, IconSync, IconWarning } from "@/components/ui/Icons";
+import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
   interest:     "Interest Form",
@@ -23,12 +22,10 @@ function fmtDateTime(iso: string) {
   })
 }
 
-/** Returns true if two configs point at the exact same Google Sheet tab. */
 function isSameTab(a: SheetConfig, b: SheetConfig) {
   return a.spreadsheet_id === b.spreadsheet_id && a.sheet_name === b.sheet_name;
 }
 
-/** Returns the other configs that share the same tab as `cfg`. */
 function getDuplicates(cfg: SheetConfig, all: SheetConfig[]): SheetConfig[] {
   return all.filter((c) => c.id !== cfg.id && isSameTab(c, cfg));
 }
@@ -149,22 +146,214 @@ function SyncConfirmModal({
   );
 }
 
+// ─── Delete Confirm Modal ─────────────────────────────────────────────────────
+
+function DeleteConfirmModal({
+  cfg,
+  onConfirm,
+  onCancel,
+  loading,
+}: {
+  cfg: SheetConfig;
+  onConfirm: () => void;
+  onCancel: () => void;
+  loading: boolean;
+}) {
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: "rgba(0,0,0,0.35)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+      }}
+      onClick={onCancel}
+    >
+      <div
+        style={{
+          background: "var(--color-surface)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-lg)",
+          padding: "28px",
+          width: 400,
+          maxWidth: "calc(100vw - 32px)",
+          boxShadow: "var(--shadow-lg)",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "8px" }}>
+          Delete config?
+        </h2>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
+          <strong>{cfg.label}</strong> will be permanently deleted. Volunteer data is unaffected.
+        </p>
+        <div style={{ display: "flex", gap: "10px" }}>
+          <Button variant="secondary" size="md" fullWidth onClick={onCancel} disabled={loading}>
+            Cancel
+          </Button>
+          <Button variant="danger" size="md" fullWidth onClick={onConfirm} loading={loading}>
+            Delete
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── 3-dot Menu ───────────────────────────────────────────────────────────────
+
+function CardMenu({
+  cfg,
+  tournamentId,
+  onDelete,
+}: {
+  cfg: SheetConfig;
+  tournamentId: string;
+  onDelete: () => void;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const menuItems: { label: string; icon: React.ReactNode; action: () => void; danger?: boolean }[] = [
+    {
+      label: "Export JSON",
+      icon: <IconExport size={13} />,
+      action: () => { exportJson(cfg); setOpen(false); },
+    },
+    {
+      label: "Export CSV",
+      icon: <IconExport size={13} />,
+      action: () => { exportCsv(cfg); setOpen(false); },
+    },
+    {
+      label: "Edit",
+      icon: <IconEdit size={13} />,
+      action: () => { router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
+    },
+    {
+      label: "Delete",
+      icon: <IconTrash size={13} />,
+      action: () => { onDelete(); setOpen(false); },
+      danger: true,
+    },
+  ];
+
+  return (
+    <div ref={menuRef} style={{ position: "relative" }}>
+      {/* Borderless icon button */}
+      <button
+        onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: "28px", height: "28px",
+          border: "none",
+          borderRadius: "var(--radius-sm)",
+          background: hovered || open ? "var(--color-bg)" : "transparent",
+          color: hovered || open ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+          cursor: "pointer",
+          transition: "background 120ms ease, color 120ms ease",
+        }}
+      >
+        <IconDotsVertical size={14} />
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 4px)",
+            right: 0,
+            zIndex: 20,
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            minWidth: "148px",
+            overflow: "hidden",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Export group */}
+          <div style={{ padding: "4px 0", borderBottom: "1px solid var(--color-border)" }}>
+            {menuItems.slice(0, 2).map((item) => (
+              <MenuRow key={item.label} item={item} />
+            ))}
+          </div>
+          {/* Edit + Delete */}
+          <div style={{ padding: "4px 0" }}>
+            {menuItems.slice(2).map((item) => (
+              <MenuRow key={item.label} item={item} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MenuRow({
+  item,
+}: {
+  item: { label: string; icon: React.ReactNode; action: () => void; danger?: boolean };
+}) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      onClick={item.action}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "center", gap: "8px",
+        width: "100%", padding: "7px 12px",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        border: "none",
+        cursor: "pointer",
+        color: item.danger ? "var(--color-danger)" : "var(--color-text-primary)",
+        fontFamily: "var(--font-sans)", fontSize: "13px",
+        textAlign: "left",
+        transition: "background 80ms ease",
+      }}
+    >
+      {item.icon}
+      {item.label}
+    </button>
+  );
+}
+
 // ─── Config Card ──────────────────────────────────────────────────────────────
 
 function ConfigCard({
   cfg,
   tournamentId,
   duplicates,
+  onDeleted,
 }: {
   cfg: SheetConfig;
   tournamentId: string;
   duplicates: SheetConfig[];
+  onDeleted: (id: number) => void;
 }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
   const [syncError, setSyncError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [hovered, setHovered] = useState(false);
 
   const hasDuplicates = duplicates.length > 0;
@@ -190,6 +379,17 @@ function ConfigCard({
       setShowConfirm(true);
     } else {
       doSync();
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteLoading(true);
+    try {
+      await sheetsApi.deleteConfig(tournamentId, cfg.id);
+      onDeleted(cfg.id);
+    } catch {
+      setDeleteLoading(false);
+      setShowDeleteModal(false);
     }
   }
 
@@ -293,17 +493,6 @@ function ConfigCard({
             style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}
             onClick={(e) => e.stopPropagation()}
           >
-            <SplitButton
-              label="Export"
-              onClick={() => exportJson(cfg)}
-              variant="secondary"
-              size="sm"
-              options={[
-                { label: "Export JSON", action: () => exportJson(cfg) },
-                { label: "Export CSV",  action: () => exportCsv(cfg) },
-              ]}
-            />
-
             {cfg.is_active && (
               <Button
                 variant="secondary"
@@ -311,10 +500,16 @@ function ConfigCard({
                 onClick={handleSyncClick}
                 loading={syncing}
               >
-                <IconSync />
+                {!syncing && <IconSync />}
                 {syncing ? "Syncing…" : "Sync"}
               </Button>
             )}
+
+            <CardMenu
+              cfg={cfg}
+              tournamentId={tournamentId}
+              onDelete={() => setShowDeleteModal(true)}
+            />
           </div>
         </div>
       </div>
@@ -325,6 +520,15 @@ function ConfigCard({
           duplicates={duplicates}
           onConfirm={doSync}
           onCancel={() => setShowConfirm(false)}
+        />
+      )}
+
+      {showDeleteModal && (
+        <DeleteConfirmModal
+          cfg={cfg}
+          onConfirm={handleDelete}
+          onCancel={() => setShowDeleteModal(false)}
+          loading={deleteLoading}
         />
       )}
     </>
@@ -348,6 +552,10 @@ export default function SheetsPage() {
       .catch(() => setError("Failed to load sheet configurations."))
       .finally(() => setLoading(false));
   }, [tournamentId]);
+
+  function handleDeleted(id: number) {
+    setConfigs((prev) => prev.filter((c) => c.id !== id));
+  }
 
   return (
     <div style={{ width: "100%" }}>
@@ -404,6 +612,7 @@ export default function SheetsPage() {
               cfg={cfg}
               tournamentId={tournamentId}
               duplicates={getDuplicates(cfg, configs)}
+              onDeleted={handleDeleted}
             />
           ))}
         </div>
