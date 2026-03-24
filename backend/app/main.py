@@ -14,11 +14,10 @@ settings = get_settings()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Run startup tasks before the app begins serving requests."""
     import os
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
         init_db()
-        if settings.app_env == ("development", "preview"):
+        if get_settings().app_env in ("development", "preview"):
             from app.db.session import SessionLocal
             with SessionLocal() as db:
                 seed_dev_data(db)
