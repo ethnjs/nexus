@@ -60,7 +60,7 @@ export interface AuthUser {
   email:      string
   first_name: string | null
   last_name:  string | null
-  role:       'admin' | 'user'   // "td" and "volunteer" no longer exist
+  role:       'admin' | 'user'
   is_active:  boolean
   created_at: string
 }
@@ -225,7 +225,7 @@ export interface Membership {
   // Drives title + system permissions within this tournament
   positions:         string[] | null
 
-  // Day-of block schedule — [{block: int, duty: str}, ...]
+  // Day-of block schedule — one entry per block.
   schedule:          ScheduleSlot[] | null
 
   status:            MembershipStatus
@@ -236,7 +236,6 @@ export interface Membership {
   notes:             string | null
 
   // All tournament-specific arbitrary data lives here
-  // e.g. { transportation, general_volunteer_interest, carpool_seats, ... }
   extra_data:        Record<string, unknown> | null
 
   created_at:        string
@@ -257,6 +256,29 @@ export const membershipsApi = {
     api.patch<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
+
+  /**
+   * Delete all memberships in a tournament whose user email is in the provided list.
+   *
+   * TEMP IMPLEMENTATION: fetches all memberships (which include user data via the
+   * joined list endpoint), filters by email, then deletes one by one. This is O(n)
+   * HTTP requests and not suitable for large volunteer lists.
+   *
+   * TODO: replace with a single backend endpoint
+   * POST /tournaments/{id}/memberships/delete-by-emails/ { emails: string[] }
+   * tracked in GitHub issue.
+   */
+  deleteMembershipsByEmails: async (tournamentId: number, emails: string[]): Promise<{ deleted: number }> => {
+    const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
+    const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
+    const toDelete = memberships.filter(
+      (m) => m.user?.email && emailSet.has(m.user.email.toLowerCase().trim())
+    )
+    await Promise.all(
+      toDelete.map((m) => api.delete<void>(`/tournaments/${tournamentId}/memberships/${m.id}/`))
+    )
+    return { deleted: toDelete.length }
+  },
 }
 
 // -------------------------------------------------------------------------
@@ -315,4 +337,25 @@ export const sheetsApi = {
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
+
+  /**
+   * Get emails of all volunteers in this tournament for the nuclear delete.
+   *
+   * TEMP IMPLEMENTATION: fetches all memberships (which include joined user data)
+   * and extracts emails client-side. Does not cross-reference the live Google Sheet —
+   * deletes ALL memberships in the tournament, not just those whose email appears
+   * in the current sheet rows.
+   *
+   * TODO: replace with GET /tournaments/{id}/sheets/configs/{configId}/rows/
+   * which proxies sheets_service.get_rows() so the email list matches the live sheet.
+   * Tracked in GitHub issue.
+   */
+  getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
+    const memberships = await api.get<{ user?: { email?: string } }[]>(
+      `/tournaments/${tournamentId}/memberships/`
+    )
+    return memberships
+      .map((m) => m.user?.email)
+      .filter((e): e is string => Boolean(e))
+  },
 }

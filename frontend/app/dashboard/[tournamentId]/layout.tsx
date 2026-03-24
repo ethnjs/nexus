@@ -15,7 +15,6 @@ function TournamentShell({
   children: ReactNode;
 }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
-  const sidebarWidth = sidebarExpanded ? EXPANDED_W : COLLAPSED_W;
   const { setSelectedTournament } = useTournament();
 
   useEffect(() => {
@@ -24,17 +23,14 @@ function TournamentShell({
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
-      {/* Sidebar — in normal flow, not fixed. Expanding it naturally pushes content right. */}
       <Sidebar
         expanded={sidebarExpanded}
         onToggle={() => setSidebarExpanded((v) => !v)}
         tournamentId={tournamentId}
       />
-
-      {/* Right column — topbar + content stacked */}
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
-        <Topbar tournamentId={tournamentId} />
-        <main style={{ flex: 1, overflowY: "auto", padding: "12px 14px" }}>
+        <Topbar showDropdown tournamentId={tournamentId} showAvatar />
+        <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
           {children}
         </main>
       </div>
