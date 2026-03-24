@@ -385,7 +385,7 @@ function ConfigCard({
   async function handleDelete() {
     setDeleteLoading(true);
     try {
-      await sheetsApi.deleteConfig(tournamentId, cfg.id);
+      await sheetsApi.deleteConfig(Number(tournamentId), cfg.id);
       onDeleted(cfg.id);
     } catch {
       setDeleteLoading(false);
