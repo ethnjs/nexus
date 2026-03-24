@@ -42,17 +42,9 @@ def _serialize(m: Membership, include_user: bool = False) -> dict:
     }
 
     if include_user:
-        data["user"] = (
-            {
-                "id": m.user.id,
-                "email": m.user.email,
-                "first_name": m.user.first_name,
-                "last_name": m.user.last_name,
-                "role": m.user.role,
-            }
-            if m.user
-            else None
-        )
+        # Pass the ORM object directly — Pydantic will serialize it via
+        # from_attributes=True on UserRead, so all required fields are included.
+        data["user"] = m.user if m.user else None
 
     return data
 
