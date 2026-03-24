@@ -160,10 +160,12 @@ function ConfigCard({
   tournamentId: string;
   duplicates: SheetConfig[];
 }) {
+  const router = useRouter();
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ created: number; updated: number; skipped: number } | null>(null);
   const [syncError, setSyncError] = useState("");
   const [showConfirm, setShowConfirm] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   const hasDuplicates = duplicates.length > 0;
 
@@ -182,7 +184,8 @@ function ConfigCard({
     }
   }
 
-  function handleSyncClick() {
+  function handleSyncClick(e: React.MouseEvent) {
+    e.stopPropagation();
     if (hasDuplicates) {
       setShowConfirm(true);
     } else {
@@ -196,12 +199,20 @@ function ConfigCard({
 
   return (
     <>
-      <div style={{
-        background: "var(--color-surface)",
-        border: `1px solid ${hasDuplicates ? "var(--color-warning)" : "var(--color-border)"}`,
-        borderRadius: "var(--radius-md)",
-        padding: "16px 20px",
-      }}>
+      <div
+        onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}`)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          background: "var(--color-surface)",
+          border: `1px solid ${hasDuplicates ? "var(--color-warning)" : hovered ? "var(--color-border-strong)" : "var(--color-border)"}`,
+          borderRadius: "var(--radius-md)",
+          padding: "16px 20px",
+          cursor: "pointer",
+          transition: "border-color 120ms ease, box-shadow 120ms ease",
+          boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-sm)",
+        }}
+      >
         {/* Duplicate tab warning banner */}
         {hasDuplicates && (
           <div style={{
@@ -277,8 +288,11 @@ function ConfigCard({
             )}
           </div>
 
-          <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
-            {/* Export — SplitButton: primary action = JSON, dropdown adds CSV */}
+          {/* Buttons — stopPropagation so they don't trigger card navigation */}
+          <div
+            style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}
+            onClick={(e) => e.stopPropagation()}
+          >
             <SplitButton
               label="Export"
               onClick={() => exportJson(cfg)}

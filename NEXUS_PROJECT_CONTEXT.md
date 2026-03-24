@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-7e-sheets-duplicate-tab-ux*
+*Last updated: phase-7e-sheets-edit-page-volunteers*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -111,15 +111,17 @@ nexus/
     │           ├── overview/page.tsx  # Blank for now
     │           ├── assignments/page.tsx
     │           ├── events/page.tsx
-    │           ├── volunteers/page.tsx
+    │           ├── volunteers/page.tsx # Temp volunteer table — search, status filter, sortable columns
     │           ├── settings/page.tsx
     │           └── sheets/
-    │               ├── page.tsx       # Sheets index — lists configs, per-card sync button
-    │               └── new/
-    │                   └── page.tsx   # Add Sheet wizard (4 steps: URL → select → mapping → results)
+    │               ├── page.tsx       # Sheets index — clickable config cards, export, sync, duplicate tab warnings
+    │               ├── new/
+    │               │   └── page.tsx   # Add Sheet wizard (4 steps: URL → select → mapping → results)
+    │               └── [configId]/
+    │                   └── page.tsx   # Edit sheet config — live header diff, import/export, save & sync, delete + nuclear delete
     ├── components/
     │   ├── ui/
-    │   │   ├── Button.tsx             # primary/secondary/ghost/danger, radius-md, loading state
+    │   │   ├── Button.tsx             # primary/secondary/ghost/danger, built-in hover state, interactive prop
     │   │   ├── Input.tsx              # label, error, helper, 16px left padding
     │   │   ├── Card.tsx               # surface container
     │   │   ├── Badge.tsx              # status badges (confirmed, declined, assigned, etc.)
@@ -132,7 +134,10 @@ nexus/
     │   │   ├── RadioOption.tsx        # styled radio card with border highlight
     │   │   ├── StatCard.tsx           # big number + label card (sync results, future stats)
     │   │   ├── EmptyState.tsx         # centered empty state with icon, title, description, action
-    │   │   └── UserAvatar.tsx         # avatar button + name/email/role dropdown + sign out
+    │   │   ├── UserAvatar.tsx         # avatar button + name/email/role dropdown + sign out
+    │   │   ├── SplitButton.tsx        # primary action + chevron dropdown, per-half hover, variants + sizes
+    │   │   ├── Banner.tsx             # inline feedback banner, variants: success/error/warning/info, optional action + dismiss
+    │   │   └── ImportSummaryModal.tsx # modal showing full import diff: updated (from/to), unchanged, notInFile, notInSheet
     │   └── layout/
     │       ├── Sidebar.tsx            # Sticky, in normal flow, expandable 52px→192px, tournamentId prop
     │       └── Topbar.tsx             # Unified topbar — showWordmark, showDropdown, showAvatar props
@@ -140,6 +145,9 @@ nexus/
     │                                  # only called when TournamentProvider is in tree)
     ├── lib/
     │   ├── api.ts                     # ApiError, authApi, tournamentsApi, eventsApi, usersApi, membershipsApi, sheetsApi + full types
+    │   │                              # membershipsApi.deleteMembershipsByEmails — TEMP: serial deletes, tracked in GitHub issue
+    │   │                              # sheetsApi.getEmailsForNuclearDelete — TEMP: fetches all memberships, tracked in GitHub issue
+    │   ├── importMappings.ts          # MappingRow, MappingsExport, ImportSummary types + parseMappingsJson, parseMappingsCsv, applyImport
     │   ├── useAuth.tsx                # AuthProvider + useAuth hook
     │   └── useTournament.tsx          # TournamentProvider + useTournament hook, persists selection to localStorage
     ├── middleware.ts                  # Protect /dashboard/*, redirect if logged in on /
@@ -305,7 +313,7 @@ column_mappings: JSON   # {header: {field, type, row_key?, extra_key?}}
 is_active (bool)
 last_synced_at (DateTime, nullable)
 created_at, updated_at
-UNIQUE: (tournament_id, sheet_type)
+UNIQUE: (tournament_id, sheet_type)   # ← tracked for removal, see Known Issues
 ```
 
 ### Event
@@ -379,26 +387,35 @@ UNIQUE: (user_id, tournament_id)
 - `admin` always gets access regardless of membership
 
 ### Duplicate sheet tab handling
-- Multiple `SheetConfig`s pointing at the same `(spreadsheet_id, sheet_name)` within a tournament are **allowed** — this is a valid advanced use case (e.g. two configs with different column mappings importing different subsets of fields).
+- Multiple `SheetConfig`s pointing at the same `(spreadsheet_id, sheet_name)` within a tournament are **allowed**.
 - The upsert-by-email sync logic is safe: no data corruption, last sync wins per field.
 - **UX guards (frontend-only, no DB constraint):**
-  - **Sheets index page:** cards with a duplicate tab get a yellow ⚠ warning banner and a yellow card border, naming the other config(s) sharing the tab.
-  - **Add Sheet wizard (step 2):** if the selected tab is already connected, a yellow ⚠ warning banner appears inline.
-  - **Sync confirmation dialog:** triggered on both sync (index page) and Save & Sync (wizard) when duplicates exist, requiring explicit confirmation before proceeding.
-- **If we want to change this later:** options include (a) adding a DB unique constraint on `(tournament_id, spreadsheet_id, sheet_name)` and returning 409 from the backend, or (b) blocking the save entirely in the wizard if a duplicate is detected. The frontend detection logic (`getDuplicatesForSelection` / `getDuplicates`) is already isolated and easy to repurpose.
+  - **Sheets index page:** cards with a duplicate tab get a yellow ⚠ warning banner and yellow card border.
+  - **Add Sheet wizard (step 2):** inline warning banner if the selected tab is already connected.
+  - **Sync confirmation dialog:** required on sync (index page) and Save & Sync (wizard) when duplicates exist.
+  - **Edit page:** same duplicate warning shown on the tab selection section.
+
+### Sheet config export/import
+- Export formats: JSON (full `column_mappings` object + label/sheet_type/sheet_name) and CSV (flat table: header, field, type, row_key, extra_key)
+- Import is non-destructive: only updates rows whose header name matches; unmatched rows keep current values
+- Import feedback uses `Banner` + `ImportSummaryModal` (shows per-row diff: updated from/to, unchanged count, headers not in file, headers not in sheet)
+- Import/export logic lives in `frontend/lib/importMappings.ts` — shared between wizard and edit page
 
 ### Frontend component conventions
-- **Always use `Button` from `components/ui/Button`** — never inline button elements for actions
-- **Always use `PageHeader` from `components/ui/PageHeader`** — for page title + subtitle + action
-- **Always use `EmptyState` from `components/ui/EmptyState`** — for empty list states
+- **Always use `Button`** — never inline button elements for actions
+- **Always use `SplitButton`** for export/import actions that have a primary + dropdown variant (JSON primary, CSV in dropdown)
+- **Always use `Banner`** for inline import feedback — replaces old inline toast pattern
+- **Always use `ImportSummaryModal`** for showing detailed import diff
+- **Always use `PageHeader`** for page title + subtitle + action
+- **Always use `EmptyState`** for empty list states
 - **All SVG icons in `components/ui/Icons.tsx`** — never define icons inline
-- **`Modal` + specific modal components** — base `Modal.tsx` wraps content, `NewTournamentModal` is the shared tournament creation form
-- **`Topbar` is unified** — use `showWordmark` for dashboard, `showDropdown` for tournament pages. `useTournament` is only called inside `TournamentDropdown` child so it's safe to use without a provider when `showDropdown=false`
+- **`Modal` + specific modal components** — base `Modal.tsx` wraps content
+- **`Topbar` is unified** — use `showWordmark` for dashboard, `showDropdown` for tournament pages
 
-### Font stack
-- `--font-serif`: Georgia, serif — h1, h2, page titles, big numbers, wordmarks
-- `--font-sans`: Geist (via @font-face + jsDelivr CDN) — UI labels, buttons, nav, badges
-- `--font-mono`: Geist Mono (via @font-face + jsDelivr CDN) — body text, inputs, data values
+### Fonts
+- `--font-serif`: Georgia — h1, h2, page titles, big numbers, wordmarks
+- `--font-sans`: Geist — UI labels, buttons, nav, badges
+- `--font-mono`: Geist Mono — body text, inputs, data values
 
 ---
 
@@ -470,6 +487,10 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
 PATCH  /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
 DELETE /tournaments/{id}/sheets/configs/{config_id}/       # manage_tournament
 POST   /tournaments/{id}/sheets/configs/{config_id}/sync/  # manage_tournament
+
+# Planned (not yet built — tracked in GitHub issues)
+POST   /tournaments/{id}/memberships/delete-by-emails/     # bulk delete by email list
+GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to frontend
 ```
 
 ---
@@ -501,36 +522,38 @@ POST   /tournaments/{id}/sheets/configs/{config_id}/sync/  # manage_tournament
   - [x] **7b** — Landing page (hero, grid bg, scroll animation, login form)
   - [x] **7c** — Auth wiring (JWT cookie, middleware, useAuth, dashboard stub)
   - [x] **7d** — App shell (tournament list page, sidebar, topbar, routing restructure to /dashboard/[tournamentId]/*)
-  - [ ] **7e** — Sheets UI + frontend refactor (in progress — see below)
-  - [ ] **7f** — Events + volunteers tables
+  - [ ] **7e** — Sheets UI + frontend refactor (substantially complete — see below)
+  - [ ] **7f** — Events + volunteers tables (proper, not temp)
   - [ ] **7g** — Assignment dashboard
 - [x] **Phase 8 — Architecture: membership-based permissions**
 - [x] **Phase 9 — Preview environments**
 
-### Phase 7e — Sheets UI + Frontend Refactor (in progress)
-Branch: `feature/sheets-ui`
+### Phase 7e — Sheets UI + Frontend Refactor (substantially complete)
 
 **Completed:**
-- Sheets index page (`/dashboard/[id]/sheets`) — lists existing configs, per-card Sync button, empty state
-- Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow:
-  1. URL input → validate → shows spreadsheet title + tabs
-  2. Sheet tab selection + sheet type + label input
-  3. Column mapping table — all headers shown, ignored rows dimmed, field/type dropdowns
-  4. Save → auto-sync → results page (created/updated/skipped + error list)
-- Sheets nav item added to Sidebar
-- **Font refactor:** replaced DM Sans/DM Mono with Geist Sans/Geist Mono (via @font-face + jsDelivr CDN); replaced Instrument Serif with Georgia (was never loading, falling back to Georgia anyway)
-- **Button component fix:** border radius updated from `radius-sm` to `radius-md`
-- **Component library refactor:** extracted reusable components from inline page code:
-  - `Modal.tsx`, `NewTournamentModal.tsx`, `FieldLabel.tsx`, `PageHeader.tsx`
-  - `StepIndicator.tsx`, `RadioOption.tsx`, `StatCard.tsx`, `EmptyState.tsx`
-  - `UserAvatar.tsx` (in `components/ui/`)
-- **Topbar unification:** single `Topbar` component with `showWordmark` / `showDropdown` / `showAvatar` props replaces separate dashboard and tournament topbars. `TournamentDropdown` is an isolated child so `useTournament` is only called when a `TournamentProvider` is present.
-- All pages refactored to use shared components
+- Sheets index page (`/dashboard/[id]/sheets`) — clickable cards → edit page, export JSON/CSV via SplitButton, sync button, duplicate tab warning banners + sync confirm modal
+- Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow: URL → sheet select → column mapping → save+sync → results
+  - Import JSON/CSV via SplitButton with Banner feedback and ImportSummaryModal
+- Edit sheet config page (`/dashboard/[id]/sheets/[configId]`) — new page:
+  - Loads live headers from Google (re-fetches on tab change via AbortController)
+  - Row state diff: same (no highlight) · changed (amber) · new (green) · removed (red, locked)
+  - Summary counts: unchanged · edited · new · removed
+  - Import JSON/CSV with Banner + ImportSummaryModal, respects row state
+  - Export JSON/CSV via SplitButton
+  - Save (PATCH only) and Save & Sync
+  - Danger zone: delete config, nuclear delete (deletes config + all memberships in tournament)
+- Volunteers page (`/dashboard/[id]/volunteers`) — temporary table view:
+  - Columns: name, email, status, role preference, event preference, availability slot count
+  - Auto-detects up to 4 `extra_data` keys across memberships
+  - Search by name/email, status filter, sortable columns
+- Shared component library additions: `SplitButton`, `Banner`, `ImportSummaryModal`
+- Shared utility library: `frontend/lib/importMappings.ts` (parse + apply import, types)
+- `api.ts` additions: `membershipsApi.deleteMembershipsByEmails` (temp), `sheetsApi.getEmailsForNuclearDelete` (temp), `sheetsApi.getConfig`, `sheetsApi.updateConfig`
+- UTC datetime normalization: `fmtDateTime` appends `Z` if no timezone suffix (temp fix)
 
-**Still needed (7e):**
+**Still needed:**
 - End-to-end testing with a real Google Sheet
-- UI polish pass after testing (edge cases, error states, loading states)
-- Possible: sheet config edit/delete from the index page
+- UI polish pass after testing
 
 ---
 
@@ -562,8 +585,11 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 - Full sheet sync on every run — "sync only new rows" is a future optimization
 - Railway trial period ends — may migrate backend to Render
 - **[GitHub issue opened] Remove `UNIQUE(tournament_id, sheet_type)` constraint from `sheet_configs`** — the constraint is too restrictive; `sheet_type` is display metadata, not a meaningful uniqueness boundary. A TD may legitimately want multiple configs with the same type but different column mappings. Currently triggers an unhandled 500 when violated. Fix: drop the constraint via a new Alembic migration and remove `UniqueConstraint("tournament_id", "sheet_type", ...)` from `app/models/models.py`. Duplicate-config UX is already handled entirely on the frontend via warning banners and confirmation dialogs. Labels: `backend` `database` `breaking-change`.
-- **[GitHub issue opened] `DateTime` columns serialized without timezone info** — SQLAlchemy's `DateTime` (without `timezone=True`) strips timezone info when reading from the DB, so datetimes are serialized without a `Z` or `+00:00` suffix. The browser then interprets them as local time instead of UTC, causing incorrect display (e.g. `last_synced_at` showing the wrong time). **Temp fix:** `fmtDateTime` in `sheets/page.tsx` appends `Z` if no timezone suffix is present. **Proper fix:** change all `DateTime` columns in `app/models/models.py` to `DateTime(timezone=True)`, write an Alembic migration, then remove the frontend normalization. Labels: `bug` `backend` `database` `breaking-change`.
-- **[GitHub issue opened] Membership list endpoint should return user data inline** — `GET /tournaments/{id}/memberships/` currently returns memberships without user info, requiring the frontend to make a separate request per membership to get name and email (O(n) requests). Fix: use `joinedload(Membership.user)` in the list query and switch the response model from `MembershipRead` to `MembershipReadWithUser`. Single/get/create/update/delete endpoints can stay as `MembershipRead`. Labels: `enhancement` `backend` `performance`.
+- **[GitHub issue opened] `DateTime` columns serialized without timezone info** — SQLAlchemy's `DateTime` (without `timezone=True`) strips timezone info when reading from the DB, so datetimes are serialized without a `Z` or `+00:00` suffix. The browser then interprets them as local time instead of UTC, causing incorrect display (e.g. `last_synced_at` showing the wrong time). **Temp fix:** `fmtDateTime` in `sheets/page.tsx` and `sheets/[configId]/page.tsx` appends `Z` if no timezone suffix is present. **Proper fix:** change all `DateTime` columns in `app/models/models.py` to `DateTime(timezone=True)`, write an Alembic migration, then remove the frontend normalization. Labels: `bug` `backend` `database` `breaking-change`.
+- **[GitHub issue opened] Backend endpoints for bulk membership delete and raw sheet row fetch** — two temp implementations in `api.ts` need proper backend routes:
+  - `membershipsApi.deleteMembershipsByEmails` — currently fetches all memberships + filters client-side + serial deletes (O(n) requests). Proper fix: `POST /tournaments/{id}/memberships/delete-by-emails/` with `{ emails: string[] }` → `{ deleted: number }`.
+  - `sheetsApi.getEmailsForNuclearDelete` — currently fetches all memberships and extracts emails (does NOT cross-reference live sheet). Proper fix: `GET /tournaments/{id}/sheets/configs/{configId}/rows/` which proxies `sheets_service.get_rows()`. Labels: `enhancement` `backend` `performance`.
+- **[GitHub issue opened] Add `sheet_config_ids` to Membership** — JSON list of config IDs that have synced into a membership, for provenance tracking. Labels: `enhancement` `backend` `database`.
 
 ---
 
@@ -605,7 +631,10 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 - `--color-text-primary`: `#0A0A0A` | `--color-text-secondary`: `#6B6B65` | `--color-text-tertiary`: `#9B9B93`
 
 ### Component conventions
-- `Button` — variants: primary (black), secondary, ghost, danger. Sizes: sm/md/lg. `border-radius: var(--radius-md)`.
+- `Button` — variants: primary (black), secondary, ghost, danger. Sizes: sm/md/lg. Built-in hover state via `interactive` prop (default true).
+- `SplitButton` — primary action + chevron dropdown, per-half hover. Use for export (JSON primary, CSV dropdown) and import (JSON primary, CSV dropdown).
+- `Banner` — inline feedback. Variants: success/error/warning/info. Optional `action` slot (e.g. "Show summary" button) and `onDismiss`. Use instead of toast for import feedback.
+- `ImportSummaryModal` — detailed import diff modal. Shows updated rows (from/to), unchanged count, headers not in file, headers not in sheet.
 - `Input` — Geist label, 44px height, 16px left padding, error state
 - `Card` — surface container with optional hover state
 - `Badge` — status tags: interested, confirmed, declined, assigned, removed, admin, user
