@@ -115,7 +115,11 @@ def list_memberships(
     if status_filter:
         query = query.filter(Membership.status == status_filter)
 
-    return [_serialize(m, include_user=True) for m in query.order_by(Membership.id).all()]
+    # Return ORM objects directly — Pydantic serializes via from_attributes=True,
+    # which correctly handles the nested user relationship. _serialize() returns a
+    # plain dict which breaks nested ORM object serialization (FastAPI cannot apply
+    # from_attributes inside a dict), so the list endpoint bypasses it entirely.
+    return query.order_by(Membership.id).all()
 
 
 # ---------------------------------------------------------------------------
