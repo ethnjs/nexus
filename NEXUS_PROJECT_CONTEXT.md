@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: phase-7e-sheets-edit-page-volunteers*
+*Last updated: issue-4-membership-list-inline-user*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -111,14 +111,16 @@ nexus/
     │           ├── overview/page.tsx  # Blank for now
     │           ├── assignments/page.tsx
     │           ├── events/page.tsx
-    │           ├── volunteers/page.tsx # Temp volunteer table — search, status filter, sortable columns
+    │           ├── volunteers/page.tsx # Temp volunteer table — user data inline (no per-row fetches), search, status filter, sortable columns
     │           ├── settings/page.tsx
     │           └── sheets/
     │               ├── page.tsx       # Sheets index — clickable config cards, export, sync, duplicate tab warnings
     │               ├── new/
     │               │   └── page.tsx   # Add Sheet wizard (4 steps: URL → select → mapping → results)
     │               └── [configId]/
-    │                   └── page.tsx   # Edit sheet config — live header diff, import/export, save & sync, delete + nuclear delete
+    │                   ├── page.tsx   # View sheet config — read-only mapping table, edit button, danger zone
+    │                   └── edit/
+    │                       └── page.tsx # Edit sheet config — live header diff, import/export, save & sync
     ├── components/
     │   ├── ui/
     │   │   ├── Button.tsx             # primary/secondary/ghost/danger, built-in hover state, interactive prop
@@ -401,6 +403,13 @@ UNIQUE: (user_id, tournament_id)
 - Import feedback uses `Banner` + `ImportSummaryModal` (shows per-row diff: updated from/to, unchanged count, headers not in file, headers not in sheet)
 - Import/export logic lives in `frontend/lib/importMappings.ts` — shared between wizard and edit page
 
+### Membership list serialization (issue #4)
+- `GET /tournaments/{id}/memberships/` returns `MembershipReadWithUser` — user name/email embedded inline
+- Backend uses `joinedload(Membership.user)` for a single JOIN query instead of N lazy loads
+- The list endpoint returns ORM objects directly (not via `_serialize`) so Pydantic can walk the nested `user` relationship via `from_attributes=True`. Returning a plain `dict` breaks nested ORM serialization in FastAPI.
+- All other endpoints (get, create, update, delete) still use `_serialize()` and return `MembershipRead`
+- Frontend `volunteers/page.tsx` reads `m.user` directly off each membership — no `usersApi` calls
+
 ### Frontend component conventions
 - **Always use `Button`** — never inline button elements for actions
 - **Always use `SplitButton`** for export/import actions that have a primary + dropdown variant (JSON primary, CSV in dropdown)
@@ -463,7 +472,7 @@ PATCH  /tournaments/{id}/events/{event_id}/                 # manage_events or m
 DELETE /tournaments/{id}/events/{event_id}/                 # manage_events or manage_tournament
 
 # Memberships
-GET    /tournaments/{id}/memberships/                       # view_volunteers+
+GET    /tournaments/{id}/memberships/                       # view_volunteers+ — returns MembershipReadWithUser (user inline)
 GET    /tournaments/{id}/memberships/{membership_id}/       # view_volunteers+
 POST   /tournaments/{id}/memberships/                       # manage_volunteers+
 PATCH  /tournaments/{id}/memberships/{membership_id}/       # manage_volunteers+
@@ -522,24 +531,25 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
   - [x] **7b** — Landing page (hero, grid bg, scroll animation, login form)
   - [x] **7c** — Auth wiring (JWT cookie, middleware, useAuth, dashboard stub)
   - [x] **7d** — App shell (tournament list page, sidebar, topbar, routing restructure to /dashboard/[tournamentId]/*)
-  - [ ] **7e** — Sheets UI + frontend refactor (substantially complete — see below)
+  - [x] **7e** — Sheets UI + frontend refactor (merged + tested ✓)
   - [ ] **7f** — Events + volunteers tables (proper, not temp)
   - [ ] **7g** — Assignment dashboard
 - [x] **Phase 8 — Architecture: membership-based permissions**
 - [x] **Phase 9 — Preview environments**
+- [x] **Issue #4 — Membership list inline user data** (merged to staging)
 
-### Phase 7e — Sheets UI + Frontend Refactor (substantially complete)
+### Phase 7e — Sheets UI + Frontend Refactor ✓
 
-**Completed:**
+**Completed and tested:**
 - Sheets index page (`/dashboard/[id]/sheets`) — clickable cards → view page, 3-dot menu (export JSON/CSV, edit, delete with confirm modal), sync button, duplicate tab warning banners + sync confirm modal
 - Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow: URL → sheet select → column mapping → save+sync → results
   - Import JSON/CSV via SplitButton with Banner feedback and ImportSummaryModal
-- View sheet config page (`/dashboard/[id]/sheets/[configId]`) — new read-only page:
+- View sheet config page (`/dashboard/[id]/sheets/[configId]`) — read-only page:
   - Metadata row: type, sheet tab, status, last synced — 4 equal sections in one bordered row
   - Read-only mapping table: same 4-column grid as edit page (Sheet Column / Field / Type / Extra Key), column headers wrap, rows vertically centered, ignored rows dimmed
   - Edit button (top right) navigates to edit page
   - Danger zone: delete config, nuclear delete (deletes config + all memberships in tournament)
-- Edit sheet config page (`/dashboard/[id]/sheets/[configId]/edit`) — moved from `[configId]/page.tsx`:
+- Edit sheet config page (`/dashboard/[id]/sheets/[configId]/edit`):
   - Loads live headers from Google (re-fetches on tab change via AbortController)
   - Row state diff: same (no highlight) · changed (amber) · new (green) · removed (red, locked)
   - Summary counts: unchanged · edited · new · removed
@@ -549,6 +559,7 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
   - Back/Cancel both return to view page
   - Danger zone removed (lives on view page only)
 - Volunteers page (`/dashboard/[id]/volunteers`) — temporary table view:
+  - User name/email now loaded inline (no per-row API calls) — fixed via issue #4
   - Columns: name, email, status, role preference, event preference, availability slot count
   - Auto-detects up to 4 `extra_data` keys across memberships
   - Search by name/email, status filter, sortable columns
@@ -559,14 +570,25 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
 - UTC datetime normalization: `fmtDateTime` appends `Z` if no timezone suffix (temp fix)
 
 **File locations:**
-- `sheets/page.tsx` — index (sheets-index-page.tsx)
+- `sheets/page.tsx` — index
 - `sheets/new/page.tsx` — wizard
-- `sheets/[configId]/page.tsx` — view config (view-sheet-config-page.tsx)
-- `sheets/[configId]/edit/page.tsx` — edit config (edit-sheet-page.tsx)
+- `sheets/[configId]/page.tsx` — view config
+- `sheets/[configId]/edit/page.tsx` — edit config
 
-**Still needed:**
-- End-to-end testing with a real Google Sheet
-- UI polish pass after testing
+### Issue #4 — Membership list inline user data ✓
+
+**Problem:** `GET /tournaments/{id}/memberships/` returned memberships without user info. The volunteers page was making a separate `usersApi.getForTournament` call per membership (O(n) requests), causing rate limiting as the volunteer list grew.
+
+**Backend fix (`backend/app/api/routes/memberships.py`):**
+- Added `joinedload(Membership.user)` to the list query
+- Switched `GET /` `response_model` to `MembershipReadWithUser`
+- List endpoint returns ORM objects directly (not via `_serialize`) — returning a plain `dict` breaks `from_attributes` on nested ORM objects in FastAPI; Pydantic can only apply `from_attributes` when the top-level response is an ORM object
+- All other endpoints unchanged
+
+**Frontend fix (`frontend/app/dashboard/[tournamentId]/volunteers/page.tsx`):**
+- Removed `Promise.all(ms.map(async (m) => usersApi.getForTournament(...)))` fan-out
+- Reads `m.user` directly off the membership response
+- Removed `usersApi` import
 
 ---
 
