@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
+import { membershipsApi, sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -694,7 +694,7 @@ export default function EditSheetPage() {
       }
 
       // Delete memberships by email
-      await sheetsApi.deleteMembershipsByEmails(tournamentId, emails);
+      await membershipsApi.deleteMembershipsByEmails(tournamentId, emails);
       // Delete the config
       await sheetsApi.deleteConfig(tournamentId, configId);
       router.push(`/dashboard/${tournamentId}/sheets`);
