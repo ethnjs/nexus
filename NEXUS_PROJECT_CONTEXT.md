@@ -531,25 +531,38 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
 ### Phase 7e — Sheets UI + Frontend Refactor (substantially complete)
 
 **Completed:**
-- Sheets index page (`/dashboard/[id]/sheets`) — clickable cards → edit page, export JSON/CSV via SplitButton, sync button, duplicate tab warning banners + sync confirm modal
+- Sheets index page (`/dashboard/[id]/sheets`) — clickable cards → view page, 3-dot menu (export JSON/CSV, edit, delete with confirm modal), sync button, duplicate tab warning banners + sync confirm modal
 - Add Sheet wizard (`/dashboard/[id]/sheets/new`) — 4-step flow: URL → sheet select → column mapping → save+sync → results
   - Import JSON/CSV via SplitButton with Banner feedback and ImportSummaryModal
-- Edit sheet config page (`/dashboard/[id]/sheets/[configId]`) — new page:
+- View sheet config page (`/dashboard/[id]/sheets/[configId]`) — new read-only page:
+  - Metadata row: type, sheet tab, status, last synced — 4 equal sections in one bordered row
+  - Read-only mapping table: same 4-column grid as edit page (Sheet Column / Field / Type / Extra Key), column headers wrap, rows vertically centered, ignored rows dimmed
+  - Edit button (top right) navigates to edit page
+  - Danger zone: delete config, nuclear delete (deletes config + all memberships in tournament)
+- Edit sheet config page (`/dashboard/[id]/sheets/[configId]/edit`) — moved from `[configId]/page.tsx`:
   - Loads live headers from Google (re-fetches on tab change via AbortController)
   - Row state diff: same (no highlight) · changed (amber) · new (green) · removed (red, locked)
   - Summary counts: unchanged · edited · new · removed
   - Import JSON/CSV with Banner + ImportSummaryModal, respects row state
   - Export JSON/CSV via SplitButton
   - Save (PATCH only) and Save & Sync
-  - Danger zone: delete config, nuclear delete (deletes config + all memberships in tournament)
+  - Back/Cancel both return to view page
+  - Danger zone removed (lives on view page only)
 - Volunteers page (`/dashboard/[id]/volunteers`) — temporary table view:
   - Columns: name, email, status, role preference, event preference, availability slot count
   - Auto-detects up to 4 `extra_data` keys across memberships
   - Search by name/email, status filter, sortable columns
 - Shared component library additions: `SplitButton`, `Banner`, `ImportSummaryModal`
+- Icons added: `IconEdit`, `IconTrash`, `IconDotsVertical`, `IconExport`
 - Shared utility library: `frontend/lib/importMappings.ts` (parse + apply import, types)
 - `api.ts` additions: `membershipsApi.deleteMembershipsByEmails` (temp), `sheetsApi.getEmailsForNuclearDelete` (temp), `sheetsApi.getConfig`, `sheetsApi.updateConfig`
 - UTC datetime normalization: `fmtDateTime` appends `Z` if no timezone suffix (temp fix)
+
+**File locations:**
+- `sheets/page.tsx` — index (sheets-index-page.tsx)
+- `sheets/new/page.tsx` — wizard
+- `sheets/[configId]/page.tsx` — view config (view-sheet-config-page.tsx)
+- `sheets/[configId]/edit/page.tsx` — edit config (edit-sheet-page.tsx)
 
 **Still needed:**
 - End-to-end testing with a real Google Sheet
