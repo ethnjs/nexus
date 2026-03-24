@@ -132,31 +132,38 @@ function DeleteMembershipsModal({
           <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "5px" }}>
             {[
               `The sheet config "${label}" will be permanently deleted.`,
-              "All memberships in this tournament will be deleted — even if they have positions assigned.",
+              "All memberships in this tournament will be deleted — even if they have positions assigned. (Temp behavior: does not cross-reference live sheet rows.)",
+              "If this sheet tab is shared with another config, those memberships will also be deleted.",
               "User accounts are never deleted.",
               "This action cannot be undone.",
-            ].map((item) => (
-              <li key={item} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-                {item}
-              </li>
+            ].map((w, i) => (
+              <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{w}</li>
             ))}
           </ul>
         </div>
 
-        <FieldLabel htmlFor="confirm-delete">Type DELETE to confirm</FieldLabel>
-        <input
-          id="confirm-delete"
-          value={typed}
-          onChange={(e) => setTyped(e.target.value)}
-          placeholder="DELETE"
-          style={inputStyle}
-          autoComplete="off"
-        />
+        <div style={{ marginBottom: "20px" }}>
+          <FieldLabel>Type DELETE to confirm</FieldLabel>
+          <input
+            value={typed}
+            onChange={(e) => setTyped(e.target.value)}
+            placeholder="DELETE"
+            autoFocus
+            style={inputStyle}
+          />
+        </div>
 
-        <div style={{ display: "flex", gap: "10px", marginTop: "20px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel} disabled={loading}>Cancel</Button>
-          <Button variant="danger" size="md" fullWidth onClick={onConfirm} disabled={!confirmed || loading}>
-            {loading ? "Deleting…" : "Delete everything"}
+        <div style={{ display: "flex", gap: "10px" }}>
+          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
+          <Button
+            variant="danger"
+            size="md"
+            fullWidth
+            disabled={!confirmed}
+            loading={loading}
+            onClick={onConfirm}
+          >
+            Delete config + memberships
           </Button>
         </div>
       </div>
@@ -164,7 +171,7 @@ function DeleteMembershipsModal({
   );
 }
 
-// ─── Read-only Mapping Row ────────────────────────────────────────────────────
+// ─── Read-only Mapping Table Row ──────────────────────────────────────────────
 
 function ReadOnlyMappingRow({
   header,
@@ -174,36 +181,39 @@ function ReadOnlyMappingRow({
   extra_key,
   isLast,
 }: {
-  header:    string;
-  field:     string;
-  type:      string;
-  row_key?:  string;
+  header: string;
+  field: string;
+  type: string;
+  row_key?: string;
   extra_key?: string;
-  isLast:    boolean;
+  isLast: boolean;
 }) {
-  const isIgnored   = field === "__ignore__" || type === "ignore";
-  const needsRowKey = type === "matrix_row";
-  const needsExtraKey = type === "multi_select" || type === "category_events";
+  const isIgnored     = type === "ignore";
+  const needsRowKey   = type === "matrix_row";
+  const needsExtraKey = field === "extra_data";
 
   return (
     <div style={{
       display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-      padding: "9px 14px",
-      alignItems: "center",
+      padding: "10px 14px", alignItems: "center", gap: "8px",
+      background: "var(--color-surface)",
       borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+      borderLeft: "3px solid transparent",
       opacity: isIgnored ? 0.45 : 1,
     }}>
-      {/* Sheet Column */}
+      {/* Sheet Column — wraps so full text is readable */}
       <span style={{
         fontFamily: "var(--font-mono)", fontSize: "12px",
-        color: "var(--color-text-secondary)",
+        color: "var(--color-text-primary)",
+        wordBreak: "break-word",
+        lineHeight: 1.4,
       }}>
         {header}
       </span>
 
       {/* Field */}
       <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px",
+        fontFamily: "var(--font-sans)", fontSize: "12px",
         color: isIgnored ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
       }}>
         {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[field] ?? field)}
@@ -281,9 +291,10 @@ export default function ViewSheetConfigPage() {
     setDeleteLoading(true);
     setDeleteError("");
     try {
-      // Fetch all memberships for this tournament, then delete each one directly.
-      // This avoids the broken email-matching path where m.user was undefined,
-      // causing toDelete to always be empty and nothing to be deleted.
+      // Fetch all memberships directly and delete each one.
+      // The previous approach called getEmailsForNuclearDelete → deleteMembershipsByEmails,
+      // which matched on m.user?.email — but m.user is undefined on the list response,
+      // so toDelete was always empty and nothing was deleted.
       // TODO: replace with a single backend endpoint DELETE /tournaments/{id}/memberships/
       const memberships = await membershipsApi.listByTournament(tournamentId);
       await Promise.all(
@@ -324,135 +335,151 @@ export default function ViewSheetConfigPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
 
-      {/* ── Header row ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "24px" }}>
-        <div>
-          <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>{config.label}</h1>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-            {config.sheet_url}
-          </span>
-        </div>
+      {/* ── Header ── */}
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+        <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
         <Button
           variant="secondary"
           size="sm"
           onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
-          style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}
         >
-          <IconEdit size={14} />
+          <IconEdit size={18} />
           Edit
         </Button>
       </div>
 
-      {/* ── Metadata row ── */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "repeat(4, 1fr)",
-        border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-        overflow: "hidden", marginBottom: "28px",
-      }}>
-        {[
-          { label: "Type",        value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
-          { label: "Sheet Tab",   value: config.sheet_name },
-          { label: "Status",      value: config.is_active ? "Active" : "Inactive" },
-          { label: "Last Synced", value: config.last_synced_at ? fmtDateTime(config.last_synced_at) : "Never" },
-        ].map(({ label, value }, idx) => (
-          <div
-            key={label}
-            style={{
-              padding: "14px 18px",
-              borderLeft: idx > 0 ? "1px solid var(--color-border)" : "none",
-            }}
-          >
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
-              {label}
-            </p>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-              {value}
-            </p>
+      <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>{config.label}</h1>
+      <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "28px" }}>
+        {config.sheet_url}
+      </p>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+
+        {/* ── Metadata — single row, 4 equal sections ── */}
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr 1fr",
+          border: "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+          overflow: "hidden",
+        }}>
+          {[
+            { label: "Type",       value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
+            { label: "Sheet Tab",  value: config.sheet_name },
+            { label: "Status",     value: config.is_active ? "Active" : "Inactive" },
+            { label: "Last Synced", value: config.last_synced_at ? fmtDateTime(config.last_synced_at) : "Never" },
+          ].map(({ label, value }, i, arr) => (
+            <div
+              key={label}
+              style={{
+                padding: "14px 18px",
+                borderRight: i < arr.length - 1 ? "1px solid var(--color-border)" : "none",
+                background: "var(--color-surface)",
+              }}
+            >
+              <p style={{
+                fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
+                textTransform: "uppercase", letterSpacing: "0.07em",
+                color: "var(--color-text-tertiary)", marginBottom: "4px",
+              }}>
+                {label}
+              </p>
+              <p style={{
+                fontFamily: "var(--font-mono)", fontSize: "12px",
+                color: "var(--color-text-primary)",
+                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+              }}>
+                {value}
+              </p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Mapping table ── */}
+        <div>
+          <div style={{ marginBottom: "10px" }}>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+              {mappingEntries.filter(([, m]) => m.type !== "ignore").length} mapped,{" "}
+              {mappingEntries.filter(([, m]) => m.type === "ignore").length} ignored
+            </span>
           </div>
-        ))}
-      </div>
 
-      {/* ── Column Mappings ── */}
-      <div style={{ marginBottom: "32px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "12px" }}>
-          Column Mappings
-        </p>
+          {mappingEntries.length === 0 ? (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+              No columns mapped yet.
+            </p>
+          ) : (
+            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+              {/* Column headers */}
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
+                padding: "8px 14px",
+                background: "var(--color-bg)",
+                borderBottom: "1px solid var(--color-border)",
+              }}>
+                {["Sheet Column", "Field", "Type", "Extra Key / Row Key"].map((h) => (
+                  <span key={h} style={{
+                    fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.07em",
+                    color: "var(--color-text-tertiary)",
+                  }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
 
-        {mappingEntries.length === 0 ? (
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-            No columns mapped yet.
-          </p>
-        ) : (
-          <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-            {/* Column headers */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-              padding: "8px 14px",
-              background: "var(--color-bg)",
-              borderBottom: "1px solid var(--color-border)",
-            }}>
-              {["Sheet Column", "Field", "Type", "Extra Key / Row Key"].map((h) => (
-                <span key={h} style={{
-                  fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.07em",
-                  color: "var(--color-text-tertiary)",
-                }}>
-                  {h}
-                </span>
+              {mappingEntries.map(([header, mapping], idx) => (
+                <ReadOnlyMappingRow
+                  key={header}
+                  header={header}
+                  field={mapping.field}
+                  type={mapping.type}
+                  row_key={mapping.row_key}
+                  extra_key={mapping.extra_key}
+                  isLast={idx === mappingEntries.length - 1}
+                />
               ))}
             </div>
-
-            {mappingEntries.map(([header, mapping], idx) => (
-              <ReadOnlyMappingRow
-                key={header}
-                header={header}
-                field={mapping.field}
-                type={mapping.type}
-                row_key={mapping.row_key}
-                extra_key={mapping.extra_key}
-                isLast={idx === mappingEntries.length - 1}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* ── Danger zone ── */}
-      <div style={{
-        borderTop: "1px solid var(--color-border)",
-        paddingTop: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px",
-      }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-          Danger Zone
-        </p>
-
-        {deleteError && (
-          <Banner variant="error" message={deleteError} onDismiss={() => setDeleteError("")} />
-        )}
-
-        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-          <Button variant="danger" size="sm" onClick={() => setShowDeleteConfig(true)}>
-            Delete config
-          </Button>
-          <Button
-            variant="danger"
-            size="sm"
-            interactive={false}
-            style={{ background: "transparent", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
-            onClick={() => setShowDeleteMemberships(true)}
-          >
-            Delete config + memberships
-          </Button>
+          )}
         </div>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-          &quot;Delete config&quot; removes this configuration only — volunteer data is unaffected.
-          &quot;Delete config + memberships&quot; also removes all memberships in this tournament.
-        </p>
+
+        {/* ── Danger zone ── */}
+        <div style={{
+          borderTop: "1px solid var(--color-border)",
+          paddingTop: "24px",
+          display: "flex",
+          flexDirection: "column",
+          gap: "12px",
+        }}>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+            Danger Zone
+          </p>
+
+          {deleteError && (
+            <Banner variant="error" message={deleteError} onDismiss={() => setDeleteError("")} />
+          )}
+
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+            <Button variant="danger" size="sm" onClick={() => setShowDeleteConfig(true)}>
+              Delete config
+            </Button>
+            <Button
+              variant="danger"
+              size="sm"
+              interactive={false}
+              style={{ background: "transparent", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
+              onClick={() => setShowDeleteMemberships(true)}
+            >
+              Delete config + memberships
+            </Button>
+          </div>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+            &quot;Delete config&quot; removes this configuration only — volunteer data is unaffected.
+            &quot;Delete config + memberships&quot; also removes all memberships in this tournament whose email appears in the current sheet.
+          </p>
+        </div>
+
       </div>
 
       {/* ── Modals ── */}
