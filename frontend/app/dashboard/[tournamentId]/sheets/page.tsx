@@ -229,22 +229,22 @@ function CardMenu({
   const menuItems: { label: string; icon: React.ReactNode; action: () => void; danger?: boolean }[] = [
     {
       label: "Export JSON",
-      icon: <IconExport size={13} />,
+      icon: <IconExport size={16} />,
       action: () => { exportJson(cfg); setOpen(false); },
     },
     {
       label: "Export CSV",
-      icon: <IconExport size={13} />,
+      icon: <IconExport size={16} />,
       action: () => { exportCsv(cfg); setOpen(false); },
     },
     {
       label: "Edit",
-      icon: <IconEdit size={13} />,
+      icon: <IconEdit size={16} />,
       action: () => { router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
     },
     {
       label: "Delete",
-      icon: <IconTrash size={13} />,
+      icon: <IconTrash size={16} />,
       action: () => { onDelete(); setOpen(false); },
       danger: true,
     },

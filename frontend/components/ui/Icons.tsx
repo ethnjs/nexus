@@ -120,16 +120,23 @@ export function IconArrowLeft({ size = 14, ...props }: IconProps) {
 
 export function IconEdit({ size = 14, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
-      <path d="M11.5 2.5a1.414 1.414 0 012 2L5 13H2v-3L11.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" style={props.style} className={props.className}>
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M8.56078 20.2501L20.5608 8.25011L15.7501 3.43945L3.75012 15.4395V20.2501H8.56078ZM15.7501 5.56077L18.4395 8.25011L16.5001 10.1895L13.8108 7.50013L15.7501 5.56077ZM12.7501 8.56079L15.4395 11.2501L7.93946 18.7501H5.25012L5.25012 16.0608L12.7501 8.56079Z"
+        fill="currentColor"
+      />
     </svg>
   );
 }
- 
+
 export function IconTrash({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
-      <path d="M2 4h12M5 4V3a1 1 0 011-1h4a1 1 0 011 1v1M6 7v5M10 7v5M3 4l1 9a1 1 0 001 1h6a1 1 0 001-1l1-9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M2 4.5h12" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+      <path d="M6 4.5V3a1 1 0 011-1h2a1 1 0 011 1v1.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3.5 4.5l.75 8.25A1 1 0 005.25 13.5h5.5a1 1 0 001-.75L12.5 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

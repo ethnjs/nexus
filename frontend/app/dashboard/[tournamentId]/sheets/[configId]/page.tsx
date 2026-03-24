@@ -345,7 +345,7 @@ export default function ViewSheetConfigPage() {
           size="sm"
           onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
         >
-          <IconEdit size={13} />
+          <IconEdit size={18} />
           Edit
         </Button>
       </div>
