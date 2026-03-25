@@ -21,7 +21,8 @@ import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { IconArrowLeft } from "@/components/ui/Icons";
+import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
+import { StatCard } from "@/components/ui/StatCard";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -38,6 +39,16 @@ const selectStyle: React.CSSProperties = {
   color: "var(--color-text-primary)", background: "var(--color-bg)",
   outline: "none", cursor: "pointer",
 };
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface SyncResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; email: string | null; detail: string }>;
+  last_synced_at: string;
+}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -71,6 +82,7 @@ export default function EditSheetPage() {
   const [saveError, setSaveError]     = useState("");
   const [syncLoading, setSyncLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [syncResult, setSyncResult]   = useState<SyncResult | null>(null);
 
   // Import
   const importInputRef                            = useRef<HTMLInputElement>(null);
@@ -314,6 +326,7 @@ export default function EditSheetPage() {
     setSyncLoading(true);
     setSaveError("");
     setSaveSuccess(false);
+    setSyncResult(null);
     try {
       await sheetsApi.updateConfig(tournamentId, configId, {
         label,
@@ -322,8 +335,8 @@ export default function EditSheetPage() {
         column_mappings: buildColumnMappings(),
         is_active: isActive,
       });
-      await sheetsApi.sync(tournamentId, configId);
-      setSaveSuccess(true);
+      const result = await sheetsApi.sync(tournamentId, configId);
+      setSyncResult(result);
     } catch {
       setSaveError("Failed to save or sync.");
     } finally {
@@ -509,6 +522,61 @@ export default function EditSheetPage() {
             </Button>
           </div>
         </div>
+
+        {/* ── Sync results ── */}
+        {syncResult && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px", borderTop: "1px solid var(--color-border)", paddingTop: "24px" }}>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+              Sync Results
+            </p>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
+              <StatCard label="Created" value={syncResult.created} color="var(--color-success)" />
+              <StatCard label="Updated" value={syncResult.updated} />
+              <StatCard label="Skipped" value={syncResult.skipped} color="var(--color-warning)" />
+            </div>
+
+            {syncResult.errors.length > 0 ? (
+              <div style={{ border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
+                <div style={{ padding: "10px 16px", background: "var(--color-danger-subtle)", borderBottom: "1px solid var(--color-danger)" }}>
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-danger)" }}>
+                    {syncResult.errors.length} row{syncResult.errors.length !== 1 ? "s" : ""} had errors
+                  </span>
+                </div>
+                <div style={{ maxHeight: "200px", overflowY: "auto" }}>
+                  {syncResult.errors.map((err, i) => (
+                    <div key={i} style={{
+                      padding: "10px 16px",
+                      borderBottom: i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none",
+                      display: "flex", gap: "12px",
+                    }}>
+                      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>Row {err.row}</span>
+                      {err.email && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0 }}>{err.email}</span>}
+                      <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>{err.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div style={{
+                background: "var(--color-surface)", border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)", padding: "16px",
+                display: "flex", alignItems: "center", gap: "10px",
+              }}>
+                <span style={{ color: "var(--color-success)" }}><IconCheckCircle /></span>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
+                  All rows imported successfully — no errors.
+                </span>
+              </div>
+            )}
+
+            <div>
+              <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>
+                Back to Sheets
+              </Button>
+            </div>
+          </div>
+        )}
 
       </div>
 
