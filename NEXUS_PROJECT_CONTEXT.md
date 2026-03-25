@@ -120,7 +120,7 @@ nexus/
     │               └── [configId]/
     │                   ├── page.tsx   # View sheet config — read-only mapping table, edit button, danger zone
     │                   └── edit/
-    │                       └── page.tsx # Edit sheet config — live header diff, import/export, save & sync
+    │                       └── page.tsx # Edit sheet config — live header diff, import/export, save & sync, sync results summary
     ├── components/
     │   ├── ui/
     │   │   ├── Button.tsx             # primary/secondary/ghost/danger, built-in hover state, interactive prop
@@ -139,7 +139,8 @@ nexus/
     │   │   ├── UserAvatar.tsx         # avatar button + name/email/role dropdown + sign out
     │   │   ├── SplitButton.tsx        # primary action + chevron dropdown, per-half hover, variants + sizes
     │   │   ├── Banner.tsx             # inline feedback banner, variants: success/error/warning/info, optional action + dismiss
-    │   │   └── ImportSummaryModal.tsx # modal showing full import diff: updated (from/to), unchanged, notInFile, notInSheet
+    │   │   ├── ImportSummaryModal.tsx # modal showing full import diff: updated (from/to), unchanged, notInFile, notInSheet
+│   │   └── SheetConfigMappingTable.tsx # shared mapping table used by new/view/edit sheet pages — viewOnly prop, RichMappingRow, makeRichRow, diff tooltip
     │   └── layout/
     │       ├── Sidebar.tsx            # Sticky, in normal flow, expandable 52px→192px, tournamentId prop
     │       └── Topbar.tsx             # Unified topbar — showWordmark, showDropdown, showAvatar props
@@ -546,16 +547,22 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
   - Import JSON/CSV via SplitButton with Banner feedback and ImportSummaryModal
 - View sheet config page (`/dashboard/[id]/sheets/[configId]`) — read-only page:
   - Metadata row: type, sheet tab, status, last synced — 4 equal sections in one bordered row
-  - Read-only mapping table: same 4-column grid as edit page (Sheet Column / Field / Type / Extra Key), column headers wrap, rows vertically centered, ignored rows dimmed
+  - Read-only mapping table via `SheetConfigMappingTable viewOnly` — column headers wrap, rows vertically centered, ignored rows dimmed
   - Edit button (top right) navigates to edit page
   - Danger zone: delete config, nuclear delete (deletes config + all memberships in tournament)
+- Add Sheet wizard (`/dashboard/[id]/sheets/new`) — mapping step:
+  - Rows track state vs API suggestion (baseline); amber + "Edited" badge on manual edit or import
+  - Hover diff tooltip: "Changes from suggestion" (baseline→import if import applied, baseline→current otherwise)
+  - If user edits after import: second section "Changes from import" appears below a divider
 - Edit sheet config page (`/dashboard/[id]/sheets/[configId]/edit`):
   - Loads live headers from Google (re-fetches on tab change via AbortController)
   - Row state diff: same (no highlight) · changed (amber) · new (green) · removed (red, locked)
   - Summary counts: unchanged · edited · new · removed
+  - Hover diff tooltip: "Changes from saved" — same two-section logic as new page
   - Import JSON/CSV with Banner + ImportSummaryModal, respects row state
   - Export JSON/CSV via SplitButton
   - Save (PATCH only) and Save & Sync
+  - Save & Sync shows inline sync results: stat cards (created/updated/skipped), error table or all-clear banner, Back to Sheets button
   - Back/Cancel both return to view page
   - Danger zone removed (lives on view page only)
 - Volunteers page (`/dashboard/[id]/volunteers`) — temporary table view:
@@ -563,7 +570,7 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
   - Columns: name, email, status, role preference, event preference, availability slot count
   - Auto-detects up to 4 `extra_data` keys across memberships
   - Search by name/email, status filter, sortable columns
-- Shared component library additions: `SplitButton`, `Banner`, `ImportSummaryModal`
+- Shared component library additions: `SplitButton`, `Banner`, `ImportSummaryModal`, `SheetConfigMappingTable`
 - Icons added: `IconEdit`, `IconTrash`, `IconDotsVertical`, `IconExport`
 - Shared utility library: `frontend/lib/importMappings.ts` (parse + apply import, types)
 - `api.ts` additions: `membershipsApi.deleteMembershipsByEmails` (temp), `sheetsApi.getEmailsForNuclearDelete` (temp), `sheetsApi.getConfig`, `sheetsApi.updateConfig`
@@ -670,6 +677,7 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 - `SplitButton` — primary action + chevron dropdown, per-half hover. Use for export (JSON primary, CSV dropdown) and import (JSON primary, CSV dropdown).
 - `Banner` — inline feedback. Variants: success/error/warning/info. Optional `action` slot (e.g. "Show summary" button) and `onDismiss`. Use instead of toast for import feedback.
 - `ImportSummaryModal` — detailed import diff modal. Shows updated rows (from/to), unchanged count, headers not in file, headers not in sheet.
+- `SheetConfigMappingTable` — shared 4-column mapping table (Sheet Column / Field / Type / Extra Key). Props: `rows: RichMappingRow[]`, `knownFields`, `validTypes`, `onChangeRow` (omit for view-only), `viewOnly`, `baselineLabel` (default `"suggestion"`, pass `"saved"` on edit page). Row states: same/changed/new/removed with amber/green/red highlights and badges. Hover diff tooltip on changed rows shows baseline→import→current as two labeled sections. `makeRichRow(values, baseline, forcedState?, importedValue?)` helper computes state. Import from `@/components/ui/SheetConfigMappingTable`.
 - `Input` — Geist label, 44px height, 16px left padding, error state
 - `Card` — surface container with optional hover state
 - `Badge` — status tags: interested, confirmed, declined, assigned, removed, admin, user
