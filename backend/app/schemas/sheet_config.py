@@ -34,17 +34,44 @@ KNOWN_FIELDS: list[str] = [
 # Valid column mapping types — tells the sync service how to process a column
 # ---------------------------------------------------------------------------
 VALID_MAPPING_TYPES: set[str] = {
-    "string",           # store value as-is
-    "ignore",           # skip this column entirely
-    "boolean",          # "Yes"/"No" → True/False
-    "integer",          # parse to int
-    "multi_select",     # comma-separated → JSON array
-    "matrix_row",       # one row of a grid question → merged into availability JSON
-                        # requires row_key
-    "category_events",  # grouped event category string → list of specific event names
+    "string",        # store value as-is
+    "ignore",        # skip this column entirely
+    "boolean",       # "Yes"/"No" → True/False
+    "integer",       # parse to int
+    "multi_select",  # comma-separated → JSON array
+    "matrix_row",    # one row of a grid question; what happens to the value
+                     # is determined by parse rules on the mapping
+                     # requires row_key
 }
 
 VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
+
+# ---------------------------------------------------------------------------
+# Backwards compatibility — map removed/renamed type names to current ones.
+# Applied on read so stale saved configs continue to work.
+# ---------------------------------------------------------------------------
+_LEGACY_TYPE_MAP: dict[str, str] = {
+    "availability_row": "matrix_row",   # renamed in feat/sheet-config-parse-rules
+    "category_events":  "string",       # removed in feat/sheet-config-parse-rules
+}
+
+
+def coerce_legacy_type(type_value: str) -> str:
+    """
+    Coerce a legacy ColumnMapping type string to its current equivalent.
+    Logs a warning for any type that needed coercion.
+    Returns the coerced value, or the original if no coercion is needed.
+    """
+    if type_value in _LEGACY_TYPE_MAP:
+        import logging
+        new_type = _LEGACY_TYPE_MAP[type_value]
+        logging.getLogger(__name__).warning(
+            "Legacy ColumnMapping type '%s' coerced to '%s'. "
+            "Resave this sheet config to clear this warning.",
+            type_value, new_type,
+        )
+        return new_type
+    return type_value
 
 
 # ---------------------------------------------------------------------------
@@ -55,12 +82,17 @@ class ColumnMapping(BaseModel):
 
     field: str          # target DB field name from KNOWN_FIELDS
     type: str           # one of VALID_MAPPING_TYPES
-    row_key: str | None = None  # required for matrix_row — time label e.g. "8:00 AM - 10:00 AM"
+    row_key: str | None = None    # required for matrix_row — time label e.g. "8:00 AM - 10:00 AM"
     extra_key: str | None = None  # for extra_data fields — key in the JSON blob
 
     def model_dump(self, **kwargs):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(**kwargs)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def coerce_type(cls, v: str) -> str:
+        return coerce_legacy_type(v)
 
     @field_validator("field")
     @classmethod

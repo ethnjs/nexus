@@ -6,8 +6,9 @@ from app.services.sync_service import (
     _parse_day_string,
     _parse_availability,
     _merge_availability,
-    _parse_category_events,
+    _process_cell,
 )
+from app.schemas.sheet_config import coerce_legacy_type
 from unittest.mock import MagicMock
 
 
@@ -177,47 +178,45 @@ def test_merge_availability_with_existing():
 
 
 # ---------------------------------------------------------------------------
-# _parse_category_events
+# coerce_legacy_type
 # ---------------------------------------------------------------------------
 
-def _make_events(names):
-    events = []
-    for name in names:
-        e = MagicMock()
-        e.name = name
-        events.append(e)
-    return events
+def test_coerce_legacy_availability_row():
+    assert coerce_legacy_type("availability_row") == "matrix_row"
 
-def test_parse_category_events_single_category():
-    events = _make_events(["Boomilever", "Helicopter", "Scrambler"])
-    result = _parse_category_events(
-        "Technology & Engineering (Boomilever, Helicopter, Scrambler)",
-        events,
-    )
-    assert "Boomilever" in result
-    assert "Helicopter" in result
-    assert "Scrambler" in result
+def test_coerce_legacy_category_events():
+    assert coerce_legacy_type("category_events") == "string"
 
-def test_parse_category_events_multiple_categories():
-    events = _make_events(["Boomilever", "Astronomy", "Codebusters"])
-    result = _parse_category_events(
-        "Technology & Engineering (Boomilever), Earth and Space Science (Astronomy), "
-        "Inquiry & Nature of Science (Codebusters)",
-        events,
-    )
-    assert set(result) == {"Boomilever", "Astronomy", "Codebusters"}
+def test_coerce_current_type_unchanged():
+    for t in ("string", "ignore", "boolean", "integer", "multi_select", "matrix_row"):
+        assert coerce_legacy_type(t) == t
 
-def test_parse_category_events_no_match():
-    events = _make_events(["Boomilever"])
-    result = _parse_category_events(
-        "Technology & Engineering (Unknown Event)",
-        events,
-    )
-    assert result == []
 
-def test_parse_category_events_none():
-    events = _make_events(["Boomilever"])
-    assert _parse_category_events("None", events) == []
+# ---------------------------------------------------------------------------
+# _process_cell — legacy type coercion
+# ---------------------------------------------------------------------------
 
-def test_parse_category_events_empty():
-    assert _parse_category_events("", []) == []
+def test_process_cell_legacy_availability_row_coerced(caplog):
+    """availability_row is coerced to matrix_row and processes as availability."""
+    import logging
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "availability",
+        "type": "availability_row",
+        "row_key": "8:00 AM - 10:00 AM",
+    }
+    with caplog.at_level(logging.WARNING):
+        result = _process_cell("Thursday 5/21", mapping, t)
+    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
+    assert "availability_row" in caplog.text
+
+
+def test_process_cell_legacy_category_events_coerced(caplog):
+    """category_events is coerced to string and returns raw value."""
+    import logging
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "event_preference", "type": "category_events"}
+    with caplog.at_level(logging.WARNING):
+        result = _process_cell("Technology & Engineering (Boomilever)", mapping, t)
+    assert result == "Technology & Engineering (Boomilever)"
+    assert "category_events" in caplog.text

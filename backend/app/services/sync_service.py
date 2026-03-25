@@ -16,7 +16,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
-from app.schemas.sheet_config import SyncError, SyncResult
+from app.schemas.sheet_config import SyncError, SyncResult, coerce_legacy_type
 from app.services.sheets_service import SheetsService
 
 
@@ -177,46 +177,6 @@ def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dic
 
 
 # ---------------------------------------------------------------------------
-# category_events parsing
-# ---------------------------------------------------------------------------
-
-def _parse_category_events(
-    cell_value: str,
-    tournament_events: list[Event],
-) -> list[str]:
-    """
-    Parse a category_events cell like:
-    "Technology & Engineering (Boomilever, Helicopter, Scrambler),
-     Earth and Space Science (Astronomy, Meteorology)"
-
-    Extracts all event names from inside parentheses and matches them
-    against tournament events by partial name match.
-
-    Returns list of matched event names.
-    """
-    if not cell_value or cell_value.strip().lower() == "none":
-        return []
-
-    # Extract all content inside parentheses
-    raw_names: list[str] = []
-    for group in re.findall(r"\(([^)]+)\)", cell_value):
-        for name in group.split(","):
-            raw_names.append(name.strip())
-
-    # Match against tournament event names (case-insensitive partial match)
-    event_names = [e.name for e in tournament_events]
-    matched = []
-    for raw in raw_names:
-        for event_name in event_names:
-            if raw.lower() in event_name.lower() or event_name.lower() in raw.lower():
-                if event_name not in matched:
-                    matched.append(event_name)
-                break
-
-    return matched
-
-
-# ---------------------------------------------------------------------------
 # Field processing
 # ---------------------------------------------------------------------------
 
@@ -224,13 +184,13 @@ def _process_cell(
     value: str,
     mapping: dict,
     tournament: Tournament,
-    tournament_events: list[Event],
 ) -> Any:
     """
     Process a single cell value according to its ColumnMapping type.
     Returns the processed value, or raises ValueError on bad input.
     """
-    field_type = mapping.get("type", "string")
+    # Coerce any legacy type names before processing
+    field_type = coerce_legacy_type(mapping.get("type", "string"))
 
     if field_type == "ignore":
         return None
@@ -261,9 +221,7 @@ def _process_cell(
         row_key = mapping.get("row_key", "")
         return _parse_availability(value, row_key, tournament)
 
-    if field_type == "category_events":
-        return _parse_category_events(value, tournament_events)
-
+    # Unknown type — fall back to raw string rather than crashing
     return value.strip() if value else None
 
 
@@ -285,10 +243,6 @@ def sync_sheet(
     ).first()
     if not tournament:
         raise ValueError(f"Tournament {config.tournament_id} not found")
-
-    tournament_events = db.query(Event).filter(
-        Event.tournament_id == config.tournament_id
-    ).all()
 
     # Fetch all rows from the sheet
     rows = sheets_svc.get_rows(config.spreadsheet_id, config.sheet_name)
@@ -315,14 +269,12 @@ def sync_sheet(
                     continue
 
                 field = mapping.get("field")
-                field_type = mapping.get("type")
+                field_type = coerce_legacy_type(mapping.get("type", "string"))
 
                 if field_type == "ignore" or field == "__ignore__":
                     continue
 
-                processed = _process_cell(
-                    raw_value, mapping, tournament, tournament_events
-                )
+                processed = _process_cell(raw_value, mapping, tournament)
 
                 if field == "availability":
                     # Accumulate slots across all matrix rows
@@ -343,6 +295,11 @@ def sync_sheet(
                 else:
                     # Membership fields
                     if processed is not None:
+                        # event_preference is list[str] in the schema — if the column
+                        # is typed as string (not multi_select), wrap it in a list so
+                        # the response serializer doesn't reject it
+                        if field == "event_preference" and isinstance(processed, str):
+                            processed = [processed]
                         membership_fields[field] = processed
 
             # Email is required
