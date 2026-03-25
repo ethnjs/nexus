@@ -25,6 +25,13 @@ function fmtList(items: string[] | null | undefined) {
   return items.join(", ");
 }
 
+function fmtVal(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (Array.isArray(v)) return v.length > 0 ? v.join(", ") : "—";
+  return String(v);
+}
+
 const STATUS_VARIANT: Record<string, "interested" | "confirmed" | "declined" | "assigned" | "removed"> = {
   interested: "interested",
   confirmed:  "confirmed",
@@ -52,8 +59,8 @@ export default function VolunteersPage() {
       setLoading(true);
       setError("");
       try {
-        // User data is now embedded by the list endpoint — no per-membership fetches needed.
         const ms = await membershipsApi.listByTournament(tournamentId);
+        // User data is embedded by the list endpoint — no per-membership fetches needed.
         setMemberships(ms as MembershipWithUser[]);
       } catch {
         setError("Failed to load volunteers.");
@@ -78,13 +85,10 @@ export default function VolunteersPage() {
 
   const sorted = [...filtered].sort((a, b) => {
     let av = "", bv = "";
-    if (sortKey === "name")            { av = displayName(a.user); bv = displayName(b.user); }
-    else if (sortKey === "email")      { av = a.user?.email ?? ""; bv = b.user?.email ?? ""; }
-    else if (sortKey === "status")     { av = a.status; bv = b.status; }
-    else if (sortKey === "role_preference") {
-      av = (a.role_preference ?? []).join(",");
-      bv = (b.role_preference ?? []).join(",");
-    }
+    if (sortKey === "name")                 { av = displayName(a.user);              bv = displayName(b.user); }
+    else if (sortKey === "email")           { av = a.user?.email ?? "";              bv = b.user?.email ?? ""; }
+    else if (sortKey === "status")          { av = a.status;                         bv = b.status; }
+    else if (sortKey === "role_preference") { av = (a.role_preference ?? []).join(); bv = (b.role_preference ?? []).join(); }
     return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
   });
 
@@ -93,30 +97,35 @@ export default function VolunteersPage() {
     else { setSortKey(key); setSortAsc(true); }
   }
 
-  // ── Derive extra_data keys present across all memberships ─────────────────
-
+  // All extra_data keys across all memberships — no cap
   const extraKeys = Array.from(
     new Set(memberships.flatMap((m) => Object.keys(m.extra_data ?? {})))
-  ).slice(0, 4); // cap at 4 columns to avoid blowing out the table
+  ).sort();
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Styles ────────────────────────────────────────────────────────────────
 
   const thStyle: React.CSSProperties = {
     fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
     textTransform: "uppercase", letterSpacing: "0.07em",
     color: "var(--color-text-tertiary)", padding: "8px 14px",
     textAlign: "left", whiteSpace: "nowrap", cursor: "pointer",
-    userSelect: "none",
+    userSelect: "none", background: "var(--color-bg)",
   };
+
+  const thPlain: React.CSSProperties = { ...thStyle, cursor: "default" };
 
   const tdStyle: React.CSSProperties = {
     fontFamily: "var(--font-mono)", fontSize: "12px",
     color: "var(--color-text-primary)", padding: "10px 14px",
     borderTop: "1px solid var(--color-border)", verticalAlign: "top",
+    whiteSpace: "nowrap",
   };
 
-  const arrow = (key: SortKey) =>
-    sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
+  const tdSec: React.CSSProperties = { ...tdStyle, color: "var(--color-text-secondary)" };
+
+  const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ width: "100%" }}>
@@ -170,14 +179,8 @@ export default function VolunteersPage() {
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
       )}
       {!loading && !error && memberships.length === 0 && (
-        <div style={{
-          border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)",
-          background: "var(--color-surface)", padding: "60px 0",
-          textAlign: "center",
-        }}>
-          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)", marginBottom: "6px" }}>
-            No volunteers yet
-          </p>
+        <div style={{ border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)", background: "var(--color-surface)", padding: "60px 0", textAlign: "center" }}>
+          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)", marginBottom: "6px" }}>No volunteers yet</p>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
             Sync a Google Sheet to start importing volunteer responses.
           </p>
@@ -186,58 +189,85 @@ export default function VolunteersPage() {
 
       {/* ── Table ── */}
       {!loading && !error && sorted.length > 0 && (
-        <div style={{
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-          overflow: "auto", background: "var(--color-surface)",
-        }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px" }}>
+        <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflowX: "auto", background: "var(--color-surface)" }}>
+          <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
             <thead>
-              <tr style={{ background: "var(--color-bg)" }}>
+              <tr>
+                {/* ── Sortable ── */}
                 <th style={thStyle} onClick={() => toggleSort("name")}>Name{arrow("name")}</th>
                 <th style={thStyle} onClick={() => toggleSort("email")}>Email{arrow("email")}</th>
                 <th style={thStyle} onClick={() => toggleSort("status")}>Status{arrow("status")}</th>
                 <th style={thStyle} onClick={() => toggleSort("role_preference")}>Role Pref{arrow("role_preference")}</th>
-                <th style={thStyle}>Event Pref</th>
-                <th style={thStyle}>Availability</th>
+
+                {/* ── User fields ── */}
+                <th style={thPlain}>Phone</th>
+                <th style={thPlain}>University</th>
+                <th style={thPlain}>Major</th>
+                <th style={thPlain}>Employer</th>
+                <th style={thPlain}>Shirt Size</th>
+                <th style={thPlain}>Dietary</th>
+
+                {/* ── Membership fields ── */}
+                <th style={thPlain}>Event Pref</th>
+                <th style={thPlain}>Availability</th>
+                <th style={thPlain}>Lunch</th>
+                <th style={thPlain}>Positions</th>
+                <th style={thPlain}>Assigned Event</th>
+                <th style={thPlain}>Notes</th>
+
+                {/* ── Extra data ── */}
                 {extraKeys.map((k) => (
-                  <th key={k} style={thStyle}>{k.replace(/_/g, " ")}</th>
+                  <th key={k} style={thPlain}>{k.replace(/_/g, " ")}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {sorted.map((m) => (
-                <tr key={m.id} style={{ background: "var(--color-surface)" }}
+                <tr
+                  key={m.id}
+                  style={{ background: "var(--color-surface)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-bg)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-surface)"; }}
                 >
+                  {/* Name */}
                   <td style={{ ...tdStyle, fontFamily: "var(--font-sans)", fontWeight: 500 }}>
                     {displayName(m.user)}
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {m.user?.email ?? "—"}
-                  </td>
+
+                  {/* Email */}
+                  <td style={tdSec}>{m.user?.email ?? "—"}</td>
+
+                  {/* Status */}
                   <td style={tdStyle}>
-                    <Badge variant={STATUS_VARIANT[m.status] ?? "default"}>
-                      {m.status}
-                    </Badge>
+                    <Badge variant={STATUS_VARIANT[m.status] ?? "default"}>{m.status}</Badge>
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {fmtList(m.role_preference)}
-                  </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {fmtList(m.event_preference)}
-                  </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
+
+                  {/* Role pref */}
+                  <td style={tdSec}>{fmtList(m.role_preference)}</td>
+
+                  {/* User fields */}
+                  <td style={tdSec}>{m.user?.phone               ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.university           ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.major                ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.employer             ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.shirt_size           ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.dietary_restriction  ?? "—"}</td>
+
+                  {/* Membership fields */}
+                  <td style={tdSec}>{fmtList(m.event_preference)}</td>
+                  <td style={tdSec}>
                     {m.availability && m.availability.length > 0
                       ? `${m.availability.length} slot${m.availability.length !== 1 ? "s" : ""}`
                       : "—"}
                   </td>
+                  <td style={tdSec}>{m.lunch_order               ?? "—"}</td>
+                  <td style={tdSec}>{fmtList(m.positions)}</td>
+                  <td style={tdSec}>{m.assigned_event_id != null ? String(m.assigned_event_id) : "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", maxWidth: "260px" }}>{m.notes ?? "—"}</td>
+
+                  {/* Extra data — all keys */}
                   {extraKeys.map((k) => (
-                    <td key={k} style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                      {m.extra_data?.[k] != null
-                        ? String(m.extra_data[k])
-                        : "—"}
-                    </td>
+                    <td key={k} style={{ ...tdSec, whiteSpace: "normal", maxWidth: "200px" }}>{fmtVal(m.extra_data?.[k])}</td>
                   ))}
                 </tr>
               ))}
