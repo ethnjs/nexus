@@ -1,37 +1,66 @@
-import type { ColumnMapping } from "@/lib/api";
+import type { ColumnMapping, ParseRule } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MappingRow {
-  header: string;
-  field: string;
-  type: string;
-  row_key: string;
+  header:    string;
+  field:     string;
+  type:      string;
+  row_key:   string;
   extra_key: string;
+  delimiter: string;           // only used when type === 'multi_select'; defaults to ''
+  rules:     ParseRule[];      // ordered list; empty array = no rules
 }
 
 export interface MappingsExport {
-  label?: string;
-  sheet_type?: string;
-  sheet_name?: string;
+  label?:          string;
+  sheet_type?:     string;
+  sheet_name?:     string;
   column_mappings: Record<string, ColumnMapping>;
 }
 
 export interface ImportSummaryEntry {
   header: string;
-  from: MappingRow;
-  to: MappingRow;
+  from:   MappingRow;
+  to:     MappingRow;
 }
 
 export interface ImportSummary {
   /** Rows where the mapping changed */
-  updated: ImportSummaryEntry[];
+  updated:    ImportSummaryEntry[];
   /** Count of rows that matched but had no change */
-  unchanged: number;
+  unchanged:  number;
   /** Headers in the file that don't exist in the current sheet — ignored */
   notInSheet: string[];
   /** Headers in the sheet that weren't in the file — untouched */
-  notInFile: string[];
+  notInFile:  string[];
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Shallow equality check for two MappingRows (including rules/delimiter). */
+export function mappingRowsEqual(a: MappingRow, b: MappingRow): boolean {
+  if (
+    a.field     !== b.field     ||
+    a.type      !== b.type      ||
+    a.row_key   !== b.row_key   ||
+    a.extra_key !== b.extra_key ||
+    a.delimiter !== b.delimiter
+  ) return false;
+
+  if (a.rules.length !== b.rules.length) return false;
+  for (let i = 0; i < a.rules.length; i++) {
+    const ra = a.rules[i];
+    const rb = b.rules[i];
+    if (
+      ra.condition      !== rb.condition      ||
+      ra.action         !== rb.action         ||
+      (ra.match         ?? "") !== (rb.match  ?? "") ||
+      (ra.value         ?? "") !== (rb.value  ?? "") ||
+      ra.case_sensitive !== rb.case_sensitive
+    ) return false;
+  }
+  return true;
 }
 
 // ─── Parsers ──────────────────────────────────────────────────────────────────
@@ -49,6 +78,8 @@ export function parseMappingsJson(text: string): MappingsExport | null {
 /**
  * Parse a CSV exported by our exportCsv helper.
  * Expected header row: header, field, type, row_key, extra_key
+ * Note: rules/delimiter cannot round-trip through CSV — they are silently dropped
+ * and the imported mapping will have empty rules/delimiter.
  */
 export function parseMappingsCsv(text: string): MappingsExport | null {
   try {
@@ -93,8 +124,9 @@ export function parseMappingsCsv(text: string): MappingsExport | null {
         field: cells[fieldIdx]?.trim() ?? "__ignore__",
         type:  (cells[typeIdx]?.trim() ?? "ignore") as ColumnMapping["type"],
       };
-      if (rowKeyIdx !== -1 && cells[rowKeyIdx]?.trim()) mapping.row_key = cells[rowKeyIdx].trim();
+      if (rowKeyIdx   !== -1 && cells[rowKeyIdx]?.trim())   mapping.row_key   = cells[rowKeyIdx].trim();
       if (extraKeyIdx !== -1 && cells[extraKeyIdx]?.trim()) mapping.extra_key = cells[extraKeyIdx].trim();
+      // rules/delimiter are not representable in CSV — left absent (backend defaults to []/null)
       column_mappings[colHeader] = mapping;
     }
 
@@ -114,18 +146,21 @@ export function parseMappingsCsv(text: string): MappingsExport | null {
  * - Headers in the file not present in currentRows → ignored (notInSheet)
  *
  * Returns the new rows and a full ImportSummary for the modal.
+ *
+ * Rules/delimiter from the import file are carried through if present.
+ * CSV imports (which lack rules) leave existing rules intact.
  */
 export function applyImport(
   currentRows: MappingRow[],
-  parsed: MappingsExport,
+  parsed:      MappingsExport,
 ): { updatedRows: MappingRow[]; summary: ImportSummary } {
   const importedMappings = parsed.column_mappings;
-  const currentHeaders = new Set(currentRows.map((r) => r.header));
+  const currentHeaders   = new Set(currentRows.map((r) => r.header));
 
-  const updated: ImportSummaryEntry[] = [];
-  let unchanged = 0;
-  const notInSheet = Object.keys(importedMappings).filter((h) => !currentHeaders.has(h));
-  const notInFile: string[] = [];
+  const updated:    ImportSummaryEntry[] = [];
+  let   unchanged   = 0;
+  const notInSheet  = Object.keys(importedMappings).filter((h) => !currentHeaders.has(h));
+  const notInFile:  string[] = [];
 
   const updatedRows = currentRows.map((row) => {
     const m = importedMappings[row.header];
@@ -140,13 +175,12 @@ export function applyImport(
       type:      m.type      ?? row.type,
       row_key:   m.row_key   ?? "",
       extra_key: m.extra_key ?? "",
+      // If the import file has rules/delimiter, use them; otherwise preserve current
+      rules:     m.rules     ?? row.rules,
+      delimiter: m.delimiter ?? row.delimiter,
     };
 
-    const changed =
-      next.field     !== row.field     ||
-      next.type      !== row.type      ||
-      next.row_key   !== row.row_key   ||
-      next.extra_key !== row.extra_key;
+    const changed = !mappingRowsEqual(next, row);
 
     if (changed) {
       updated.push({ header: row.header, from: { ...row }, to: next });
