@@ -774,7 +774,7 @@ function MappingRowComponent({
         )}
       </div>
 
-      {/* ── Rules accordion panel ── */}
+      {/* ── Rules accordion panel (edit mode) ── */}
       {open && !viewOnly && (
         <RulesPanel
           row={row}
@@ -785,6 +785,69 @@ function MappingRowComponent({
           rowErrors={errors}
           rowWarnings={warnings}
         />
+      )}
+
+      {/* ── Rules read-only display (view mode) ── */}
+      {viewOnly && hasRules && (
+        <div style={{
+          background: "var(--color-bg)",
+          borderTop: "1px solid var(--color-border)",
+          borderLeft,
+          padding: "8px 14px 10px 28px",
+          display: "flex", flexDirection: "column", gap: "4px",
+        }}>
+          {row.delimiter && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+                Delimiter
+              </span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
+                {row.delimiter}
+              </span>
+            </div>
+          )}
+          {row.rules.map((rule, idx) => {
+            const condLabel   = CONDITION_LABELS[rule.condition] ?? rule.condition;
+            const actionLabel = ACTION_LABELS[rule.action]       ?? rule.action;
+            const showMatch   = rule.condition !== "always";
+            const showValue   = !VALUELESS_ACTIONS.has(rule.action as ParseRuleAction);
+            return (
+              <div key={idx} style={{
+                display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap",
+                padding: "5px 8px",
+                background: "var(--color-surface)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-sm)",
+              }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", minWidth: "16px" }}>
+                  {idx + 1}
+                </span>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
+                  {condLabel}
+                </span>
+                {showMatch && rule.match && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>
+                    {rule.match}
+                  </span>
+                )}
+                {showMatch && rule.case_sensitive && (
+                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "var(--color-text-tertiary)" }}>
+                    case-sensitive
+                  </span>
+                )}
+                <span style={{ color: "var(--color-text-tertiary)", fontSize: "11px" }}>→</span>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
+                  {actionLabel}
+                </span>
+                {showValue && rule.value && (
+                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>
+                    {rule.value}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
 
       {/* Diff tooltip */}
