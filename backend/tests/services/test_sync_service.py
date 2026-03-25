@@ -6,6 +6,8 @@ from app.services.sync_service import (
     _parse_day_string,
     _parse_availability,
     _merge_availability,
+    _rule_matches,
+    _apply_rules,
     _process_cell,
 )
 from app.schemas.sheet_config import coerce_legacy_type
@@ -197,7 +199,8 @@ def test_coerce_current_type_unchanged():
 # ---------------------------------------------------------------------------
 
 def test_process_cell_legacy_availability_row_coerced(caplog):
-    """availability_row is coerced to matrix_row and processes as availability."""
+    """availability_row is coerced to matrix_row. Without a parse_availability
+    rule, matrix_row returns the raw string — the TD must add the rule."""
     import logging
     t = _make_tournament(NATS_BLOCKS)
     mapping = {
@@ -207,7 +210,7 @@ def test_process_cell_legacy_availability_row_coerced(caplog):
     }
     with caplog.at_level(logging.WARNING):
         result = _process_cell("Thursday 5/21", mapping, t)
-    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
+    assert result == "Thursday 5/21"
     assert "availability_row" in caplog.text
 
 
@@ -220,3 +223,161 @@ def test_process_cell_legacy_category_events_coerced(caplog):
         result = _process_cell("Technology & Engineering (Boomilever)", mapping, t)
     assert result == "Technology & Engineering (Boomilever)"
     assert "category_events" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# _rule_matches
+# ---------------------------------------------------------------------------
+
+def test_rule_matches_always():
+    assert _rule_matches("anything", "always", None, False) is True
+
+def test_rule_matches_contains_case_insensitive():
+    assert _rule_matches("General Volunteer", "contains", "general volunteer", False) is True
+
+def test_rule_matches_contains_case_sensitive_miss():
+    assert _rule_matches("General Volunteer", "contains", "general volunteer", True) is False
+
+def test_rule_matches_contains_case_sensitive_hit():
+    assert _rule_matches("general volunteer", "contains", "general volunteer", True) is True
+
+def test_rule_matches_equals():
+    assert _rule_matches("GV", "equals", "gv", False) is True
+    assert _rule_matches("GV", "equals", "gv", True) is False
+
+def test_rule_matches_starts_with():
+    assert _rule_matches("Event Supervisor", "starts_with", "event", False) is True
+    assert _rule_matches("Event Supervisor", "starts_with", "supervisor", False) is False
+
+def test_rule_matches_ends_with():
+    assert _rule_matches("Event Supervisor", "ends_with", "supervisor", False) is True
+    assert _rule_matches("Event Supervisor", "ends_with", "event", False) is False
+
+def test_rule_matches_regex():
+    assert _rule_matches("Boomilever", "regex", r"boom\w+", False) is True
+    assert _rule_matches("Helicopter", "regex", r"boom\w+", False) is False
+
+def test_rule_matches_regex_case_insensitive():
+    assert _rule_matches("BOOMILEVER", "regex", r"boom\w+", False) is True
+
+def test_rule_matches_no_match_string_returns_false():
+    assert _rule_matches("hello", "contains", None, False) is False
+
+
+# ---------------------------------------------------------------------------
+# _apply_rules
+# ---------------------------------------------------------------------------
+
+def _t():
+    return _make_tournament(NATS_BLOCKS)
+
+
+def test_apply_rules_set():
+    rules = [{"condition": "contains", "match": "general volunteer", "action": "set", "value": "GV"}]
+    result = _apply_rules("I am a General Volunteer", rules, {}, _t())
+    assert result == "GV"
+
+def test_apply_rules_set_no_match_unchanged():
+    rules = [{"condition": "contains", "match": "general volunteer", "action": "set", "value": "GV"}]
+    result = _apply_rules("Event Supervisor", rules, {}, _t())
+    assert result == "Event Supervisor"
+
+def test_apply_rules_replace_literal():
+    rules = [{"condition": "contains", "match": "General Volunteer", "action": "replace", "value": "GV", "case_sensitive": False}]
+    result = _apply_rules("I am a General Volunteer and Event Supervisor", rules, {}, _t())
+    assert result == "I am a GV and Event Supervisor"
+
+def test_apply_rules_replace_regex():
+    rules = [{"condition": "regex", "match": r"\s*\([^)]*\)", "action": "replace", "value": ""}]
+    result = _apply_rules("Life, Personal & Social Science (Anatomy, Designer Genes)", rules, {}, _t())
+    assert result == "Life, Personal & Social Science"
+
+def test_apply_rules_prepend():
+    rules = [{"condition": "always", "action": "prepend", "value": "PREFIX-"}]
+    assert _apply_rules("hello", rules, {}, _t()) == "PREFIX-hello"
+
+def test_apply_rules_append():
+    rules = [{"condition": "always", "action": "append", "value": "-SUFFIX"}]
+    assert _apply_rules("hello", rules, {}, _t()) == "hello-SUFFIX"
+
+def test_apply_rules_discard():
+    rules = [{"condition": "contains", "match": "n/a", "action": "discard"}]
+    assert _apply_rules("N/A", rules, {}, _t()) is None
+
+def test_apply_rules_discard_no_match_unchanged():
+    rules = [{"condition": "contains", "match": "n/a", "action": "discard"}]
+    assert _apply_rules("yes", rules, {}, _t()) == "yes"
+
+def test_apply_rules_sequential_all_fire():
+    """Both rules fire in order — second sees output of first."""
+    rules = [
+        {"condition": "contains", "match": "General Volunteer", "action": "replace", "value": "GV"},
+        {"condition": "contains", "match": "Event Supervisor",  "action": "replace", "value": "ES"},
+    ]
+    result = _apply_rules("General Volunteer, Event Supervisor", rules, {}, _t())
+    assert result == "GV, ES"
+
+def test_apply_rules_parse_availability_short_circuits():
+    """parse_availability returns a list and stops rule processing."""
+    mapping = {"row_key": "8:00 AM - 10:00 AM"}
+    rules = [
+        {"condition": "always", "action": "parse_availability"},
+        # this rule would fire on a string but should never run
+        {"condition": "always", "action": "set", "value": "SHOULD NOT APPEAR"},
+    ]
+    result = _apply_rules("Thursday 5/21", rules, mapping, _make_tournament(NATS_BLOCKS))
+    assert isinstance(result, list)
+    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
+
+def test_apply_rules_empty_rules_unchanged():
+    assert _apply_rules("hello", [], {}, _t()) == "hello"
+
+
+# ---------------------------------------------------------------------------
+# _process_cell — rules integration
+# ---------------------------------------------------------------------------
+
+def test_process_cell_rules_run_before_type_coercion():
+    """Rule normalizes value, then boolean coercion fires on the result."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "extra_data",
+        "type": "boolean",
+        "extra_key": "competed",
+        "rules": [{"condition": "contains", "match": "yes i have", "action": "set", "value": "yes"}],
+    }
+    assert _process_cell("Yes I have", mapping, t) is True
+
+def test_process_cell_rules_discard_returns_none():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "notes",
+        "type": "string",
+        "rules": [{"condition": "equals", "match": "n/a", "action": "discard"}],
+    }
+    assert _process_cell("N/A", mapping, t) is None
+
+def test_process_cell_multi_select_custom_delimiter():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "role_preference", "type": "multi_select", "delimiter": ";"}
+    result = _process_cell("Event Supervisor;General Volunteer;Floater", mapping, t)
+    assert result == ["Event Supervisor", "General Volunteer", "Floater"]
+
+def test_process_cell_parse_availability_via_rule():
+    """matrix_row + parse_availability rule produces slots list."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "availability",
+        "type": "matrix_row",
+        "row_key": "8:00 AM - 10:00 AM",
+        "rules": [{"condition": "always", "action": "parse_availability"}],
+    }
+    result = _process_cell("Thursday 5/21", mapping, t)
+    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
+
+def test_process_cell_matrix_row_no_rule_returns_string():
+    """matrix_row without a parse_availability rule stores raw string."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM"}
+    result = _process_cell("Thursday 5/21", mapping, t)
+    assert result == "Thursday 5/21"

@@ -23,9 +23,11 @@ COLUMN_MAPPINGS = {
     "Which events?":   {"field": "event_preference", "type": "string"},
     "Availability [8:00 AM - 10:00 AM]": {
         "field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM",
+        "rules": [{"condition": "always", "action": "parse_availability"}],
     },
     "Availability [10:00 AM - NOON]": {
         "field": "availability", "type": "matrix_row", "row_key": "10:00 AM - NOON",
+        "rules": [{"condition": "always", "action": "parse_availability"}],
     },
     "Transportation": {
         "field": "extra_data", "type": "string", "extra_key": "transportation",
