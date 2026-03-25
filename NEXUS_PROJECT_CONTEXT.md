@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: issue-4-membership-list-inline-user*
+*Last updated: feat/sheet-config-parse-rules*
 
 > **Stylization:** The product name is always written **NEXUS** (all caps) in UI copy, docs, and design contexts. Use lowercase `nexus` only where required by code or URLs (e.g. repo name, route paths, package names).
 
@@ -111,7 +111,7 @@ nexus/
     │           ├── overview/page.tsx  # Blank for now
     │           ├── assignments/page.tsx
     │           ├── events/page.tsx
-    │           ├── volunteers/page.tsx # Temp volunteer table — user data inline (no per-row fetches), search, status filter, sortable columns
+    │           ├── volunteers/page.tsx # Temp volunteer table — user data inline (no per-row fetches), all user + membership fields + all extra_data keys (uncapped, wrap at 200px), search, status filter, sortable columns
     │           ├── settings/page.tsx
     │           └── sheets/
     │               ├── page.tsx       # Sheets index — clickable config cards, export, sync, duplicate tab warnings
@@ -147,10 +147,14 @@ nexus/
     │                                  # showDropdown renders TournamentDropdown (isolated so useTournament
     │                                  # only called when TournamentProvider is in tree)
     ├── lib/
-    │   ├── api.ts                     # ApiError, authApi, tournamentsApi, eventsApi, usersApi, membershipsApi, sheetsApi + full types
+    │   ├── api.ts                     # ApiError (carries detail: unknown for structured 422s), authApi, tournamentsApi, eventsApi, usersApi, membershipsApi, sheetsApi + full types
+    │   │                              # ParseRule, ParseRuleCondition, ParseRuleAction — parse rule types
+    │   │                              # ColumnMapping now includes rules?: ParseRule[] and delimiter?: string
+    │   │                              # ValidationIssue — structured error/warning from 422 responses
+    │   │                              # SheetHeadersResponse — named type including valid_rule_conditions + valid_rule_actions
     │   │                              # membershipsApi.deleteMembershipsByEmails — TEMP: serial deletes, tracked in GitHub issue
     │   │                              # sheetsApi.getEmailsForNuclearDelete — TEMP: fetches all memberships, tracked in GitHub issue
-    │   ├── importMappings.ts          # MappingRow, MappingsExport, ImportSummary types + parseMappingsJson, parseMappingsCsv, applyImport
+    │   ├── importMappings.ts          # MappingRow (includes rules: ParseRule[], delimiter: string), MappingsExport, ImportSummary types + parseMappingsJson, parseMappingsCsv, applyImport, mappingRowsEqual
     │   ├── useAuth.tsx                # AuthProvider + useAuth hook
     │   └── useTournament.tsx          # TournamentProvider + useTournament hook, persists selection to localStorage
     ├── middleware.ts                  # Protect /dashboard/*, redirect if logged in on /
@@ -411,7 +415,37 @@ UNIQUE: (user_id, tournament_id)
 - All other endpoints (get, create, update, delete) still use `_serialize()` and return `MembershipRead`
 - Frontend `volunteers/page.tsx` reads `m.user` directly off each membership — no `usersApi` calls
 
-### Frontend component conventions
+### Parse rules
+- Rules are authored by the TD in the sheet config UI and stored on `ColumnMapping.rules`
+- **Data flow per cell:** raw string → rules applied in order → type coercion → stored in DB
+- **All matching rules fire** (not first-match-wins) — each rule sees output of previous
+- **`parse_availability` is an explicit rule action**, not implicit `matrix_row` behavior — TD must add it
+- **`replace` with `regex` condition** uses `re.sub` (replaces all matches); literal replace is case-insensitive
+- **`matrix_row` without a `parse_availability` rule** → stores raw string, no crash
+- **Validation runs on CREATE + PATCH** — backend returns HTTP 422 with `{ errors: ValidationIssue[], warnings: ValidationIssue[] }` in the response body. Frontend parses `e.detail` (not `e.message`) off `ApiError`.
+- **Legacy type coercion:** `availability_row` → `matrix_row`, `category_events` → `string` — both handled transparently on read with a server-side warning log
+
+### Google Forms multi-select parsing patterns
+Google Forms checkbox questions export multiple selections as a comma-separated string. This conflicts with values that themselves contain commas. Two established patterns:
+
+**Pattern 1 — Options with appended descriptions** (`"Label - Description, Label - Description"`)
+Strip the description text with a literal `contains` + `replace` rule per option:
+```json
+{ "condition": "contains", "match": " - Full description text here.", "action": "replace", "value": "" }
+```
+One rule per option. After stripping, the remaining string splits cleanly on `,`.
+
+**Pattern 2 — Options with parenthetical sub-lists** (`"Category (item1, item2), Category (item3)"`)
+Use two regex rules + a custom delimiter to avoid the commas inside parentheses:
+```json
+[
+  { "condition": "regex", "match": "\\) ?, ?", "action": "replace", "value": ";" },
+  { "condition": "regex", "match": " \\([^)]+\\)", "action": "replace", "value": "" }
+]
+```
+And set `"delimiter": ";"` on the mapping. Rule 1 replaces the `)` option separator with `;`. Rule 2 strips the parenthetical content. Split on `;` produces clean category names.
+
+
 - **Always use `Button`** — never inline button elements for actions
 - **Always use `SplitButton`** for export/import actions that have a primary + dropdown variant (JSON primary, CSV in dropdown)
 - **Always use `Banner`** for inline import feedback — replaces old inline toast pattern
@@ -431,16 +465,32 @@ UNIQUE: (user_id, tournament_id)
 
 ## column_mappings — Rich ColumnMapping Structure
 
-**7 mapping types:**
+**6 mapping types** (`category_events` removed — use `multi_select` with parse rules instead):
 | Type | Description |
 |---|---|
 | `string` | Store value as-is |
 | `ignore` | Skip this column |
 | `boolean` | "Yes"/"No" → true/false |
 | `integer` | Parse to int |
-| `multi_select` | Comma-separated → JSON array |
-| `matrix_row` | One row of availability grid → merged into availability JSON. Requires `row_key` |
-| `category_events` | Grouped event category string → list of specific event names |
+| `multi_select` | Split on `delimiter` (default `,`) → JSON array. Rules run on the full raw string before splitting. |
+| `matrix_row` | One row of availability grid → merged into availability JSON. Requires `row_key`. Must have a `parse_availability` rule to trigger parsing. |
+
+**Optional fields on ColumnMapping:**
+- `row_key` — required for `matrix_row`; time label e.g. `"8:00 AM - 10:00 AM"`
+- `extra_key` — required for `extra_data` field; key name in the JSON blob
+- `delimiter` — only valid on `multi_select`; default `,`
+- `rules` — ordered list of `ParseRule` objects; run on the raw string before type coercion
+
+**ParseRule fields:**
+- `condition`: `always` | `contains` | `equals` | `starts_with` | `ends_with` | `regex`
+- `match`: required unless `condition === "always"`
+- `case_sensitive`: bool (default false)
+- `action`: `set` | `replace` | `prepend` | `append` | `discard` | `parse_availability`
+- `value`: required for `set` / `replace` / `prepend` / `append`
+
+**Rule execution:** all matching rules fire sequentially (not first-match). Each rule sees the output of the previous. `parse_availability` short-circuits and returns slots directly. `discard` returns null (cell skipped).
+
+**`replace` action behavior:** `regex` condition → `re.sub` (replaces all occurrences); other conditions → case-insensitive literal replace.
 
 **KNOWN_FIELDS:** `__ignore__`, `first_name`, `last_name`, `email`, `phone`, `shirt_size`, `dietary_restriction`, `university`, `major`, `employer`, `role_preference`, `event_preference`, `availability`, `lunch_order`, `notes`, `extra_data`
 
@@ -567,9 +617,8 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/  # proxy sheet rows to
   - Danger zone removed (lives on view page only)
 - Volunteers page (`/dashboard/[id]/volunteers`) — temporary table view:
   - User name/email now loaded inline (no per-row API calls) — fixed via issue #4
-  - Columns: name, email, status, role preference, event preference, availability slot count
-  - Auto-detects up to 4 `extra_data` keys across memberships
-  - Search by name/email, status filter, sortable columns
+  - Columns: all user fields (name, email, phone, university, major, employer, shirt size, dietary), all membership fields (status, role pref, event pref, availability slot count, lunch, positions, assigned event, notes), all extra_data keys (uncapped, dynamically derived, wrap at 200px)
+  - Search by name/email, status filter, sortable columns (name, email, status, role pref)
 - Shared component library additions: `SplitButton`, `Banner`, `ImportSummaryModal`, `SheetConfigMappingTable`
 - Icons added: `IconEdit`, `IconTrash`, `IconDotsVertical`, `IconExport`
 - Shared utility library: `frontend/lib/importMappings.ts` (parse + apply import, types)
@@ -621,9 +670,6 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 ---
 
 ## Known Issues / Future Work
-- `role_preference` stores full question text — needs option mapping to normalize values
-- `event_preference` not parsing correctly in real data — needs investigation
-- Some `extra_data` booleans store full sentence instead of true/false
 - Full sheet sync on every run — "sync only new rows" is a future optimization
 - Railway trial period ends — may migrate backend to Render
 - **[GitHub issue opened] Remove `UNIQUE(tournament_id, sheet_type)` constraint from `sheet_configs`** — the constraint is too restrictive; `sheet_type` is display metadata, not a meaningful uniqueness boundary. A TD may legitimately want multiple configs with the same type but different column mappings. Currently triggers an unhandled 500 when violated. Fix: drop the constraint via a new Alembic migration and remove `UniqueConstraint("tournament_id", "sheet_type", ...)` from `app/models/models.py`. Duplicate-config UX is already handled entirely on the frontend via warning banners and confirmation dialogs. Labels: `backend` `database` `breaking-change`.
@@ -677,7 +723,7 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 - `SplitButton` — primary action + chevron dropdown, per-half hover. Use for export (JSON primary, CSV dropdown) and import (JSON primary, CSV dropdown).
 - `Banner` — inline feedback. Variants: success/error/warning/info. Optional `action` slot (e.g. "Show summary" button) and `onDismiss`. Use instead of toast for import feedback.
 - `ImportSummaryModal` — detailed import diff modal. Shows updated rows (from/to), unchanged count, headers not in file, headers not in sheet.
-- `SheetConfigMappingTable` — shared 4-column mapping table (Sheet Column / Field / Type / Extra Key). Props: `rows: RichMappingRow[]`, `knownFields`, `validTypes`, `onChangeRow` (omit for view-only), `viewOnly`, `baselineLabel` (default `"suggestion"`, pass `"saved"` on edit page). Row states: same/changed/new/removed with amber/green/red highlights and badges. Hover diff tooltip on changed rows shows baseline→import→current as two labeled sections. `makeRichRow(values, baseline, forcedState?, importedValue?)` helper computes state. Import from `@/components/ui/SheetConfigMappingTable`.
+- `SheetConfigMappingTable` — shared mapping table (Sheet Column / Field / Type / Extra Key). Props: `rows: RichMappingRow[]`, `knownFields`, `validTypes`, `validConditions`, `validActions`, `onChangeRow` (omit for view-only), `viewOnly`, `baselineLabel` (default `"suggestion"`, pass `"saved"` on edit page), `validationErrors`, `validationWarnings`. Row states: same/changed/new/removed with amber/green/red highlights and badges. Hover diff tooltip on changed rows shows baseline→import→current. Click row background (not controls) to expand inline rule editor accordion. Rules badge on header shows count + turns red/yellow on validation issues. `viewOnly` renders rules expanded read-only below each row. `makeRichRow(values, baseline, forcedState?, importedValue?)` helper. Import from `@/components/ui/SheetConfigMappingTable`.
 - `Input` — Geist label, 44px height, 16px left padding, error state
 - `Card` — surface container with optional hover state
 - `Badge` — status tags: interested, confirmed, declined, assigned, removed, admin, user
@@ -727,4 +773,9 @@ Do not block frontend progress on backend fixes unless the frontend literally ca
 - `If you are interested in general volunteer, which activities would you be interested in helping with?`
 - `Are there any limitations we should know about to better support your volunteer experience?`
 - `How many people can you take?`
-- `How did you hear about us?`
+**Parse rule patterns for this form:**
+- `Volunteering Role Preference` → `multi_select`, two `contains` + `replace` rules stripping the description after each label (` - Volunteer on the day...` and ` - Volunteer for the STEM Expo...`)
+- `If interested in event volunteering...` → `multi_select`, `delimiter: ";"`, two regex rules: replace `\) ?, ?` with `;` then strip ` \([^)]+\)`. Produces clean category names like `"Life, Personal & Social Science"`.
+- `If you are interested in general volunteer...` → `multi_select`, `contains` + `replace` rules per option label (no descriptions in raw data, but leading spaces after split — use `contains` not `equals`)
+- All availability rows → `matrix_row` + `parse_availability` rule (`always` condition)
+- `Do you have any potential conflict of interests?` → `extra_data` `string` (free text, not boolean)
