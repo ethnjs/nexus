@@ -11,6 +11,11 @@ import {
   parseMappingsCsv,
   applyImport,
 } from "@/lib/importMappings";
+import {
+  RichMappingRow,
+  makeRichRow,
+  SheetConfigMappingTable,
+} from "@/components/ui/SheetConfigMappingTable";
 import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
 import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
@@ -56,51 +61,12 @@ const SHEET_TYPES = [
   { value: "events",       label: "Events" },
 ];
 
-const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":          "Ignore",
-  "first_name":          "First Name",
-  "last_name":           "Last Name",
-  "email":               "Email",
-  "phone":               "Phone",
-  "shirt_size":          "Shirt Size",
-  "dietary_restriction": "Dietary Restriction",
-  "university":          "University",
-  "major":               "Major",
-  "employer":            "Employer",
-  "role_preference":     "Role Preference",
-  "event_preference":    "Event Preference",
-  "availability":        "Availability",
-  "lunch_order":         "Lunch Order",
-  "notes":               "Notes",
-  "extra_data":          "Extra Data",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  string:          "Text",
-  ignore:          "Ignore",
-  boolean:         "Yes/No",
-  integer:         "Number",
-  multi_select:    "Multi-select",
-  matrix_row:      "Availability Row",
-  category_events: "Category Events",
-};
-
 const WIZARD_STEPS = [
   { key: "url",          label: "URL" },
   { key: "sheet-select", label: "Select Sheet" },
   { key: "mapping",      label: "Map Columns" },
   { key: "results",      label: "Done" },
 ];
-
-// ─── Shared select style ──────────────────────────────────────────────────────
-
-const selectStyle: React.CSSProperties = {
-  height: "36px", padding: "0 10px",
-  border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-  fontFamily: "var(--font-sans)", fontSize: "12px",
-  color: "var(--color-text-primary)", background: "var(--color-bg)",
-  outline: "none", cursor: "pointer",
-};
 
 // ─── Save Confirmation Modal (duplicate tab) ──────────────────────────────────
 
@@ -198,7 +164,7 @@ export default function NewSheetPage() {
   const [headersResult, setHeadersResult] = useState<HeadersResult | null>(null);
 
   // Step 3
-  const [mappingRows, setMappingRows] = useState<MappingRow[]>([]);
+  const [mappingRows, setMappingRows] = useState<RichMappingRow[]>([]);
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
@@ -258,16 +224,20 @@ export default function NewSheetPage() {
     try {
       const result = await sheetsApi.headers(tournamentId, sheetUrl.trim(), selectedSheet);
       setHeadersResult(result);
-      const rows: MappingRow[] = result.headers.map((header) => {
+
+      // Build RichMappingRows: baseline = server suggestion, state = "same"
+      const rows: RichMappingRow[] = result.headers.map((header) => {
         const s = result.suggestions[header];
-        return {
+        const base: MappingRow = {
           header,
           field:     s?.field     ?? "__ignore__",
           type:      s?.type      ?? "ignore",
           row_key:   s?.row_key   ?? "",
           extra_key: s?.extra_key ?? "",
         };
+        return makeRichRow(base, base);
       });
+
       setMappingRows(rows);
       if (!sheetLabel) setSheetLabel(validateResult?.spreadsheet_title ?? "");
       setStep("mapping");
@@ -291,7 +261,7 @@ export default function NewSheetPage() {
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    e.target.value = ""; // reset so same file can be re-imported
+    e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
     const isCsv  = file.name.endsWith(".csv")  || file.type === "text/csv";
@@ -318,14 +288,35 @@ export default function NewSheetPage() {
         return;
       }
 
-      const { updatedRows, summary } = applyImport(mappingRows, parsed);
-      setMappingRows(updatedRows);
+      // Snapshot current values before applying the import, so the tooltip
+      // can show: suggestion → (import) → current if the user edits after.
+      const plainRows: MappingRow[] = mappingRows.map((r) => ({
+        header:    r.header,
+        field:     r.field,
+        type:      r.type,
+        row_key:   r.row_key,
+        extra_key: r.extra_key,
+      }));
+
+      const { updatedRows, summary } = applyImport(plainRows, parsed);
+
+      // Rebuild RichMappingRows: baseline stays as server suggestion,
+      // importedValue = the value this import set, state = compare to baseline.
+      setMappingRows((prev) =>
+        prev.map((r) => {
+          const updated = updatedRows.find((u) => u.header === r.header);
+          if (!updated) return r;
+          // importedValue records what the import set (may equal baseline → no intermediate shown)
+          const importedValue: MappingRow = { ...updated };
+          return makeRichRow(updated, r.baseline, undefined, importedValue);
+        })
+      );
 
       if (parsed.label && !sheetLabel) setSheetLabel(parsed.label);
       if (parsed.sheet_type) setSheetType(parsed.sheet_type);
 
-      const { updated, unchanged, notInSheet, notInFile } = summary;
-      const shortMsg = `${updated.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
+      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
+      const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
     };
     reader.readAsText(file);
@@ -379,8 +370,18 @@ export default function NewSheetPage() {
   }
 
   function updateRow(idx: number, patch: Partial<MappingRow>) {
-    setMappingRows((prev) => prev.map((r, i) => i === idx ? { ...r, ...patch } : r));
+    setMappingRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== idx) return r;
+        const next = { ...r, ...patch };
+        // Preserve importedValue if it was already set; recompute state vs baseline
+        return makeRichRow(next, r.baseline, undefined, r.importedValue);
+      })
+    );
   }
+
+  // Summary counts for the toolbar
+  const changedCount = mappingRows.filter((r) => r.state === "changed").length;
 
   const indicatorStep = step === "syncing" ? "mapping" : step;
   const selectStepDuplicates = step === "sheet-select" ? getDuplicatesForSelection() : [];
@@ -458,7 +459,7 @@ export default function NewSheetPage() {
             </div>
           </div>
 
-          {/* Duplicate tab warning — shown when selected sheet already exists */}
+          {/* Duplicate tab warning */}
           {selectStepDuplicates.length > 0 && (
             <div style={{
               display: "flex", alignItems: "flex-start", gap: "8px",
@@ -551,11 +552,17 @@ export default function NewSheetPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {/* Toolbar row */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
-              Review and adjust how each column maps to NEXUS fields.
-              Ignored columns are dimmed — they won&apos;t be imported.
-            </p>
-            {/* Import — SplitButton: primary action = JSON, dropdown adds CSV */}
+            <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
+                Review and adjust how each column maps to NEXUS fields.
+                Ignored columns are dimmed — they won&apos;t be imported.
+              </p>
+              {changedCount > 0 && (
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "#854D0E" }}>
+                  {changedCount} edited
+                </span>
+              )}
+            </div>
             <div style={{ flexShrink: 0 }}>
               <SplitButton
                 label="Import"
@@ -577,7 +584,7 @@ export default function NewSheetPage() {
             </div>
           </div>
 
-          {/* Import feedback — Banner replaces old ImportToast */}
+          {/* Import feedback */}
           {importBanner && (
             <Banner
               variant={importBanner.variant}
@@ -591,36 +598,12 @@ export default function NewSheetPage() {
             />
           )}
 
-          <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-            {/* Header row */}
-            <div style={{
-              display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-              padding: "8px 16px",
-              background: "var(--color-bg)",
-              borderBottom: "1px solid var(--color-border)",
-            }}>
-              {["Sheet Column", "Field", "Type", "Extra Key / Row Key"].map((h) => (
-                <span key={h} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-                  {h}
-                </span>
-              ))}
-            </div>
-
-            {mappingRows.map((row, idx) => {
-              const isIgnored = row.type === "ignore" || row.field === "__ignore__";
-              return (
-                <MappingTableRow
-                  key={row.header}
-                  row={row}
-                  isIgnored={isIgnored}
-                  knownFields={headersResult.known_fields}
-                  validTypes={headersResult.valid_types}
-                  onChange={(patch) => updateRow(idx, patch)}
-                  isLast={idx === mappingRows.length - 1}
-                />
-              );
-            })}
-          </div>
+          <SheetConfigMappingTable
+            rows={mappingRows}
+            knownFields={headersResult.known_fields}
+            validTypes={headersResult.valid_types}
+            onChangeRow={updateRow}
+          />
 
           {saveError && (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
@@ -713,7 +696,7 @@ export default function NewSheetPage() {
         </div>
       )}
 
-      {/* Save confirmation modal for duplicate tab */}
+      {/* Save confirmation modal */}
       {showSaveConfirm && (
         <SaveConfirmModal
           duplicates={getDuplicatesForSelection()}
@@ -729,86 +712,6 @@ export default function NewSheetPage() {
           onClose={() => setShowImportSummary(false)}
         />
       )}
-    </div>
-  );
-}
-
-// ─── Mapping Table Row ────────────────────────────────────────────────────────
-
-function MappingTableRow({
-  row, isIgnored, knownFields, validTypes, onChange, isLast,
-}: {
-  row: MappingRow;
-  isIgnored: boolean;
-  knownFields: string[];
-  validTypes: string[];
-  onChange: (patch: Partial<MappingRow>) => void;
-  isLast: boolean;
-}) {
-  const needsRowKey   = row.type === "matrix_row";
-  const needsExtraKey = row.field === "extra_data";
-
-  function handleFieldChange(field: string) {
-    let type = row.type;
-    if (field === "__ignore__")                                              type = "ignore";
-    else if (field === "availability")                                       type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference")    type = "multi_select";
-    else if (type === "ignore")                                              type = "string";
-    onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
-  }
-
-  function handleTypeChange(type: string) {
-    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
-  }
-
-  const opacity = isIgnored ? 0.4 : 1;
-
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-      padding: "10px 16px", alignItems: "center", gap: "8px",
-      background: isIgnored ? "var(--color-bg)" : "var(--color-surface)",
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-    }}>
-      <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "12px",
-        color: "var(--color-text-primary)", opacity,
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: "8px",
-      }} title={row.header}>
-        {row.header}
-      </span>
-
-      <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }}>
-        {knownFields.map((f) => (
-          <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>
-        ))}
-      </select>
-
-      <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} style={{ ...selectStyle, width: "100%", opacity }} disabled={row.field === "__ignore__"}>
-        {validTypes.map((t) => (
-          <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
-        ))}
-      </select>
-
-      <div style={{ opacity }}>
-        {needsRowKey ? (
-          <input
-            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-            placeholder="e.g. 8:00 AM - 10:00 AM"
-            value={row.row_key}
-            onChange={(e) => onChange({ row_key: e.target.value })}
-          />
-        ) : needsExtraKey ? (
-          <input
-            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-            placeholder="extra_key name"
-            value={row.extra_key}
-            onChange={(e) => onChange({ extra_key: e.target.value })}
-          />
-        ) : (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>
-        )}
-      </div>
     </div>
   );
 }

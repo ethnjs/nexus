@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { membershipsApi, sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -11,12 +11,17 @@ import {
   parseMappingsCsv,
   applyImport,
 } from "@/lib/importMappings";
+import {
+  RichMappingRow,
+  makeRichRow,
+  SheetConfigMappingTable,
+} from "@/components/ui/SheetConfigMappingTable";
 import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { IconArrowLeft, IconWarning } from "@/components/ui/Icons";
+import { IconArrowLeft } from "@/components/ui/Icons";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -26,35 +31,6 @@ const SHEET_TYPES = [
   { value: "events",       label: "Events" },
 ];
 
-const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":          "Ignore",
-  "first_name":          "First Name",
-  "last_name":           "Last Name",
-  "email":               "Email",
-  "phone":               "Phone",
-  "shirt_size":          "Shirt Size",
-  "dietary_restriction": "Dietary Restriction",
-  "university":          "University",
-  "major":               "Major",
-  "employer":            "Employer",
-  "role_preference":     "Role Preference",
-  "event_preference":    "Event Preference",
-  "availability":        "Availability",
-  "lunch_order":         "Lunch Order",
-  "notes":               "Notes",
-  "extra_data":          "Extra Data",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  string:          "Text",
-  ignore:          "Ignore",
-  boolean:         "Yes/No",
-  integer:         "Number",
-  multi_select:    "Multi-select",
-  matrix_row:      "Availability Row",
-  category_events: "Category Events",
-};
-
 const selectStyle: React.CSSProperties = {
   height: "36px", padding: "0 10px",
   border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
@@ -62,143 +38,6 @@ const selectStyle: React.CSSProperties = {
   color: "var(--color-text-primary)", background: "var(--color-bg)",
   outline: "none", cursor: "pointer",
 };
-
-// ─── Row state ────────────────────────────────────────────────────────────────
-
-type RowState = "same" | "new" | "removed" | "changed";
-
-interface RichMappingRow extends MappingRow {
-  state: RowState;
-  /** Original saved values — used to detect if user reverted a change */
-  original: MappingRow;
-}
-
-const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
-  same:    null,
-  new:     { bg: "#F0FDF4", border: "#86EFAC" },
-  removed: { bg: "#FFF5F5", border: "#FCA5A5" },
-  changed: { bg: "#FEFCE8", border: "#FDE047" },
-};
-
-// ─── Mapping Table Row ────────────────────────────────────────────────────────
-
-function MappingTableRow({
-  row,
-  knownFields,
-  validTypes,
-  onChange,
-  isLast,
-}: {
-  row: RichMappingRow;
-  knownFields: string[];
-  validTypes: string[];
-  onChange: (patch: Partial<MappingRow>) => void;
-  isLast: boolean;
-}) {
-  const isRemoved    = row.state === "removed";
-  const needsRowKey  = row.type === "matrix_row";
-  const needsExtraKey = row.field === "extra_data";
-  const colors       = ROW_COLORS[row.state];
-
-  function handleFieldChange(field: string) {
-    let type = row.type;
-    if (field === "__ignore__")                                              type = "ignore";
-    else if (field === "availability")                                       type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference")    type = "multi_select";
-    else if (type === "ignore")                                              type = "string";
-    onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
-  }
-
-  function handleTypeChange(type: string) {
-    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
-  }
-
-  const rowBg = colors ? colors.bg : "var(--color-surface)";
-  const borderLeft = colors ? `3px solid ${colors.border}` : "3px solid transparent";
-  const opacity = isRemoved ? 0.5 : 1;
-
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-      padding: "10px 14px", alignItems: "center", gap: "8px",
-      background: rowBg,
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-      borderLeft,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
-        <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "12px",
-          color: "var(--color-text-primary)", opacity,
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          textDecoration: isRemoved ? "line-through" : "none",
-        }} title={row.header}>
-          {row.header}
-        </span>
-        {row.state === "new" && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#16A34A", background: "#DCFCE7", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-            New
-          </span>
-        )}
-        {row.state === "removed" && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#DC2626", background: "#FEE2E2", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-            Removed
-          </span>
-        )}
-        {row.state === "changed" && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "#854D0E", background: "#FEF9C3", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-            Edited
-          </span>
-        )}
-      </div>
-
-      <select
-        value={row.field}
-        onChange={(e) => handleFieldChange(e.target.value)}
-        disabled={isRemoved}
-        style={{ ...selectStyle, width: "100%", opacity }}
-      >
-        {knownFields.map((f) => (
-          <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>
-        ))}
-      </select>
-
-      <select
-        value={row.type}
-        onChange={(e) => handleTypeChange(e.target.value)}
-        disabled={isRemoved || row.field === "__ignore__"}
-        style={{ ...selectStyle, width: "100%", opacity }}
-      >
-        {validTypes.map((t) => (
-          <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
-        ))}
-      </select>
-
-      <div style={{ opacity }}>
-        {isRemoved ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
-            excluded from save
-          </span>
-        ) : needsRowKey ? (
-          <input
-            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-            placeholder="e.g. 8:00 AM - 10:00 AM"
-            value={row.row_key}
-            onChange={(e) => onChange({ row_key: e.target.value })}
-          />
-        ) : needsExtraKey ? (
-          <input
-            style={{ ...selectStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-            placeholder="extra_key name"
-            value={row.extra_key}
-            onChange={(e) => onChange({ extra_key: e.target.value })}
-          />
-        ) : (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
@@ -209,33 +48,33 @@ export default function EditSheetPage() {
   const configId     = Number(params.configId);
 
   // Config + form fields
-  const [config, setConfig]         = useState<SheetConfig | null>(null);
-  const [label, setLabel]           = useState("");
-  const [sheetType, setSheetType]   = useState("interest");
+  const [config, setConfig]           = useState<SheetConfig | null>(null);
+  const [label, setLabel]             = useState("");
+  const [sheetType, setSheetType]     = useState("interest");
   const [selectedTab, setSelectedTab] = useState("");
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
-  const [isActive, setIsActive]     = useState(true);
+  const [isActive, setIsActive]       = useState(true);
 
   // Headers + mapping
-  const [mappingRows, setMappingRows]         = useState<RichMappingRow[]>([]);
-  const [knownFields, setKnownFields]         = useState<string[]>([]);
-  const [validTypes, setValidTypes]           = useState<string[]>([]);
-  const [headersLoading, setHeadersLoading]   = useState(false);
-  const [headersError, setHeadersError]       = useState("");
+  const [mappingRows, setMappingRows]       = useState<RichMappingRow[]>([]);
+  const [knownFields, setKnownFields]       = useState<string[]>([]);
+  const [validTypes, setValidTypes]         = useState<string[]>([]);
+  const [headersLoading, setHeadersLoading] = useState(false);
+  const [headersError, setHeadersError]     = useState("");
 
   // Load state
-  const [loading, setLoading]   = useState(true);
+  const [loading, setLoading]     = useState(true);
   const [loadError, setLoadError] = useState("");
 
   // Save / sync
-  const [saveLoading, setSaveLoading]   = useState(false);
-  const [saveError, setSaveError]       = useState("");
-  const [syncLoading, setSyncLoading]   = useState(false);
-  const [saveSuccess, setSaveSuccess]   = useState(false);
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError]     = useState("");
+  const [syncLoading, setSyncLoading] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Import
-  const importInputRef                          = useRef<HTMLInputElement>(null);
-  const [importBanner, setImportBanner]         = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const importInputRef                            = useRef<HTMLInputElement>(null);
+  const [importBanner, setImportBanner]           = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary] = useState(false);
 
   // AbortController ref for header fetches
@@ -292,62 +131,44 @@ export default function EditSheetPage() {
 
       const rows: RichMappingRow[] = [];
 
+      // Live headers that are in the saved config → "same" baseline against saved value
+      // Live headers NOT in saved config → "new" (suggestions as baseline)
       for (const header of result.headers) {
         const saved = cfg.column_mappings[header];
         if (saved) {
-          rows.push({
+          const base: MappingRow = {
             header,
             field:     saved.field     ?? "__ignore__",
             type:      saved.type      ?? "ignore",
             row_key:   saved.row_key   ?? "",
             extra_key: saved.extra_key ?? "",
-            state:     "same",
-            original: {
-              header,
-              field:     saved.field     ?? "__ignore__",
-              type:      saved.type      ?? "ignore",
-              row_key:   saved.row_key   ?? "",
-              extra_key: saved.extra_key ?? "",
-            },
-          });
+          };
+          rows.push(makeRichRow(base, base));
         } else {
           const s = result.suggestions[header];
-          rows.push({
+          const base: MappingRow = {
             header,
             field:     s?.field     ?? "__ignore__",
             type:      s?.type      ?? "ignore",
             row_key:   s?.row_key   ?? "",
             extra_key: s?.extra_key ?? "",
-            state:     "new",
-            original: {
-              header,
-              field:     s?.field     ?? "__ignore__",
-              type:      s?.type      ?? "ignore",
-              row_key:   s?.row_key   ?? "",
-              extra_key: s?.extra_key ?? "",
-            },
-          });
+          };
+          rows.push(makeRichRow(base, base, "new"));
         }
       }
 
+      // Saved headers no longer in the live sheet → "removed"
       for (const header of savedHeaders) {
         if (!liveHeaders.has(header)) {
           const saved = cfg.column_mappings[header];
-          rows.push({
+          const base: MappingRow = {
             header,
             field:     saved.field     ?? "__ignore__",
             type:      saved.type      ?? "ignore",
             row_key:   saved.row_key   ?? "",
             extra_key: saved.extra_key ?? "",
-            state:     "removed",
-            original: {
-              header,
-              field:     saved.field     ?? "__ignore__",
-              type:      saved.type      ?? "ignore",
-              row_key:   saved.row_key   ?? "",
-              extra_key: saved.extra_key ?? "",
-            },
-          });
+          };
+          rows.push(makeRichRow(base, base, "removed"));
         }
       }
 
@@ -374,13 +195,9 @@ export default function EditSheetPage() {
       prev.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
+        // "new" and "removed" states are locked — only "same"/"changed" can flip
         if (r.state === "new" || r.state === "removed") return { ...next, state: r.state };
-        const changed =
-          next.field     !== r.original.field     ||
-          next.type      !== r.original.type      ||
-          next.row_key   !== r.original.row_key   ||
-          next.extra_key !== r.original.extra_key;
-        return { ...next, state: changed ? "changed" : "same" };
+        return makeRichRow(next, r.baseline, undefined, r.importedValue);
       })
     );
   }
@@ -425,6 +242,7 @@ export default function EditSheetPage() {
         return;
       }
 
+      // Only apply import to non-removed rows
       const activeRows: MappingRow[] = mappingRows
         .filter((r) => r.state !== "removed")
         .map((r) => ({ header: r.header, field: r.field, type: r.type, row_key: r.row_key, extra_key: r.extra_key }));
@@ -436,16 +254,11 @@ export default function EditSheetPage() {
           if (r.state === "removed") return r;
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
-          const changed =
-            updated.field     !== r.original.field     ||
-            updated.type      !== r.original.type      ||
-            updated.row_key   !== r.original.row_key   ||
-            updated.extra_key !== r.original.extra_key;
-          return {
-            ...r,
-            ...updated,
-            state: r.state === "new" ? "new" : changed ? "changed" : "same",
-          };
+          // importedValue records what the import set for this row
+          const importedValue: MappingRow = { ...updated };
+          // "new" state is preserved; others recompute vs baseline
+          if (r.state === "new") return { ...r, ...updated, importedValue };
+          return makeRichRow(updated, r.baseline, undefined, importedValue);
         })
       );
 
@@ -608,11 +421,11 @@ export default function EditSheetPage() {
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {[
-                  { label: `${sameCount} unchanged`, color: "var(--color-text-tertiary)" },
-                  ...(changedCount > 0 ? [{ label: `${changedCount} edited`, color: "#854D0E" }] : []),
-                  ...(newCount > 0     ? [{ label: `${newCount} new`,        color: "#16A34A" }] : []),
-                  ...(removedCount > 0 ? [{ label: `${removedCount} removed`, color: "#DC2626" }] : []),
-                ].map(({ label: l, color }) => (
+                  { label: `${sameCount} unchanged`,          color: "var(--color-text-tertiary)", show: true },
+                  { label: `${changedCount} edited`,          color: "#854D0E",                    show: changedCount > 0 },
+                  { label: `${newCount} new`,                 color: "#16A34A",                    show: newCount > 0 },
+                  { label: `${removedCount} removed`,         color: "#DC2626",                    show: removedCount > 0 },
+                ].filter((s) => s.show).map(({ label: l, color }) => (
                   <span key={l} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color }}>{l}</span>
                 ))}
               </div>
@@ -666,31 +479,13 @@ export default function EditSheetPage() {
           )}
 
           {!headersLoading && mappingRows.length > 0 && (
-            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-              <div style={{
-                display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-                padding: "8px 14px",
-                background: "var(--color-bg)",
-                borderBottom: "1px solid var(--color-border)",
-              }}>
-                {["Sheet Column", "Field", "Type", "Extra Key / Row Key"].map((h) => (
-                  <span key={h} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-                    {h}
-                  </span>
-                ))}
-              </div>
-
-              {mappingRows.map((row, idx) => (
-                <MappingTableRow
-                  key={row.header}
-                  row={row}
-                  knownFields={knownFields}
-                  validTypes={validTypes}
-                  onChange={(patch) => updateRow(idx, patch)}
-                  isLast={idx === mappingRows.length - 1}
-                />
-              ))}
-            </div>
+            <SheetConfigMappingTable
+              rows={mappingRows}
+              knownFields={knownFields}
+              validTypes={validTypes}
+              onChangeRow={updateRow}
+              baselineLabel="saved"
+            />
           )}
         </div>
 

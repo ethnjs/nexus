@@ -7,6 +7,11 @@ import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconEdit, IconWarning } from "@/components/ui/Icons";
+import {
+  RichMappingRow,
+  makeRichRow,
+  SheetConfigMappingTable,
+} from "@/components/ui/SheetConfigMappingTable";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -14,35 +19,6 @@ const SHEET_TYPE_LABELS: Record<string, string> = {
   interest:     "Interest Form",
   confirmation: "Confirmation Form",
   events:       "Events",
-};
-
-const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":          "Ignore",
-  first_name:            "First Name",
-  last_name:             "Last Name",
-  email:                 "Email",
-  phone:                 "Phone",
-  shirt_size:            "Shirt Size",
-  dietary_restriction:   "Dietary Restriction",
-  university:            "University",
-  major:                 "Major",
-  employer:              "Employer",
-  role_preference:       "Role Preference",
-  event_preference:      "Event Preference",
-  availability:          "Availability",
-  lunch_order:           "Lunch Order",
-  notes:                 "Notes",
-  extra_data:            "Extra Data",
-};
-
-const TYPE_LABELS: Record<string, string> = {
-  string:          "Text",
-  ignore:          "Ignore",
-  boolean:         "Yes/No",
-  integer:         "Number",
-  multi_select:    "Multi-select",
-  matrix_row:      "Availability Row",
-  category_events: "Category Events",
 };
 
 function fmtDateTime(iso: string) {
@@ -171,76 +147,6 @@ function DeleteMembershipsModal({
   );
 }
 
-// ─── Read-only Mapping Table Row ──────────────────────────────────────────────
-
-function ReadOnlyMappingRow({
-  header,
-  field,
-  type,
-  row_key,
-  extra_key,
-  isLast,
-}: {
-  header: string;
-  field: string;
-  type: string;
-  row_key?: string;
-  extra_key?: string;
-  isLast: boolean;
-}) {
-  const isIgnored     = type === "ignore";
-  const needsRowKey   = type === "matrix_row";
-  const needsExtraKey = field === "extra_data";
-
-  return (
-    <div style={{
-      display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-      padding: "10px 14px", alignItems: "center", gap: "8px",
-      background: "var(--color-surface)",
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-      borderLeft: "3px solid transparent",
-      opacity: isIgnored ? 0.45 : 1,
-    }}>
-      {/* Sheet Column — wraps so full text is readable */}
-      <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "12px",
-        color: "var(--color-text-primary)",
-        wordBreak: "break-word",
-        lineHeight: 1.4,
-      }}>
-        {header}
-      </span>
-
-      {/* Field */}
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "12px",
-        color: isIgnored ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-      }}>
-        {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[field] ?? field)}
-      </span>
-
-      {/* Type */}
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "12px",
-        color: "var(--color-text-secondary)",
-      }}>
-        {TYPE_LABELS[type] ?? type}
-      </span>
-
-      {/* Extra Key / Row Key */}
-      {isIgnored ? (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>
-      ) : needsRowKey && row_key ? (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row_key}</span>
-      ) : needsExtraKey && extra_key ? (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{extra_key}</span>
-      ) : (
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>
-      )}
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ViewSheetConfigPage() {
@@ -258,6 +164,9 @@ export default function ViewSheetConfigPage() {
   const [deleteLoading, setDeleteLoading]                 = useState(false);
   const [deleteError, setDeleteError]                     = useState("");
 
+  // View-only rows derived from config (no editable state needed)
+  const [viewRows, setViewRows] = useState<RichMappingRow[]>([]);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -265,6 +174,19 @@ export default function ViewSheetConfigPage() {
       try {
         const cfg = await sheetsApi.getConfig(tournamentId, configId);
         setConfig(cfg);
+
+        // Build view-only RichMappingRows — all state = "same", baseline = current value
+        const rows: RichMappingRow[] = Object.entries(cfg.column_mappings).map(([header, mapping]) => {
+          const base = {
+            header,
+            field:     mapping.field     ?? "__ignore__",
+            type:      mapping.type      ?? "ignore",
+            row_key:   mapping.row_key   ?? "",
+            extra_key: mapping.extra_key ?? "",
+          };
+          return makeRichRow(base, base);
+        });
+        setViewRows(rows);
       } catch {
         setLoadError("Failed to load sheet configuration.");
       } finally {
@@ -292,9 +214,6 @@ export default function ViewSheetConfigPage() {
     setDeleteError("");
     try {
       // Fetch all memberships directly and delete each one.
-      // The previous approach called getEmailsForNuclearDelete → deleteMembershipsByEmails,
-      // which matched on m.user?.email — but m.user is undefined on the list response,
-      // so toDelete was always empty and nothing was deleted.
       // TODO: replace with a single backend endpoint DELETE /tournaments/{id}/memberships/
       const memberships = await membershipsApi.listByTournament(tournamentId);
       await Promise.all(
@@ -332,6 +251,8 @@ export default function ViewSheetConfigPage() {
   }
 
   const mappingEntries = Object.entries(config.column_mappings);
+  const mappedCount   = mappingEntries.filter(([, m]) => m.type !== "ignore").length;
+  const ignoredCount  = mappingEntries.filter(([, m]) => m.type === "ignore").length;
 
   return (
     <div style={{ width: "100%" }}>
@@ -356,7 +277,7 @@ export default function ViewSheetConfigPage() {
 
       <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
-        {/* ── Metadata — single row, 4 equal sections ── */}
+        {/* ── Metadata ── */}
         <div style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr 1fr 1fr",
@@ -400,48 +321,16 @@ export default function ViewSheetConfigPage() {
         <div>
           <div style={{ marginBottom: "10px" }}>
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-              {mappingEntries.filter(([, m]) => m.type !== "ignore").length} mapped,{" "}
-              {mappingEntries.filter(([, m]) => m.type === "ignore").length} ignored
+              {mappedCount} mapped, {ignoredCount} ignored
             </span>
           </div>
 
-          {mappingEntries.length === 0 ? (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-              No columns mapped yet.
-            </p>
-          ) : (
-            <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
-              {/* Column headers */}
-              <div style={{
-                display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr",
-                padding: "8px 14px",
-                background: "var(--color-bg)",
-                borderBottom: "1px solid var(--color-border)",
-              }}>
-                {["Sheet Column", "Field", "Type", "Extra Key / Row Key"].map((h) => (
-                  <span key={h} style={{
-                    fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.07em",
-                    color: "var(--color-text-tertiary)",
-                  }}>
-                    {h}
-                  </span>
-                ))}
-              </div>
-
-              {mappingEntries.map(([header, mapping], idx) => (
-                <ReadOnlyMappingRow
-                  key={header}
-                  header={header}
-                  field={mapping.field}
-                  type={mapping.type}
-                  row_key={mapping.row_key}
-                  extra_key={mapping.extra_key}
-                  isLast={idx === mappingEntries.length - 1}
-                />
-              ))}
-            </div>
-          )}
+          <SheetConfigMappingTable
+            rows={viewRows}
+            knownFields={[]}
+            validTypes={[]}
+            viewOnly
+          />
         </div>
 
         {/* ── Danger zone ── */}
