@@ -1,6 +1,6 @@
 """Unit tests for validate_column_mappings."""
 import pytest
-from app.services.validation import validate_column_mappings
+from app.services.sheets_validation import validate_column_mappings
 
 
 # ---------------------------------------------------------------------------
@@ -25,7 +25,14 @@ def _warnings(result):
     return [w.message for w in result.warnings]
 
 def _error_headers(result):
-    return [e.header for e in result.errors]
+    """Return headers as flat strings for easy assertion — normalise list to sorted str."""
+    out = []
+    for e in result.errors:
+        if isinstance(e.header, list):
+            out.append(sorted(e.header))
+        else:
+            out.append(e.header)
+    return out
 
 def _error_rule_indices(result):
     return [e.rule_index for e in result.errors]
@@ -46,6 +53,14 @@ def test_missing_email_is_error():
     })
     assert not result.ok
     assert any("email" in e.message.lower() for e in result.errors)
+
+def test_missing_email_header_is_none():
+    """Config-level errors that don't belong to a specific header use None."""
+    result = validate_column_mappings({
+        "First Name": {"field": "first_name", "type": "string"},
+    })
+    email_error = next(e for e in result.errors if "email" in e.message.lower() and "No column" in e.message)
+    assert email_error.header is None
 
 def test_email_wrong_type_is_error():
     result = validate_column_mappings(_base_mappings(**{
@@ -83,6 +98,43 @@ def test_duplicate_extra_key_is_error():
     }))
     assert not result.ok
     assert any("transportation" in e.message for e in result.errors)
+
+def test_duplicate_extra_key_header_is_list():
+    """Duplicate extra_key errors must carry header as list[str], not a joined string."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Transport Q1": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+        "Transport Q2": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+    }))
+    dup_error = next(e for e in result.errors if "transportation" in e.message)
+    assert isinstance(dup_error.header, list), (
+        "Duplicate extra_key header must be list[str] so frontend can highlight both rows "
+        "without splitting on commas (which would break headers that contain commas)."
+    )
+    assert set(dup_error.header) == {"Transport Q1", "Transport Q2"}
+
+def test_duplicate_extra_key_header_list_serialised_in_response():
+    """to_response_dict must serialise list headers as lists (not joined strings)."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Transport Q1": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+        "Transport Q2": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+    }))
+    response = result.to_response_dict()
+    dup_error = next(e for e in response["errors"] if "transportation" in e["message"])
+    assert isinstance(dup_error["header"], list)
+    assert set(dup_error["header"]) == {"Transport Q1", "Transport Q2"}
+
+def test_duplicate_extra_key_header_with_commas_in_name():
+    """Headers containing commas must not be confused with joined strings."""
+    h1 = "Have you competed in Science Olympiad in the past?"
+    h2 = "If you have competed, please list events"  # contains a comma
+    result = validate_column_mappings(_base_mappings(**{
+        h1: {"field": "extra_data", "type": "string", "extra_key": "scioly_competed"},
+        h2: {"field": "extra_data", "type": "string", "extra_key": "scioly_competed"},
+    }))
+    dup_error = next(e for e in result.errors if "scioly_competed" in e.message)
+    assert isinstance(dup_error.header, list)
+    assert h1 in dup_error.header
+    assert h2 in dup_error.header
 
 def test_different_extra_keys_ok():
     result = validate_column_mappings(_base_mappings(**{
@@ -324,6 +376,30 @@ def test_set_as_last_rule_no_warning():
     }))
     assert result.ok
     assert not any("set" in w.message for w in result.warnings)
+
+
+# ---------------------------------------------------------------------------
+# to_response_dict — header serialization
+# ---------------------------------------------------------------------------
+
+def test_single_header_serialised_as_list():
+    """Single-header issues must also come out as list[str] in the response."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Transport": {"field": "extra_data", "type": "string"},
+    }))
+    response = result.to_response_dict()
+    extra_key_error = next(e for e in response["errors"] if "extra_key" in e["message"])
+    assert isinstance(extra_key_error["header"], list)
+    assert extra_key_error["header"] == ["Transport"]
+
+def test_none_header_serialised_as_none():
+    """Config-level errors with no header must serialise as null."""
+    result = validate_column_mappings({
+        "First Name": {"field": "first_name", "type": "string"},
+    })
+    response = result.to_response_dict()
+    email_error = next(e for e in response["errors"] if "No column" in e["message"])
+    assert email_error["header"] is None
 
 
 # ---------------------------------------------------------------------------

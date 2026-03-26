@@ -335,7 +335,7 @@ export interface SyncResult {
 
 /** Structured validation issue returned in a 422 response body from CREATE/PATCH */
 export interface ValidationIssue {
-  header?:     string   // which column mapping; absent = config-level issue
+  header?:     string[] | string | null   // which column mapping; absent = config-level issue
   message:     string
   rule_index?: number   // which rule within that mapping; absent = mapping-level issue
 }

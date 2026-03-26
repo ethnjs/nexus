@@ -48,6 +48,8 @@ interface SelectProps {
   size?:        'sm' | 'md'
   /** Minimum width of the trigger in px. Useful for sm selects that need a fixed floor. */
   minWidth?:    number
+  /** Override the trigger background color. Defaults to var(--color-surface). */
+  background?:  string
   id?:          string
 }
 
@@ -76,6 +78,7 @@ export function Select({
   fullWidth = false,
   size = 'md',
   minWidth,
+  background,
   id,
 }: SelectProps) {
   const generatedId               = useId()
@@ -89,8 +92,9 @@ export function Select({
   const triggerRef                = useRef<HTMLButtonElement>(null)
   const listRef                   = useRef<HTMLDivElement>(null)
 
-  const height   = size === 'sm' ? 30 : 44
-  const fontSize = size === 'sm' ? '11px' : '14px'
+  const height      = size === 'sm' ? 30 : 44
+  const fontSize    = size === 'sm' ? '11px' : '14px'
+  const triggerBg   = background ?? 'var(--color-surface)'
 
   const flat         = flatOptions(options)
   const selected     = flat.find((o) => o.value === value)
@@ -234,7 +238,7 @@ export function Select({
             fontFamily:     'var(--font-sans)',
             fontSize:       fontSize,
             color:          selected ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
-            background:     'var(--color-surface)',
+            background:     triggerBg,
             border:         `1px solid ${borderColor}`,
             borderRadius:   'var(--radius-sm)',
             cursor:         disabled ? 'not-allowed' : 'pointer',

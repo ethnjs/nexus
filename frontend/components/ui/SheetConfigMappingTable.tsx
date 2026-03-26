@@ -68,7 +68,7 @@ export interface RichMappingRow extends MappingRow {
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
   same:    null,
-  changed: { bg: "#FEFCE8", border: "#FDE047" },
+  changed: { bg: "#FFF7ED", border: "#FDBA74" },
   new:     { bg: "#F0FDF4", border: "#86EFAC" },
   removed: { bg: "#FFF5F5", border: "#FCA5A5" },
 };
@@ -304,7 +304,7 @@ const RuleRow = memo(function RuleRow({
   useEffect(() => { setLocalMatch(rule.match ?? ""); }, [rule.match]);
   useEffect(() => { setLocalValue(rule.value ?? ""); }, [rule.value]);
 
-  const bg     = error   ? "#FFF5F5" : warning ? "#FFFBEB" : "var(--color-bg)";
+  const bg     = error   ? "#FFF5F5" : warning ? "#FFFBEB" : "var(--color-surface)";
   const border = error   ? "1px solid #FCA5A5" : warning ? "1px solid #FDE047" : "1px solid var(--color-border)";
 
   return (
@@ -483,23 +483,29 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
 
 const MappingRowComponent = memo(function MappingRowComponent({
   row, knownFields, validTypes, validConditions, validActions,
-  onChange, isLast, viewOnly, baselineLabel, errors, warnings,
+  onChange, isLast, viewOnly, baselineLabel, errors, warnings, forceOpen = false,
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
   onChange?: (patch: Partial<MappingRow>) => void;
   isLast: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
+  /** When true, force the accordion open (e.g. after an import that added/changed rules). */
+  forceOpen?: boolean;
 }) {
   const hasRules  = row.rules.length > 0;
   const isRemoved = row.state === "removed";
   const isIgnored = row.type === "ignore" || row.field === "__ignore__";
 
-  // Accordion open by default when the row already has rules
-  const [open,    setOpen]    = useState(hasRules);
-  // mounted stays true until the close animation finishes (220ms),
-  // so the panel is in the DOM for both the open and close animation.
-  const [mounted, setMounted] = useState(hasRules);
+  // Accordion open by default when the row already has rules, or forced open by parent
+  const [open,    setOpen]    = useState(hasRules || forceOpen);
+  const [mounted, setMounted] = useState(hasRules || forceOpen);
+
+  // Open accordion when parent forces it (e.g. import that added/changed rules)
+  useEffect(() => {
+    if (forceOpen) openAccordion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceOpen]);
 
   // When opening: mount immediately, then set open on next tick so the
   // browser has a frame to register the 0fr starting state before animating.
@@ -520,8 +526,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRules]);
 
-  const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [anchorRect,     setAnchorRect]     = useState<DOMRect | null>(null);
+  const [tooltipVisible,      setTooltipVisible]      = useState(false);
+  const [errorTooltipVisible, setErrorTooltipVisible] = useState(false);
+  const [anchorRect,          setAnchorRect]          = useState<DOMRect | null>(null);
   const rowRef      = useRef<HTMLDivElement>(null);
   const overRow     = useRef(false);
   const overTooltip = useRef(false);
@@ -536,15 +543,25 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasWarnings = !hasErrors && warnings.length > 0;
   const rulesLabel  = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
 
-  // Background: ignored rows get a distinct dimmer surface
+  // Background + left border: error/warning > row state > ignored > default
   const ignoredBg = "var(--color-bg)";
   const rowBg = isIgnored && !isRemoved
     ? ignoredBg
+    : hasErrors
+    ? "#FFF5F5"
+    : hasWarnings
+    ? "#FFFBEB"
     : colors
     ? colors.bg
     : "var(--color-surface)";
 
-  const borderLeft = colors ? `3px solid ${colors.border}` : "3px solid transparent";
+  const borderLeft = hasErrors
+    ? "3px solid #FCA5A5"
+    : hasWarnings
+    ? "3px solid #FDE047"
+    : colors
+    ? `3px solid ${colors.border}`
+    : "3px solid transparent";
 
   // Icon in rightmost column:
   // - removed/ignored → nothing
@@ -581,13 +598,18 @@ const MappingRowComponent = memo(function MappingRowComponent({
   }, []);
 
   function handleRowMouseEnter() {
-    if (!showDiff || !rowRef.current) return;
+    if (!rowRef.current) return;
     overRow.current = true;
     setAnchorRect(rowRef.current.getBoundingClientRect());
-    setTooltipVisible(true);
+    if (showDiff) setTooltipVisible(true);
+    if (hasErrors || hasWarnings) setErrorTooltipVisible(true);
   }
 
-  function handleRowMouseLeave() { overRow.current = false; tryHide(); }
+  function handleRowMouseLeave() {
+    overRow.current = false;
+    tryHide();
+    setErrorTooltipVisible(false);
+  }
 
   function handleFieldChange(field: string) {
     if (!onChange) return;
@@ -665,6 +687,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
             options={knownFields.map((f) => ({ value: f, label: KNOWN_FIELDS_LABELS[f] ?? f }))}
             disabled={isRemoved}
             size="sm"
+            background="var(--color-bg)"
             fullWidth
           />
         )}
@@ -679,6 +702,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
             options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
             disabled={isRemoved || isIgnored}
             size="sm"
+            background="var(--color-bg)"
             fullWidth
           />
         )}
@@ -764,6 +788,41 @@ const MappingRowComponent = memo(function MappingRowComponent({
           onMouseLeave={() => { overTooltip.current = false; tryHide(); }}
         />
       )}
+
+      {errorTooltipVisible && (hasErrors || hasWarnings) && anchorRect && (
+        <div
+          style={{
+            position: "fixed",
+            top: anchorRect.bottom + 6,
+            left: Math.max(8, anchorRect.left),
+            zIndex: 9999,
+            background: "var(--color-surface)",
+            border: `1px solid ${hasErrors ? "#FCA5A5" : "#FDE047"}`,
+            borderRadius: "var(--radius-md)",
+            boxShadow: "var(--shadow-lg)",
+            padding: "10px 14px",
+            maxWidth: "380px",
+            display: "flex", flexDirection: "column", gap: "6px",
+          }}
+        >
+          {[...errors, ...warnings].map((issue, i) => (
+            <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
+              <span style={{
+                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
+                color: issue.rule_index !== undefined
+                  ? (errors.includes(issue) ? "var(--color-danger)" : "#92400E")
+                  : (errors.includes(issue) ? "var(--color-danger)" : "#92400E"),
+                flexShrink: 0, paddingTop: "1px",
+              }}>
+                {issue.rule_index !== undefined ? `Rule ${issue.rule_index + 1}` : ""}
+              </span>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)" }}>
+                {issue.message}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </>
   );
 })
@@ -776,6 +835,8 @@ export interface SheetConfigMappingTableProps {
   onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
+  /** Headers whose accordions should be forced open (e.g. after import with rule changes). */
+  forceOpenHeaders?: Set<string>;
 }
 
 export function SheetConfigMappingTable({
@@ -783,6 +844,7 @@ export function SheetConfigMappingTable({
   validConditions = [], validActions = [],
   onChangeRow, viewOnly = false, baselineLabel = "suggestion",
   validationErrors = [], validationWarnings = [],
+  forceOpenHeaders,
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
@@ -820,8 +882,14 @@ export function SheetConfigMappingTable({
       </div>
       <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "visible" }}>
         {rows.map((row, idx) => {
-          const rowErrors   = validationErrors.filter((e)   => e.header === row.header);
-          const rowWarnings = validationWarnings.filter((w) => w.header === row.header);
+          // header is list[str] | string | null — normalise to array for consistent matching.
+          const matchesHeader = (h: string[] | string | null | undefined) => {
+            if (!h) return false;
+            if (Array.isArray(h)) return h.includes(row.header);
+            return h === row.header;
+          };
+          const rowErrors   = validationErrors.filter((e)   => matchesHeader(e.header));
+          const rowWarnings = validationWarnings.filter((w) => matchesHeader(w.header));
           return (
             <MappingRowComponent
               key={row.header} row={row}
@@ -830,6 +898,7 @@ export function SheetConfigMappingTable({
               onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
               isLast={idx === rows.length - 1} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
+              forceOpen={rowErrors.length > 0 || rowWarnings.length > 0 || (forceOpenHeaders?.has(row.header) ?? false)}
             />
           );
         })}

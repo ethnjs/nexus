@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, ValidationIssue, ApiError } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -23,6 +23,7 @@ import { Select } from "@/components/ui/Select";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
+import { useSheetValidation } from "@/lib/useSheetValidation";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -87,19 +88,21 @@ export default function EditSheetPage() {
 
   // Save / sync
   const [saveLoading,  setSaveLoading]  = useState(false);
-  const [saveError,    setSaveError]    = useState("");
   const [syncLoading,  setSyncLoading]  = useState(false);
   const [saveSuccess,  setSaveSuccess]  = useState(false);
   const [syncResult,   setSyncResult]   = useState<SyncResult | null>(null);
 
-  // Validation
-  const [validationErrors,   setValidationErrors]   = useState<ValidationIssue[]>([]);
-  const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
+  // Validation (shared hook)
+  const {
+    validationErrors, validationWarnings,
+    clearAll, clearRow, handle422, setGenericError, renderErrorBanner,
+  } = useSheetValidation();
 
   // Import
   const importInputRef                             = useRef<HTMLInputElement>(null);
-  const [importBanner,     setImportBanner]        = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [importBanner,      setImportBanner]       = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary]  = useState(false);
+  const [importOpenHeaders, setImportOpenHeaders]  = useState<Set<string>>(new Set());
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -200,10 +203,7 @@ export default function EditSheetPage() {
       })
     );
     const header = mappingRows[idx]?.header;
-    if (header) {
-      setValidationErrors((prev)   => prev.filter((e) => e.header !== header));
-      setValidationWarnings((prev) => prev.filter((w) => w.header !== header));
-    }
+    if (header) clearRow(header);
   }
 
   // ── Import ──────────────────────────────────────────────────────────────
@@ -262,6 +262,15 @@ export default function EditSheetPage() {
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
+
+      // Force open accordions for rows where rules were added or changed
+      const openHeaders = new Set<string>(
+        updatedList
+          .filter((entry) => entry.ruleDiffs.some((d) => d.status !== "unchanged"))
+          .map((entry) => entry.header)
+      );
+      setImportOpenHeaders(openHeaders);
+      setTimeout(() => setImportOpenHeaders(new Set()), 500);
     };
     reader.readAsText(file);
   }
@@ -282,29 +291,12 @@ export default function EditSheetPage() {
     return result;
   }, [mappingRows]);
 
-  // ── Handle 422 validation errors ────────────────────────────────────────
-
-  function handle422(e: unknown): boolean {
-    if (e instanceof ApiError && e.status === 422) {
-      const detail = e.detail as { errors?: ValidationIssue[]; warnings?: ValidationIssue[] } | null;
-      const errs   = detail?.errors   ?? [];
-      const warns  = detail?.warnings ?? [];
-      setValidationErrors(errs);
-      setValidationWarnings(warns);
-      setSaveError(`${errs.length} validation error${errs.length !== 1 ? "s" : ""} — fix them below and try again.`);
-      return true;
-    }
-    return false;
-  }
-
   // ── Save ────────────────────────────────────────────────────────────────
 
   async function handleSave() {
     setSaveLoading(true);
-    setSaveError("");
+    clearAll();
     setSaveSuccess(false);
-    setValidationErrors([]);
-    setValidationWarnings([]);
     try {
       await sheetsApi.updateConfig(tournamentId, configId, {
         label,
@@ -315,7 +307,7 @@ export default function EditSheetPage() {
       });
       setSaveSuccess(true);
     } catch (e: unknown) {
-      if (!handle422(e)) setSaveError("Failed to save changes.");
+      if (!handle422(e)) setGenericError("Failed to save changes.");
     } finally {
       setSaveLoading(false);
     }
@@ -325,11 +317,9 @@ export default function EditSheetPage() {
 
   async function handleSaveAndSync() {
     setSyncLoading(true);
-    setSaveError("");
+    clearAll();
     setSaveSuccess(false);
     setSyncResult(null);
-    setValidationErrors([]);
-    setValidationWarnings([]);
     try {
       await sheetsApi.updateConfig(tournamentId, configId, {
         label,
@@ -341,7 +331,7 @@ export default function EditSheetPage() {
       const result = await sheetsApi.sync(tournamentId, configId);
       setSyncResult(result);
     } catch (e: unknown) {
-      if (!handle422(e)) setSaveError("Failed to save or sync.");
+      if (!handle422(e)) setGenericError("Failed to save or sync.");
     } finally {
       setSyncLoading(false);
     }
@@ -349,11 +339,10 @@ export default function EditSheetPage() {
 
   // ── Summary counts ──────────────────────────────────────────────────────
 
-  const sameCount     = mappingRows.filter((r) => r.state === "same").length;
-  const newCount      = mappingRows.filter((r) => r.state === "new").length;
-  const removedCount  = mappingRows.filter((r) => r.state === "removed").length;
-  const changedCount  = mappingRows.filter((r) => r.state === "changed").length;
-  const hasHardErrors = validationErrors.length > 0;
+  const sameCount    = mappingRows.filter((r) => r.state === "same").length;
+  const newCount     = mappingRows.filter((r) => r.state === "new").length;
+  const removedCount = mappingRows.filter((r) => r.state === "removed").length;
+  const changedCount = mappingRows.filter((r) => r.state === "changed").length;
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -430,10 +419,10 @@ export default function EditSheetPage() {
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {[
-                  { label: `${sameCount} unchanged`,    color: "var(--color-text-tertiary)", show: true },
-                  { label: `${changedCount} edited`,    color: "#854D0E",                    show: changedCount  > 0 },
-                  { label: `${newCount} new`,            color: "#16A34A",                    show: newCount      > 0 },
-                  { label: `${removedCount} removed`,   color: "#DC2626",                    show: removedCount  > 0 },
+                  { label: `${sameCount} unchanged`,  color: "var(--color-text-tertiary)", show: true },
+                  { label: `${changedCount} edited`,  color: "#854D0E",                    show: changedCount  > 0 },
+                  { label: `${newCount} new`,          color: "#16A34A",                    show: newCount      > 0 },
+                  { label: `${removedCount} removed`, color: "#DC2626",                    show: removedCount  > 0 },
                 ].filter((s) => s.show).map(({ label: l, color }) => (
                   <span key={l} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color }}>{l}</span>
                 ))}
@@ -463,16 +452,6 @@ export default function EditSheetPage() {
             </div>
           )}
 
-          {/* Validation error banner */}
-          {validationErrors.length > 0 && (
-            <div style={{ marginBottom: "10px" }}>
-              <Banner
-                variant="error"
-                message={`${validationErrors.length} validation error${validationErrors.length !== 1 ? "s" : ""} — expand affected rows (highlighted in red) to fix them.`}
-              />
-            </div>
-          )}
-
           {headersError && (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginBottom: "10px" }}>{headersError}</p>
           )}
@@ -488,15 +467,14 @@ export default function EditSheetPage() {
               baselineLabel="saved"
               validationErrors={validationErrors}
               validationWarnings={validationWarnings}
+              forceOpenHeaders={importOpenHeaders}
             />
           )}
         </div>
 
         {/* ── Save actions ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {saveError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{saveError}</p>
-          )}
+          {renderErrorBanner()}
           {saveSuccess && (
             <Banner variant="success" message="Changes saved successfully." onDismiss={() => setSaveSuccess(false)} />
           )}
@@ -504,11 +482,11 @@ export default function EditSheetPage() {
             <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)}>
               Cancel
             </Button>
-            <Button variant="secondary" size="md" loading={saveLoading} disabled={hasHardErrors} onClick={handleSave}>
-              {hasHardErrors ? `Save (${validationErrors.length} error${validationErrors.length !== 1 ? "s" : ""})` : "Save"}
+            <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave}>
+              Save
             </Button>
-            <Button variant="primary" size="md" loading={syncLoading} disabled={hasHardErrors} onClick={handleSaveAndSync}>
-              {hasHardErrors ? `Save & Sync (${validationErrors.length} error${validationErrors.length !== 1 ? "s" : ""})` : "Save & Sync"}
+            <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync}>
+              Save &amp; Sync
             </Button>
           </div>
         </div>

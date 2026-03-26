@@ -13,9 +13,9 @@ from dataclasses import dataclass, field
 
 @dataclass
 class ValidationIssue:
-    header: str             # which column mapping triggered this issue
-    message: str            # human-readable description
-    rule_index: int | None = None  # set if the issue is on a specific rule
+    header: list[str] | str | None  # one or more column headers that triggered this issue
+    message: str                    # human-readable description
+    rule_index: int | None = None   # set if the issue is on a specific rule
 
 
 @dataclass
@@ -30,11 +30,19 @@ class ValidationResult:
 
     def to_response_dict(self) -> dict:
         """Serialise to a dict suitable for an HTTP error response body."""
+        def _normalise_header(h: list[str] | str | None) -> list[str] | None:
+            """Always return header as list[str] or None for consistent API shape."""
+            if h is None:
+                return None
+            if isinstance(h, list):
+                return h
+            return [h]
+
         return {
             "detail": "column_mappings validation failed",
             "errors": [
                 {
-                    "header": i.header,
+                    "header": _normalise_header(i.header),
                     "rule_index": i.rule_index,
                     "message": i.message,
                 }
@@ -42,7 +50,7 @@ class ValidationResult:
             ],
             "warnings": [
                 {
-                    "header": i.header,
+                    "header": _normalise_header(i.header),
                     "rule_index": i.rule_index,
                     "message": i.message,
                 }
@@ -77,12 +85,12 @@ def validate_column_mappings(
     ]
     if not email_mappings:
         result.errors.append(ValidationIssue(
-            header="(config)",
+            header=None,
             message="No column is mapped to 'email'. Email is required as the upsert key.",
         ))
     elif len(email_mappings) > 1:
         result.errors.append(ValidationIssue(
-            header="(config)",
+            header=None,
             message=f"Multiple columns mapped to 'email': {email_mappings}. Only one is allowed.",
         ))
 
@@ -94,7 +102,7 @@ def validate_column_mappings(
                 message="The 'email' field must use type 'string'.",
             ))
 
-    # Duplicate extra_key values across all mappings
+    # Duplicate extra_key values across all mappings — pass list directly
     extra_key_headers: dict[str, list[str]] = {}
     for header, mapping in mappings.items():
         if mapping.get("field") == "extra_data":
@@ -104,7 +112,7 @@ def validate_column_mappings(
     for ek, headers in extra_key_headers.items():
         if len(headers) > 1:
             result.errors.append(ValidationIssue(
-                header=", ".join(headers),
+                header=headers,  # list[str] — frontend receives a proper array
                 message=(
                     f"Duplicate extra_key '{ek}' across multiple columns. "
                     "Later columns will overwrite earlier ones during sync."

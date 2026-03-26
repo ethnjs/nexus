@@ -18,7 +18,7 @@ from app.schemas.sheet_config import (
 )
 from app.services.sheets_service import SheetsService
 from app.services.sync_service import sync_sheet
-from app.services.validation import validate_column_mappings
+from app.services.sheets_validation import validate_column_mappings
 
 # Tournament-scoped routes nested under /tournaments/{tournament_id}/sheets/...
 # All sheet config routes require manage_tournament.

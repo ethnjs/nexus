@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse, ValidationIssue, ApiError } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -24,6 +24,7 @@ import { StepIndicator } from "@/components/ui/StepIndicator";
 import { RadioOption } from "@/components/ui/RadioOption";
 import { StatCard } from "@/components/ui/StatCard";
 import { FieldLabel } from "@/components/ui/FieldLabel";
+import { useSheetValidation } from "@/lib/useSheetValidation";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,10 +132,10 @@ export default function NewSheetPage() {
   const [step, setStep] = useState<Step>("url");
 
   // Step 1
-  const [sheetUrl,       setSheetUrl]       = useState("");
-  const [urlLoading,     setUrlLoading]     = useState(false);
-  const [urlError,       setUrlError]       = useState("");
-  const [validateResult, setValidateResult] = useState<ValidateResult | null>(null);
+  const [sheetUrl,        setSheetUrl]        = useState("");
+  const [urlLoading,      setUrlLoading]      = useState(false);
+  const [urlError,        setUrlError]        = useState("");
+  const [validateResult,  setValidateResult]  = useState<ValidateResult | null>(null);
   const [existingConfigs, setExistingConfigs] = useState<SheetConfig[]>([]);
 
   // Step 2
@@ -146,15 +147,19 @@ export default function NewSheetPage() {
   const [headersResult,  setHeadersResult]  = useState<SheetHeadersResponse | null>(null);
 
   // Step 3
-  const [mappingRows,      setMappingRows]      = useState<RichMappingRow[]>([]);
-  const [saveLoading,      setSaveLoading]      = useState(false);
-  const [saveError,        setSaveError]        = useState("");
-  const [showSaveConfirm,  setShowSaveConfirm]  = useState(false);
-  const [importBanner,     setImportBanner]     = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [mappingRows,       setMappingRows]       = useState<RichMappingRow[]>([]);
+  const [saveLoading,       setSaveLoading]       = useState(false);
+  const [showSaveConfirm,   setShowSaveConfirm]   = useState(false);
+  const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary] = useState(false);
-  const [validationErrors,   setValidationErrors]   = useState<ValidationIssue[]>([]);
-  const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
+  const [importOpenHeaders, setImportOpenHeaders] = useState<Set<string>>(new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
+
+  // Validation (shared hook)
+  const {
+    validationErrors, validationWarnings,
+    clearAll, clearRow, handle422, setGenericError, renderErrorBanner,
+  } = useSheetValidation();
 
   // Results
   const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
@@ -274,6 +279,15 @@ export default function NewSheetPage() {
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
+
+      // Force open accordions for rows where rules were added or changed
+      const openHeaders = new Set<string>(
+        updatedList
+          .filter((entry) => entry.ruleDiffs.some((d) => d.status !== "unchanged"))
+          .map((entry) => entry.header)
+      );
+      setImportOpenHeaders(openHeaders);
+      setTimeout(() => setImportOpenHeaders(new Set()), 500);
     };
     reader.readAsText(file);
   }
@@ -284,8 +298,8 @@ export default function NewSheetPage() {
     const result: Record<string, ColumnMapping> = {};
     for (const row of mappingRows) {
       const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
-      if (row.type === "matrix_row"  && row.row_key)   mapping.row_key   = row.row_key;
-      if (row.field === "extra_data" && row.extra_key) mapping.extra_key = row.extra_key;
+      if (row.type === "matrix_row"   && row.row_key)   mapping.row_key   = row.row_key;
+      if (row.field === "extra_data"  && row.extra_key) mapping.extra_key = row.extra_key;
       if (row.type === "multi_select" && row.delimiter) mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       result[row.header] = mapping;
@@ -298,17 +312,15 @@ export default function NewSheetPage() {
   async function doSaveAndSync() {
     setShowSaveConfirm(false);
     setSaveLoading(true);
-    setSaveError("");
-    setValidationErrors([]);
-    setValidationWarnings([]);
+    clearAll();
     setStep("syncing");
     try {
       const config = await sheetsApi.createConfig(tournamentId, {
-        tournament_id: tournamentId,
-        label:          sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
-        sheet_type:     sheetType as "interest" | "confirmation" | "events",
-        sheet_url:      sheetUrl.trim(),
-        sheet_name:     selectedSheet,
+        tournament_id:   tournamentId,
+        label:           sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
+        sheet_type:      sheetType as "interest" | "confirmation" | "events",
+        sheet_url:       sheetUrl.trim(),
+        sheet_name:      selectedSheet,
         column_mappings: buildColumnMappings(),
       });
       const result = await sheetsApi.sync(tournamentId, config.id);
@@ -316,16 +328,7 @@ export default function NewSheetPage() {
       setStep("results");
     } catch (e: unknown) {
       setStep("mapping");
-      if (e instanceof ApiError && e.status === 422) {
-        const detail = e.detail as { errors?: ValidationIssue[]; warnings?: ValidationIssue[] } | null;
-        const errs   = detail?.errors   ?? [];
-        const warns  = detail?.warnings ?? [];
-        setValidationErrors(errs);
-        setValidationWarnings(warns);
-        setSaveError(`${errs.length} validation error${errs.length !== 1 ? "s" : ""} — fix them below and try again.`);
-      } else {
-        setSaveError(e instanceof Error ? e.message : "Failed to save sheet configuration.");
-      }
+      if (!handle422(e)) setGenericError(e instanceof Error ? e.message : "Failed to save sheet configuration.");
     } finally {
       setSaveLoading(false);
     }
@@ -349,20 +352,14 @@ export default function NewSheetPage() {
       })
     );
     const header = mappingRows[idx]?.header;
-    if (header) {
-      setValidationErrors((prev)   => prev.filter((e)   => e.header !== header));
-      setValidationWarnings((prev) => prev.filter((w)   => w.header !== header));
-    }
+    if (header) clearRow(header);
   }
 
   // ── Counts ────────────────────────────────────────────────────────────────
 
-  const changedCount    = mappingRows.filter((r) => r.state === "changed").length;
-  const errorCount      = validationErrors.filter((e) => !e.header).length + validationErrors.filter((e) => e.header).length;
-  const hasHardErrors   = validationErrors.length > 0;
-
-  const indicatorStep     = step === "syncing" ? "mapping" : step;
-  const selectStepDupes   = step === "sheet-select" ? getDuplicatesForSelection() : [];
+  const changedCount  = mappingRows.filter((r) => r.state === "changed").length;
+  const indicatorStep = step === "syncing" ? "mapping" : step;
+  const selectStepDupes = step === "sheet-select" ? getDuplicatesForSelection() : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
 
@@ -506,14 +503,6 @@ export default function NewSheetPage() {
             />
           )}
 
-          {/* Validation error banner */}
-          {validationErrors.length > 0 && (
-            <Banner
-              variant="error"
-              message={`${errorCount} validation error${errorCount !== 1 ? "s" : ""} — expand affected rows (highlighted in red) to fix them.`}
-            />
-          )}
-
           <SheetConfigMappingTable
             rows={mappingRows}
             knownFields={headersResult.known_fields}
@@ -523,23 +512,17 @@ export default function NewSheetPage() {
             onChangeRow={updateRow}
             validationErrors={validationErrors}
             validationWarnings={validationWarnings}
+            forceOpenHeaders={importOpenHeaders}
           />
 
-          {saveError && !validationErrors.length && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{saveError}</p>
-          )}
-
-          <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
-            <Button
-              variant="primary"
-              size="lg"
-              loading={saveLoading}
-              disabled={hasHardErrors}
-              onClick={handleSaveAndSync}
-            >
-              {hasHardErrors ? `Save & Sync (${validationErrors.length} error${validationErrors.length !== 1 ? "s" : ""})` : "Save & Sync"}
-            </Button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {renderErrorBanner()}
+            <div style={{ display: "flex", gap: "10px" }}>
+              <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
+              <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync}>
+                Save &amp; Sync
+              </Button>
+            </div>
           </div>
         </div>
       )}
