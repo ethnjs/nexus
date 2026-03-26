@@ -462,10 +462,10 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
         </div>
       )}
 
-      {rowErrors.filter((e) => e.rule_index === undefined).map((e, i) => (
+      {rowErrors.filter((e) => e.rule_index == null).map((e, i) => (
         <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: "0 0 4px" }}>{e.message}</p>
       ))}
-      {rowWarnings.filter((w) => w.rule_index === undefined).map((w, i) => (
+      {rowWarnings.filter((w) => w.rule_index == null).map((w, i) => (
         <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: "0 0 4px" }}>{w.message}</p>
       ))}
 

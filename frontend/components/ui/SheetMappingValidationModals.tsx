@@ -18,7 +18,7 @@ function IssueCard({ issue, variant }: { issue: ValidationIssue; variant: "error
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
       {header && (
         <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
-          {header}{issue.rule_index !== undefined ? ` · Rule ${issue.rule_index + 1}` : ""}
+          {header}{issue.rule_index != null ? ` · Rule ${issue.rule_index + 1}` : ""}
         </p>
       )}
       <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)", margin: 0 }}>
