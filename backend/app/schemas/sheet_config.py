@@ -123,60 +123,36 @@ _ACTIONS_REQUIRING_VALUE: set[str] = {"set", "replace", "prepend", "append"}
 
 class ParseRule(BaseModel):
     model_config = {"populate_by_name": True}
-
+ 
     condition: str               # one of VALID_RULE_CONDITIONS
     match: str | None = None     # required for all conditions except "always"
-    case_sensitive: bool = False  # applies to contains, equals, starts_with, ends_with
+    case_sensitive: bool = False
     action: str                  # one of VALID_RULE_ACTIONS
     value: str | None = None     # required for set, replace, prepend, append
-
+ 
     def model_dump(self, **kwargs):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(**kwargs)
-
+ 
     @field_validator("condition")
     @classmethod
     def validate_condition(cls, v: str) -> str:
         if v not in VALID_RULE_CONDITIONS:
             raise ValueError(f"condition must be one of: {VALID_RULE_CONDITIONS}")
         return v
-
+ 
     @field_validator("action")
     @classmethod
     def validate_action(cls, v: str) -> str:
         if v not in VALID_RULE_ACTIONS:
             raise ValueError(f"action must be one of: {VALID_RULE_ACTIONS}")
         return v
-
-    @model_validator(mode="after")
-    def validate_rule(self) -> ParseRule:
-        # match is required for all conditions except "always"
-        if self.condition != "always" and not self.match:
-            raise ValueError(
-                f"match is required when condition is '{self.condition}'"
-            )
-
-        # value is required for actions that produce output
-        if self.action in _ACTIONS_REQUIRING_VALUE and self.value is None:
-            raise ValueError(
-                f"value is required for action '{self.action}'"
-            )
-
-        # regex must compile
-        if self.condition == "regex" and self.match:
-            import re
-            try:
-                re.compile(self.match)
-            except re.error as e:
-                raise ValueError(f"Invalid regex pattern '{self.match}': {e}") from e
-
-        # parse_availability must use condition "always"
-        if self.action == "parse_availability" and self.condition != "always":
-            raise ValueError(
-                "parse_availability action must use condition 'always'"
-            )
-
-        return self
+ 
+    # model_validator REMOVED — all business logic validation (match required,
+    # value required, regex compiles, parse_availability condition) is handled
+    # by validate_column_mappings() in sheets_validation.py so that errors are
+    # returned in our structured { errors, warnings } format rather than as raw
+    # Pydantic validation errors.
 
 
 # ---------------------------------------------------------------------------

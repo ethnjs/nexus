@@ -97,7 +97,7 @@ export default function EditSheetPage() {
 
   // Validation (shared hook)
   const {
-    validationErrors, validationWarnings,
+    validationErrors, validationWarnings, validationGeneration,
     clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
@@ -504,6 +504,7 @@ export default function EditSheetPage() {
               baselineLabel="saved"
               validationErrors={validationErrors}
               validationWarnings={validationWarnings}
+              validationGeneration={validationGeneration}
             />
           )}
         </div>

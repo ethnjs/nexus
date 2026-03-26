@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 
 export function useSheetValidation() {
   const [validationErrors,   setValidationErrors]   = useState<ValidationIssue[]>([]);
+  const [validationGeneration, setValidationGeneration] = useState(0);
   const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
   const [saveError,          setSaveError]          = useState("");
 
@@ -97,11 +98,33 @@ export function useSheetValidation() {
    */
   function handle422(e: unknown): boolean {
     if (e instanceof ApiError && e.status === 422) {
-      const detail = e.detail as { errors?: ValidationIssue[]; warnings?: ValidationIssue[] } | null;
-      const errs   = detail?.errors   ?? [];
-      const warns  = detail?.warnings ?? [];
+      const detail = e.detail as
+        | { errors?: ValidationIssue[]; warnings?: ValidationIssue[] }
+        | Array<{ loc: (string | number)[]; msg: string }>
+        | null;
+
+      let errs: ValidationIssue[] = [];
+      let warns: ValidationIssue[] = [];
+
+      if (Array.isArray(detail)) {
+        // Raw Pydantic validation error array — convert to our ValidationIssue shape.
+        // loc is e.g. ["body", "column_mappings", "Header Name", "rules", 0]
+        errs = detail.map((d) => {
+          const loc        = d.loc ?? [];
+          const header     = typeof loc[2] === "string" ? loc[2] : undefined;
+          const ruleIndex  = typeof loc[4] === "number" ? loc[4] : undefined;
+          // Strip "Value error, " prefix Pydantic adds
+          const message    = d.msg.replace(/^Value error,\s*/i, "");
+          return { header, rule_index: ruleIndex, message } as ValidationIssue;
+        });
+      } else if (detail && "errors" in detail) {
+        errs  = detail.errors  ?? [];
+        warns = detail.warnings ?? [];
+      }
+
       setValidationErrors(errs);
       setValidationWarnings(warns);
+      setValidationGeneration((g) => g + 1);
       setSaveError(
         errs.length === 1
           ? "1 validation error — expand the highlighted row to fix it."
@@ -147,6 +170,7 @@ export function useSheetValidation() {
   return {
     validationErrors,
     validationWarnings,
+    validationGeneration,
     saveError,
     setSaveError,
     hasErrors,

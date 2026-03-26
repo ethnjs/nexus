@@ -159,7 +159,7 @@ export default function NewSheetPage() {
 
   // Validation (shared hook)
   const {
-    validationErrors, validationWarnings,
+    validationErrors, validationWarnings, validationGeneration,
     clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
@@ -534,6 +534,7 @@ export default function NewSheetPage() {
             onChangeRow={updateRow}
             validationErrors={validationErrors}
             validationWarnings={validationWarnings}
+            validationGeneration={validationGeneration}
           />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>

@@ -66,6 +66,8 @@ export interface RichMappingRow extends MappingRow {
   importedValue?: MappingRow;
   /** If true, accordion starts open. Read once at mount — has no effect after. */
   openOnMount?:   boolean;
+  /** Increments when new validation results arrive — opens accordion if this row has rule-level issues. */
+  validationGeneration?: number;
 }
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
@@ -487,7 +489,7 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
 
 const MappingRowComponent = memo(function MappingRowComponent({
   row, knownFields, validTypes, validConditions, validActions,
-  onChange, isFirst, viewOnly, baselineLabel, errors, warnings,
+  onChange, isFirst, viewOnly, baselineLabel, errors, warnings, validationGeneration = 0,
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
@@ -522,6 +524,13 @@ const MappingRowComponent = memo(function MappingRowComponent({
     if (!hasRules) closeAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRules]);
+
+  // Open accordion when new validation results arrive with rule-level issues for this row
+  const hasRuleLevelIssues = errors.some((e) => e.rule_index != null) || warnings.some((w) => w.rule_index != null);
+  useEffect(() => {
+    if (validationGeneration > 0 && hasRuleLevelIssues) openAccordion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validationGeneration]);
 
   const [tooltipVisible,      setTooltipVisible]      = useState(false);
   const [errorTooltipVisible, setErrorTooltipVisible] = useState(false);
@@ -838,6 +847,8 @@ export interface SheetConfigMappingTableProps {
   onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
+  /** Increment each time new validation results arrive — triggers accordion open for rows with rule-level issues. */
+  validationGeneration?: number;
 }
 
 export function SheetConfigMappingTable({
@@ -845,6 +856,7 @@ export function SheetConfigMappingTable({
   validConditions = [], validActions = [],
   onChangeRow, viewOnly = false, baselineLabel = "suggestion",
   validationErrors = [], validationWarnings = [],
+  validationGeneration = 0,
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
@@ -898,7 +910,7 @@ export function SheetConfigMappingTable({
               onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
               isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
-
+              validationGeneration={validationGeneration}
             />
           );
         })}
