@@ -417,7 +417,7 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
   }
 
   return (
-    <div style={{ background: "var(--color-bg)", borderTop: "1px solid var(--color-border)", padding: "12px 14px 14px 28px" }}>
+    <div style={{ background: "var(--color-bg)", padding: "12px 14px 14px 28px" }}>
       {isMulti && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", flexShrink: 0 }}>Delimiter</span>
@@ -485,12 +485,12 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
 
 const MappingRowComponent = memo(function MappingRowComponent({
   row, knownFields, validTypes, validConditions, validActions,
-  onChange, isLast, viewOnly, baselineLabel, errors, warnings, forceOpen = false,
+  onChange, isFirst, viewOnly, baselineLabel, errors, warnings, forceOpen = false,
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
   onChange?: (patch: Partial<MappingRow>) => void;
-  isLast: boolean; viewOnly: boolean; baselineLabel: string;
+  isFirst: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
   /** When true, force the accordion open (e.g. after an import that added/changed rules). */
   forceOpen?: boolean;
@@ -654,7 +654,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
           display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr auto",
           padding: "10px 14px", alignItems: "center", gap: "8px",
           background: rowBg,
-          borderBottom: (!isLast || open) ? "1px solid var(--color-border)" : "none",
+          borderTop: isFirst ? "none" : "2px solid var(--color-border)",
           borderLeft,
           // Only show pointer cursor when there are rules to toggle
           cursor: (!viewOnly && !isRemoved && !isIgnored && hasRules) ? "pointer" : "default",
@@ -756,7 +756,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
 
       {/* Rules read-only (view mode) */}
       {viewOnly && hasRules && (
-        <div style={{ background: "var(--color-bg)", borderTop: "1px solid var(--color-border)", borderLeft, padding: "8px 14px 10px 28px", display: "flex", flexDirection: "column", gap: "4px" }}>
+        <div style={{ background: "var(--color-bg)", borderLeft, padding: "8px 14px 10px 28px", display: "flex", flexDirection: "column", gap: "4px" }}>
           {row.delimiter && (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>Delimiter</span>
@@ -902,7 +902,7 @@ export function SheetConfigMappingTable({
               knownFields={knownFields} validTypes={validTypes}
               validConditions={validConditions} validActions={validActions}
               onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
-              isLast={idx === rows.length - 1} viewOnly={isViewOnly}
+              isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
               forceOpen={rowErrors.length > 0 || rowWarnings.length > 0 || (forceOpenHeaders?.has(row.header) ?? false)}
             />
