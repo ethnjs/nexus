@@ -290,6 +290,17 @@ class SheetConfigReadWithWarnings(SheetConfigRead):
     """SheetConfigRead extended with validation warnings from a successful save."""
     warnings: list[dict] = []
 
+class ValidateMappingsRequest(BaseModel):
+    """Request body for POST /configs/validate-mappings/ — column mappings to validate."""
+    column_mappings: dict[str, ColumnMapping] = {}
+ 
+ 
+class ValidateMappingsResponse(BaseModel):
+    """Response from POST /configs/validate-mappings/ — validation result without DB write."""
+    ok:       bool
+    errors:   list[dict] = []   # list of {header, rule_index, message}
+    warnings: list[dict] = []   # list of {header, rule_index, message}
+
 # ---------------------------------------------------------------------------
 # Wizard step request/response shapes
 # ---------------------------------------------------------------------------

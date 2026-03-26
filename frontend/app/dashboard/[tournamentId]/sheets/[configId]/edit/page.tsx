@@ -97,7 +97,7 @@ export default function EditSheetPage() {
   // Validation (shared hook)
   const {
     validationErrors, validationWarnings,
-    clearAll, clearRow, handle422, handleSaveSuccess, setGenericError, renderErrorBanner,
+    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, shouldConfirmWarnings, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
   // Import
@@ -293,20 +293,24 @@ export default function EditSheetPage() {
     return result;
   }, [mappingRows]);
 
-  // ── Save ────────────────────────────────────────────────────────────────
+  // ── Save & Sync ─────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  // ── Validate + save helpers ────────────────────────────────────────────
+
+  function buildPayload() {
+    return {
+      label,
+      sheet_type:      sheetType as SheetConfig["sheet_type"],
+      sheet_name:      selectedTab,
+      column_mappings: buildColumnMappings(),
+      is_active:       isActive,
+    };
+  }
+
+  async function doSave() {
     setSaveLoading(true);
-    clearAll();
-    setSaveSuccess(false);
     try {
-      const saved = await sheetsApi.updateConfig(tournamentId, configId, {
-        label,
-        sheet_type:      sheetType as SheetConfig["sheet_type"],
-        sheet_name:      selectedTab,
-        column_mappings: buildColumnMappings(),
-        is_active:       isActive,
-      });
+      const saved = await sheetsApi.updateConfig(tournamentId, configId, buildPayload());
       handleSaveSuccess(saved);
       setSaveSuccess(true);
     } catch (e: unknown) {
@@ -316,29 +320,14 @@ export default function EditSheetPage() {
     }
   }
 
-  // ── Save & Sync ─────────────────────────────────────────────────────────
-
   async function doSaveAndSync() {
     setShowWarningsConfirm(false);
     setSyncLoading(true);
-    clearAll();
     setSaveSuccess(false);
     setSyncResult(null);
     try {
-      const saved = await sheetsApi.updateConfig(tournamentId, configId, {
-        label,
-        sheet_type:      sheetType as SheetConfig["sheet_type"],
-        sheet_name:      selectedTab,
-        column_mappings: buildColumnMappings(),
-        is_active:       isActive,
-      });
+      const saved = await sheetsApi.updateConfig(tournamentId, configId, buildPayload());
       handleSaveSuccess(saved);
-      // If warnings came back, show the confirm modal before syncing
-      if (saved.warnings?.length > 0) {
-        setShowWarningsConfirm(true);
-        setSyncLoading(false);
-        return;
-      }
       const result = await sheetsApi.sync(tournamentId, configId);
       setSyncResult(result);
     } catch (e: unknown) {
@@ -348,8 +337,43 @@ export default function EditSheetPage() {
     }
   }
 
-  function handleSaveAndSync() {
-    doSaveAndSync();
+  async function handleSave() {
+    // Validate first without saving
+    const mappings = buildColumnMappings();
+    setSaveLoading(true);
+    try {
+      const validation = await sheetsApi.validateMappings(tournamentId, mappings);
+      const ok = handleValidateResult(validation);
+      if (!ok) return; // hard errors — shown inline
+      await doSave();
+    } catch (e: unknown) {
+      if (!handle422(e)) setGenericError("Failed to save changes.");
+    } finally {
+      setSaveLoading(false);
+    }
+  }
+
+  async function handleSaveAndSync() {
+    // Validate first without saving
+    const mappings = buildColumnMappings();
+    setSyncLoading(true);
+    try {
+      const validation = await sheetsApi.validateMappings(tournamentId, mappings);
+      const ok = handleValidateResult(validation);
+      if (!ok) { setSyncLoading(false); return; } // hard errors — shown inline
+      if (shouldConfirmWarnings()) {
+        // Warnings already shown — ask for confirmation before saving
+        setShowWarningsConfirm(true);
+        setSyncLoading(false);
+        return;
+      }
+      // No issues or warnings not yet shown — save and sync
+      await doSaveAndSync();
+    } catch (e: unknown) {
+      setGenericError("Failed to validate.");
+    } finally {
+      setSyncLoading(false);
+    }
   }
 
   // ── Summary counts ──────────────────────────────────────────────────────
@@ -555,7 +579,7 @@ export default function EditSheetPage() {
       {showWarningsConfirm && (
         <WarningsConfirmModal
           warnings={validationWarnings}
-          onConfirm={async () => { setShowWarningsConfirm(false); const result = await sheetsApi.sync(tournamentId, configId); setSyncResult(result); setSyncLoading(false); }}
+          onConfirm={doSaveAndSync}
           onCancel={() => setShowWarningsConfirm(false)}
         />
       )}

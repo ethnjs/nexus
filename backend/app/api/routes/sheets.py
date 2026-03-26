@@ -15,6 +15,8 @@ from app.schemas.sheet_config import (
     SheetHeadersResponse,
     SheetValidateRequest,
     SheetValidateResponse,
+    ValidateMappingsRequest,
+    ValidateMappingsResponse,
     SyncResult,
 )
 from app.services.sheets_service import SheetsService
@@ -105,6 +107,33 @@ def get_sheet_headers(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Validate mappings — run validation without saving
+# ---------------------------------------------------------------------------
+@router.post("/configs/validate-mappings/", response_model=ValidateMappingsResponse)
+def validate_mappings(
+    tournament_id: int,
+    payload: ValidateMappingsRequest,
+    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+):
+    """
+    Validate column mappings without saving. Returns errors and warnings.
+    Call before createConfig or updateConfig so the frontend can surface
+    issues inline before committing any DB write.
+    """
+    serialized = {
+        header: mapping.model_dump(exclude_none=True)
+        for header, mapping in payload.column_mappings.items()
+    }
+    result = validate_column_mappings(serialized)
+    response = result.to_response_dict()
+    return ValidateMappingsResponse(
+        ok=result.ok,
+        errors=response["errors"],
+        warnings=response["warnings"],
+    )
 
 
 # ---------------------------------------------------------------------------

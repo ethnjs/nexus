@@ -344,6 +344,12 @@ export interface ValidationIssue {
   rule_index?: number   // which rule within that mapping; absent = mapping-level issue
 }
 
+export interface ValidateMappingsResult {
+  ok:       boolean
+  errors:   ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
 export interface SheetHeadersResponse {
   sheet_name:           string
   headers:              string[]
@@ -367,6 +373,8 @@ export const sheetsApi = {
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
   getConfig:    (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
+  validateMappings: (tournamentId: number, column_mappings: Record<string, ColumnMapping>) =>
+    api.post<ValidateMappingsResult>(`/tournaments/${tournamentId}/sheets/configs/validate-mappings/`, { column_mappings }),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
     api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),
   updateConfig: (tournamentId: number, id: number, body: Partial<SheetConfig>) =>

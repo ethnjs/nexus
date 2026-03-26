@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { ValidationIssue, ApiError } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
 import { Button } from "@/components/ui/Button";
@@ -15,6 +15,11 @@ export function useSheetValidation() {
   const errorCount = validationErrors.length;
   const hasErrors  = errorCount > 0;
 
+  // Tracks whether the current warnings have been shown to the user.
+  // Set to true when warnings arrive; reset when warnings are cleared.
+  // Used by pages to decide whether to show the confirm modal on next click.
+  const warningsShown = useRef(false);
+
   /**
    * Call before every save attempt to reset state from the previous attempt.
    */
@@ -22,6 +27,31 @@ export function useSheetValidation() {
     setValidationErrors([]);
     setValidationWarnings([]);
     setSaveError("");
+    warningsShown.current = false;
+  }
+
+  /**
+   * Handle the response from POST /configs/validate-mappings/.
+   * Populates errors/warnings inline. Sets warningsShown = true so the
+   * next save attempt knows the user has already seen the warnings.
+   * Returns true if there are no hard errors (safe to proceed to save).
+   */
+  function handleValidateResult(result: { ok: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] }): boolean {
+    setValidationErrors(result.errors ?? []);
+    setValidationWarnings(result.warnings ?? []);
+    setSaveError("");
+    if ((result.warnings ?? []).length > 0) {
+      warningsShown.current = true;
+    }
+    return result.ok;
+  }
+
+  /**
+   * Returns true if warnings have been shown to the user and should
+   * trigger a confirm modal on the next save attempt.
+   */
+  function shouldConfirmWarnings(): boolean {
+    return warningsShown.current && validationWarnings.length > 0 && validationErrors.length === 0;
   }
 
   /**
@@ -41,9 +71,14 @@ export function useSheetValidation() {
   function handleSaveSuccess(responseBody: { warnings?: ValidationIssue[] } | null) {
     const warns = responseBody?.warnings ?? [];
     setValidationWarnings(warns);
-    // Clear any previous errors since the save succeeded
     setValidationErrors([]);
     setSaveError("");
+    // If the save returned warnings, mark them as shown for the next click
+    if (warns.length > 0) {
+      warningsShown.current = true;
+    } else {
+      warningsShown.current = false;
+    }
   }
 
   /**
@@ -112,6 +147,8 @@ export function useSheetValidation() {
     clearRow,
     handle422,
     handleSaveSuccess,
+    handleValidateResult,
+    shouldConfirmWarnings,
     setGenericError,
     renderErrorBanner,
   };
