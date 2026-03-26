@@ -28,11 +28,9 @@ function IssueCard({ issue, variant }: { issue: ValidationIssue; variant: "error
               background:   "var(--color-surface)",
               border:       "1px solid var(--color-border)",
               borderRadius: "var(--radius-sm)",
-              padding:      "1px 7px",
-              whiteSpace:   "nowrap",
-              maxWidth:     "340px",
-              overflow:     "hidden",
-              textOverflow: "ellipsis",
+              padding:      "2px 8px",
+              whiteSpace:   "normal",
+              wordBreak:    "break-word",
             }}>
               {h}
             </span>
