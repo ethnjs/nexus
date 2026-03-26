@@ -248,33 +248,33 @@ export default function EditSheetPage() {
 
       const { updatedRows, summary } = applyImport(activeRows, parsed);
 
+      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
+
+      // Single setMappingRows call — merges import data and openOnMount flag atomically
       setMappingRows((prev) =>
         prev.map((r) => {
           if (r.state === "removed") return r;
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
-          if (r.state === "new") return { ...r, ...updated, importedValue };
-          return makeRichRow(updated, r.baseline, undefined, importedValue);
+          const hadRuleChanges = updatedList.some(
+            (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+          );
+          const base = r.state === "new"
+            ? { ...r, ...updated, importedValue }
+            : makeRichRow(updated, r.baseline, undefined, importedValue);
+          return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
 
       if (parsed.label && !label) setLabel(parsed.label);
       if (parsed.sheet_type) setSheetType(parsed.sheet_type);
 
-      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
 
-      // Mark rows with rule changes to open on next render, then clear the flag
-      setMappingRows((prev) => prev.map((r) => ({
-        ...r,
-        openOnMount: updatedList.some(
-          (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
-        ) || undefined,
-      })));
-      // Clear openOnMount after a tick so it only fires once
-      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 50);
+      // Clear openOnMount after a tick so the effect only fires once
+      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
     };
     reader.readAsText(file);
   }

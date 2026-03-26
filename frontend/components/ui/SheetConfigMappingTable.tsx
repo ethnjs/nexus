@@ -525,6 +525,13 @@ const MappingRowComponent = memo(function MappingRowComponent({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasRules]);
 
+  // Open accordion when openOnMount is set (e.g. after import adds/changes rules).
+  // This handles already-mounted rows — useState only fires at initial mount.
+  useEffect(() => {
+    if (row.openOnMount) openAccordion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [row.openOnMount]);
+
   // Open accordion when new validation results arrive with rule-level issues for this row
   const hasRuleLevelIssues = errors.some((e) => e.rule_index != null) || warnings.some((w) => w.rule_index != null);
   useEffect(() => {

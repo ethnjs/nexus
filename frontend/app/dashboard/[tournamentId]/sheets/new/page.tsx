@@ -266,30 +266,28 @@ export default function NewSheetPage() {
 
       const { updatedRows, summary } = applyImport(plainRows, parsed);
 
+      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
+
       setMappingRows((prev) =>
         prev.map((r) => {
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
-          return makeRichRow(updated, r.baseline, undefined, importedValue);
+          const hadRuleChanges = updatedList.some(
+            (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+          );
+          const base = makeRichRow(updated, r.baseline, undefined, importedValue);
+          return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
 
       if (parsed.label && !sheetLabel) setSheetLabel(parsed.label);
       if (parsed.sheet_type) setSheetType(parsed.sheet_type);
 
-      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
 
-      // Mark rows with rule changes to open on next render, then clear the flag
-      setMappingRows((prev) => prev.map((r) => ({
-        ...r,
-        openOnMount: updatedList.some(
-          (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
-        ) || undefined,
-      })));
-      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 50);
+      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
     };
     reader.readAsText(file);
   }
