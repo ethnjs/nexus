@@ -116,7 +116,7 @@ export function describeRule(rule: ParseRule): string {
 
   parts.push("→");
   parts.push(action);
-  if (rule.value !== undefined && rule.value !== "") parts.push(`"${rule.value}"`);
+  if (rule.value !== undefined) parts.push(`"${rule.value}"`);
 
   return parts.join(" ");
 }
