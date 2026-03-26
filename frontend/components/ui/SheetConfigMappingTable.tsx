@@ -545,9 +545,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const badge       = BADGE_STYLES[row.state];
   const showDiff    = row.state === "changed";
 
-  const hasErrors   = errors.length > 0;
-  const hasWarnings = !hasErrors && warnings.length > 0;
-  const rulesLabel  = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
+  const hasErrors       = errors.length > 0;
+  const hasWarnings     = !hasErrors && warnings.length > 0;
+  const hasRuleErrors   = errors.some((e) => e.rule_index != null);
+  const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
+  const rulesLabel      = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
 
   // Background + left border: error/warning > row state > ignored > default
   const ignoredBg = "var(--color-bg)";
@@ -675,8 +677,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
             </span>
           )}
           {rulesLabel && !viewOnly && (
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasErrors ? "var(--color-danger)" : hasWarnings ? "#92400E" : "var(--color-accent)", background: hasErrors ? "#FEE2E2" : hasWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-              {rulesLabel}{hasErrors && " ⚠"}{hasWarnings && " !"}
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
+              {rulesLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
             </span>
           )}
         </div>
@@ -820,6 +822,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
           )}
           {errors.map((issue, i) => (
             <p key={`e${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+              {issue.rule_index != null && (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", marginRight: "6px" }}>
+                  Rule {issue.rule_index + 1}
+                </span>
+              )}
               {issue.message}
             </p>
           ))}
@@ -830,6 +837,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
           )}
           {warnings.map((issue, i) => (
             <p key={`w${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+              {issue.rule_index != null && (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", marginRight: "6px" }}>
+                  Rule {issue.rule_index + 1}
+                </span>
+              )}
               {issue.message}
             </p>
           ))}
