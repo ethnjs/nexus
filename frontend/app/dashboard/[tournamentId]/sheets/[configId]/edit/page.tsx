@@ -24,6 +24,7 @@ import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
+import { WarningsConfirmModal } from "@/components/ui/WarningsConfirmModal";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -90,7 +91,8 @@ export default function EditSheetPage() {
   const [saveLoading,  setSaveLoading]  = useState(false);
   const [syncLoading,  setSyncLoading]  = useState(false);
   const [saveSuccess,  setSaveSuccess]  = useState(false);
-  const [syncResult,   setSyncResult]   = useState<SyncResult | null>(null);
+  const [syncResult,         setSyncResult]         = useState<SyncResult | null>(null);
+  const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
 
   // Validation (shared hook)
   const {
@@ -315,7 +317,8 @@ export default function EditSheetPage() {
 
   // ── Save & Sync ─────────────────────────────────────────────────────────
 
-  async function handleSaveAndSync() {
+  async function doSaveAndSync() {
+    setShowWarningsConfirm(false);
     setSyncLoading(true);
     clearAll();
     setSaveSuccess(false);
@@ -334,6 +337,15 @@ export default function EditSheetPage() {
       if (!handle422(e)) setGenericError("Failed to save or sync.");
     } finally {
       setSyncLoading(false);
+    }
+  }
+
+  function handleSaveAndSync() {
+    // If there are only warnings (no hard errors), confirm before syncing
+    if (validationWarnings.length > 0 && validationErrors.length === 0) {
+      setShowWarningsConfirm(true);
+    } else {
+      doSaveAndSync();
     }
   }
 
@@ -535,6 +547,14 @@ export default function EditSheetPage() {
 
       {showImportSummary && importBanner?.summary && (
         <ImportSummaryModal summary={importBanner.summary} onClose={() => setShowImportSummary(false)} />
+      )}
+
+      {showWarningsConfirm && (
+        <WarningsConfirmModal
+          warnings={validationWarnings}
+          onConfirm={doSaveAndSync}
+          onCancel={() => setShowWarningsConfirm(false)}
+        />
       )}
     </div>
   );

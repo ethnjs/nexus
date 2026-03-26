@@ -25,6 +25,7 @@ import { RadioOption } from "@/components/ui/RadioOption";
 import { StatCard } from "@/components/ui/StatCard";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { useSheetValidation } from "@/lib/useSheetValidation";
+import { WarningsConfirmModal } from "@/components/ui/WarningsConfirmModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -150,6 +151,7 @@ export default function NewSheetPage() {
   const [mappingRows,       setMappingRows]       = useState<RichMappingRow[]>([]);
   const [saveLoading,       setSaveLoading]       = useState(false);
   const [showSaveConfirm,   setShowSaveConfirm]   = useState(false);
+  const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
   const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary] = useState(false);
   const [importOpenHeaders, setImportOpenHeaders] = useState<Set<string>>(new Set());
@@ -338,6 +340,8 @@ export default function NewSheetPage() {
     const dupes = getDuplicatesForSelection();
     if (dupes.length > 0) {
       setShowSaveConfirm(true);
+    } else if (validationWarnings.length > 0 && validationErrors.length === 0) {
+      setShowWarningsConfirm(true);
     } else {
       doSaveAndSync();
     }
@@ -581,13 +585,28 @@ export default function NewSheetPage() {
       {showSaveConfirm && (
         <SaveConfirmModal
           duplicates={getDuplicatesForSelection()}
-          onConfirm={doSaveAndSync}
+          onConfirm={() => {
+            if (validationWarnings.length > 0 && validationErrors.length === 0) {
+              setShowSaveConfirm(false);
+              setShowWarningsConfirm(true);
+            } else {
+              doSaveAndSync();
+            }
+          }}
           onCancel={() => setShowSaveConfirm(false)}
         />
       )}
 
       {showImportSummary && importBanner?.summary && (
         <ImportSummaryModal summary={importBanner.summary} onClose={() => setShowImportSummary(false)} />
+      )}
+
+      {showWarningsConfirm && (
+        <WarningsConfirmModal
+          warnings={validationWarnings}
+          onConfirm={doSaveAndSync}
+          onCancel={() => setShowWarningsConfirm(false)}
+        />
       )}
     </div>
   );

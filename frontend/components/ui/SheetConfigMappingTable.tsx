@@ -323,6 +323,7 @@ const RuleRow = memo(function RuleRow({
           disabled={isRemoved}
           size="sm"
           minWidth={120}
+          background="var(--color-bg)"
         />
 
         {showMatch && (
@@ -356,6 +357,7 @@ const RuleRow = memo(function RuleRow({
           options={validActions.map((a) => ({ value: a, label: ACTION_LABELS[a] ?? a }))}
           disabled={isRemoved}
           size="sm"
+          background="var(--color-bg)"
         />
 
         {showValue && (
@@ -567,8 +569,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
   // - removed/ignored → nothing
   // - has rules → chevron (toggles accordion)
   // - no rules, not ignored → plus (adds first rule)
-  const showChevron = !isRemoved && !isIgnored && hasRules;
-  const showPlus    = !isRemoved && !isIgnored && !hasRules;
+  const showChevron = !isRemoved && !isIgnored && hasRules && !viewOnly;
+  const showPlus    = !isRemoved && !isIgnored && !hasRules && !viewOnly;
 
   function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
     if (viewOnly || isRemoved || isIgnored) return;
@@ -805,21 +807,25 @@ const MappingRowComponent = memo(function MappingRowComponent({
             display: "flex", flexDirection: "column", gap: "6px",
           }}
         >
-          {[...errors, ...warnings].map((issue, i) => (
-            <div key={i} style={{ display: "flex", gap: "8px", alignItems: "flex-start" }}>
-              <span style={{
-                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
-                color: issue.rule_index !== undefined
-                  ? (errors.includes(issue) ? "var(--color-danger)" : "#92400E")
-                  : (errors.includes(issue) ? "var(--color-danger)" : "#92400E"),
-                flexShrink: 0, paddingTop: "1px",
-              }}>
-                {issue.rule_index !== undefined ? `Rule ${issue.rule_index + 1}` : ""}
-              </span>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)" }}>
-                {issue.message}
-              </span>
-            </div>
+          {errors.length > 0 && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-danger)", marginBottom: errors.length > 0 ? "4px" : 0 }}>
+              Error{errors.length !== 1 ? "s" : ""}
+            </p>
+          )}
+          {errors.map((issue, i) => (
+            <p key={`e${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+              {issue.message}
+            </p>
+          ))}
+          {warnings.length > 0 && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#92400E", marginTop: errors.length > 0 ? "8px" : 0, marginBottom: "4px" }}>
+              Warning{warnings.length !== 1 ? "s" : ""}
+            </p>
+          )}
+          {warnings.map((issue, i) => (
+            <p key={`w${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+              {issue.message}
+            </p>
           ))}
         </div>
       )}
