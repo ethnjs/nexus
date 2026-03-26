@@ -821,14 +821,16 @@ const MappingRowComponent = memo(function MappingRowComponent({
             </p>
           )}
           {errors.map((issue, i) => (
-            <p key={`e${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+            <div key={`e${i}`} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
               {issue.rule_index != null && (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", marginRight: "6px" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", flexShrink: 0, paddingTop: "1px", minWidth: "42px" }}>
                   Rule {issue.rule_index + 1}
                 </span>
               )}
-              {issue.message}
-            </p>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)" }}>
+                {issue.message}
+              </span>
+            </div>
           ))}
           {warnings.length > 0 && (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "#92400E", marginTop: errors.length > 0 ? "8px" : 0, marginBottom: "4px" }}>
@@ -836,14 +838,16 @@ const MappingRowComponent = memo(function MappingRowComponent({
             </p>
           )}
           {warnings.map((issue, i) => (
-            <p key={`w${i}`} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)", margin: 0 }}>
+            <div key={`w${i}`} style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
               {issue.rule_index != null && (
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", marginRight: "6px" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", flexShrink: 0, paddingTop: "1px", minWidth: "42px" }}>
                   Rule {issue.rule_index + 1}
                 </span>
               )}
-              {issue.message}
-            </p>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-primary)" }}>
+                {issue.message}
+              </span>
+            </div>
           ))}
         </div>
       )}
