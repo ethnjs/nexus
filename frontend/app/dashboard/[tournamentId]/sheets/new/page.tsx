@@ -8,7 +8,6 @@ import {
   MappingsExport,
   ImportSummary,
   parseMappingsJson,
-  parseMappingsCsv,
   applyImport,
 } from "@/lib/importMappings";
 import {
@@ -17,7 +16,6 @@ import {
   SheetConfigMappingTable,
 } from "@/components/ui/SheetConfigMappingTable";
 import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
-import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
@@ -226,12 +224,9 @@ export default function NewSheetPage() {
 
   // ── Step 3: Import file ───────────────────────────────────────────────────
 
-  function triggerImport(accept: string) {
+  function triggerImport() {
     setImportBanner(null);
-    if (importInputRef.current) {
-      importInputRef.current.accept = accept;
-      importInputRef.current.click();
-    }
+    importInputRef.current?.click();
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -240,21 +235,20 @@ export default function NewSheetPage() {
     e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
-    const isCsv  = file.name.endsWith(".csv")  || file.type === "text/csv";
+
+    if (!isJson) {
+      setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      let parsed: MappingsExport | null = null;
+      const parsed: MappingsExport | null = parseMappingsJson(text);
 
-      if (isJson) {
-        parsed = parseMappingsJson(text);
-        if (!parsed) { setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" }); return; }
-      } else if (isCsv) {
-        parsed = parseMappingsCsv(text);
-        if (!parsed) { setImportBanner({ variant: "error", message: "Invalid CSV file — expected columns: header, field, type, row_key, extra_key" }); return; }
-      } else {
-        setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json or .csv file." }); return;
+      if (!parsed) {
+        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
+        return;
       }
 
       const plainRows: MappingRow[] = mappingRows.map((r) => ({
@@ -354,7 +348,6 @@ export default function NewSheetPage() {
         return makeRichRow(next, r.baseline, undefined, r.importedValue);
       })
     );
-    // Clear validation state for this row on edit
     const header = mappingRows[idx]?.header;
     if (header) {
       setValidationErrors((prev)   => prev.filter((e)   => e.header !== header));
@@ -494,17 +487,10 @@ export default function NewSheetPage() {
               )}
             </div>
             <div style={{ flexShrink: 0 }}>
-              <SplitButton
-                label="Import"
-                onClick={() => triggerImport(".json,application/json")}
-                variant="secondary"
-                size="sm"
-                options={[
-                  { label: "Import JSON", action: () => triggerImport(".json,application/json") },
-                  { label: "Import CSV",  action: () => triggerImport(".csv,text/csv") },
-                ]}
-              />
-              <input ref={importInputRef} type="file" accept=".json,.csv,application/json,text/csv" style={{ display: "none" }} onChange={handleImportFile} />
+              <Button variant="secondary" size="sm" onClick={triggerImport}>
+                Import JSON
+              </Button>
+              <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>
 

@@ -6,7 +6,7 @@ import { membershipsApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { IconArrowLeft, IconEdit, IconWarning } from "@/components/ui/Icons";
+import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
   RichMappingRow,
   makeRichRow,
@@ -27,6 +27,24 @@ function fmtDateTime(iso: string) {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
   });
+}
+
+// ─── Export helper ────────────────────────────────────────────────────────────
+
+function exportJson(cfg: SheetConfig) {
+  const payload = {
+    label: cfg.label,
+    sheet_type: cfg.sheet_type,
+    sheet_name: cfg.sheet_name,
+    column_mappings: cfg.column_mappings,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Delete Confirmation Modals ───────────────────────────────────────────────
@@ -258,14 +276,24 @@ export default function ViewSheetConfigPage() {
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
-        >
-          <IconEdit size={18} />
-          Edit
-        </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => exportJson(config)}
+          >
+            <IconExport size={18} />
+            Export JSON
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
+          >
+            <IconEdit size={18} />
+            Edit
+          </Button>
+        </div>
       </div>
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>{config.label}</h1>

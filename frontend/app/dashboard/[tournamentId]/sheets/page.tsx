@@ -30,7 +30,7 @@ function getDuplicates(cfg: SheetConfig, all: SheetConfig[]): SheetConfig[] {
   return all.filter((c) => c.id !== cfg.id && isSameTab(c, cfg));
 }
 
-// ─── Export helpers ───────────────────────────────────────────────────────────
+// ─── Export helper ────────────────────────────────────────────────────────────
 
 function exportJson(cfg: SheetConfig) {
   const payload = {
@@ -44,31 +44,6 @@ function exportJson(cfg: SheetConfig) {
   const a = document.createElement("a");
   a.href = url;
   a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportCsv(cfg: SheetConfig) {
-  const rows: string[][] = [
-    ["header", "field", "type", "row_key", "extra_key"],
-  ];
-  for (const [header, mapping] of Object.entries(cfg.column_mappings)) {
-    rows.push([
-      header,
-      mapping.field,
-      mapping.type,
-      mapping.row_key ?? "",
-      mapping.extra_key ?? "",
-    ]);
-  }
-  const csv = rows
-    .map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(","))
-    .join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -233,11 +208,6 @@ function CardMenu({
       action: () => { exportJson(cfg); setOpen(false); },
     },
     {
-      label: "Export CSV",
-      icon: <IconExport size={16} />,
-      action: () => { exportCsv(cfg); setOpen(false); },
-    },
-    {
       label: "Edit",
       icon: <IconEdit size={16} />,
       action: () => { router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
@@ -252,7 +222,6 @@ function CardMenu({
 
   return (
     <div ref={menuRef} style={{ position: "relative" }}>
-      {/* Borderless icon button */}
       <button
         onClick={(e) => { e.stopPropagation(); setOpen((v) => !v); }}
         onMouseEnter={() => setHovered(true)}
@@ -289,13 +258,11 @@ function CardMenu({
         >
           {/* Export group */}
           <div style={{ padding: "4px 0", borderBottom: "1px solid var(--color-border)" }}>
-            {menuItems.slice(0, 2).map((item) => (
-              <MenuRow key={item.label} item={item} />
-            ))}
+            <MenuRow item={menuItems[0]} />
           </div>
           {/* Edit + Delete */}
           <div style={{ padding: "4px 0" }}>
-            {menuItems.slice(2).map((item) => (
+            {menuItems.slice(1).map((item) => (
               <MenuRow key={item.label} item={item} />
             ))}
           </div>
@@ -413,7 +380,6 @@ function ConfigCard({
           boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-sm)",
         }}
       >
-        {/* Duplicate tab warning banner */}
         {hasDuplicates && (
           <div style={{
             display: "flex", alignItems: "flex-start", gap: "8px",
@@ -488,7 +454,6 @@ function ConfigCard({
             )}
           </div>
 
-          {/* Buttons — stopPropagation so they don't trigger card navigation */}
           <div
             style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}
             onClick={(e) => e.stopPropagation()}

@@ -8,7 +8,6 @@ import {
   MappingsExport,
   ImportSummary,
   parseMappingsJson,
-  parseMappingsCsv,
   applyImport,
 } from "@/lib/importMappings";
 import {
@@ -16,7 +15,6 @@ import {
   makeRichRow,
   SheetConfigMappingTable,
 } from "@/components/ui/SheetConfigMappingTable";
-import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
@@ -162,8 +160,6 @@ export default function EditSheetPage() {
       const savedHeaders = new Set(Object.keys(cfg.column_mappings));
       const rows: RichMappingRow[] = [];
 
-      // Live headers in saved config → baseline = saved value
-      // Live headers NOT in saved config → "new" (suggestions as baseline)
       for (const header of result.headers) {
         const saved = cfg.column_mappings[header];
         if (saved) {
@@ -175,7 +171,6 @@ export default function EditSheetPage() {
         }
       }
 
-      // Saved headers no longer in live sheet → "removed"
       for (const header of savedHeaders) {
         if (!liveHeaders.has(header)) {
           const base = emptyMappingRow(header, cfg.column_mappings[header]);
@@ -210,7 +205,6 @@ export default function EditSheetPage() {
         return makeRichRow(next, r.baseline, undefined, r.importedValue);
       })
     );
-    // Clear validation state for this row on edit
     const header = mappingRows[idx]?.header;
     if (header) {
       setValidationErrors((prev)   => prev.filter((e) => e.header !== header));
@@ -220,12 +214,9 @@ export default function EditSheetPage() {
 
   // ── Import ──────────────────────────────────────────────────────────────
 
-  function triggerImport(accept: string) {
+  function triggerImport() {
     setImportBanner(null);
-    if (importInputRef.current) {
-      importInputRef.current.accept = accept;
-      importInputRef.current.click();
-    }
+    importInputRef.current?.click();
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -234,21 +225,20 @@ export default function EditSheetPage() {
     e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
-    const isCsv  = file.name.endsWith(".csv")  || file.type === "text/csv";
+
+    if (!isJson) {
+      setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      let parsed: MappingsExport | null = null;
+      const parsed: MappingsExport | null = parseMappingsJson(text);
 
-      if (isJson) {
-        parsed = parseMappingsJson(text);
-        if (!parsed) { setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" }); return; }
-      } else if (isCsv) {
-        parsed = parseMappingsCsv(text);
-        if (!parsed) { setImportBanner({ variant: "error", message: "Invalid CSV file — expected columns: header, field, type, row_key, extra_key" }); return; }
-      } else {
-        setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json or .csv file." }); return;
+      if (!parsed) {
+        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
+        return;
       }
 
       const activeRows: MappingRow[] = mappingRows
@@ -453,17 +443,10 @@ export default function EditSheetPage() {
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>Fetching headers…</span>
             )}
             <div style={{ flexShrink: 0 }}>
-              <SplitButton
-                label="Import JSON"
-                onClick={() => triggerImport(".json,application/json")}
-                variant="secondary"
-                size="sm"
-                options={[
-                  { label: "Import JSON", action: () => triggerImport(".json,application/json") },
-                  { label: "Import CSV",  action: () => triggerImport(".csv,text/csv") },
-                ]}
-              />
-              <input ref={importInputRef} type="file" accept=".json,.csv,application/json,text/csv" style={{ display: "none" }} onChange={handleImportFile} />
+              <Button variant="secondary" size="sm" onClick={triggerImport}>
+                Import JSON
+              </Button>
+              <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>
 
