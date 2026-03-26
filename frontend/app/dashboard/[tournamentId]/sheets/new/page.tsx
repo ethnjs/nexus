@@ -25,7 +25,7 @@ import { RadioOption } from "@/components/ui/RadioOption";
 import { StatCard } from "@/components/ui/StatCard";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { useSheetValidation } from "@/lib/useSheetValidation";
-import { WarningsConfirmModal } from "@/components/ui/WarningsConfirmModal";
+import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -151,7 +151,8 @@ export default function NewSheetPage() {
   const [mappingRows,       setMappingRows]       = useState<RichMappingRow[]>([]);
   const [saveLoading,       setSaveLoading]       = useState(false);
   const [showSaveConfirm,   setShowSaveConfirm]   = useState(false);
-  const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
+  const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
+  const [showErrorsModal,      setShowErrorsModal]      = useState(false);
   const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary] = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
@@ -348,12 +349,8 @@ export default function NewSheetPage() {
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
       const { ok, shouldConfirm } = handleValidateResult(validation);
-      if (!ok) return;           // hard errors — shown inline, stop
-      if (shouldConfirm) {
-        setShowWarningsConfirm(true);
-        return;
-      }
-      // Warnings shown for first time — display inline, don't save yet
+      if (!ok) { setShowErrorsModal(true); return; }
+      if (shouldConfirm) { setShowWarningsConfirm(true); return; }
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch (e: unknown) {
@@ -611,7 +608,7 @@ export default function NewSheetPage() {
             try {
               const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
               const { ok, shouldConfirm } = handleValidateResult(validation);
-              if (!ok) return;
+              if (!ok) { setShowErrorsModal(true); return; }
               if (shouldConfirm) { setShowWarningsConfirm(true); return; }
               if (validation.warnings.length > 0) return;
               await doSaveAndSync();
@@ -627,10 +624,18 @@ export default function NewSheetPage() {
       )}
 
       {showWarningsConfirm && (
-        <WarningsConfirmModal
+        <SheetMappingValidationWarningsModal
           warnings={validationWarnings}
           onConfirm={doSaveAndSync}
           onCancel={() => setShowWarningsConfirm(false)}
+        />
+      )}
+
+      {showErrorsModal && (
+        <SheetMappingValidationErrorsModal
+          errors={validationErrors}
+          warnings={validationWarnings}
+          onClose={() => setShowErrorsModal(false)}
         />
       )}
     </div>

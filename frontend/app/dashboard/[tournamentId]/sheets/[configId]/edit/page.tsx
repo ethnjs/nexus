@@ -24,7 +24,7 @@ import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
-import { WarningsConfirmModal } from "@/components/ui/WarningsConfirmModal";
+import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -92,7 +92,8 @@ export default function EditSheetPage() {
   const [syncLoading,  setSyncLoading]  = useState(false);
   const [saveSuccess,  setSaveSuccess]  = useState(false);
   const [syncResult,         setSyncResult]         = useState<SyncResult | null>(null);
-  const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
+  const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
+  const [showErrorsModal,      setShowErrorsModal]      = useState(false);
 
   // Validation (shared hook)
   const {
@@ -343,7 +344,7 @@ export default function EditSheetPage() {
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
       const { ok } = handleValidateResult(validation);
-      if (!ok) return; // hard errors shown inline
+      if (!ok) { setShowErrorsModal(true); return; }
       await doSave();
     } catch (e: unknown) {
       if (!handle422(e)) setGenericError("Failed to save changes.");
@@ -357,12 +358,8 @@ export default function EditSheetPage() {
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
       const { ok, shouldConfirm } = handleValidateResult(validation);
-      if (!ok) return;           // hard errors — shown inline, stop
-      if (shouldConfirm) {
-        setShowWarningsConfirm(true);
-        return;
-      }
-      // Warnings shown for first time (inline) or clean — don't save yet on warnings
+      if (!ok) { setShowErrorsModal(true); return; }
+      if (shouldConfirm) { setShowWarningsConfirm(true); return; }
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch (e: unknown) {
@@ -577,10 +574,18 @@ export default function EditSheetPage() {
       )}
 
       {showWarningsConfirm && (
-        <WarningsConfirmModal
+        <SheetMappingValidationWarningsModal
           warnings={validationWarnings}
           onConfirm={doSaveAndSync}
           onCancel={() => setShowWarningsConfirm(false)}
+        />
+      )}
+
+      {showErrorsModal && (
+        <SheetMappingValidationErrorsModal
+          errors={validationErrors}
+          warnings={validationWarnings}
+          onClose={() => setShowErrorsModal(false)}
         />
       )}
     </div>
