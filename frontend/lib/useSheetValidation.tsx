@@ -32,26 +32,35 @@ export function useSheetValidation() {
 
   /**
    * Handle the response from POST /configs/validate-mappings/.
-   * Populates errors/warnings inline. Sets warningsShown = true so the
-   * next save attempt knows the user has already seen the warnings.
-   * Returns true if there are no hard errors (safe to proceed to save).
+   * Populates errors/warnings inline.
+   * Returns an object with:
+   *   - ok: whether there are no hard errors
+   *   - shouldConfirm: whether the user has already seen these warnings
+   *     (true = show confirm modal; false = just show inline and stop)
    */
-  function handleValidateResult(result: { ok: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] }): boolean {
-    setValidationErrors(result.errors ?? []);
-    setValidationWarnings(result.warnings ?? []);
-    setSaveError("");
-    if ((result.warnings ?? []).length > 0) {
-      warningsShown.current = true;
-    }
-    return result.ok;
-  }
+  function handleValidateResult(result: { ok: boolean; errors: ValidationIssue[]; warnings: ValidationIssue[] }): {
+    ok: boolean;
+    shouldConfirm: boolean;
+  } {
+    const errs  = result.errors   ?? [];
+    const warns = result.warnings ?? [];
+    const hadWarningsAlready = warningsShown.current;
 
-  /**
-   * Returns true if warnings have been shown to the user and should
-   * trigger a confirm modal on the next save attempt.
-   */
-  function shouldConfirmWarnings(): boolean {
-    return warningsShown.current && validationWarnings.length > 0 && validationErrors.length === 0;
+    setValidationErrors(errs);
+    setValidationWarnings(warns);
+    setSaveError("");
+
+    // Warnings are now shown — mark so next click knows
+    if (warns.length > 0) {
+      warningsShown.current = true;
+    } else {
+      warningsShown.current = false;
+    }
+
+    const ok            = errs.length === 0;
+    // Only confirm if warnings existed AND were already shown before this call
+    const shouldConfirm = ok && warns.length > 0 && hadWarningsAlready;
+    return { ok, shouldConfirm };
   }
 
   /**
@@ -148,7 +157,6 @@ export function useSheetValidation() {
     handle422,
     handleSaveSuccess,
     handleValidateResult,
-    shouldConfirmWarnings,
     setGenericError,
     renderErrorBanner,
   };

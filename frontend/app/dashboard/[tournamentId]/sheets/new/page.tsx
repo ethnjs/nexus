@@ -160,7 +160,7 @@ export default function NewSheetPage() {
   // Validation (shared hook)
   const {
     validationErrors, validationWarnings,
-    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, shouldConfirmWarnings, setGenericError, renderErrorBanner,
+    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
   // Results
@@ -345,17 +345,17 @@ export default function NewSheetPage() {
       setShowSaveConfirm(true);
       return;
     }
-    // Validate before saving — no DB write yet
     setSaveLoading(true);
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
-      const ok = handleValidateResult(validation);
-      if (!ok) return; // hard errors — shown inline
-      if (shouldConfirmWarnings()) {
-        // Warnings already shown inline — ask for confirmation
+      const { ok, shouldConfirm } = handleValidateResult(validation);
+      if (!ok) return;           // hard errors — shown inline, stop
+      if (shouldConfirm) {
         setShowWarningsConfirm(true);
         return;
       }
+      // Warnings shown for first time — display inline, don't save yet
+      if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch (e: unknown) {
       setGenericError("Failed to validate.");
@@ -491,6 +491,11 @@ export default function NewSheetPage() {
       {/* ── STEP 3: Column Mapping ── */}
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          {/* Validation banner — top of mapping section */}
+          {(validationErrors.length > 0 || validationWarnings.length > 0) && (
+            <div>{renderErrorBanner()}</div>
+          )}
+
           {/* Toolbar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
@@ -607,9 +612,10 @@ export default function NewSheetPage() {
             setSaveLoading(true);
             try {
               const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
-              const ok = handleValidateResult(validation);
+              const { ok, shouldConfirm } = handleValidateResult(validation);
               if (!ok) return;
-              if (shouldConfirmWarnings()) { setShowWarningsConfirm(true); return; }
+              if (shouldConfirm) { setShowWarningsConfirm(true); return; }
+              if (validation.warnings.length > 0) return;
               await doSaveAndSync();
             } catch { setGenericError("Failed to validate."); }
             finally { setSaveLoading(false); }

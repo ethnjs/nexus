@@ -97,7 +97,7 @@ export default function EditSheetPage() {
   // Validation (shared hook)
   const {
     validationErrors, validationWarnings,
-    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, shouldConfirmWarnings, setGenericError, renderErrorBanner,
+    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
   // Import
@@ -338,13 +338,11 @@ export default function EditSheetPage() {
   }
 
   async function handleSave() {
-    // Validate first without saving
-    const mappings = buildColumnMappings();
     setSaveLoading(true);
     try {
-      const validation = await sheetsApi.validateMappings(tournamentId, mappings);
-      const ok = handleValidateResult(validation);
-      if (!ok) return; // hard errors — shown inline
+      const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
+      const { ok } = handleValidateResult(validation);
+      if (!ok) return; // hard errors shown inline
       await doSave();
     } catch (e: unknown) {
       if (!handle422(e)) setGenericError("Failed to save changes.");
@@ -354,20 +352,17 @@ export default function EditSheetPage() {
   }
 
   async function handleSaveAndSync() {
-    // Validate first without saving
-    const mappings = buildColumnMappings();
     setSyncLoading(true);
     try {
-      const validation = await sheetsApi.validateMappings(tournamentId, mappings);
-      const ok = handleValidateResult(validation);
-      if (!ok) { setSyncLoading(false); return; } // hard errors — shown inline
-      if (shouldConfirmWarnings()) {
-        // Warnings already shown — ask for confirmation before saving
+      const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
+      const { ok, shouldConfirm } = handleValidateResult(validation);
+      if (!ok) return;           // hard errors — shown inline, stop
+      if (shouldConfirm) {
         setShowWarningsConfirm(true);
-        setSyncLoading(false);
         return;
       }
-      // No issues or warnings not yet shown — save and sync
+      // Warnings shown for first time (inline) or clean — don't save yet on warnings
+      if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch (e: unknown) {
       setGenericError("Failed to validate.");
@@ -453,6 +448,11 @@ export default function EditSheetPage() {
 
         {/* ── Mapping table ── */}
         <div>
+          {/* Validation banner — top of mapping section */}
+          {(validationErrors.length > 0 || validationWarnings.length > 0) && (
+            <div style={{ marginBottom: "12px" }}>{renderErrorBanner()}</div>
+          )}
+
           {/* Toolbar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "10px" }}>
             {!headersLoading && mappingRows.length > 0 && (

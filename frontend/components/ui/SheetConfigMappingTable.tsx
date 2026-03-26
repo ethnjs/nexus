@@ -796,7 +796,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
           style={{
             position: "fixed",
             top: anchorRect.bottom + 6,
-            left: Math.max(8, anchorRect.left),
+            left: showDiff && tooltipVisible
+              ? Math.max(8, anchorRect.left) + 420
+              : Math.max(8, anchorRect.left),
             zIndex: 9999,
             background: "var(--color-surface)",
             border: `1px solid ${hasErrors ? "#FCA5A5" : "#FDE047"}`,
@@ -904,7 +906,11 @@ export function SheetConfigMappingTable({
               onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
               isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
-              forceOpen={rowErrors.length > 0 || rowWarnings.length > 0 || (forceOpenHeaders?.has(row.header) ?? false)}
+              forceOpen={
+                rowErrors.some((e) => e.rule_index !== undefined) ||
+                rowWarnings.some((w) => w.rule_index !== undefined) ||
+                (forceOpenHeaders?.has(row.header) ?? false)
+              }
             />
           );
         })}
