@@ -103,9 +103,9 @@ export default function EditSheetPage() {
   const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
 
   // Import
-  const importInputRef                             = useRef<HTMLInputElement>(null);
-  const [importBanner,     setImportBanner]        = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
-  const [showImportSummary, setShowImportSummary]  = useState(false);
+  const importInputRef                            = useRef<HTMLInputElement>(null);
+  const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [showImportSummary, setShowImportSummary] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -257,8 +257,10 @@ export default function EditSheetPage() {
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
-          if (r.state === "new") return { ...r, ...updated, importedValue };
-          return makeRichRow(updated, r.baseline, undefined, importedValue);
+          // Fix: always use makeRichRow so state and diff tooltip work correctly,
+          // even for "new" rows. Pass the row's own baseline so new rows show
+          // "Changes from suggestion" correctly.
+          return makeRichRow(updated, r.baseline, r.state === "new" ? undefined : undefined, importedValue);
         })
       );
 
@@ -288,7 +290,7 @@ export default function EditSheetPage() {
     return result;
   }, [mappingRows]);
 
-  // ── Handle 422 validation errors ────────────────────────────────────────
+  // ── Handle 422 ─────────────────────────────────────────────────────────
 
   function handle422(e: unknown): boolean {
     if (e instanceof ApiError && e.status === 422) {
@@ -430,10 +432,10 @@ export default function EditSheetPage() {
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {[
-                  { label: `${sameCount} unchanged`,    color: "var(--color-text-tertiary)", show: true },
-                  { label: `${changedCount} edited`,    color: "#854D0E",                    show: changedCount  > 0 },
-                  { label: `${newCount} new`,            color: "#16A34A",                    show: newCount      > 0 },
-                  { label: `${removedCount} removed`,   color: "#DC2626",                    show: removedCount  > 0 },
+                  { label: `${sameCount} unchanged`,  color: "var(--color-text-tertiary)", show: true },
+                  { label: `${changedCount} edited`,  color: "#854D0E",                    show: changedCount  > 0 },
+                  { label: `${newCount} new`,          color: "#16A34A",                    show: newCount      > 0 },
+                  { label: `${removedCount} removed`, color: "#DC2626",                    show: removedCount  > 0 },
                 ].filter((s) => s.show).map(({ label: l, color }) => (
                   <span key={l} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color }}>{l}</span>
                 ))}
@@ -463,7 +465,6 @@ export default function EditSheetPage() {
             </div>
           )}
 
-          {/* Validation error banner */}
           {validationErrors.length > 0 && (
             <div style={{ marginBottom: "10px" }}>
               <Banner

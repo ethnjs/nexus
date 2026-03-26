@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect, memo } from "react";
 import type { MappingRow } from "@/lib/importMappings";
 import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue } from "@/lib/api";
-import { mappingRowsEqual } from "@/lib/importMappings";
+import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -53,7 +53,6 @@ const ACTION_LABELS: Record<string, string> = {
   parse_availability:"Parse availability",
 };
 
-/** Actions that don't need a value input */
 const VALUELESS_ACTIONS = new Set<ParseRuleAction>(["discard", "parse_availability"]);
 
 // ─── Row state ────────────────────────────────────────────────────────────────
@@ -80,7 +79,7 @@ const BADGE_STYLES: Record<RowState, { color: string; bg: string; label: string 
   removed: { color: "#DC2626", bg: "#FEE2E2", label: "Removed" },
 };
 
-// ─── Shared input style ───────────────────────────────────────────────────────
+// ─── Shared input/select styles ───────────────────────────────────────────────
 
 const selectStyle: React.CSSProperties = {
   height: "36px", padding: "0 10px",
@@ -120,80 +119,143 @@ function diffBetween(a: MappingRow, b: MappingRow): DiffLine[] {
     const fmtVal = fmt ?? ((v: string) => v || "—");
     lines.push({ label, from: fmtVal(from), to: fmtVal(to) });
   }
-  // Summarise rule count diff if rules changed
-  const aRules = Array.isArray(a.rules) ? a.rules.length : 0;
-  const bRules = Array.isArray(b.rules) ? b.rules.length : 0;
-  if (aRules !== bRules) {
-    lines.push({ label: "Rules", from: String(aRules), to: String(bRules) });
-  }
   return lines;
 }
 
-function DiffSection({ lines, last }: { lines: DiffLine[]; last: boolean }) {
+interface RuleLineDiff {
+  index:  number;
+  status: "added" | "removed" | "changed" | "unchanged";
+  from?:  ParseRule;
+  to?:    ParseRule;
+}
+
+function ruleDiffsBetween(aRules: ParseRule[], bRules: ParseRule[]): RuleLineDiff[] {
+  const len   = Math.max(aRules.length, bRules.length);
+  const diffs: RuleLineDiff[] = [];
+  for (let i = 0; i < len; i++) {
+    const from = aRules[i];
+    const to   = bRules[i];
+    if (!from && to)  { diffs.push({ index: i, status: "added",   to });   continue; }
+    if (from  && !to) { diffs.push({ index: i, status: "removed", from }); continue; }
+    if (from  && to) {
+      const same =
+        from.condition                 === to.condition                 &&
+        (from.match         ?? "")     === (to.match         ?? "")     &&
+        (from.case_sensitive ?? false) === (to.case_sensitive ?? false) &&
+        from.action                    === to.action                    &&
+        (from.value         ?? "")     === (to.value         ?? "");
+      diffs.push({ index: i, status: same ? "unchanged" : "changed", from, to });
+    }
+  }
+  return diffs;
+}
+
+function TooltipRuleDiff({ diff }: { diff: RuleLineDiff }) {
+  const idx = diff.index + 1;
+  if (diff.status === "unchanged") return null;
+
+  if (diff.status === "removed") {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 7px", background: "#FFF5F5", border: "1px solid #FCA5A5", borderRadius: "var(--radius-sm)" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#DC2626", flexShrink: 0 }}>{idx}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#DC2626", flex: 1 }}>{describeRule(diff.from!)}</span>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "#DC2626", flexShrink: 0 }}>removed</span>
+      </div>
+    );
+  }
+
+  if (diff.status === "added") {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 7px", background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: "var(--radius-sm)" }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#16A34A", flexShrink: 0 }}>{idx}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#16A34A", fontWeight: 600, flex: 1 }}>{describeRule(diff.to!)}</span>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "#16A34A", flexShrink: 0 }}>added</span>
+      </div>
+    );
+  }
+
+  // changed — single box, number centered, red/green flush with divider
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "5px", ...(last ? {} : { paddingBottom: "10px" }) }}>
-      {lines.map(({ label, from, to }) => (
-        <div key={label} style={{ display: "flex", alignItems: "baseline", gap: "6px", flexWrap: "wrap" }}>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", minWidth: "64px", flexShrink: 0 }}>
-            {label}
-          </span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-            {from}
-          </span>
-          <span style={{ color: "var(--color-text-tertiary)", fontSize: "10px" }}>→</span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#854D0E", fontWeight: 600 }}>
-            {to}
-          </span>
+    <div style={{ display: "flex", alignItems: "stretch", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px", background: "var(--color-bg)", borderRight: "1px solid var(--color-border)", flexShrink: 0 }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)" }}>{idx}</span>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "4px 7px", background: "#FFF5F5", borderBottom: "1px solid var(--color-border)" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#DC2626" }}>{describeRule(diff.from!)}</span>
         </div>
-      ))}
+        <div style={{ padding: "4px 7px", background: "#F0FDF4" }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#16A34A", fontWeight: 600 }}>{describeRule(diff.to!)}</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-function DiffTooltip({
-  row, anchorRect, baselineLabel, onMouseEnter, onMouseLeave,
-}: {
-  row:           RichMappingRow;
-  anchorRect:    DOMRect;
-  baselineLabel: string;
-  onMouseEnter:  () => void;
-  onMouseLeave:  () => void;
-}) {
-  const imp = row.importedValue;
-  const hasPostImportEdit = imp !== undefined && !mappingRowsEqual(imp, row as MappingRow);
-  const section1Lines = diffBetween(row.baseline, imp ?? (row as MappingRow));
-  const section2Lines = hasPostImportEdit && imp ? diffBetween(imp, row as MappingRow) : [];
-  if (section1Lines.length === 0 && section2Lines.length === 0) return null;
+function DiffSection({ fieldLines, ruleDiffs, last }: { fieldLines: DiffLine[]; ruleDiffs: RuleLineDiff[]; last: boolean }) {
+  const hasRuleChanges = ruleDiffs.some((d) => d.status !== "unchanged");
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "5px", ...(last ? {} : { paddingBottom: "10px" }) }}>
+      {fieldLines.map(({ label, from, to }) => (
+        <div key={label} style={{ display: "flex", alignItems: "baseline", gap: "6px", flexWrap: "wrap" }}>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", minWidth: "64px", flexShrink: 0 }}>{label}</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#DC2626" }}>{from}</span>
+          <span style={{ color: "var(--color-text-tertiary)", fontSize: "10px" }}>→</span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#16A34A", fontWeight: 600 }}>{to}</span>
+        </div>
+      ))}
+      {hasRuleChanges && (
+        <div style={{ marginTop: fieldLines.length > 0 ? "4px" : "0" }}>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-text-tertiary)", marginBottom: "5px" }}>Rules</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+            {ruleDiffs.map((diff) => <TooltipRuleDiff key={diff.index} diff={diff} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-  const top  = anchorRect.bottom + 6;
-  const left = Math.max(8, anchorRect.left);
+function DiffTooltip({ row, anchorRect, baselineLabel, onMouseEnter, onMouseLeave }: {
+  row: RichMappingRow; anchorRect: DOMRect; baselineLabel: string;
+  onMouseEnter: () => void; onMouseLeave: () => void;
+}) {
+  const current = row as MappingRow;
+  const imp     = row.importedValue;
+  const hasPostImportEdit = imp !== undefined && !mappingRowsEqual(imp, current);
+
+  const sec1Target     = imp ?? current;
+  const sec1FieldLines = diffBetween(row.baseline, sec1Target);
+  const sec1RuleDiffs  = ruleDiffsBetween(row.baseline.rules ?? [], sec1Target.rules ?? []);
+  const sec1HasChange  = sec1FieldLines.length > 0 || sec1RuleDiffs.some((d) => d.status !== "unchanged");
+
+  const sec2FieldLines = hasPostImportEdit && imp ? diffBetween(imp, current) : [];
+  const sec2RuleDiffs  = hasPostImportEdit && imp ? ruleDiffsBetween(imp.rules ?? [], current.rules ?? []) : [];
+  const sec2HasChange  = sec2FieldLines.length > 0 || sec2RuleDiffs.some((d) => d.status !== "unchanged");
+
+  if (!sec1HasChange && !sec2HasChange) return null;
 
   return (
     <div
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      style={{
-        position: "fixed", top, left, zIndex: 9999,
-        background: "var(--color-surface)", border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)",
-        padding: "10px 14px", minWidth: "220px",
-      }}
+      style={{ position: "fixed", top: anchorRect.bottom + 6, left: Math.max(8, anchorRect.left), zIndex: 9999, background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)", padding: "10px 14px", minWidth: "260px", maxWidth: "400px" }}
     >
-      {section1Lines.length > 0 && (
+      {sec1HasChange && (
         <>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "8px" }}>
             Changes from {baselineLabel}
           </p>
-          <DiffSection lines={section1Lines} last={section2Lines.length === 0} />
+          <DiffSection fieldLines={sec1FieldLines} ruleDiffs={sec1RuleDiffs} last={!sec2HasChange} />
         </>
       )}
-      {section2Lines.length > 0 && (
+      {sec2HasChange && (
         <>
-          <div style={{ borderTop: "1px solid var(--color-border)", marginBottom: "10px" }} />
+          {sec1HasChange && <div style={{ borderTop: "1px solid var(--color-border)", marginBottom: "10px" }} />}
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "8px" }}>
             Changes from import
           </p>
-          <DiffSection lines={section2Lines} last={true} />
+          <DiffSection fieldLines={sec2FieldLines} ruleDiffs={sec2RuleDiffs} last={true} />
         </>
       )}
     </div>
@@ -204,237 +266,149 @@ function DiffTooltip({
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
-    <svg
-      width="12" height="12" viewBox="0 0 12 12" fill="none"
-      style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 150ms ease", flexShrink: 0 }}
-    >
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none"
+      style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 150ms ease", flexShrink: 0 }}>
       <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// ─── Plus icon ────────────────────────────────────────────────────────────────
+
+function PlusIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0 }}>
+      <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }
 
 // ─── Rule editor row ──────────────────────────────────────────────────────────
 
-function RuleRow({
-  rule,
-  index,
-  total,
-  validConditions,
-  validActions,
-  onChange,
-  onMove,
-  onRemove,
-  error,
-  warning,
-  isRemoved,
+const RuleRow = memo(function RuleRow({
+  rule, index, total, validConditions, validActions,
+  onChange, onMove, onRemove, error, warning, isRemoved,
 }: {
-  rule:            ParseRule;
-  index:           number;
-  total:           number;
-  validConditions: string[];
-  validActions:    string[];
-  onChange:        (patch: Partial<ParseRule>) => void;
-  onMove:          (dir: -1 | 1) => void;
-  onRemove:        () => void;
-  error?:          string;
-  warning?:        string;
-  isRemoved:       boolean;
+  rule: ParseRule; index: number; total: number;
+  validConditions: string[]; validActions: string[];
+  onChange: (patch: Partial<ParseRule>) => void;
+  onMove: (dir: -1 | 1) => void;
+  onRemove: () => void;
+  error?: string; warning?: string; isRemoved: boolean;
 }) {
   const showMatch = rule.condition !== "always";
   const showValue = !VALUELESS_ACTIONS.has(rule.action as ParseRuleAction);
 
-  const bg      = error   ? "#FFF5F5"
-                : warning ? "#FFFBEB"
-                : "var(--color-bg)";
-  const border  = error   ? "1px solid #FCA5A5"
-                : warning ? "1px solid #FDE047"
-                : "1px solid var(--color-border)";
+  // Local state for text inputs — keeps keystrokes purely local,
+  // flushes to parent only on blur so the whole table doesn't re-render per keystroke.
+  const [localMatch, setLocalMatch] = useState(rule.match ?? "");
+  const [localValue, setLocalValue] = useState(rule.value ?? "");
+
+  // Sync local state when the rule prop changes from outside (e.g. import, reorder)
+  useEffect(() => { setLocalMatch(rule.match ?? ""); }, [rule.match]);
+  useEffect(() => { setLocalValue(rule.value ?? ""); }, [rule.value]);
+
+  const bg     = error   ? "#FFF5F5" : warning ? "#FFFBEB" : "var(--color-bg)";
+  const border = error   ? "1px solid #FCA5A5" : warning ? "1px solid #FDE047" : "1px solid var(--color-border)";
 
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", gap: "4px",
-      padding: "8px 10px",
-      background: bg, border, borderRadius: "var(--radius-sm)",
-      opacity: isRemoved ? 0.5 : 1,
-    }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px", padding: "8px 10px", background: bg, border, borderRadius: "var(--radius-sm)", opacity: isRemoved ? 0.5 : 1 }}>
       <div style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap" }}>
-        {/* Index badge */}
-        <span style={{
-          fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700,
-          color: "var(--color-text-tertiary)", minWidth: "16px", flexShrink: 0,
-        }}>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", minWidth: "16px", flexShrink: 0 }}>
           {index + 1}
         </span>
 
-        {/* Condition */}
         <select
-          value={rule.condition}
-          disabled={isRemoved}
+          value={rule.condition} disabled={isRemoved}
           onChange={(e) => {
             const condition = e.target.value as ParseRuleCondition;
-            // Clear match when switching to 'always'
             onChange({ condition, ...(condition === "always" ? { match: undefined } : {}) });
           }}
           style={{ ...selectStyle, height: "30px", fontSize: "11px" }}
         >
-          {validConditions.map((c) => (
-            <option key={c} value={c}>{CONDITION_LABELS[c] ?? c}</option>
-          ))}
+          {validConditions.map((c) => <option key={c} value={c}>{CONDITION_LABELS[c] ?? c}</option>)}
         </select>
 
-        {/* Match input — hidden for 'always' */}
         {showMatch && (
           <input
-            value={rule.match ?? ""}
-            disabled={isRemoved}
+            value={localMatch} disabled={isRemoved}
             placeholder={rule.condition === "regex" ? "pattern" : "value"}
-            onChange={(e) => onChange({ match: e.target.value })}
-            style={{ ...inputStyle, height: "30px", fontSize: "11px", width: "120px" }}
+            onChange={(e) => setLocalMatch(e.target.value)}
+            onBlur={() => { if (localMatch !== (rule.match ?? "")) onChange({ match: localMatch }); }}
+            style={{ ...inputStyle, height: "30px", fontSize: "11px", width: "300px", fontFamily: "var(--font-mono)" }}
           />
         )}
 
-        {/* Case-sensitive toggle — hidden for 'always' and 'regex' (regex has its own flags) */}
         {showMatch && rule.condition !== "regex" && (
           <label style={{ display: "flex", alignItems: "center", gap: "4px", cursor: isRemoved ? "default" : "pointer", flexShrink: 0 }}>
             <input
-              type="checkbox"
-              checked={rule.case_sensitive}
-              disabled={isRemoved}
+              type="checkbox" checked={rule.case_sensitive} disabled={isRemoved}
               onChange={(e) => onChange({ case_sensitive: e.target.checked })}
               style={{ accentColor: "var(--color-accent)", width: "12px", height: "12px" }}
             />
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-              case-sensitive
-            </span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>case-sensitive</span>
           </label>
         )}
 
-        {/* Arrow separator */}
         <span style={{ color: "var(--color-text-tertiary)", fontSize: "11px", flexShrink: 0 }}>→</span>
 
-        {/* Action */}
         <select
-          value={rule.action}
-          disabled={isRemoved}
+          value={rule.action} disabled={isRemoved}
           onChange={(e) => {
             const action = e.target.value as ParseRuleAction;
             onChange({ action, ...(VALUELESS_ACTIONS.has(action) ? { value: undefined } : {}) });
           }}
           style={{ ...selectStyle, height: "30px", fontSize: "11px" }}
         >
-          {validActions.map((a) => (
-            <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>
-          ))}
+          {validActions.map((a) => <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>)}
         </select>
 
-        {/* Value input */}
         {showValue && (
           <input
-            value={rule.value ?? ""}
-            disabled={isRemoved}
+            value={localValue} disabled={isRemoved}
             placeholder="value"
-            onChange={(e) => onChange({ value: e.target.value })}
-            style={{ ...inputStyle, height: "30px", fontSize: "11px", width: "140px" }}
+            onChange={(e) => setLocalValue(e.target.value)}
+            onBlur={() => { if (localValue !== (rule.value ?? "")) onChange({ value: localValue }); }}
+            style={{ ...inputStyle, height: "30px", fontSize: "11px", width: "300px", fontFamily: "var(--font-mono)" }}
           />
         )}
 
-        {/* Spacer */}
         <div style={{ flex: 1 }} />
 
-        {/* Reorder + remove controls */}
         {!isRemoved && (
           <div style={{ display: "flex", alignItems: "center", gap: "2px", flexShrink: 0 }}>
-            <button
-              onClick={() => onMove(-1)}
-              disabled={index === 0}
-              title="Move up"
-              style={{
-                background: "none", border: "none", cursor: index === 0 ? "default" : "pointer",
-                padding: "2px 4px", borderRadius: "3px",
-                color: index === 0 ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
-                fontSize: "12px", lineHeight: 1,
-              }}
-            >
-              ↑
-            </button>
-            <button
-              onClick={() => onMove(1)}
-              disabled={index === total - 1}
-              title="Move down"
-              style={{
-                background: "none", border: "none", cursor: index === total - 1 ? "default" : "pointer",
-                padding: "2px 4px", borderRadius: "3px",
-                color: index === total - 1 ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
-                fontSize: "12px", lineHeight: 1,
-              }}
-            >
-              ↓
-            </button>
-            <button
-              onClick={onRemove}
-              title="Remove rule"
-              style={{
-                background: "none", border: "none", cursor: "pointer",
-                padding: "2px 4px", borderRadius: "3px",
-                color: "var(--color-text-tertiary)",
-                fontSize: "14px", lineHeight: 1,
-              }}
+            <button onClick={() => onMove(-1)} disabled={index === 0} title="Move up"
+              style={{ background: "none", border: "none", cursor: index === 0 ? "default" : "pointer", padding: "2px 4px", borderRadius: "3px", color: index === 0 ? "var(--color-text-tertiary)" : "var(--color-text-secondary)", fontSize: "12px", lineHeight: 1 }}>↑</button>
+            <button onClick={() => onMove(1)} disabled={index === total - 1} title="Move down"
+              style={{ background: "none", border: "none", cursor: index === total - 1 ? "default" : "pointer", padding: "2px 4px", borderRadius: "3px", color: index === total - 1 ? "var(--color-text-tertiary)" : "var(--color-text-secondary)", fontSize: "12px", lineHeight: 1 }}>↓</button>
+            <button onClick={onRemove} title="Remove rule"
+              style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", borderRadius: "3px", color: "var(--color-text-tertiary)", fontSize: "14px", lineHeight: 1 }}
               onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-danger)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
-            >
-              ×
-            </button>
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}>×</button>
           </div>
         )}
       </div>
 
-      {/* Inline validation feedback */}
-      {error && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: 0, paddingLeft: "22px" }}>
-          {error}
-        </p>
-      )}
-      {!error && warning && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: 0, paddingLeft: "22px" }}>
-          {warning}
-        </p>
-      )}
+      {error   && <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: 0, paddingLeft: "22px" }}>{error}</p>}
+      {!error && warning && <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: 0, paddingLeft: "22px" }}>{warning}</p>}
     </div>
   );
-}
+})
 
-// ─── Rules panel (accordion body) ─────────────────────────────────────────────
+// ─── Rules panel ──────────────────────────────────────────────────────────────
 
-function RulesPanel({
-  row,
-  validConditions,
-  validActions,
-  onChangeRules,
-  onChangeDelimiter,
-  rowErrors,
-  rowWarnings,
-}: {
-  row:               RichMappingRow;
-  validConditions:   string[];
-  validActions:      string[];
-  onChangeRules:     (rules: ParseRule[]) => void;
+const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions, onChangeRules, onChangeDelimiter, rowErrors, rowWarnings }: {
+  row: RichMappingRow; validConditions: string[]; validActions: string[];
+  onChangeRules: (rules: ParseRule[]) => void;
   onChangeDelimiter: (delimiter: string) => void;
-  rowErrors:         ValidationIssue[];
-  rowWarnings:       ValidationIssue[];
+  rowErrors: ValidationIssue[]; rowWarnings: ValidationIssue[];
 }) {
-  const isRemoved  = row.state === "removed";
-  const isMulti    = row.type === "multi_select";
-
-  const defaultRule = (): ParseRule => ({
-    condition:      "always",
-    case_sensitive: false,
-    action:         "set",
-    value:          "",
-  });
+  const isRemoved = row.state === "removed";
+  const isMulti   = row.type  === "multi_select";
+  const defaultRule = (): ParseRule => ({ condition: "always", case_sensitive: false, action: "set", value: "" });
 
   function handleRuleChange(idx: number, patch: Partial<ParseRule>) {
-    const next = row.rules.map((r, i) => i === idx ? { ...r, ...patch } : r);
-    onChangeRules(next);
+    onChangeRules(row.rules.map((r, i) => i === idx ? { ...r, ...patch } : r));
   }
 
   function handleMove(idx: number, dir: -1 | 1) {
@@ -445,40 +419,20 @@ function RulesPanel({
     onChangeRules(next);
   }
 
-  function handleRemove(idx: number) {
-    onChangeRules(row.rules.filter((_, i) => i !== idx));
-  }
-
-  function handleAdd() {
-    onChangeRules([...row.rules, defaultRule()]);
-  }
-
   return (
-    <div style={{
-      background: "var(--color-bg)",
-      borderTop: "1px solid var(--color-border)",
-      padding: "12px 14px 14px 28px",
-    }}>
-      {/* Delimiter input for multi_select */}
+    <div style={{ background: "var(--color-bg)", borderTop: "1px solid var(--color-border)", padding: "12px 14px 14px 28px" }}>
       {isMulti && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", flexShrink: 0 }}>
-            Delimiter
-          </span>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", flexShrink: 0 }}>Delimiter</span>
           <input
-            value={row.delimiter}
-            disabled={isRemoved}
-            placeholder=","
+            value={row.delimiter} disabled={isRemoved} placeholder=","
             onChange={(e) => onChangeDelimiter(e.target.value)}
             style={{ ...inputStyle, height: "28px", fontSize: "11px", width: "60px", fontFamily: "var(--font-mono)" }}
           />
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-            default: comma
-          </span>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>default: comma</span>
         </div>
       )}
 
-      {/* Rules label */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
           Parse Rules
@@ -490,7 +444,6 @@ function RulesPanel({
         )}
       </div>
 
-      {/* Rule rows */}
       {row.rules.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "10px" }}>
           {row.rules.map((rule, idx) => {
@@ -498,129 +451,129 @@ function RulesPanel({
             const ruleWarning = rowWarnings.find((w) => w.rule_index === idx)?.message;
             return (
               <RuleRow
-                key={idx}
-                rule={rule}
-                index={idx}
-                total={row.rules.length}
-                validConditions={validConditions}
-                validActions={validActions}
+                key={idx} rule={rule} index={idx} total={row.rules.length}
+                validConditions={validConditions} validActions={validActions}
                 onChange={(patch) => handleRuleChange(idx, patch)}
                 onMove={(dir) => handleMove(idx, dir)}
-                onRemove={() => handleRemove(idx)}
-                error={ruleError}
-                warning={ruleWarning}
-                isRemoved={isRemoved}
+                onRemove={() => onChangeRules(row.rules.filter((_, i) => i !== idx))}
+                error={ruleError} warning={ruleWarning} isRemoved={isRemoved}
               />
             );
           })}
         </div>
       )}
 
-      {/* Mapping-level (non-rule) errors/warnings */}
       {rowErrors.filter((e) => e.rule_index === undefined).map((e, i) => (
-        <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: "0 0 4px" }}>
-          {e.message}
-        </p>
+        <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: "0 0 4px" }}>{e.message}</p>
       ))}
       {rowWarnings.filter((w) => w.rule_index === undefined).map((w, i) => (
-        <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: "0 0 4px" }}>
-          {w.message}
-        </p>
+        <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: "0 0 4px" }}>{w.message}</p>
       ))}
 
-      {/* Add rule button */}
       {!isRemoved && (
         <button
-          onClick={handleAdd}
-          style={{
-            display: "flex", alignItems: "center", gap: "5px",
-            background: "none", border: "1px dashed var(--color-border)",
-            borderRadius: "var(--radius-sm)", padding: "5px 10px",
-            cursor: "pointer", width: "100%", justifyContent: "center",
-            fontFamily: "var(--font-sans)", fontSize: "11px",
-            color: "var(--color-text-tertiary)",
-            marginTop: row.rules.length > 0 ? "0" : "0",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-accent)";
-            e.currentTarget.style.color       = "var(--color-accent)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "var(--color-border)";
-            e.currentTarget.style.color       = "var(--color-text-tertiary)";
-          }}
+          onClick={() => onChangeRules([...row.rules, defaultRule()])}
+          style={{ display: "flex", alignItems: "center", gap: "5px", background: "none", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "5px 10px", cursor: "pointer", width: "100%", justifyContent: "center", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}
+          onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-accent)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+          onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)";  e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
         >
           + Add rule
         </button>
       )}
     </div>
   );
-}
+})
 
 // ─── Single mapping row ───────────────────────────────────────────────────────
 
-function MappingRowComponent({
-  row,
-  knownFields,
-  validTypes,
-  validConditions,
-  validActions,
-  onChange,
-  isLast,
-  viewOnly,
-  baselineLabel,
-  errors,
-  warnings,
+const MappingRowComponent = memo(function MappingRowComponent({
+  row, knownFields, validTypes, validConditions, validActions,
+  onChange, isLast, viewOnly, baselineLabel, errors, warnings,
 }: {
-  row:             RichMappingRow;
-  knownFields:     string[];
-  validTypes:      string[];
-  validConditions: string[];
-  validActions:    string[];
-  onChange?:       (patch: Partial<MappingRow>) => void;
-  isLast:          boolean;
-  viewOnly:        boolean;
-  baselineLabel:   string;
-  errors:          ValidationIssue[];
-  warnings:        ValidationIssue[];
+  row: RichMappingRow; knownFields: string[]; validTypes: string[];
+  validConditions: string[]; validActions: string[];
+  onChange?: (patch: Partial<MappingRow>) => void;
+  isLast: boolean; viewOnly: boolean; baselineLabel: string;
+  errors: ValidationIssue[]; warnings: ValidationIssue[];
 }) {
-  const [open,         setOpen]         = useState(false);
+  const hasRules  = row.rules.length > 0;
+  const isRemoved = row.state === "removed";
+  const isIgnored = row.type === "ignore" || row.field === "__ignore__";
+
+  // Accordion open by default when the row already has rules
+  const [open,    setOpen]    = useState(hasRules);
+  // mounted stays true until the close animation finishes (220ms),
+  // so the panel is in the DOM for both the open and close animation.
+  const [mounted, setMounted] = useState(hasRules);
+
+  // When opening: mount immediately, then set open on next tick so the
+  // browser has a frame to register the 0fr starting state before animating.
+  function openAccordion() {
+    setMounted(true);
+    requestAnimationFrame(() => setOpen(true));
+  }
+
+  // When closing: set open false (starts animation), unmount after it finishes.
+  function closeAccordion() {
+    setOpen(false);
+    setTimeout(() => setMounted(false), 220);
+  }
+
+  // Auto-close when all rules are removed
+  useEffect(() => {
+    if (!hasRules) closeAccordion();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRules]);
+
   const [tooltipVisible, setTooltipVisible] = useState(false);
-  const [anchorRect,   setAnchorRect]   = useState<DOMRect | null>(null);
+  const [anchorRect,     setAnchorRect]     = useState<DOMRect | null>(null);
   const rowRef      = useRef<HTMLDivElement>(null);
   const overRow     = useRef(false);
   const overTooltip = useRef(false);
 
-  const isIgnored   = row.type === "ignore" || row.field === "__ignore__";
-  const isRemoved   = row.state === "removed";
   const needsRowKey = row.type === "matrix_row";
   const needsExtra  = row.field === "extra_data";
   const colors      = ROW_COLORS[row.state];
   const badge       = BADGE_STYLES[row.state];
   const showDiff    = row.state === "changed";
 
-  const hasRules     = row.rules.length > 0;
-  const hasErrors    = errors.length > 0;
-  const hasWarnings  = !hasErrors && warnings.length > 0;
-  const rulesLabel   = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
+  const hasErrors   = errors.length > 0;
+  const hasWarnings = !hasErrors && warnings.length > 0;
+  const rulesLabel  = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
 
-  const rowBg      = colors ? colors.bg : "var(--color-surface)";
+  // Background: ignored rows get a distinct dimmer surface
+  const ignoredBg = "var(--color-bg)";
+  const rowBg = isIgnored && !isRemoved
+    ? ignoredBg
+    : colors
+    ? colors.bg
+    : "var(--color-surface)";
+
   const borderLeft = colors ? `3px solid ${colors.border}` : "3px solid transparent";
-  const opacity    = (isIgnored && !isRemoved) ? (viewOnly ? 0.45 : 0.4) : isRemoved ? 0.5 : 1;
 
-  function handleFieldChange(field: string) {
-    if (!onChange) return;
-    let type = row.type;
-    if (field === "__ignore__")                                             type = "ignore";
-    else if (field === "availability")                                      type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference")   type = "multi_select";
-    else if (type === "ignore")                                             type = "string";
-    onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
+  // Icon in rightmost column:
+  // - removed/ignored → nothing
+  // - has rules → chevron (toggles accordion)
+  // - no rules, not ignored → plus (adds first rule)
+  const showChevron = !isRemoved && !isIgnored && hasRules;
+  const showPlus    = !isRemoved && !isIgnored && !hasRules;
+
+  function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (viewOnly || isRemoved || isIgnored) return;
+    // Only toggle accordion when there are rules and the click wasn't on an interactive element
+    if (!hasRules) return;
+    const tag = (e.target as HTMLElement).tagName;
+    if (["SELECT", "INPUT", "BUTTON", "LABEL"].includes(tag)) return;
+    if ((e.target as HTMLElement).closest("label")) return;
+    if (open) { closeAccordion(); } else { openAccordion(); }
   }
 
-  function handleTypeChange(type: string) {
+  function handlePlusClick(e: React.MouseEvent) {
+    e.stopPropagation();
     if (!onChange) return;
-    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
+    const newRule: ParseRule = { condition: "always", case_sensitive: false, action: "set", value: "" };
+    onChange({ rules: [newRule] });
+    openAccordion();
   }
 
   const tryHide = useCallback(() => {
@@ -636,59 +589,41 @@ function MappingRowComponent({
     setTooltipVisible(true);
   }
 
-  function handleRowMouseLeave() {
-    overRow.current = false;
-    tryHide();
+  function handleRowMouseLeave() { overRow.current = false; tryHide(); }
+
+  function handleFieldChange(field: string) {
+    if (!onChange) return;
+    let type = row.type;
+    if (field === "__ignore__")                                           type = "ignore";
+    else if (field === "availability")                                    type = "matrix_row";
+    else if (field === "role_preference" || field === "event_preference") type = "multi_select";
+    else if (type === "ignore")                                           type = "string";
+    onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
 
-  // Toggle accordion: only fire if the click didn't land on an interactive element
-  function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
-    if (viewOnly || isRemoved) return;
-    const tag = (e.target as HTMLElement).tagName;
-    if (["SELECT", "INPUT", "BUTTON", "LABEL"].includes(tag)) return;
-    // Also bail if target is inside a label (checkbox wrapper)
-    if ((e.target as HTMLElement).closest("label")) return;
-    setOpen((v) => !v);
+  function handleTypeChange(type: string) {
+    if (!onChange) return;
+    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
   }
 
-  // ── Key cell ────────────────────────────────────────────────────────────
+  const cellSelectStyle: React.CSSProperties = { ...selectStyle, width: "100%", opacity: isIgnored ? 0.5 : 1 };
+  const keyInputStyle: React.CSSProperties   = { ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: isIgnored ? 0.5 : 1 };
 
   function renderKeyCell() {
-    if (isRemoved) {
-      return (
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
-          excluded from save
-        </span>
-      );
-    }
+    if (isRemoved) return <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>excluded from save</span>;
     if (needsRowKey) {
       if (viewOnly) return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>;
-      return (
-        <input
-          style={{ ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-          placeholder="e.g. 8:00 AM - 10:00 AM"
-          value={row.row_key}
-          onChange={(e) => onChange?.({ row_key: e.target.value })}
-        />
-      );
+      return <input style={keyInputStyle} placeholder="e.g. 8:00 AM - 10:00 AM" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />;
     }
     if (needsExtra) {
       if (viewOnly) return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.extra_key || "—"}</span>;
-      return (
-        <input
-          style={{ ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px" }}
-          placeholder="extra_key name"
-          value={row.extra_key}
-          onChange={(e) => onChange?.({ extra_key: e.target.value })}
-        />
-      );
+      return <input style={keyInputStyle} placeholder="extra_key name" value={row.extra_key} onChange={(e) => onChange?.({ extra_key: e.target.value })} />;
     }
     return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>;
   }
 
   return (
     <>
-      {/* ── Main row ── */}
       <div
         ref={rowRef}
         onClick={handleRowClick}
@@ -700,39 +635,23 @@ function MappingRowComponent({
           background: rowBg,
           borderBottom: (!isLast || open) ? "1px solid var(--color-border)" : "none",
           borderLeft,
-          cursor: (viewOnly || isRemoved) ? "default" : "pointer",
+          // Only show pointer cursor when there are rules to toggle
+          cursor: (!viewOnly && !isRemoved && !isIgnored && hasRules) ? "pointer" : "default",
         }}
       >
-        {/* Col 1: header name + state badge + rules badge */}
+        {/* Col 1: header + badges */}
         <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-          <span style={{
-            fontFamily: "var(--font-mono)", fontSize: "12px",
-            color: "var(--color-text-primary)", opacity,
-            wordBreak: "break-word", lineHeight: 1.4,
-            textDecoration: isRemoved ? "line-through" : "none",
-          }}>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-primary)", opacity: isIgnored ? 0.4 : 1, wordBreak: "break-word", lineHeight: 1.4 }}>
             {row.header}
           </span>
           {badge && (
-            <span style={{
-              fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 700,
-              textTransform: "uppercase", letterSpacing: "0.06em",
-              color: badge.color, background: badge.bg,
-              padding: "1px 5px", borderRadius: "3px", flexShrink: 0,
-            }}>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: badge.color, background: badge.bg, padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
               {badge.label}
             </span>
           )}
           {rulesLabel && !viewOnly && (
-            <span style={{
-              fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600,
-              color: hasErrors ? "var(--color-danger)" : hasWarnings ? "#92400E" : "var(--color-accent)",
-              background: hasErrors ? "#FEE2E2" : hasWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)",
-              padding: "1px 5px", borderRadius: "3px", flexShrink: 0,
-            }}>
-              {rulesLabel}
-              {hasErrors   && " ⚠"}
-              {hasWarnings && " !"}
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasErrors ? "var(--color-danger)" : hasWarnings ? "#92400E" : "var(--color-accent)", background: hasErrors ? "#FEE2E2" : hasWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
+              {rulesLabel}{hasErrors && " ⚠"}{hasWarnings && " !"}
             </span>
           )}
         </div>
@@ -743,67 +662,72 @@ function MappingRowComponent({
             {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[row.field] ?? row.field)}
           </span>
         ) : (
-          <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} disabled={isRemoved} style={{ ...selectStyle, width: "100%", opacity }}>
-            {knownFields.map((f) => (
-              <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>
-            ))}
+          <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} disabled={isRemoved} style={cellSelectStyle}>
+            {knownFields.map((f) => <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>)}
           </select>
         )}
 
         {/* Col 3: type */}
         {viewOnly ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-            {TYPE_LABELS[row.type] ?? row.type}
-          </span>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>{TYPE_LABELS[row.type] ?? row.type}</span>
         ) : (
-          <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} disabled={isRemoved || row.field === "__ignore__"} style={{ ...selectStyle, width: "100%", opacity }}>
-            {validTypes.map((t) => (
-              <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>
-            ))}
+          <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} disabled={isRemoved || isIgnored} style={{ ...cellSelectStyle, opacity: isIgnored ? 0.5 : 1 }}>
+            {validTypes.map((t) => <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>)}
           </select>
         )}
 
         {/* Col 4: key cell */}
-        <div style={{ opacity }}>{renderKeyCell()}</div>
+        <div style={{ opacity: isIgnored ? 0.5 : 1 }}>{renderKeyCell()}</div>
 
-        {/* Col 5: chevron toggle */}
-        {!viewOnly && !isRemoved && (
-          <div style={{ color: open ? "var(--color-accent)" : "var(--color-text-tertiary)", display: "flex", alignItems: "center" }}>
-            <ChevronIcon open={open} />
-          </div>
-        )}
+        {/* Col 5: chevron / plus / nothing */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: "20px" }}>
+          {showChevron && (
+            <div style={{ color: open ? "var(--color-accent)" : "var(--color-text-tertiary)" }}>
+              <ChevronIcon open={open} />
+            </div>
+          )}
+          {showPlus && !viewOnly && (
+            <button
+              onClick={handlePlusClick}
+              title="Add parse rules"
+              style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer", padding: "2px", borderRadius: "3px", color: "var(--color-text-tertiary)", lineHeight: 1 }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+            >
+              <PlusIcon />
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* ── Rules accordion panel (edit mode) ── */}
-      {open && !viewOnly && (
-        <RulesPanel
-          row={row}
-          validConditions={validConditions}
-          validActions={validActions}
-          onChangeRules={(rules) => onChange?.({ rules })}
-          onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
-          rowErrors={errors}
-          rowWarnings={warnings}
-        />
+      {/* Rules accordion (edit mode) — animated via grid-template-rows */}
+      {!viewOnly && !isIgnored && !isRemoved && mounted && (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateRows: open ? "1fr" : "0fr",
+            transition: "grid-template-rows 220ms ease",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ minHeight: 0 }}>
+            <RulesPanel
+              row={row} validConditions={validConditions} validActions={validActions}
+              onChangeRules={(rules) => onChange?.({ rules })}
+              onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
+              rowErrors={errors} rowWarnings={warnings}
+            />
+          </div>
+        </div>
       )}
 
-      {/* ── Rules read-only display (view mode) ── */}
+      {/* Rules read-only (view mode) */}
       {viewOnly && hasRules && (
-        <div style={{
-          background: "var(--color-bg)",
-          borderTop: "1px solid var(--color-border)",
-          borderLeft,
-          padding: "8px 14px 10px 28px",
-          display: "flex", flexDirection: "column", gap: "4px",
-        }}>
+        <div style={{ background: "var(--color-bg)", borderTop: "1px solid var(--color-border)", borderLeft, padding: "8px 14px 10px 28px", display: "flex", flexDirection: "column", gap: "4px" }}>
           {row.delimiter && (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-                Delimiter
-              </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-                {row.delimiter}
-              </span>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>Delimiter</span>
+              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.delimiter}</span>
             </div>
           )}
           {row.rules.map((rule, idx) => {
@@ -812,139 +736,93 @@ function MappingRowComponent({
             const showMatch   = rule.condition !== "always";
             const showValue   = !VALUELESS_ACTIONS.has(rule.action as ParseRuleAction);
             return (
-              <div key={idx} style={{
-                display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap",
-                padding: "5px 8px",
-                background: "var(--color-surface)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-sm)",
-              }}>
-                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", minWidth: "16px" }}>
-                  {idx + 1}
-                </span>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-                  {condLabel}
-                </span>
-                {showMatch && rule.match && (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>
-                    {rule.match}
-                  </span>
-                )}
-                {showMatch && rule.case_sensitive && (
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "var(--color-text-tertiary)" }}>
-                    case-sensitive
-                  </span>
-                )}
+              <div key={idx} style={{ display: "flex", alignItems: "center", gap: "6px", flexWrap: "wrap", padding: "5px 8px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)" }}>
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", minWidth: "16px" }}>{idx + 1}</span>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{condLabel}</span>
+                {showMatch && rule.match && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>{rule.match}</span>}
+                {showMatch && rule.case_sensitive && <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "var(--color-text-tertiary)" }}>case-sensitive</span>}
                 <span style={{ color: "var(--color-text-tertiary)", fontSize: "11px" }}>→</span>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-                  {actionLabel}
-                </span>
-                {showValue && rule.value && (
-                  <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>
-                    {rule.value}
-                  </span>
-                )}
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{actionLabel}</span>
+                {showValue && rule.value && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-primary)", background: "var(--color-bg)", border: "1px solid var(--color-border)", borderRadius: "3px", padding: "1px 5px" }}>{rule.value}</span>}
               </div>
             );
           })}
         </div>
       )}
 
-      {/* Diff tooltip */}
       {tooltipVisible && showDiff && anchorRect && (
         <DiffTooltip
-          row={row}
-          anchorRect={anchorRect}
-          baselineLabel={baselineLabel}
+          row={row} anchorRect={anchorRect} baselineLabel={baselineLabel}
           onMouseEnter={() => { overTooltip.current = true; }}
           onMouseLeave={() => { overTooltip.current = false; tryHide(); }}
         />
       )}
     </>
   );
-}
+})
 
 // ─── Table wrapper ────────────────────────────────────────────────────────────
 
 export interface SheetConfigMappingTableProps {
-  rows:             RichMappingRow[];
-  knownFields:      string[];
-  validTypes:       string[];
-  validConditions?: string[];
-  validActions?:    string[];
-  onChangeRow?:     (idx: number, patch: Partial<MappingRow>) => void;
-  viewOnly?:        boolean;
-  baselineLabel?:   string;
-  /** Validation errors from a 422 response, keyed per mapping header + rule_index */
-  validationErrors?:   ValidationIssue[];
-  validationWarnings?: ValidationIssue[];
+  rows: RichMappingRow[]; knownFields: string[]; validTypes: string[];
+  validConditions?: string[]; validActions?: string[];
+  onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
+  viewOnly?: boolean; baselineLabel?: string;
+  validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
 }
 
 export function SheetConfigMappingTable({
-  rows,
-  knownFields,
-  validTypes,
-  validConditions = [],
-  validActions    = [],
-  onChangeRow,
-  viewOnly        = false,
-  baselineLabel   = "suggestion",
-  validationErrors   = [],
-  validationWarnings = [],
+  rows, knownFields, validTypes,
+  validConditions = [], validActions = [],
+  onChangeRow, viewOnly = false, baselineLabel = "suggestion",
+  validationErrors = [], validationWarnings = [],
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
+  // Keep a stable ref to onChangeRow so per-row callbacks don't change identity
+  // on every render, which would defeat memo on MappingRowComponent.
+  const onChangeRowRef = useRef(onChangeRow);
+  useEffect(() => { onChangeRowRef.current = onChangeRow; }, [onChangeRow]);
+
+  // One stable callback per row header. We key by header string (stable across
+  // renders) so memo sees the same function reference unless the row is new.
+  const stableCallbacks = useRef<Map<string, (patch: Partial<MappingRow>) => void>>(new Map());
+  rows.forEach((row, idx) => {
+    if (!stableCallbacks.current.has(row.header)) {
+      stableCallbacks.current.set(row.header, (patch) => {
+        onChangeRowRef.current?.(idx, patch);
+      });
+    }
+  });
+  // Clean up headers that no longer exist
+  const currentHeaders = new Set(rows.map((r) => r.header));
+  stableCallbacks.current.forEach((_, key) => {
+    if (!currentHeaders.has(key)) stableCallbacks.current.delete(key);
+  });
+
   if (rows.length === 0) {
-    return (
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-        No columns mapped yet.
-      </p>
-    );
+    return <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>No columns mapped yet.</p>;
   }
 
   return (
     <div style={{ position: "relative", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "visible" }}>
-      {/* Column headers */}
-      <div style={{
-        display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr auto",
-        alignItems: "start",
-        padding: "8px 14px",
-        background: "var(--color-bg)",
-        borderBottom: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md) var(--radius-md) 0 0",
-        overflow: "hidden",
-      }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr auto", alignItems: "start", padding: "8px 14px", background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)", borderRadius: "var(--radius-md) var(--radius-md) 0 0", overflow: "hidden" }}>
         {["Sheet Column", "Field", "Type", "Extra Key / Row Key", ""].map((h, i) => (
-          <span key={i} style={{
-            fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-            textTransform: "uppercase", letterSpacing: "0.07em",
-            color: "var(--color-text-tertiary)",
-            whiteSpace: "normal", wordBreak: "break-word",
-          }}>
-            {h}
-          </span>
+          <span key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", whiteSpace: "normal", wordBreak: "break-word" }}>{h}</span>
         ))}
       </div>
-
-      {/* Rows */}
       <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "hidden" }}>
         {rows.map((row, idx) => {
           const rowErrors   = validationErrors.filter((e)   => e.header === row.header);
           const rowWarnings = validationWarnings.filter((w) => w.header === row.header);
           return (
             <MappingRowComponent
-              key={row.header}
-              row={row}
-              knownFields={knownFields}
-              validTypes={validTypes}
-              validConditions={validConditions}
-              validActions={validActions}
-              onChange={isViewOnly ? undefined : (patch) => onChangeRow!(idx, patch)}
-              isLast={idx === rows.length - 1}
-              viewOnly={isViewOnly}
-              baselineLabel={baselineLabel}
-              errors={rowErrors}
-              warnings={rowWarnings}
+              key={row.header} row={row}
+              knownFields={knownFields} validTypes={validTypes}
+              validConditions={validConditions} validActions={validActions}
+              onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
+              isLast={idx === rows.length - 1} viewOnly={isViewOnly}
+              baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
             />
           );
         })}
@@ -956,14 +834,10 @@ export function SheetConfigMappingTable({
 // ─── Helper: build a RichMappingRow ──────────────────────────────────────────
 
 export function makeRichRow(
-  values:        MappingRow,
-  baseline:      MappingRow,
-  forcedState?:  "new" | "removed",
-  importedValue?: MappingRow,
+  values: MappingRow, baseline: MappingRow,
+  forcedState?: "new" | "removed", importedValue?: MappingRow,
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
-  if (!forcedState) {
-    state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  }
+  if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
   return { ...values, state, baseline, importedValue };
 }
