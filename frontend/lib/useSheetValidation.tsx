@@ -49,7 +49,6 @@ export function useSheetValidation() {
     setValidationErrors(errs);
     setValidationWarnings(warns);
     setSaveError("");
-
     // Warnings are now shown — mark so next click knows
     if (warns.length > 0) {
       warningsShown.current = true;

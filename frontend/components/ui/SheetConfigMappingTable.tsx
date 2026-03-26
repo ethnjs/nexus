@@ -64,6 +64,8 @@ export interface RichMappingRow extends MappingRow {
   state:          RowState;
   baseline:       MappingRow;
   importedValue?: MappingRow;
+  /** If true, accordion starts open. Read once at mount — has no effect after. */
+  openOnMount?:   boolean;
 }
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
@@ -485,29 +487,22 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
 
 const MappingRowComponent = memo(function MappingRowComponent({
   row, knownFields, validTypes, validConditions, validActions,
-  onChange, isFirst, viewOnly, baselineLabel, errors, warnings, forceOpen = false,
+  onChange, isFirst, viewOnly, baselineLabel, errors, warnings,
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
   onChange?: (patch: Partial<MappingRow>) => void;
   isFirst: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
-  /** When true, force the accordion open (e.g. after an import that added/changed rules). */
-  forceOpen?: boolean;
+
 }) {
   const hasRules  = row.rules.length > 0;
   const isRemoved = row.state === "removed";
   const isIgnored = row.type === "ignore" || row.field === "__ignore__";
 
   // Accordion open by default when the row already has rules, or forced open by parent
-  const [open,    setOpen]    = useState(hasRules || forceOpen);
-  const [mounted, setMounted] = useState(hasRules || forceOpen);
-
-  // Open accordion when parent forces it (e.g. import that added/changed rules)
-  useEffect(() => {
-    if (forceOpen) openAccordion();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [forceOpen]);
+  const [open,    setOpen]    = useState(hasRules || (row.openOnMount ?? false));
+  const [mounted, setMounted] = useState(hasRules || (row.openOnMount ?? false));
 
   // When opening: mount immediately, then set open on next tick so the
   // browser has a frame to register the 0fr starting state before animating.
@@ -843,8 +838,6 @@ export interface SheetConfigMappingTableProps {
   onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
-  /** Headers whose accordions should be forced open (e.g. after import with rule changes). */
-  forceOpenHeaders?: Set<string>;
 }
 
 export function SheetConfigMappingTable({
@@ -852,7 +845,6 @@ export function SheetConfigMappingTable({
   validConditions = [], validActions = [],
   onChangeRow, viewOnly = false, baselineLabel = "suggestion",
   validationErrors = [], validationWarnings = [],
-  forceOpenHeaders,
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
@@ -906,11 +898,7 @@ export function SheetConfigMappingTable({
               onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
               isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
-              forceOpen={
-                rowErrors.some((e) => e.rule_index !== undefined) ||
-                rowWarnings.some((w) => w.rule_index !== undefined) ||
-                (forceOpenHeaders?.has(row.header) ?? false)
-              }
+
             />
           );
         })}
@@ -924,8 +912,9 @@ export function SheetConfigMappingTable({
 export function makeRichRow(
   values: MappingRow, baseline: MappingRow,
   forcedState?: "new" | "removed", importedValue?: MappingRow,
+  openOnMount?: boolean,
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  return { ...values, state, baseline, importedValue };
+  return { ...values, state, baseline, importedValue, openOnMount };
 }

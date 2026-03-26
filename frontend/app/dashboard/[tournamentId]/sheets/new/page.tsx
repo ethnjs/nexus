@@ -154,7 +154,6 @@ export default function NewSheetPage() {
   const [showWarningsConfirm, setShowWarningsConfirm] = useState(false);
   const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
   const [showImportSummary, setShowImportSummary] = useState(false);
-  const [importOpenHeaders, setImportOpenHeaders] = useState<Set<string>>(new Set());
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Validation (shared hook)
@@ -282,14 +281,14 @@ export default function NewSheetPage() {
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
 
-      // Force open accordions for rows where rules were added or changed
-      const openHeaders = new Set<string>(
-        updatedList
-          .filter((entry) => entry.ruleDiffs.some((d) => d.status !== "unchanged"))
-          .map((entry) => entry.header)
-      );
-      setImportOpenHeaders(openHeaders);
-      setTimeout(() => setImportOpenHeaders(new Set()), 500);
+      // Mark rows with rule changes to open on next render, then clear the flag
+      setMappingRows((prev) => prev.map((r) => ({
+        ...r,
+        openOnMount: updatedList.some(
+          (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+        ) || undefined,
+      })));
+      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 50);
     };
     reader.readAsText(file);
   }
@@ -538,7 +537,6 @@ export default function NewSheetPage() {
             onChangeRow={updateRow}
             validationErrors={validationErrors}
             validationWarnings={validationWarnings}
-            forceOpenHeaders={importOpenHeaders}
           />
 
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
