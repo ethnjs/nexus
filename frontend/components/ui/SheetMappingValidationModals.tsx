@@ -6,20 +6,49 @@ import { Button } from "@/components/ui/Button";
 // ─── Shared issue card ────────────────────────────────────────────────────────
 
 function IssueCard({ issue, variant }: { issue: ValidationIssue; variant: "error" | "warning" }) {
-  const isError = variant === "error";
-  const bg      = isError ? "#FFF5F5" : "#FFFBEB";
-  const border  = isError ? "#FCA5A5" : "#FDE047";
+  const isError  = variant === "error";
+  const bg       = isError ? "#FFF5F5" : "#FFFBEB";
+  const border   = isError ? "#FCA5A5" : "#FDE047";
 
-  const header = Array.isArray(issue.header)
-    ? issue.header.join(", ")
-    : issue.header ?? null;
+  const headers: string[] = Array.isArray(issue.header)
+    ? issue.header
+    : issue.header
+    ? [issue.header]
+    : [];
 
   return (
     <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: "var(--radius-sm)", padding: "10px 12px" }}>
-      {header && (
-        <p style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
-          {header}{issue.rule_index != null ? ` · Rule ${issue.rule_index + 1}` : ""}
-        </p>
+      {(headers.length > 0 || issue.rule_index != null) && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginBottom: "6px", alignItems: "center" }}>
+          {headers.map((h, i) => (
+            <span key={i} style={{
+              fontFamily:   "var(--font-mono)",
+              fontSize:     "10px",
+              color:        "var(--color-text-secondary)",
+              background:   "var(--color-surface)",
+              border:       "1px solid var(--color-border)",
+              borderRadius: "var(--radius-sm)",
+              padding:      "1px 7px",
+              whiteSpace:   "nowrap",
+              maxWidth:     "340px",
+              overflow:     "hidden",
+              textOverflow: "ellipsis",
+            }}>
+              {h}
+            </span>
+          ))}
+          {issue.rule_index != null && (
+            <span style={{
+              fontFamily:   "var(--font-sans)",
+              fontSize:     "10px",
+              fontWeight:   600,
+              color:        "var(--color-text-tertiary)",
+              whiteSpace:   "nowrap",
+            }}>
+              Rule {issue.rule_index + 1}
+            </span>
+          )}
+        </div>
       )}
       <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)", margin: 0 }}>
         {issue.message}
@@ -51,7 +80,7 @@ function ModalShell({ onClose, children }: { onClose: () => void; children: Reac
       onClick={onClose}
     >
       <div
-        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "28px", width: 500, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", gap: "16px" }}
+        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "28px", width: 640, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", gap: "16px" }}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
