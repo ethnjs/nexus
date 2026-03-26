@@ -12,17 +12,18 @@ type MembershipWithUser = Membership & { user?: User };
 
 type SortKey = "name" | "email" | "status" | "role_preference";
 
+interface AvailabilitySlot {
+  date:  string; // "YYYY-MM-DD"
+  start: string; // "HH:MM"
+  end:   string; // "HH:MM"
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function displayName(user?: User) {
   if (!user) return "—";
   const full = [user.first_name, user.last_name].filter(Boolean).join(" ");
   return full || user.email;
-}
-
-function fmtList(items: string[] | null | undefined) {
-  if (!items || items.length === 0) return "—";
-  return items.join(", ");
 }
 
 function fmtVal(v: unknown): string {
@@ -32,6 +33,21 @@ function fmtVal(v: unknown): string {
   return String(v);
 }
 
+function fmtTime(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12    = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${h12} ${period}` : `${h12}:${mStr} ${period}`;
+}
+
+function fmtDate(yyyymmdd: string): string {
+  // Parse without timezone shift
+  const [, m, d] = yyyymmdd.split("-").map(Number);
+  return new Date(0, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 const STATUS_VARIANT: Record<string, "interested" | "confirmed" | "declined" | "assigned" | "removed"> = {
   interested: "interested",
   confirmed:  "confirmed",
@@ -39,6 +55,65 @@ const STATUS_VARIANT: Record<string, "interested" | "confirmed" | "declined" | "
   assigned:   "assigned",
   removed:    "removed",
 };
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function TagList({ items }: { items: string[] }) {
+  if (!items || items.length === 0) return <span style={{ color: "var(--color-text-tertiary)", fontFamily: "var(--font-mono)", fontSize: "12px" }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+      {items.map((item) => (
+        <span
+          key={item}
+          style={{
+            fontFamily:   "var(--font-sans)",
+            fontSize:     "11px",
+            color:        "var(--color-text-secondary)",
+            background:   "var(--color-bg)",
+            border:       "1px solid var(--color-border)",
+            borderRadius: "var(--radius-sm)",
+            padding:      "1px 7px",
+            whiteSpace:   "nowrap",
+          }}
+        >
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AvailabilityCell({ slots }: { slots: AvailabilitySlot[] | null | undefined }) {
+  if (!slots || slots.length === 0) {
+    return <span style={{ color: "var(--color-text-tertiary)", fontFamily: "var(--font-mono)", fontSize: "12px" }}>—</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+      {slots.map((slot, i) => (
+        <div key={i} style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+          <span style={{
+            fontFamily:  "var(--font-sans)",
+            fontSize:    "12px",
+            fontWeight:  500,
+            color:       "var(--color-text-primary)",
+            flexShrink:  0,
+            minWidth:    "52px",
+          }}>
+            {fmtDate(slot.date)}
+          </span>
+          <span style={{
+            fontFamily: "var(--font-mono)",
+            fontSize:   "11px",
+            color:      "var(--color-text-secondary)",
+            whiteSpace: "nowrap",
+          }}>
+            {fmtTime(slot.start)}–{fmtTime(slot.end)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -60,7 +135,6 @@ export default function VolunteersPage() {
       setError("");
       try {
         const ms = await membershipsApi.listByTournament(tournamentId);
-        // User data is embedded by the list endpoint — no per-membership fetches needed.
         setMemberships(ms as MembershipWithUser[]);
       } catch {
         setError("Failed to load volunteers.");
@@ -97,7 +171,6 @@ export default function VolunteersPage() {
     else { setSortKey(key); setSortAsc(true); }
   }
 
-  // All extra_data keys across all memberships — no cap
   const extraKeys = Array.from(
     new Set(memberships.flatMap((m) => Object.keys(m.extra_data ?? {})))
   ).sort();
@@ -193,13 +266,13 @@ export default function VolunteersPage() {
           <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
             <thead>
               <tr>
-                {/* ── Sortable ── */}
+                {/* Sortable */}
                 <th style={thStyle} onClick={() => toggleSort("name")}>Name{arrow("name")}</th>
                 <th style={thStyle} onClick={() => toggleSort("email")}>Email{arrow("email")}</th>
                 <th style={thStyle} onClick={() => toggleSort("status")}>Status{arrow("status")}</th>
                 <th style={thStyle} onClick={() => toggleSort("role_preference")}>Role Pref{arrow("role_preference")}</th>
 
-                {/* ── User fields ── */}
+                {/* User fields */}
                 <th style={thPlain}>Phone</th>
                 <th style={thPlain}>University</th>
                 <th style={thPlain}>Major</th>
@@ -207,17 +280,17 @@ export default function VolunteersPage() {
                 <th style={thPlain}>Shirt Size</th>
                 <th style={thPlain}>Dietary</th>
 
-                {/* ── Membership fields ── */}
+                {/* Membership fields */}
                 <th style={thPlain}>Event Pref</th>
-                <th style={thPlain}>Availability</th>
+                <th style={{ ...thPlain, minWidth: "160px" }}>Availability</th>
                 <th style={thPlain}>Lunch</th>
                 <th style={thPlain}>Positions</th>
                 <th style={thPlain}>Assigned Event</th>
                 <th style={thPlain}>Notes</th>
 
-                {/* ── Extra data ── */}
+                {/* Extra data — wider columns */}
                 {extraKeys.map((k) => (
-                  <th key={k} style={thPlain}>{k.replace(/_/g, " ")}</th>
+                  <th key={k} style={{ ...thPlain, minWidth: "240px" }}>{k.replace(/_/g, " ")}</th>
                 ))}
               </tr>
             </thead>
@@ -242,8 +315,10 @@ export default function VolunteersPage() {
                     <Badge variant={STATUS_VARIANT[m.status] ?? "default"}>{m.status}</Badge>
                   </td>
 
-                  {/* Role pref */}
-                  <td style={tdSec}>{fmtList(m.role_preference)}</td>
+                  {/* Role pref — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <TagList items={m.role_preference ?? []} />
+                  </td>
 
                   {/* User fields */}
                   <td style={tdSec}>{m.user?.phone               ?? "—"}</td>
@@ -253,22 +328,40 @@ export default function VolunteersPage() {
                   <td style={tdSec}>{m.user?.shirt_size           ?? "—"}</td>
                   <td style={tdSec}>{m.user?.dietary_restriction  ?? "—"}</td>
 
-                  {/* Membership fields */}
-                  <td style={tdSec}>{fmtList(m.event_preference)}</td>
-                  <td style={tdSec}>
-                    {m.availability && m.availability.length > 0
-                      ? `${m.availability.length} slot${m.availability.length !== 1 ? "s" : ""}`
-                      : "—"}
+                  {/* Event pref — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "200px" }}>
+                    <TagList items={m.event_preference ?? []} />
                   </td>
-                  <td style={tdSec}>{m.lunch_order               ?? "—"}</td>
-                  <td style={tdSec}>{fmtList(m.positions)}</td>
+
+                  {/* Availability — stacked date + time rows */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <AvailabilityCell slots={m.availability as AvailabilitySlot[] | null} />
+                  </td>
+
+                  {/* Lunch */}
+                  <td style={tdSec}>{m.lunch_order ?? "—"}</td>
+
+                  {/* Positions — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <TagList items={m.positions ?? []} />
+                  </td>
+
                   <td style={tdSec}>{m.assigned_event_id != null ? String(m.assigned_event_id) : "—"}</td>
                   <td style={{ ...tdSec, whiteSpace: "normal", maxWidth: "260px" }}>{m.notes ?? "—"}</td>
 
-                  {/* Extra data — all keys */}
-                  {extraKeys.map((k) => (
-                    <td key={k} style={{ ...tdSec, whiteSpace: "normal", maxWidth: "200px" }}>{fmtVal(m.extra_data?.[k])}</td>
-                  ))}
+                  {/* Extra data — wider, wrapping */}
+                  {extraKeys.map((k) => {
+                    const v = m.extra_data?.[k];
+                    const isArr = Array.isArray(v);
+                    return (
+                      <td key={k} style={{ ...tdStyle, whiteSpace: "normal", minWidth: "240px", maxWidth: "360px", verticalAlign: "top" }}>
+                        {isArr
+                          ? <TagList items={v as string[]} />
+                          : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>{fmtVal(v)}</span>
+                        }
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>
