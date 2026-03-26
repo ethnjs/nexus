@@ -496,7 +496,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
   onChange?: (patch: Partial<MappingRow>) => void;
   isFirst: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
-
+  validationGeneration?: number;
 }) {
   const hasRules  = row.rules.length > 0;
   const isRemoved = row.state === "removed";
