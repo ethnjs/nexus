@@ -325,6 +325,10 @@ export interface SheetConfig {
   updated_at:      string
 }
 
+export interface SheetConfigWithWarnings extends SheetConfig {
+  warnings: ValidationIssue[];
+}
+
 export interface SyncResult {
   created:        number
   updated:        number
@@ -364,9 +368,9 @@ export const sheetsApi = {
   getConfig:    (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
-    api.post<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/`, body),
+    api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),
   updateConfig: (tournamentId: number, id: number, body: Partial<SheetConfig>) =>
-    api.patch<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
+    api.patch<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
   deleteConfig: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   sync:         (tournamentId: number, configId: number) =>

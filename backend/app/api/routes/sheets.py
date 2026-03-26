@@ -9,6 +9,7 @@ from app.models.models import SheetConfig, Tournament, User
 from app.schemas.sheet_config import (
     SheetConfigCreate,
     SheetConfigRead,
+    SheetConfigReadWithWarnings,
     SheetConfigUpdate,
     SheetHeadersRequest,
     SheetHeadersResponse,
@@ -18,7 +19,7 @@ from app.schemas.sheet_config import (
 )
 from app.services.sheets_service import SheetsService
 from app.services.sync_service import sync_sheet
-from app.services.sheets_validation import validate_column_mappings
+from app.services.sheets_validation import validate_column_mappings, ValidationResult
 
 # Tournament-scoped routes nested under /tournaments/{tournament_id}/sheets/...
 # All sheet config routes require manage_tournament.
@@ -39,11 +40,11 @@ def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> Sheet
     return config
 
 
-def _validate_or_422(mappings: dict) -> None:
+def _validate_or_422(mappings: dict) -> ValidationResult:
     """
     Run validate_column_mappings and raise HTTP 422 with structured body if
-    there are hard errors. Warnings are not raised — callers may choose to
-    include them in the response separately in future.
+    there are hard errors. Returns the ValidationResult so callers can include
+    warnings in successful responses.
     """
     result = validate_column_mappings(mappings)
     if not result.ok:
@@ -51,6 +52,23 @@ def _validate_or_422(mappings: dict) -> None:
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=result.to_response_dict(),
         )
+    return result
+
+
+def _warnings_from_result(result: ValidationResult) -> list[dict]:
+    """Serialise ValidationResult warnings to a list of dicts for the response."""
+    return [
+        {
+            "header": (
+                i.header if isinstance(i.header, list)
+                else [i.header] if i.header is not None
+                else None
+            ),
+            "rule_index": i.rule_index,
+            "message": i.message,
+        }
+        for i in result.warnings
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -63,10 +81,6 @@ def validate_sheet(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Given a Google Sheets URL, return the spreadsheet title and list of tabs.
-    Called when the user pastes a URL in the wizard.
-    """
     try:
         return svc.validate_sheet_url(payload.sheet_url)
     except PermissionError as e:
@@ -85,10 +99,6 @@ def get_sheet_headers(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Given a URL + sheet name, return the column headers and auto-detected
-    field mapping suggestions.
-    """
     try:
         return svc.get_headers(payload.sheet_url, payload.sheet_name)
     except PermissionError as e:
@@ -100,7 +110,11 @@ def get_sheet_headers(
 # ---------------------------------------------------------------------------
 # Wizard step 3 — Save the finalized column mapping
 # ---------------------------------------------------------------------------
-@router.post("/configs/", response_model=SheetConfigRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/configs/",
+    response_model=SheetConfigReadWithWarnings,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_sheet_config(
     tournament_id: int,
     payload: SheetConfigCreate,
@@ -124,7 +138,7 @@ def create_sheet_config(
         for header, mapping in payload.column_mappings.items()
     }
 
-    _validate_or_422(serialized_mappings)
+    validation = _validate_or_422(serialized_mappings)
 
     spreadsheet_id = svc.extract_spreadsheet_id(payload.sheet_url)
 
@@ -140,7 +154,11 @@ def create_sheet_config(
     db.add(config)
     db.commit()
     db.refresh(config)
-    return config
+
+    return SheetConfigReadWithWarnings(
+        **SheetConfigRead.model_validate(config).model_dump(),
+        warnings=_warnings_from_result(validation),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +170,6 @@ def list_sheet_configs(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """List all sheet configs for a given tournament."""
     return (
         db.query(SheetConfig)
         .filter(SheetConfig.tournament_id == tournament_id)
@@ -177,7 +194,7 @@ def get_sheet_config(
 # ---------------------------------------------------------------------------
 # PATCH /configs/{config_id}/
 # ---------------------------------------------------------------------------
-@router.patch("/configs/{config_id}/", response_model=SheetConfigRead)
+@router.patch("/configs/{config_id}/", response_model=SheetConfigReadWithWarnings)
 def update_sheet_config(
     tournament_id: int,
     config_id: int,
@@ -200,15 +217,20 @@ def update_sheet_config(
         update_data["column_mappings"] = merged
 
     # Validate the full merged mappings before saving
+    validation = ValidationResult()  # default empty (no warnings) if no mappings to validate
     if "column_mappings" in update_data:
-        _validate_or_422(update_data["column_mappings"])
+        validation = _validate_or_422(update_data["column_mappings"])
 
     for field, value in update_data.items():
         setattr(config, field, value)
 
     db.commit()
     db.refresh(config)
-    return config
+
+    return SheetConfigReadWithWarnings(
+        **SheetConfigRead.model_validate(config).model_dump(),
+        warnings=_warnings_from_result(validation),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -237,11 +259,6 @@ def sync_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Sync all rows from a sheet into Users + Memberships.
-    Full upsert — existing records are overwritten.
-    Returns a summary of created, updated, skipped, and errors.
-    """
     config = _get_config_or_404(config_id, tournament_id, db)
 
     if not config.is_active:

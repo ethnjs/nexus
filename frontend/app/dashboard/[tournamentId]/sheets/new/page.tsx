@@ -160,11 +160,12 @@ export default function NewSheetPage() {
   // Validation (shared hook)
   const {
     validationErrors, validationWarnings,
-    clearAll, clearRow, handle422, setGenericError, renderErrorBanner,
+    clearAll, clearRow, handle422, handleSaveSuccess, setGenericError, renderErrorBanner,
   } = useSheetValidation();
 
   // Results
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
+  const [syncResult,   setSyncResult]   = useState<SyncResult | null>(null);
+  const [savedConfigId, setSavedConfigId] = useState<number | null>(null);
 
   // ── Duplicate detection ───────────────────────────────────────────────────
 
@@ -325,6 +326,15 @@ export default function NewSheetPage() {
         sheet_name:      selectedSheet,
         column_mappings: buildColumnMappings(),
       });
+      handleSaveSuccess(config);
+      setSavedConfigId(config.id);
+      // If warnings came back from the save, show confirm modal before syncing
+      if (config.warnings?.length > 0) {
+        setShowWarningsConfirm(true);
+        setStep("mapping");
+        setSaveLoading(false);
+        return;
+      }
       const result = await sheetsApi.sync(tournamentId, config.id);
       setSyncResult(result);
       setStep("results");
@@ -340,8 +350,6 @@ export default function NewSheetPage() {
     const dupes = getDuplicatesForSelection();
     if (dupes.length > 0) {
       setShowSaveConfirm(true);
-    } else if (validationWarnings.length > 0 && validationErrors.length === 0) {
-      setShowWarningsConfirm(true);
     } else {
       doSaveAndSync();
     }
@@ -585,14 +593,7 @@ export default function NewSheetPage() {
       {showSaveConfirm && (
         <SaveConfirmModal
           duplicates={getDuplicatesForSelection()}
-          onConfirm={() => {
-            if (validationWarnings.length > 0 && validationErrors.length === 0) {
-              setShowSaveConfirm(false);
-              setShowWarningsConfirm(true);
-            } else {
-              doSaveAndSync();
-            }
-          }}
+          onConfirm={doSaveAndSync}
           onCancel={() => setShowSaveConfirm(false)}
         />
       )}
@@ -604,7 +605,7 @@ export default function NewSheetPage() {
       {showWarningsConfirm && (
         <WarningsConfirmModal
           warnings={validationWarnings}
-          onConfirm={doSaveAndSync}
+          onConfirm={async () => { if (savedConfigId) { setShowWarningsConfirm(false); setSaveLoading(true); setStep("syncing"); try { const result = await sheetsApi.sync(tournamentId, savedConfigId); setSyncResult(result); setStep("results"); } catch { setStep("mapping"); } finally { setSaveLoading(false); } } }}
           onCancel={() => setShowWarningsConfirm(false)}
         />
       )}

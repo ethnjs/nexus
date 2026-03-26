@@ -34,6 +34,19 @@ export function useSheetValidation() {
   }
 
   /**
+   * Parse warnings from a successful 200/201 response body.
+   * The backend includes warnings even when the save succeeds.
+   * Call this with the response body after a successful updateConfig/createConfig.
+   */
+  function handleSaveSuccess(responseBody: { warnings?: ValidationIssue[] } | null) {
+    const warns = responseBody?.warnings ?? [];
+    setValidationWarnings(warns);
+    // Clear any previous errors since the save succeeded
+    setValidationErrors([]);
+    setSaveError("");
+  }
+
+  /**
    * Parse a caught error. If it's a 422 with structured validation body,
    * populate errors/warnings and set a friendly saveError message.
    * Returns true if it was a 422 (caller should not set their own saveError).
@@ -98,6 +111,7 @@ export function useSheetValidation() {
     clearAll,
     clearRow,
     handle422,
+    handleSaveSuccess,
     setGenericError,
     renderErrorBanner,
   };

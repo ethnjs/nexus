@@ -286,6 +286,9 @@ class SheetConfigRead(SheetConfigBase):
 
     model_config = {"from_attributes": True}
 
+class SheetConfigReadWithWarnings(SheetConfigRead):
+    """SheetConfigRead extended with validation warnings from a successful save."""
+    warnings: list[dict] = []
 
 # ---------------------------------------------------------------------------
 # Wizard step request/response shapes
