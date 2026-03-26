@@ -157,7 +157,7 @@ function TooltipRuleDiff({ diff }: { diff: RuleLineDiff }) {
   if (diff.status === "removed") {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 7px", background: "#FFF5F5", border: "1px solid #FCA5A5", borderRadius: "var(--radius-sm)" }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#DC2626", flexShrink: 0 }}>{idx}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#DC2626", flexShrink: 0, lineHeight: 1, alignSelf: "center" }}>{idx}</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#DC2626", flex: 1 }}>{describeRule(diff.from!)}</span>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "#DC2626", flexShrink: 0 }}>removed</span>
       </div>
@@ -167,7 +167,7 @@ function TooltipRuleDiff({ diff }: { diff: RuleLineDiff }) {
   if (diff.status === "added") {
     return (
       <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "4px 7px", background: "#F0FDF4", border: "1px solid #86EFAC", borderRadius: "var(--radius-sm)" }}>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#16A34A", flexShrink: 0 }}>{idx}</span>
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", fontWeight: 700, color: "#16A34A", flexShrink: 0, lineHeight: 1, alignSelf: "center" }}>{idx}</span>
         <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "#16A34A", fontWeight: 600, flex: 1 }}>{describeRule(diff.to!)}</span>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", color: "#16A34A", flexShrink: 0 }}>added</span>
       </div>

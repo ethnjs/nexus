@@ -41,7 +41,7 @@ function RuleDiffRow({ diff }: { diff: RuleDiff }) {
         background: '#FFF5F5', border: '1px solid #FCA5A5',
         borderRadius: 'var(--radius-sm)',
       }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#DC2626', minWidth: '16px', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#DC2626', minWidth: '16px', flexShrink: 0, lineHeight: 1, alignSelf: 'center' }}>
           {idx}
         </span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#DC2626', flex: 1 }}>
@@ -60,7 +60,7 @@ function RuleDiffRow({ diff }: { diff: RuleDiff }) {
         background: '#F0FDF4', border: '1px solid #86EFAC',
         borderRadius: 'var(--radius-sm)',
       }}>
-        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#16A34A', minWidth: '16px', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#16A34A', minWidth: '16px', flexShrink: 0, lineHeight: 1, alignSelf: 'center' }}>
           {idx}
         </span>
         <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#16A34A', fontWeight: 600, flex: 1 }}>
