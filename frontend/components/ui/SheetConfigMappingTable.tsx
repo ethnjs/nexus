@@ -4,6 +4,7 @@ import { useRef, useState, useCallback, useEffect, memo } from "react";
 import type { MappingRow } from "@/lib/importMappings";
 import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue } from "@/lib/api";
 import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
+import { Select } from "@/components/ui/Select";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -79,19 +80,14 @@ const BADGE_STYLES: Record<RowState, { color: string; bg: string; label: string 
   removed: { color: "#DC2626", bg: "#FEE2E2", label: "Removed" },
 };
 
-// ─── Shared input/select styles ───────────────────────────────────────────────
+// ─── Shared input style ───────────────────────────────────────────────────────
 
-const selectStyle: React.CSSProperties = {
+const inputStyle: React.CSSProperties = {
   height: "36px", padding: "0 10px",
   border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
   fontFamily: "var(--font-sans)", fontSize: "12px",
   color: "var(--color-text-primary)", background: "var(--color-bg)",
-  outline: "none", cursor: "pointer",
-};
-
-const inputStyle: React.CSSProperties = {
-  ...selectStyle,
-  cursor: "text",
+  outline: "none", cursor: "text",
 };
 
 // ─── Diff tooltip ─────────────────────────────────────────────────────────────
@@ -318,16 +314,16 @@ const RuleRow = memo(function RuleRow({
           {index + 1}
         </span>
 
-        <select
-          value={rule.condition} disabled={isRemoved}
-          onChange={(e) => {
-            const condition = e.target.value as ParseRuleCondition;
-            onChange({ condition, ...(condition === "always" ? { match: undefined } : {}) });
+        <Select
+          value={rule.condition}
+          onChange={(condition) => {
+            onChange({ condition: condition as ParseRuleCondition, ...(condition === "always" ? { match: undefined } : {}) });
           }}
-          style={{ ...selectStyle, height: "30px", fontSize: "11px" }}
-        >
-          {validConditions.map((c) => <option key={c} value={c}>{CONDITION_LABELS[c] ?? c}</option>)}
-        </select>
+          options={validConditions.map((c) => ({ value: c, label: CONDITION_LABELS[c] ?? c }))}
+          disabled={isRemoved}
+          size="sm"
+          minWidth={120}
+        />
 
         {showMatch && (
           <input
@@ -352,16 +348,15 @@ const RuleRow = memo(function RuleRow({
 
         <span style={{ color: "var(--color-text-tertiary)", fontSize: "11px", flexShrink: 0 }}>→</span>
 
-        <select
-          value={rule.action} disabled={isRemoved}
-          onChange={(e) => {
-            const action = e.target.value as ParseRuleAction;
-            onChange({ action, ...(VALUELESS_ACTIONS.has(action) ? { value: undefined } : {}) });
+        <Select
+          value={rule.action}
+          onChange={(action) => {
+            onChange({ action: action as ParseRuleAction, ...(VALUELESS_ACTIONS.has(action as ParseRuleAction) ? { value: undefined } : {}) });
           }}
-          style={{ ...selectStyle, height: "30px", fontSize: "11px" }}
-        >
-          {validActions.map((a) => <option key={a} value={a}>{ACTION_LABELS[a] ?? a}</option>)}
-        </select>
+          options={validActions.map((a) => ({ value: a, label: ACTION_LABELS[a] ?? a }))}
+          disabled={isRemoved}
+          size="sm"
+        />
 
         {showValue && (
           <input
@@ -562,9 +557,12 @@ const MappingRowComponent = memo(function MappingRowComponent({
     if (viewOnly || isRemoved || isIgnored) return;
     // Only toggle accordion when there are rules and the click wasn't on an interactive element
     if (!hasRules) return;
-    const tag = (e.target as HTMLElement).tagName;
+    const target = e.target as HTMLElement;
+    const tag = target.tagName;
     if (["SELECT", "INPUT", "BUTTON", "LABEL"].includes(tag)) return;
-    if ((e.target as HTMLElement).closest("label")) return;
+    if (target.closest("label")) return;
+    // Guard against clicks inside the custom Select dropdown panel (fixed-positioned divs)
+    if (target.closest("[data-select-panel]") || target.closest("[data-select-trigger]")) return;
     if (open) { closeAccordion(); } else { openAccordion(); }
   }
 
@@ -606,8 +604,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
     onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
   }
 
-  const cellSelectStyle: React.CSSProperties = { ...selectStyle, width: "100%", opacity: isIgnored ? 0.5 : 1 };
-  const keyInputStyle: React.CSSProperties   = { ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: isIgnored ? 0.5 : 1 };
+  const keyInputStyle: React.CSSProperties = { ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: isIgnored ? 0.5 : 1 };
 
   function renderKeyCell() {
     if (isRemoved) return <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>excluded from save</span>;
@@ -662,18 +659,28 @@ const MappingRowComponent = memo(function MappingRowComponent({
             {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[row.field] ?? row.field)}
           </span>
         ) : (
-          <select value={row.field} onChange={(e) => handleFieldChange(e.target.value)} disabled={isRemoved} style={cellSelectStyle}>
-            {knownFields.map((f) => <option key={f} value={f}>{KNOWN_FIELDS_LABELS[f] ?? f}</option>)}
-          </select>
+          <Select
+            value={row.field}
+            onChange={handleFieldChange}
+            options={knownFields.map((f) => ({ value: f, label: KNOWN_FIELDS_LABELS[f] ?? f }))}
+            disabled={isRemoved}
+            size="sm"
+            fullWidth
+          />
         )}
 
         {/* Col 3: type */}
         {viewOnly ? (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>{TYPE_LABELS[row.type] ?? row.type}</span>
         ) : (
-          <select value={row.type} onChange={(e) => handleTypeChange(e.target.value)} disabled={isRemoved || isIgnored} style={{ ...cellSelectStyle, opacity: isIgnored ? 0.5 : 1 }}>
-            {validTypes.map((t) => <option key={t} value={t}>{TYPE_LABELS[t] ?? t}</option>)}
-          </select>
+          <Select
+            value={row.type}
+            onChange={handleTypeChange}
+            options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
+            disabled={isRemoved || isIgnored}
+            size="sm"
+            fullWidth
+          />
         )}
 
         {/* Col 4: key cell */}
@@ -811,7 +818,7 @@ export function SheetConfigMappingTable({
           <span key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", whiteSpace: "normal", wordBreak: "break-word" }}>{h}</span>
         ))}
       </div>
-      <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "hidden" }}>
+      <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "visible" }}>
         {rows.map((row, idx) => {
           const rowErrors   = validationErrors.filter((e)   => e.header === row.header);
           const rowWarnings = validationWarnings.filter((w) => w.header === row.header);

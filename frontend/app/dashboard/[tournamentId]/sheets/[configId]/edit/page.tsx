@@ -18,6 +18,8 @@ import {
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
@@ -29,14 +31,6 @@ const SHEET_TYPES = [
   { value: "confirmation", label: "Confirmation Form" },
   { value: "events",       label: "Events" },
 ];
-
-const selectStyle: React.CSSProperties = {
-  height: "36px", padding: "0 10px",
-  border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-  fontFamily: "var(--font-sans)", fontSize: "12px",
-  color: "var(--color-text-primary)", background: "var(--color-bg)",
-  outline: "none", cursor: "pointer",
-};
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -103,9 +97,9 @@ export default function EditSheetPage() {
   const [validationWarnings, setValidationWarnings] = useState<ValidationIssue[]>([]);
 
   // Import
-  const importInputRef                            = useRef<HTMLInputElement>(null);
-  const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
-  const [showImportSummary, setShowImportSummary] = useState(false);
+  const importInputRef                             = useRef<HTMLInputElement>(null);
+  const [importBanner,     setImportBanner]        = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [showImportSummary, setShowImportSummary]  = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
 
@@ -257,10 +251,8 @@ export default function EditSheetPage() {
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
-          // Fix: always use makeRichRow so state and diff tooltip work correctly,
-          // even for "new" rows. Pass the row's own baseline so new rows show
-          // "Changes from suggestion" correctly.
-          return makeRichRow(updated, r.baseline, r.state === "new" ? undefined : undefined, importedValue);
+          if (r.state === "new") return { ...r, ...updated, importedValue };
+          return makeRichRow(updated, r.baseline, undefined, importedValue);
         })
       );
 
@@ -290,7 +282,7 @@ export default function EditSheetPage() {
     return result;
   }, [mappingRows]);
 
-  // ── Handle 422 ─────────────────────────────────────────────────────────
+  // ── Handle 422 validation errors ────────────────────────────────────────
 
   function handle422(e: unknown): boolean {
     if (e instanceof ApiError && e.status === 422) {
@@ -400,25 +392,31 @@ export default function EditSheetPage() {
 
         {/* ── Config fields ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <div>
-            <FieldLabel htmlFor="label">Label</FieldLabel>
-            <input id="label" value={label} onChange={(e) => setLabel(e.target.value)} style={{ ...selectStyle, width: "100%", height: "44px", padding: "0 14px" }} />
-          </div>
-          <div>
-            <FieldLabel>Sheet Type</FieldLabel>
-            <select value={sheetType} onChange={(e) => setSheetType(e.target.value)} style={{ ...selectStyle, width: "100%", height: "44px" }}>
-              {SHEET_TYPES.map(({ value, label: l }) => <option key={value} value={value}>{l}</option>)}
-            </select>
-          </div>
+          <Input
+            label="Label"
+            id="label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            font="sans"
+            fullWidth
+          />
+          <Select
+            label="Sheet Type"
+            value={sheetType}
+            onChange={setSheetType}
+            options={SHEET_TYPES}
+            fullWidth
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "16px", alignItems: "end" }}>
-          <div>
-            <FieldLabel>Sheet Tab</FieldLabel>
-            <select value={selectedTab} onChange={(e) => handleTabChange(e.target.value)} style={{ ...selectStyle, width: "100%", height: "44px" }}>
-              {availableTabs.map((tab) => <option key={tab} value={tab}>{tab}</option>)}
-            </select>
-          </div>
+          <Select
+            label="Sheet Tab"
+            value={selectedTab}
+            onChange={handleTabChange}
+            options={availableTabs.map((tab) => ({ value: tab, label: tab }))}
+            fullWidth
+          />
           <label style={{ display: "flex", alignItems: "center", gap: "8px", height: "44px", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", flexShrink: 0 }}>
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px" }} />
             Active
@@ -432,10 +430,10 @@ export default function EditSheetPage() {
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {[
-                  { label: `${sameCount} unchanged`,  color: "var(--color-text-tertiary)", show: true },
-                  { label: `${changedCount} edited`,  color: "#854D0E",                    show: changedCount  > 0 },
-                  { label: `${newCount} new`,          color: "#16A34A",                    show: newCount      > 0 },
-                  { label: `${removedCount} removed`, color: "#DC2626",                    show: removedCount  > 0 },
+                  { label: `${sameCount} unchanged`,    color: "var(--color-text-tertiary)", show: true },
+                  { label: `${changedCount} edited`,    color: "#854D0E",                    show: changedCount  > 0 },
+                  { label: `${newCount} new`,            color: "#16A34A",                    show: newCount      > 0 },
+                  { label: `${removedCount} removed`,   color: "#DC2626",                    show: removedCount  > 0 },
                 ].filter((s) => s.show).map(({ label: l, color }) => (
                   <span key={l} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color }}>{l}</span>
                 ))}
@@ -465,6 +463,7 @@ export default function EditSheetPage() {
             </div>
           )}
 
+          {/* Validation error banner */}
           {validationErrors.length > 0 && (
             <div style={{ marginBottom: "10px" }}>
               <Banner
