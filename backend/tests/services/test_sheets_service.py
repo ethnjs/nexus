@@ -8,7 +8,6 @@ from app.services.sheets_service import (
     _match_header_to_question,
     _question_to_mapping,
     _alias_rules,
-    _suggest_alias,
     _slugify,
 )
 from app.schemas.sheet_config import (
