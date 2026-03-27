@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: validation UX + save flow overhaul*
+*Last updated: GitHub Actions pytest CI workflow*
 
 > **Stylization:** Always **NEXUS** (all caps) in UI/docs. Lowercase `nexus` only in code/URLs.
 > **API version:** `0.2.0`
@@ -174,6 +174,7 @@ filterwarnings = ignore::DeprecationWarning:jose
 
 ### API Key
 `X-API-Key` header on all routes. Dev: blank = skip. Prod: missing = 403.
+`APP_ENV=test` with blank `API_KEY` also skips — used by GitHub Actions CI.
 
 ### JWT (frontend)
 httpOnly cookie `access_token`, 7-day expiry, HS256.
@@ -477,6 +478,8 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/
 
 **conftest.py fixtures:** `db` (in-memory SQLite, FK ON, rollback per test), `mock_sheets_service`, `client`, `admin_user`, `td_user`, `other_user`, `td_tournament`, `other_tournament`, `login(client, email, password)`
 
+**CI:** GitHub Actions runs `pytest` on every push. Workflow sets `APP_ENV=test` and leaves `DATABASE_URL` and `API_KEY` blank — `session.py` skips engine init when `DATABASE_URL` is empty, and `security.py` bypasses API key checks when `APP_ENV` is `"development"` or `"test"` and `API_KEY` is blank.
+
 ---
 
 ## Development Phases
@@ -490,6 +493,7 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/
 - [x] **feat/sheet-config-parse-rules-ux** — Rule editor UX (accordion, Select component, diff tooltip, import summary)
 - [x] **feat/volunteers-display** — Tags, availability rows, extra_data widths
 - [x] **Validation UX overhaul** — validate-first save flow, useSheetValidation hook, SheetMappingValidationModals, ValidationIssue.header as list, ParseRule model_validator removed
+- [x] **GitHub Actions CI** — pytest workflow on every push
 - [ ] **Phase 7f** — Events + volunteers tables (proper, not temp)
 - [ ] **Phase 7g** — Assignment dashboard
 

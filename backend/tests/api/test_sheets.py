@@ -20,7 +20,7 @@ def _make_config(client, tournament_id, **overrides):
     payload = {
         "tournament_id": tournament_id,
         "label": "Interest Form",
-        "sheet_type": "interest",
+        "sheet_type": "volunteers",
         "sheet_url": FAKE_URL,
         "sheet_name": "Form Responses 1",
         "column_mappings": SAMPLE_MAPPINGS,
@@ -98,7 +98,7 @@ def test_create_sheet_config_tournament_id_mismatch(
         json={**{k: v for k, v in {
             "tournament_id": 9999,
             "label": "Interest Form",
-            "sheet_type": "interest",
+            "sheet_type": "volunteers",
             "sheet_url": FAKE_URL,
             "sheet_name": "Form Responses 1",
             "column_mappings": SAMPLE_MAPPINGS,
@@ -177,8 +177,8 @@ def test_get_sheet_config_not_found(client, td_user, td_tournament):
 def test_list_sheet_configs(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    _make_config(client, td_tournament.id, sheet_type="interest")
-    _make_config(client, td_tournament.id, sheet_type="confirmation")
+    _make_config(client, td_tournament.id)
+    _make_config(client, td_tournament.id)
     response = client.get(f"/tournaments/{td_tournament.id}/sheets/configs/")
     assert response.status_code == 200
     assert len(response.json()) == 2

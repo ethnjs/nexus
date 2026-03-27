@@ -8,17 +8,24 @@ from googleapiclient.errors import HttpError
 
 from app.core.config import get_settings
 from app.schemas.sheet_config import (
-    KNOWN_FIELDS,
+    KNOWN_FIELDS_BY_TYPE,
     ColumnMapping,
+    FormQuestion,
+    ParseRule,
     SheetValidateResponse,
     SheetHeadersResponse,
 )
 
-SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets.readonly",
+    "https://www.googleapis.com/auth/forms.body.readonly",
+]
 
 # ---------------------------------------------------------------------------
 # Auto-detection hints — maps lowercase substrings in a header to a
-# ColumnMapping. More specific patterns must come before general ones.
+# ColumnMapping. Used as a fallback when no form metadata is available,
+# and as a secondary signal when form cross-referencing is inconclusive.
+# More specific patterns must come before general ones.
 # ---------------------------------------------------------------------------
 HEADER_DETECTION_HINTS: list[tuple[str, ColumnMapping]] = [
     # Identity — string fields (more specific patterns first)
@@ -143,7 +150,23 @@ class SheetsService:
             sheet_names=sheet_names,
         )
 
-    def get_headers(self, sheet_url: str, sheet_name: str) -> SheetHeadersResponse:
+    def get_headers(
+        self,
+        sheet_url: str,
+        sheet_name: str,
+        sheet_type: str,
+        form_questions: list[FormQuestion] | None = None,
+    ) -> SheetHeadersResponse:
+        """
+        Fetch the first row of the sheet as column headers and return
+        auto-detected mapping suggestions.
+
+        When form_questions is provided (volunteers sheets), suggestions are
+        enriched using form metadata — question type drives the ColumnMapping
+        type, and option aliases are attached for choice questions. The header-
+        hint fallback still runs for any column that couldn't be matched to a
+        form question.
+        """
         spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
         range_notation = f"'{sheet_name}'!1:1"
 
@@ -161,12 +184,25 @@ class SheetsService:
 
         rows = result.get("values", [])
         headers: list[str] = rows[0] if rows else []
-        suggestions = {h: self._detect_field(h) for h in headers}
+
+        # Build a title → FormQuestion index for O(1) lookups
+        question_index = _build_question_index(form_questions or [])
+
+        suggestions: dict[str, ColumnMapping] = {}
+        for header in headers:
+            matched_question = _match_header_to_question(header, question_index)
+            if matched_question:
+                suggestions[header] = _question_to_mapping(header, matched_question)
+            else:
+                suggestions[header] = self._detect_field(header)
 
         return SheetHeadersResponse(
             sheet_name=sheet_name,
+            sheet_type=sheet_type,
             headers=headers,
             suggestions=suggestions,
+            known_fields=KNOWN_FIELDS_BY_TYPE.get(sheet_type, []),
+            form_questions=form_questions,
         )
 
     def get_rows(
@@ -205,8 +241,8 @@ class SheetsService:
 
     def _detect_field(self, header: str) -> ColumnMapping:
         """
-        Fuzzy-match a column header to a ColumnMapping.
-        Handles availability matrix rows specially.
+        Fuzzy-match a column header to a ColumnMapping using HEADER_DETECTION_HINTS.
+        Handles availability matrix rows specially via AVAILABILITY_PATTERN.
         Falls back to ignore if nothing matches.
         """
         lower = header.lower()
@@ -223,3 +259,152 @@ class SheetsService:
                 return mapping
 
         return ColumnMapping(field="__ignore__", type="ignore")
+
+
+# ---------------------------------------------------------------------------
+# Form question → ColumnMapping helpers (module-level, pure functions)
+# ---------------------------------------------------------------------------
+
+def _build_question_index(
+    questions: list[FormQuestion],
+) -> dict[str, FormQuestion]:
+    """
+    Build a lowercase title → FormQuestion lookup dict.
+    For grid questions, also indexes each grid row variant:
+      "{question title} [{row}]" — the pattern Google Sheets uses for grid columns.
+    """
+    index: dict[str, FormQuestion] = {}
+    for q in questions:
+        index[q.title.lower()] = q
+        if q.grid_rows:
+            for row in q.grid_rows:
+                key = f"{q.title.lower()} [{row.lower()}]"
+                index[key] = q
+    return index
+
+
+def _match_header_to_question(
+    header: str,
+    question_index: dict[str, FormQuestion],
+) -> FormQuestion | None:
+    """
+    Try to match a sheet column header to a FormQuestion.
+
+    Matching strategy (in order):
+      1. Exact lowercase match on question title
+      2. Sheet header starts with question title (handles Google's truncation)
+      3. Grid row variant: "{title} [{row}]" exact match
+    """
+    lower = header.lower()
+
+    # Exact match
+    if lower in question_index:
+        return question_index[lower]
+
+    # Prefix match — sheet header starts with question title
+    for title_lower, question in question_index.items():
+        if lower.startswith(title_lower):
+            return question
+
+    return None
+
+
+def _question_to_mapping(header: str, question: FormQuestion) -> ColumnMapping:
+    """
+    Convert a matched FormQuestion into a ColumnMapping suggestion.
+
+    - matrix_row: extracts row_key from the bracket portion of the header
+      and attaches a parse_availability rule automatically.
+    - multi_select: attaches replace rules derived from option aliases so the
+      raw option strings are normalized to their aliases before storage.
+    - All other types: straightforward field + type suggestion from hints,
+      falling back to extra_data string if no hint matches.
+    """
+    if question.nexus_type == "matrix_row":
+        return _grid_header_to_mapping(header, question)
+
+    # Try to get a field suggestion from hints using the question title
+    hint_mapping = _hint_from_title(question.title)
+
+    if question.nexus_type == "multi_select":
+        field = hint_mapping.field if hint_mapping else "extra_data"
+        extra_key = hint_mapping.extra_key if hint_mapping else None
+        rules = _alias_rules(question)
+        return ColumnMapping(
+            field=field,
+            type="multi_select",
+            extra_key=extra_key,
+            rules=rules if rules else None,
+        )
+
+    # string / integer / boolean
+    if hint_mapping:
+        return hint_mapping
+    return ColumnMapping(field="extra_data", type="string", extra_key=_slugify(question.title))
+
+
+def _grid_header_to_mapping(header: str, question: FormQuestion) -> ColumnMapping:
+    """
+    Build a matrix_row ColumnMapping for a grid question column header.
+    Extracts the row_key from the bracket suffix Google Sheets appends,
+    e.g. "Availability [8:00 AM - 10:00 AM]" → row_key = "8:00 AM - 10:00 AM".
+    Attaches a parse_availability rule automatically.
+    """
+    avail_match = AVAILABILITY_PATTERN.search(header)
+    if avail_match:
+        row_key = avail_match.group(1).strip()
+    else:
+        # Fall back to looking for [bracket content] anywhere in the header
+        bracket_match = re.search(r"\[(.+)\]", header)
+        row_key = bracket_match.group(1).strip() if bracket_match else header
+
+    return ColumnMapping(
+        field="availability",
+        type="matrix_row",
+        row_key=row_key,
+        rules=[ParseRule(condition="always", action="parse_availability")],
+    )
+
+
+def _alias_rules(question: FormQuestion) -> list[ParseRule]:
+    """
+    Build replace rules that normalize raw option strings to their aliases.
+    One rule per option where the alias differs from the raw value.
+    Rules use contains condition so they fire even when the option appears
+    as part of a comma-joined multi-select cell value.
+    """
+    if not question.options:
+        return []
+
+    rules = []
+    for opt in question.options:
+        if opt.raw != opt.alias:
+            rules.append(ParseRule(
+                condition="contains",
+                match=opt.raw,
+                case_sensitive=False,
+                action="replace",
+                value=opt.alias,
+            ))
+    return rules
+
+
+def _hint_from_title(title: str) -> ColumnMapping | None:
+    """Run HEADER_DETECTION_HINTS against a question title as a fallback."""
+    lower = title.lower()
+    avail_match = AVAILABILITY_PATTERN.search(title)
+    if avail_match:
+        row_key = avail_match.group(1).strip()
+        return ColumnMapping(field="availability", type="matrix_row", row_key=row_key)
+    for pattern, mapping in HEADER_DETECTION_HINTS:
+        if pattern in lower:
+            return mapping
+    return None
+
+
+def _slugify(text: str) -> str:
+    """Convert a question title to a snake_case extra_key."""
+    slug = text.lower().strip()
+    slug = re.sub(r"[^\w\s]", "", slug)
+    slug = re.sub(r"\s+", "_", slug)
+    return slug[:50]  # cap length for DB storage

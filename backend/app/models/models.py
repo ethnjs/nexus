@@ -213,10 +213,6 @@ class SheetConfig(Base):
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
 
-    __table_args__ = (
-        UniqueConstraint("tournament_id", "sheet_type", name="uq_tournament_sheet_type"),
-    )
-
 
 # ---------------------------------------------------------------------------
 # [ACTIVE] Event
