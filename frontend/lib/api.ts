@@ -11,9 +11,12 @@ interface RequestOptions {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** The raw `detail` value from the response body (may be a string or object). */
+  detail: unknown
+  constructor(public status: number, message: string, detail?: unknown) {
     super(message)
-    this.name = 'ApiError'
+    this.name   = 'ApiError'
+    this.detail = detail
   }
 }
 
@@ -31,12 +34,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   })
 
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`
+    let detail: unknown = `HTTP ${res.status}`
     try {
       const data = await res.json()
       detail = data.detail ?? detail
     } catch {}
-    throw new ApiError(res.status, detail)
+    const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
+    throw new ApiError(res.status, message, detail)
   }
 
   if (res.status === 204) return undefined as T
@@ -286,11 +290,24 @@ export const membershipsApi = {
 // -------------------------------------------------------------------------
 export type SheetType = 'interest' | 'confirmation' | 'events'
 
+export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
+export type ParseRuleAction    = 'set' | 'replace' | 'prepend' | 'append' | 'discard' | 'parse_availability'
+
+export interface ParseRule {
+  condition:      ParseRuleCondition
+  match?:         string    // required unless condition === 'always'
+  case_sensitive: boolean
+  action:         ParseRuleAction
+  value?:         string    // required for set / replace / prepend / append
+}
+
 export interface ColumnMapping {
   field:      string
-  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row' | 'category_events'
+  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
   row_key?:   string
   extra_key?: string
+  rules?:     ParseRule[]
+  delimiter?: string        // only valid when type === 'multi_select'
 }
 
 export interface SheetConfig {
@@ -308,6 +325,10 @@ export interface SheetConfig {
   updated_at:      string
 }
 
+export interface SheetConfigWithWarnings extends SheetConfig {
+  warnings: ValidationIssue[];
+}
+
 export interface SyncResult {
   created:        number
   updated:        number
@@ -316,23 +337,48 @@ export interface SyncResult {
   last_synced_at: string
 }
 
+/** Structured validation issue returned in a 422 response body from CREATE/PATCH */
+export interface ValidationIssue {
+  header?:     string[] | string | null   // which column mapping; absent = config-level issue
+  message:     string
+  rule_index?: number   // which rule within that mapping; absent = mapping-level issue
+}
+
+export interface ValidateMappingsResult {
+  ok:       boolean
+  errors:   ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
+export interface SheetHeadersResponse {
+  sheet_name:           string
+  headers:              string[]
+  suggestions:          Record<string, ColumnMapping>
+  known_fields:         string[]
+  valid_types:          string[]
+  valid_rule_conditions: string[]
+  valid_rule_actions:   string[]
+}
+
 export const sheetsApi = {
   validate: (tournamentId: number, sheet_url: string) =>
     api.post<{ spreadsheet_id: string; spreadsheet_title: string; sheet_names: string[] }>(
       `/tournaments/${tournamentId}/sheets/validate/`, { sheet_url }
     ),
   headers: (tournamentId: number, sheet_url: string, sheet_name: string) =>
-    api.post<{ sheet_name: string; headers: string[]; suggestions: Record<string, ColumnMapping>; known_fields: string[]; valid_types: string[] }>(
+    api.post<SheetHeadersResponse>(
       `/tournaments/${tournamentId}/sheets/headers/`, { sheet_url, sheet_name }
     ),
   listConfigs:  (tournamentId: number) =>
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
   getConfig:    (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
+  validateMappings: (tournamentId: number, column_mappings: Record<string, ColumnMapping>) =>
+    api.post<ValidateMappingsResult>(`/tournaments/${tournamentId}/sheets/configs/validate-mappings/`, { column_mappings }),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
-    api.post<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/`, body),
+    api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),
   updateConfig: (tournamentId: number, id: number, body: Partial<SheetConfig>) =>
-    api.patch<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
+    api.patch<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
   deleteConfig: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   sync:         (tournamentId: number, configId: number) =>

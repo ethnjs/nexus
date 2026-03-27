@@ -12,6 +12,12 @@ type MembershipWithUser = Membership & { user?: User };
 
 type SortKey = "name" | "email" | "status" | "role_preference";
 
+interface AvailabilitySlot {
+  date:  string; // "YYYY-MM-DD"
+  start: string; // "HH:MM"
+  end:   string; // "HH:MM"
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function displayName(user?: User) {
@@ -20,9 +26,26 @@ function displayName(user?: User) {
   return full || user.email;
 }
 
-function fmtList(items: string[] | null | undefined) {
-  if (!items || items.length === 0) return "—";
-  return items.join(", ");
+function fmtVal(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (Array.isArray(v)) return v.length > 0 ? v.join(", ") : "—";
+  return String(v);
+}
+
+function fmtTime(hhmm: string): string {
+  const [hStr, mStr] = hhmm.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr, 10);
+  const period = h >= 12 ? "PM" : "AM";
+  const h12    = h % 12 === 0 ? 12 : h % 12;
+  return m === 0 ? `${h12} ${period}` : `${h12}:${mStr} ${period}`;
+}
+
+function fmtDate(yyyymmdd: string): string {
+  // Parse without timezone shift
+  const [, m, d] = yyyymmdd.split("-").map(Number);
+  return new Date(0, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 const STATUS_VARIANT: Record<string, "interested" | "confirmed" | "declined" | "assigned" | "removed"> = {
@@ -32,6 +55,65 @@ const STATUS_VARIANT: Record<string, "interested" | "confirmed" | "declined" | "
   assigned:   "assigned",
   removed:    "removed",
 };
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function TagList({ items }: { items: string[] }) {
+  if (!items || items.length === 0) return <span style={{ color: "var(--color-text-tertiary)", fontFamily: "var(--font-mono)", fontSize: "12px" }}>—</span>;
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
+      {items.map((item) => (
+        <span
+          key={item}
+          style={{
+            fontFamily:   "var(--font-sans)",
+            fontSize:     "11px",
+            color:        "var(--color-text-secondary)",
+            background:   "var(--color-bg)",
+            border:       "1px solid var(--color-border)",
+            borderRadius: "var(--radius-sm)",
+            padding:      "1px 7px",
+            whiteSpace:   "nowrap",
+          }}
+        >
+          {item}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function AvailabilityCell({ slots }: { slots: AvailabilitySlot[] | null | undefined }) {
+  if (!slots || slots.length === 0) {
+    return <span style={{ color: "var(--color-text-tertiary)", fontFamily: "var(--font-mono)", fontSize: "12px" }}>—</span>;
+  }
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+      {slots.map((slot, i) => (
+        <div key={i} style={{ display: "flex", gap: "8px", alignItems: "baseline" }}>
+          <span style={{
+            fontFamily:  "var(--font-sans)",
+            fontSize:    "12px",
+            fontWeight:  500,
+            color:       "var(--color-text-primary)",
+            flexShrink:  0,
+            minWidth:    "52px",
+          }}>
+            {fmtDate(slot.date)}
+          </span>
+          <span style={{
+            fontFamily: "var(--font-mono)",
+            fontSize:   "11px",
+            color:      "var(--color-text-secondary)",
+            whiteSpace: "nowrap",
+          }}>
+            {fmtTime(slot.start)}–{fmtTime(slot.end)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -52,7 +134,6 @@ export default function VolunteersPage() {
       setLoading(true);
       setError("");
       try {
-        // User data is now embedded by the list endpoint — no per-membership fetches needed.
         const ms = await membershipsApi.listByTournament(tournamentId);
         setMemberships(ms as MembershipWithUser[]);
       } catch {
@@ -78,13 +159,10 @@ export default function VolunteersPage() {
 
   const sorted = [...filtered].sort((a, b) => {
     let av = "", bv = "";
-    if (sortKey === "name")            { av = displayName(a.user); bv = displayName(b.user); }
-    else if (sortKey === "email")      { av = a.user?.email ?? ""; bv = b.user?.email ?? ""; }
-    else if (sortKey === "status")     { av = a.status; bv = b.status; }
-    else if (sortKey === "role_preference") {
-      av = (a.role_preference ?? []).join(",");
-      bv = (b.role_preference ?? []).join(",");
-    }
+    if (sortKey === "name")                 { av = displayName(a.user);              bv = displayName(b.user); }
+    else if (sortKey === "email")           { av = a.user?.email ?? "";              bv = b.user?.email ?? ""; }
+    else if (sortKey === "status")          { av = a.status;                         bv = b.status; }
+    else if (sortKey === "role_preference") { av = (a.role_preference ?? []).join(); bv = (b.role_preference ?? []).join(); }
     return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
   });
 
@@ -93,30 +171,34 @@ export default function VolunteersPage() {
     else { setSortKey(key); setSortAsc(true); }
   }
 
-  // ── Derive extra_data keys present across all memberships ─────────────────
-
   const extraKeys = Array.from(
     new Set(memberships.flatMap((m) => Object.keys(m.extra_data ?? {})))
-  ).slice(0, 4); // cap at 4 columns to avoid blowing out the table
+  ).sort();
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Styles ────────────────────────────────────────────────────────────────
 
   const thStyle: React.CSSProperties = {
     fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
     textTransform: "uppercase", letterSpacing: "0.07em",
     color: "var(--color-text-tertiary)", padding: "8px 14px",
     textAlign: "left", whiteSpace: "nowrap", cursor: "pointer",
-    userSelect: "none",
+    userSelect: "none", background: "var(--color-bg)",
   };
+
+  const thPlain: React.CSSProperties = { ...thStyle, cursor: "default" };
 
   const tdStyle: React.CSSProperties = {
     fontFamily: "var(--font-mono)", fontSize: "12px",
     color: "var(--color-text-primary)", padding: "10px 14px",
     borderTop: "1px solid var(--color-border)", verticalAlign: "top",
+    whiteSpace: "nowrap",
   };
 
-  const arrow = (key: SortKey) =>
-    sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
+  const tdSec: React.CSSProperties = { ...tdStyle, color: "var(--color-text-secondary)" };
+
+  const arrow = (key: SortKey) => sortKey === key ? (sortAsc ? " ↑" : " ↓") : "";
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ width: "100%" }}>
@@ -170,14 +252,8 @@ export default function VolunteersPage() {
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
       )}
       {!loading && !error && memberships.length === 0 && (
-        <div style={{
-          border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)",
-          background: "var(--color-surface)", padding: "60px 0",
-          textAlign: "center",
-        }}>
-          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)", marginBottom: "6px" }}>
-            No volunteers yet
-          </p>
+        <div style={{ border: "1px dashed var(--color-border)", borderRadius: "var(--radius-lg)", background: "var(--color-surface)", padding: "60px 0", textAlign: "center" }}>
+          <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)", marginBottom: "6px" }}>No volunteers yet</p>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
             Sync a Google Sheet to start importing volunteer responses.
           </p>
@@ -186,59 +262,106 @@ export default function VolunteersPage() {
 
       {/* ── Table ── */}
       {!loading && !error && sorted.length > 0 && (
-        <div style={{
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-          overflow: "auto", background: "var(--color-surface)",
-        }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: "700px" }}>
+        <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflowX: "auto", background: "var(--color-surface)" }}>
+          <table style={{ borderCollapse: "collapse", minWidth: "100%" }}>
             <thead>
-              <tr style={{ background: "var(--color-bg)" }}>
+              <tr>
+                {/* Sortable */}
                 <th style={thStyle} onClick={() => toggleSort("name")}>Name{arrow("name")}</th>
                 <th style={thStyle} onClick={() => toggleSort("email")}>Email{arrow("email")}</th>
                 <th style={thStyle} onClick={() => toggleSort("status")}>Status{arrow("status")}</th>
                 <th style={thStyle} onClick={() => toggleSort("role_preference")}>Role Pref{arrow("role_preference")}</th>
-                <th style={thStyle}>Event Pref</th>
-                <th style={thStyle}>Availability</th>
+
+                {/* User fields */}
+                <th style={thPlain}>Phone</th>
+                <th style={thPlain}>University</th>
+                <th style={thPlain}>Major</th>
+                <th style={thPlain}>Employer</th>
+                <th style={thPlain}>Shirt Size</th>
+                <th style={thPlain}>Dietary</th>
+
+                {/* Membership fields */}
+                <th style={thPlain}>Event Pref</th>
+                <th style={{ ...thPlain, minWidth: "160px" }}>Availability</th>
+                <th style={thPlain}>Lunch</th>
+                <th style={thPlain}>Positions</th>
+                <th style={thPlain}>Assigned Event</th>
+                <th style={thPlain}>Notes</th>
+
+                {/* Extra data — wider columns */}
                 {extraKeys.map((k) => (
-                  <th key={k} style={thStyle}>{k.replace(/_/g, " ")}</th>
+                  <th key={k} style={{ ...thPlain, minWidth: "240px" }}>{k.replace(/_/g, " ")}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {sorted.map((m) => (
-                <tr key={m.id} style={{ background: "var(--color-surface)" }}
+                <tr
+                  key={m.id}
+                  style={{ background: "var(--color-surface)" }}
                   onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-bg)"; }}
                   onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = "var(--color-surface)"; }}
                 >
+                  {/* Name */}
                   <td style={{ ...tdStyle, fontFamily: "var(--font-sans)", fontWeight: 500 }}>
                     {displayName(m.user)}
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {m.user?.email ?? "—"}
-                  </td>
+
+                  {/* Email */}
+                  <td style={tdSec}>{m.user?.email ?? "—"}</td>
+
+                  {/* Status */}
                   <td style={tdStyle}>
-                    <Badge variant={STATUS_VARIANT[m.status] ?? "default"}>
-                      {m.status}
-                    </Badge>
+                    <Badge variant={STATUS_VARIANT[m.status] ?? "default"}>{m.status}</Badge>
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {fmtList(m.role_preference)}
+
+                  {/* Role pref — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <TagList items={m.role_preference ?? []} />
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {fmtList(m.event_preference)}
+
+                  {/* User fields */}
+                  <td style={tdSec}>{m.user?.phone               ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.university           ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.major                ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.employer             ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.shirt_size           ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.dietary_restriction  ?? "—"}</td>
+
+                  {/* Event pref — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "200px" }}>
+                    <TagList items={m.event_preference ?? []} />
                   </td>
-                  <td style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                    {m.availability && m.availability.length > 0
-                      ? `${m.availability.length} slot${m.availability.length !== 1 ? "s" : ""}`
-                      : "—"}
+
+                  {/* Availability — stacked date + time rows */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <AvailabilityCell slots={m.availability as AvailabilitySlot[] | null} />
                   </td>
-                  {extraKeys.map((k) => (
-                    <td key={k} style={{ ...tdStyle, color: "var(--color-text-secondary)" }}>
-                      {m.extra_data?.[k] != null
-                        ? String(m.extra_data[k])
-                        : "—"}
-                    </td>
-                  ))}
+
+                  {/* Lunch */}
+                  <td style={tdSec}>{m.lunch_order ?? "—"}</td>
+
+                  {/* Positions — tags */}
+                  <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>
+                    <TagList items={m.positions ?? []} />
+                  </td>
+
+                  <td style={tdSec}>{m.assigned_event_id != null ? String(m.assigned_event_id) : "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", maxWidth: "260px" }}>{m.notes ?? "—"}</td>
+
+                  {/* Extra data — wider, wrapping */}
+                  {extraKeys.map((k) => {
+                    const v = m.extra_data?.[k];
+                    const isArr = Array.isArray(v);
+                    return (
+                      <td key={k} style={{ ...tdStyle, whiteSpace: "normal", minWidth: "240px", maxWidth: "360px", verticalAlign: "top" }}>
+                        {isArr
+                          ? <TagList items={v as string[]} />
+                          : <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>{fmtVal(v)}</span>
+                        }
+                      </td>
+                    );
+                  })}
                 </tr>
               ))}
             </tbody>

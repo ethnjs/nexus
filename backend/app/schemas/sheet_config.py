@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
+from typing import Literal
 from pydantic import BaseModel, field_validator, model_validator
 
 
@@ -34,17 +35,124 @@ KNOWN_FIELDS: list[str] = [
 # Valid column mapping types — tells the sync service how to process a column
 # ---------------------------------------------------------------------------
 VALID_MAPPING_TYPES: set[str] = {
-    "string",           # store value as-is
-    "ignore",           # skip this column entirely
-    "boolean",          # "Yes"/"No" → True/False
-    "integer",          # parse to int
-    "multi_select",     # comma-separated → JSON array
-    "matrix_row",       # one row of a grid question → merged into availability JSON
-                        # requires row_key
-    "category_events",  # grouped event category string → list of specific event names
+    "string",        # store value as-is
+    "ignore",        # skip this column entirely
+    "boolean",       # "Yes"/"No" → True/False
+    "integer",       # parse to int
+    "multi_select",  # split on delimiter → JSON array
+    "matrix_row",    # one row of a grid question; what happens to the value
+                     # is determined by parse rules on the mapping
+                     # requires row_key
 }
 
 VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
+
+# ---------------------------------------------------------------------------
+# Backwards compatibility — map removed/renamed type names to current ones.
+# Applied on read so stale saved configs continue to work.
+# ---------------------------------------------------------------------------
+_LEGACY_TYPE_MAP: dict[str, str] = {
+    "availability_row": "matrix_row",   # renamed in feat/sheet-config-parse-rules
+    "category_events":  "string",       # removed in feat/sheet-config-parse-rules
+}
+
+
+def coerce_legacy_type(type_value: str) -> str:
+    """
+    Coerce a legacy ColumnMapping type string to its current equivalent.
+    Logs a warning for any type that needed coercion.
+    Returns the coerced value, or the original if no coercion is needed.
+    """
+    if type_value in _LEGACY_TYPE_MAP:
+        import logging
+        new_type = _LEGACY_TYPE_MAP[type_value]
+        logging.getLogger(__name__).warning(
+            "Legacy ColumnMapping type '%s' coerced to '%s'. "
+            "Resave this sheet config to clear this warning.",
+            type_value, new_type,
+        )
+        return new_type
+    return type_value
+
+
+# ---------------------------------------------------------------------------
+# ParseRule — a single transformation rule applied to a raw cell value.
+#
+# Rules run in order on the raw string before type coercion. Each rule sees
+# the output of the previous rule. All matching rules fire (not first-match).
+#
+# Conditions:
+#   always      — fires unconditionally; match is not required
+#   contains    — substring match (case-insensitive by default)
+#   equals      — exact match
+#   starts_with — prefix match
+#   ends_with   — suffix match
+#   regex       — full Python regex match against the whole string
+#
+# Actions:
+#   set              — replace entire value with `value`
+#   replace          — replace matched portion with `value`
+#                      (for regex condition, uses re.sub; otherwise str.replace)
+#   prepend          — prepend `value` to the current string
+#   append           — append `value` to the current string
+#   discard          — treat cell as empty/null (value not required)
+#   parse_availability — run availability parsing on this matrix_row cell
+#                        (only valid on matrix_row fields; condition must be always)
+# ---------------------------------------------------------------------------
+VALID_RULE_CONDITIONS: set[str] = {
+    "always",
+    "contains",
+    "equals",
+    "starts_with",
+    "ends_with",
+    "regex",
+}
+
+VALID_RULE_ACTIONS: set[str] = {
+    "set",
+    "replace",
+    "prepend",
+    "append",
+    "discard",
+    "parse_availability",
+}
+
+# Actions that require a `value` field
+_ACTIONS_REQUIRING_VALUE: set[str] = {"set", "replace", "prepend", "append"}
+
+
+class ParseRule(BaseModel):
+    model_config = {"populate_by_name": True}
+ 
+    condition: str               # one of VALID_RULE_CONDITIONS
+    match: str | None = None     # required for all conditions except "always"
+    case_sensitive: bool = False
+    action: str                  # one of VALID_RULE_ACTIONS
+    value: str | None = None     # required for set, replace, prepend, append
+ 
+    def model_dump(self, **kwargs):
+        kwargs.setdefault("exclude_none", True)
+        return super().model_dump(**kwargs)
+ 
+    @field_validator("condition")
+    @classmethod
+    def validate_condition(cls, v: str) -> str:
+        if v not in VALID_RULE_CONDITIONS:
+            raise ValueError(f"condition must be one of: {VALID_RULE_CONDITIONS}")
+        return v
+ 
+    @field_validator("action")
+    @classmethod
+    def validate_action(cls, v: str) -> str:
+        if v not in VALID_RULE_ACTIONS:
+            raise ValueError(f"action must be one of: {VALID_RULE_ACTIONS}")
+        return v
+ 
+    # model_validator REMOVED — all business logic validation (match required,
+    # value required, regex compiles, parse_availability condition) is handled
+    # by validate_column_mappings() in sheets_validation.py so that errors are
+    # returned in our structured { errors, warnings } format rather than as raw
+    # Pydantic validation errors.
 
 
 # ---------------------------------------------------------------------------
@@ -53,14 +161,21 @@ VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
 class ColumnMapping(BaseModel):
     model_config = {"populate_by_name": True}
 
-    field: str          # target DB field name from KNOWN_FIELDS
-    type: str           # one of VALID_MAPPING_TYPES
-    row_key: str | None = None  # required for matrix_row — time label e.g. "8:00 AM - 10:00 AM"
-    extra_key: str | None = None  # for extra_data fields — key in the JSON blob
+    field: str                          # target DB field name from KNOWN_FIELDS
+    type: str                           # one of VALID_MAPPING_TYPES
+    row_key: str | None = None          # required for matrix_row — e.g. "8:00 AM - 10:00 AM"
+    extra_key: str | None = None        # required when field is "extra_data"
+    rules: list[ParseRule] | None = None  # ordered transform rules, applied before type coercion
+    delimiter: str | None = None        # for multi_select only; defaults to "," if absent
 
     def model_dump(self, **kwargs):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(**kwargs)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def coerce_type(cls, v: str) -> str:
+        return coerce_legacy_type(v)
 
     @field_validator("field")
     @classmethod
@@ -77,13 +192,24 @@ class ColumnMapping(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_matrix_row_key(self) -> ColumnMapping:
+    def validate_mapping(self) -> ColumnMapping:
         if self.type == "matrix_row" and not self.row_key:
             raise ValueError("row_key is required for matrix_row type")
         if self.type == "ignore" and self.field != "__ignore__":
             raise ValueError("field must be '__ignore__' when type is 'ignore'")
         if self.field == "extra_data" and not self.extra_key:
             raise ValueError("extra_key is required when field is 'extra_data'")
+        if self.delimiter is not None and self.type != "multi_select":
+            raise ValueError("delimiter is only valid for multi_select type")
+
+        # parse_availability rules are only valid on matrix_row fields
+        if self.rules:
+            for i, rule in enumerate(self.rules):
+                if rule.action == "parse_availability" and self.type != "matrix_row":
+                    raise ValueError(
+                        f"Rule {i}: parse_availability is only valid on matrix_row fields"
+                    )
+
         return self
 
 
@@ -136,6 +262,20 @@ class SheetConfigRead(SheetConfigBase):
 
     model_config = {"from_attributes": True}
 
+class SheetConfigReadWithWarnings(SheetConfigRead):
+    """SheetConfigRead extended with validation warnings from a successful save."""
+    warnings: list[dict] = []
+
+class ValidateMappingsRequest(BaseModel):
+    """Request body for POST /configs/validate-mappings/ — column mappings to validate."""
+    column_mappings: dict[str, ColumnMapping] = {}
+ 
+ 
+class ValidateMappingsResponse(BaseModel):
+    """Response from POST /configs/validate-mappings/ — validation result without DB write."""
+    ok:       bool
+    errors:   list[dict] = []   # list of {header, rule_index, message}
+    warnings: list[dict] = []   # list of {header, rule_index, message}
 
 # ---------------------------------------------------------------------------
 # Wizard step request/response shapes
@@ -167,12 +307,16 @@ class SheetHeadersResponse(BaseModel):
     Returns column headers and auto-detected rich mapping suggestions.
     suggestions maps each header to a ColumnMapping dict.
     known_fields lists all valid field names for the UI dropdown.
+    valid_types lists all valid type strings for the UI dropdown.
+    valid_rule_conditions and valid_rule_actions list valid values for rule editors.
     """
     sheet_name: str
     headers: list[str]
     suggestions: dict[str, ColumnMapping]
     known_fields: list[str] = KNOWN_FIELDS
     valid_types: list[str] = list(VALID_MAPPING_TYPES)
+    valid_rule_conditions: list[str] = list(VALID_RULE_CONDITIONS)
+    valid_rule_actions: list[str] = list(VALID_RULE_ACTIONS)
 
 
 # ---------------------------------------------------------------------------

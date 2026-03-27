@@ -8,7 +8,6 @@ import {
   MappingsExport,
   ImportSummary,
   parseMappingsJson,
-  parseMappingsCsv,
   applyImport,
 } from "@/lib/importMappings";
 import {
@@ -16,13 +15,16 @@ import {
   makeRichRow,
   SheetConfigMappingTable,
 } from "@/components/ui/SheetConfigMappingTable";
-import { SplitButton } from "@/components/ui/SplitButton";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
+import { Input } from "@/components/ui/Input";
+import { Select } from "@/components/ui/Select";
 import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
+import { useSheetValidation } from "@/lib/useSheetValidation";
+import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -32,64 +34,78 @@ const SHEET_TYPES = [
   { value: "events",       label: "Events" },
 ];
 
-const selectStyle: React.CSSProperties = {
-  height: "36px", padding: "0 10px",
-  border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-  fontFamily: "var(--font-sans)", fontSize: "12px",
-  color: "var(--color-text-primary)", background: "var(--color-bg)",
-  outline: "none", cursor: "pointer",
-};
-
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface SyncResult {
-  created: number;
-  updated: number;
-  skipped: number;
-  errors: Array<{ row: number; email: string | null; detail: string }>;
+  created:       number;
+  updated:       number;
+  skipped:       number;
+  errors:        Array<{ row: number; email: string | null; detail: string }>;
   last_synced_at: string;
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function emptyMappingRow(header: string, s?: ColumnMapping): MappingRow {
+  return {
+    header,
+    field:     s?.field     ?? "__ignore__",
+    type:      s?.type      ?? "ignore",
+    row_key:   s?.row_key   ?? "",
+    extra_key: s?.extra_key ?? "",
+    delimiter: s?.delimiter ?? "",
+    rules:     s?.rules     ?? [],
+  };
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function EditSheetPage() {
-  const router = useRouter();
-  const params = useParams();
+  const router       = useRouter();
+  const params       = useParams();
   const tournamentId = Number(params.tournamentId);
   const configId     = Number(params.configId);
 
   // Config + form fields
-  const [config, setConfig]           = useState<SheetConfig | null>(null);
-  const [label, setLabel]             = useState("");
-  const [sheetType, setSheetType]     = useState("interest");
-  const [selectedTab, setSelectedTab] = useState("");
+  const [config,        setConfig]        = useState<SheetConfig | null>(null);
+  const [label,         setLabel]         = useState("");
+  const [sheetType,     setSheetType]     = useState("interest");
+  const [selectedTab,   setSelectedTab]   = useState("");
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
-  const [isActive, setIsActive]       = useState(true);
+  const [isActive,      setIsActive]      = useState(true);
 
   // Headers + mapping
-  const [mappingRows, setMappingRows]       = useState<RichMappingRow[]>([]);
-  const [knownFields, setKnownFields]       = useState<string[]>([]);
-  const [validTypes, setValidTypes]         = useState<string[]>([]);
-  const [headersLoading, setHeadersLoading] = useState(false);
-  const [headersError, setHeadersError]     = useState("");
+  const [mappingRows,     setMappingRows]     = useState<RichMappingRow[]>([]);
+  const [knownFields,     setKnownFields]     = useState<string[]>([]);
+  const [validTypes,      setValidTypes]      = useState<string[]>([]);
+  const [validConditions, setValidConditions] = useState<string[]>([]);
+  const [validActions,    setValidActions]    = useState<string[]>([]);
+  const [headersLoading,  setHeadersLoading]  = useState(false);
+  const [headersError,    setHeadersError]    = useState("");
 
   // Load state
-  const [loading, setLoading]     = useState(true);
+  const [loading,   setLoading]   = useState(true);
   const [loadError, setLoadError] = useState("");
 
   // Save / sync
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [saveError, setSaveError]     = useState("");
-  const [syncLoading, setSyncLoading] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [syncResult, setSyncResult]   = useState<SyncResult | null>(null);
+  const [saveLoading,  setSaveLoading]  = useState(false);
+  const [syncLoading,  setSyncLoading]  = useState(false);
+  const [saveSuccess,  setSaveSuccess]  = useState(false);
+  const [syncResult,         setSyncResult]         = useState<SyncResult | null>(null);
+  const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
+  const [showErrorsModal,      setShowErrorsModal]      = useState(false);
+
+  // Validation (shared hook)
+  const {
+    validationErrors, validationWarnings, validationGeneration,
+    clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
+  } = useSheetValidation();
 
   // Import
-  const importInputRef                            = useRef<HTMLInputElement>(null);
-  const [importBanner, setImportBanner]           = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
-  const [showImportSummary, setShowImportSummary] = useState(false);
+  const importInputRef                             = useRef<HTMLInputElement>(null);
+  const [importBanner,      setImportBanner]       = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [showImportSummary, setShowImportSummary]  = useState(false);
 
-  // AbortController ref for header fetches
   const abortRef = useRef<AbortController | null>(null);
 
   // ── Load config on mount ────────────────────────────────────────────────
@@ -132,54 +148,32 @@ export default function EditSheetPage() {
 
     try {
       const result = await sheetsApi.headers(tournamentId, cfg.sheet_url, tabName);
-
       if (controller.signal.aborted) return;
 
       setKnownFields(result.known_fields);
       setValidTypes(result.valid_types);
+      setValidConditions(result.valid_rule_conditions);
+      setValidActions(result.valid_rule_actions);
 
       const liveHeaders  = new Set(result.headers);
       const savedHeaders = new Set(Object.keys(cfg.column_mappings));
-
       const rows: RichMappingRow[] = [];
 
-      // Live headers that are in the saved config → "same" baseline against saved value
-      // Live headers NOT in saved config → "new" (suggestions as baseline)
       for (const header of result.headers) {
         const saved = cfg.column_mappings[header];
         if (saved) {
-          const base: MappingRow = {
-            header,
-            field:     saved.field     ?? "__ignore__",
-            type:      saved.type      ?? "ignore",
-            row_key:   saved.row_key   ?? "",
-            extra_key: saved.extra_key ?? "",
-          };
-          rows.push(makeRichRow(base, base));
+          const base = emptyMappingRow(header, saved);
+          // Open accordion by default for rows that already have rules
+          rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0));
         } else {
-          const s = result.suggestions[header];
-          const base: MappingRow = {
-            header,
-            field:     s?.field     ?? "__ignore__",
-            type:      s?.type      ?? "ignore",
-            row_key:   s?.row_key   ?? "",
-            extra_key: s?.extra_key ?? "",
-          };
+          const base = emptyMappingRow(header, result.suggestions[header]);
           rows.push(makeRichRow(base, base, "new"));
         }
       }
 
-      // Saved headers no longer in the live sheet → "removed"
       for (const header of savedHeaders) {
         if (!liveHeaders.has(header)) {
-          const saved = cfg.column_mappings[header];
-          const base: MappingRow = {
-            header,
-            field:     saved.field     ?? "__ignore__",
-            type:      saved.type      ?? "ignore",
-            row_key:   saved.row_key   ?? "",
-            extra_key: saved.extra_key ?? "",
-          };
+          const base = emptyMappingRow(header, cfg.column_mappings[header]);
           rows.push(makeRichRow(base, base, "removed"));
         }
       }
@@ -200,28 +194,26 @@ export default function EditSheetPage() {
     if (config) fetchHeaders({ ...config, sheet_name: tab }, tab);
   }
 
-  // ── Update a row + recompute state ──────────────────────────────────────
+  // ── Update row ──────────────────────────────────────────────────────────
 
   function updateRow(idx: number, patch: Partial<MappingRow>) {
     setMappingRows((prev) =>
       prev.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
-        // "new" and "removed" states are locked — only "same"/"changed" can flip
         if (r.state === "new" || r.state === "removed") return { ...next, state: r.state };
         return makeRichRow(next, r.baseline, undefined, r.importedValue);
       })
     );
+    const header = mappingRows[idx]?.header;
+    if (header) clearRow(header);
   }
 
   // ── Import ──────────────────────────────────────────────────────────────
 
-  function triggerImport(accept: string) {
+  function triggerImport() {
     setImportBanner(null);
-    if (importInputRef.current) {
-      importInputRef.current.accept = accept;
-      importInputRef.current.click();
-    }
+    importInputRef.current?.click();
   }
 
   function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -230,115 +222,148 @@ export default function EditSheetPage() {
     e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
-    const isCsv  = file.name.endsWith(".csv")  || file.type === "text/csv";
+
+    if (!isJson) {
+      setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      let parsed: MappingsExport | null = null;
+      const parsed: MappingsExport | null = parseMappingsJson(text);
 
-      if (isJson) {
-        parsed = parseMappingsJson(text);
-        if (!parsed) {
-          setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
-          return;
-        }
-      } else if (isCsv) {
-        parsed = parseMappingsCsv(text);
-        if (!parsed) {
-          setImportBanner({ variant: "error", message: "Invalid CSV file — expected columns: header, field, type, row_key, extra_key" });
-          return;
-        }
-      } else {
-        setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json or .csv file." });
+      if (!parsed) {
+        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
         return;
       }
 
-      // Only apply import to non-removed rows
       const activeRows: MappingRow[] = mappingRows
         .filter((r) => r.state !== "removed")
-        .map((r) => ({ header: r.header, field: r.field, type: r.type, row_key: r.row_key, extra_key: r.extra_key }));
+        .map((r) => ({
+          header: r.header, field: r.field, type: r.type,
+          row_key: r.row_key, extra_key: r.extra_key,
+          delimiter: r.delimiter, rules: r.rules,
+        }));
 
       const { updatedRows, summary } = applyImport(activeRows, parsed);
 
+      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
+
+      // Single setMappingRows call — merges import data and openOnMount flag atomically
       setMappingRows((prev) =>
         prev.map((r) => {
           if (r.state === "removed") return r;
           const updated = updatedRows.find((u) => u.header === r.header);
           if (!updated) return r;
-          // importedValue records what the import set for this row
           const importedValue: MappingRow = { ...updated };
-          // "new" state is preserved; others recompute vs baseline
-          if (r.state === "new") return { ...r, ...updated, importedValue };
-          return makeRichRow(updated, r.baseline, undefined, importedValue);
+          const hadRuleChanges = updatedList.some(
+            (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+          );
+          const base = r.state === "new"
+            ? { ...r, ...updated, importedValue }
+            : makeRichRow(updated, r.baseline, undefined, importedValue);
+          return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
 
       if (parsed.label && !label) setLabel(parsed.label);
       if (parsed.sheet_type) setSheetType(parsed.sheet_type);
 
-      const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
+
+      // Clear openOnMount after a tick so the effect only fires once
+      setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
     };
     reader.readAsText(file);
   }
 
-  // ── Build column mappings for save ──────────────────────────────────────
+  // ── Build column mappings ───────────────────────────────────────────────
 
   const buildColumnMappings = useCallback((): Record<string, ColumnMapping> => {
     const result: Record<string, ColumnMapping> = {};
     for (const row of mappingRows) {
       if (row.state === "removed") continue;
       const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
-      if (row.type === "matrix_row" && row.row_key) mapping.row_key = row.row_key;
-      if (row.field === "extra_data" && row.extra_key) mapping.extra_key = row.extra_key;
+      if (row.type === "matrix_row"   && row.row_key)    mapping.row_key   = row.row_key;
+      if (row.field === "extra_data"  && row.extra_key)  mapping.extra_key = row.extra_key;
+      if (row.type === "multi_select" && row.delimiter)  mapping.delimiter = row.delimiter;
+      if (row.rules.length > 0) mapping.rules = row.rules;
       result[row.header] = mapping;
     }
     return result;
   }, [mappingRows]);
 
-  // ── Save ────────────────────────────────────────────────────────────────
+  // ── Save & Sync ─────────────────────────────────────────────────────────
 
-  async function handleSave() {
+  // ── Validate + save helpers ────────────────────────────────────────────
+
+  function buildPayload() {
+    return {
+      label,
+      sheet_type:      sheetType as SheetConfig["sheet_type"],
+      sheet_name:      selectedTab,
+      column_mappings: buildColumnMappings(),
+      is_active:       isActive,
+    };
+  }
+
+  async function doSave() {
     setSaveLoading(true);
-    setSaveError("");
-    setSaveSuccess(false);
     try {
-      await sheetsApi.updateConfig(tournamentId, configId, {
-        label,
-        sheet_type: sheetType as SheetConfig["sheet_type"],
-        sheet_name: selectedTab,
-        column_mappings: buildColumnMappings(),
-        is_active: isActive,
-      });
+      const saved = await sheetsApi.updateConfig(tournamentId, configId, buildPayload());
+      handleSaveSuccess(saved);
       setSaveSuccess(true);
-    } catch {
-      setSaveError("Failed to save changes.");
+    } catch (e: unknown) {
+      if (!handle422(e)) setGenericError("Failed to save changes.");
     } finally {
       setSaveLoading(false);
     }
   }
 
-  // ── Save & Sync ─────────────────────────────────────────────────────────
-
-  async function handleSaveAndSync() {
+  async function doSaveAndSync() {
+    setShowWarningsConfirm(false);
     setSyncLoading(true);
-    setSaveError("");
     setSaveSuccess(false);
     setSyncResult(null);
     try {
-      await sheetsApi.updateConfig(tournamentId, configId, {
-        label,
-        sheet_type: sheetType as SheetConfig["sheet_type"],
-        sheet_name: selectedTab,
-        column_mappings: buildColumnMappings(),
-        is_active: isActive,
-      });
+      const saved = await sheetsApi.updateConfig(tournamentId, configId, buildPayload());
+      handleSaveSuccess(saved);
       const result = await sheetsApi.sync(tournamentId, configId);
       setSyncResult(result);
-    } catch {
-      setSaveError("Failed to save or sync.");
+    } catch (e: unknown) {
+      if (!handle422(e)) setGenericError("Failed to save or sync.");
+    } finally {
+      setSyncLoading(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaveLoading(true);
+    try {
+      const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
+      const { ok } = handleValidateResult(validation);
+      if (!ok) { setShowErrorsModal(true); return; }
+      await doSave();
+    } catch (e: unknown) {
+      if (!handle422(e)) setGenericError("Failed to save changes.");
+    } finally {
+      setSaveLoading(false);
+    }
+  }
+
+  async function handleSaveAndSync() {
+    setSyncLoading(true);
+    try {
+      const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
+      const { ok, shouldConfirm } = handleValidateResult(validation);
+      if (!ok) { setShowErrorsModal(true); return; }
+      if (shouldConfirm) { setShowWarningsConfirm(true); return; }
+      if (validation.warnings.length > 0) return;
+      await doSaveAndSync();
+    } catch (e: unknown) {
+      setGenericError("Failed to validate.");
     } finally {
       setSyncLoading(false);
     }
@@ -388,85 +413,66 @@ export default function EditSheetPage() {
 
         {/* ── Config fields ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <div>
-            <FieldLabel htmlFor="label">Label</FieldLabel>
-            <input
-              id="label"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              style={{ ...selectStyle, width: "100%", height: "44px", padding: "0 14px" }}
-            />
-          </div>
-          <div>
-            <FieldLabel>Sheet Type</FieldLabel>
-            <select value={sheetType} onChange={(e) => setSheetType(e.target.value)} style={{ ...selectStyle, width: "100%", height: "44px" }}>
-              {SHEET_TYPES.map(({ value, label: l }) => (
-                <option key={value} value={value}>{l}</option>
-              ))}
-            </select>
-          </div>
+          <Input
+            label="Label"
+            id="label"
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            font="sans"
+            fullWidth
+          />
+          <Select
+            label="Sheet Type"
+            value={sheetType}
+            onChange={setSheetType}
+            options={SHEET_TYPES}
+            fullWidth
+          />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "16px", alignItems: "end" }}>
-          <div>
-            <FieldLabel>Sheet Tab</FieldLabel>
-            <select value={selectedTab} onChange={(e) => handleTabChange(e.target.value)} style={{ ...selectStyle, width: "100%", height: "44px" }}>
-              {availableTabs.map((tab) => (
-                <option key={tab} value={tab}>{tab}</option>
-              ))}
-            </select>
-          </div>
+          <Select
+            label="Sheet Tab"
+            value={selectedTab}
+            onChange={handleTabChange}
+            options={availableTabs.map((tab) => ({ value: tab, label: tab }))}
+            fullWidth
+          />
           <label style={{ display: "flex", alignItems: "center", gap: "8px", height: "44px", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", flexShrink: 0 }}>
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px" }}
-            />
+            <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px" }} />
             Active
           </label>
         </div>
 
         {/* ── Mapping table ── */}
         <div>
+          {/* Validation banner — top of mapping section */}
+          {(validationErrors.length > 0 || validationWarnings.length > 0) && (
+            <div style={{ marginBottom: "12px" }}>{renderErrorBanner()}</div>
+          )}
+
           {/* Toolbar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "10px" }}>
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
                 {[
-                  { label: `${sameCount} unchanged`,          color: "var(--color-text-tertiary)", show: true },
-                  { label: `${changedCount} edited`,          color: "#854D0E",                    show: changedCount > 0 },
-                  { label: `${newCount} new`,                 color: "#16A34A",                    show: newCount > 0 },
-                  { label: `${removedCount} removed`,         color: "#DC2626",                    show: removedCount > 0 },
+                  { label: `${sameCount} unchanged`,  color: "var(--color-text-tertiary)", show: true },
+                  { label: `${changedCount} edited`,  color: "#854D0E",                    show: changedCount  > 0 },
+                  { label: `${newCount} new`,          color: "#16A34A",                    show: newCount      > 0 },
+                  { label: `${removedCount} removed`, color: "#DC2626",                    show: removedCount  > 0 },
                 ].filter((s) => s.show).map(({ label: l, color }) => (
                   <span key={l} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color }}>{l}</span>
                 ))}
               </div>
             )}
             {headersLoading && (
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-                Fetching headers…
-              </span>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>Fetching headers…</span>
             )}
-
             <div style={{ flexShrink: 0 }}>
-              <SplitButton
-                label="Import JSON"
-                onClick={() => triggerImport(".json,application/json")}
-                variant="secondary"
-                size="sm"
-                options={[
-                  { label: "Import JSON", action: () => triggerImport(".json,application/json") },
-                  { label: "Import CSV",  action: () => triggerImport(".csv,text/csv") },
-                ]}
-              />
-              <input
-                ref={importInputRef}
-                type="file"
-                accept=".json,.csv,application/json,text/csv"
-                style={{ display: "none" }}
-                onChange={handleImportFile}
-              />
+              <Button variant="secondary" size="sm" onClick={triggerImport}>
+                Import JSON
+              </Button>
+              <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>
 
@@ -477,18 +483,14 @@ export default function EditSheetPage() {
                 message={importBanner.message}
                 onDismiss={() => setImportBanner(null)}
                 action={importBanner.summary ? (
-                  <Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>
-                    Show summary
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>Show summary</Button>
                 ) : undefined}
               />
             </div>
           )}
 
           {headersError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginBottom: "10px" }}>
-              {headersError}
-            </p>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginBottom: "10px" }}>{headersError}</p>
           )}
 
           {!headersLoading && mappingRows.length > 0 && (
@@ -496,17 +498,20 @@ export default function EditSheetPage() {
               rows={mappingRows}
               knownFields={knownFields}
               validTypes={validTypes}
+              validConditions={validConditions}
+              validActions={validActions}
               onChangeRow={updateRow}
               baselineLabel="saved"
+              validationErrors={validationErrors}
+              validationWarnings={validationWarnings}
+              validationGeneration={validationGeneration}
             />
           )}
         </div>
 
         {/* ── Save actions ── */}
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {saveError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{saveError}</p>
-          )}
+          {renderErrorBanner()}
           {saveSuccess && (
             <Banner variant="success" message="Changes saved successfully." onDismiss={() => setSaveSuccess(false)} />
           )}
@@ -529,13 +534,11 @@ export default function EditSheetPage() {
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
               Sync Results
             </p>
-
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
               <StatCard label="Created" value={syncResult.created} color="var(--color-success)" />
               <StatCard label="Updated" value={syncResult.updated} />
               <StatCard label="Skipped" value={syncResult.skipped} color="var(--color-warning)" />
             </div>
-
             {syncResult.errors.length > 0 ? (
               <div style={{ border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", overflow: "hidden" }}>
                 <div style={{ padding: "10px 16px", background: "var(--color-danger-subtle)", borderBottom: "1px solid var(--color-danger)" }}>
@@ -545,11 +548,7 @@ export default function EditSheetPage() {
                 </div>
                 <div style={{ maxHeight: "200px", overflowY: "auto" }}>
                   {syncResult.errors.map((err, i) => (
-                    <div key={i} style={{
-                      padding: "10px 16px",
-                      borderBottom: i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none",
-                      display: "flex", gap: "12px",
-                    }}>
+                    <div key={i} style={{ padding: "10px 16px", borderBottom: i < syncResult.errors.length - 1 ? "1px solid var(--color-border)" : "none", display: "flex", gap: "12px" }}>
                       <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>Row {err.row}</span>
                       {err.email && <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)", flexShrink: 0 }}>{err.email}</span>}
                       <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)" }}>{err.detail}</span>
@@ -558,22 +557,13 @@ export default function EditSheetPage() {
                 </div>
               </div>
             ) : (
-              <div style={{
-                background: "var(--color-surface)", border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-md)", padding: "16px",
-                display: "flex", alignItems: "center", gap: "10px",
-              }}>
+              <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
                 <span style={{ color: "var(--color-success)" }}><IconCheckCircle /></span>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-                  All rows imported successfully — no errors.
-                </span>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>All rows imported successfully — no errors.</span>
               </div>
             )}
-
             <div>
-              <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>
-                Back to Sheets
-              </Button>
+              <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>Back to Sheets</Button>
             </div>
           </div>
         )}
@@ -581,9 +571,22 @@ export default function EditSheetPage() {
       </div>
 
       {showImportSummary && importBanner?.summary && (
-        <ImportSummaryModal
-          summary={importBanner.summary}
-          onClose={() => setShowImportSummary(false)}
+        <ImportSummaryModal summary={importBanner.summary} onClose={() => setShowImportSummary(false)} />
+      )}
+
+      {showWarningsConfirm && (
+        <SheetMappingValidationWarningsModal
+          warnings={validationWarnings}
+          onConfirm={doSaveAndSync}
+          onCancel={() => setShowWarningsConfirm(false)}
+        />
+      )}
+
+      {showErrorsModal && (
+        <SheetMappingValidationErrorsModal
+          errors={validationErrors}
+          warnings={validationWarnings}
+          onClose={() => setShowErrorsModal(false)}
         />
       )}
     </div>

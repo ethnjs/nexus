@@ -20,12 +20,14 @@ COLUMN_MAPPINGS = {
     "Last Name":       {"field": "last_name",        "type": "string"},
     "T-Shirt Size":    {"field": "shirt_size",       "type": "string"},
     "Role Preference": {"field": "role_preference",  "type": "multi_select"},
-    "Which events?":   {"field": "event_preference", "type": "category_events"},
+    "Which events?":   {"field": "event_preference", "type": "string"},
     "Availability [8:00 AM - 10:00 AM]": {
         "field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM",
+        "rules": [{"condition": "always", "action": "parse_availability"}],
     },
     "Availability [10:00 AM - NOON]": {
         "field": "availability", "type": "matrix_row", "row_key": "10:00 AM - NOON",
+        "rules": [{"condition": "always", "action": "parse_availability"}],
     },
     "Transportation": {
         "field": "extra_data", "type": "string", "extra_key": "transportation",
@@ -40,16 +42,6 @@ def _make_tournament(client):
         "end_date": "2026-05-23T18:00:00",
         "blocks": NATS_BLOCKS,
         "volunteer_schema": {"custom_fields": []},
-    }).json()
-
-
-def _make_event(client, tournament_id):
-    return client.post(f"/tournaments/{tournament_id}/events/", json={
-        "tournament_id": tournament_id,
-        "name": "Boomilever",
-        "division": "C",
-        "category": "Technology & Engineering",
-        "blocks": [14],
     }).json()
 
 
@@ -81,7 +73,6 @@ def _list_memberships(client, tournament_id):
 def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, db):
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
-    _make_event(client, t["id"])
     cfg = _make_config(client, t["id"])
 
     mock_sheets_service.get_rows.return_value = [{
@@ -106,7 +97,6 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     assert data["errors"] == []
     assert data["last_synced_at"] is not None
 
-    # Verify via db directly — GET /users/by-email/ is admin-only
     from app.models.models import User as UserModel
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
     assert user is not None
@@ -118,7 +108,9 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     assert len(alice) == 1
     m = alice[0]
     assert m["role_preference"] == ["Event Volunteer"]
-    assert m["event_preference"] == ["Boomilever"]
+    # event_preference stored as string type — sync wraps it in a list to satisfy
+    # the list[str] schema; TD can add parse rules to normalize further
+    assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
     assert m["extra_data"]["transportation"] == "Driving"
 
 
@@ -160,9 +152,8 @@ def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):
     assert response.json()["created"] == 0
     assert response.json()["updated"] == 1
 
-    # Verify via db directly — GET /users/by-email/ is admin-only
     from app.models.models import User as UserModel
-    db.expire_all()  # ensure we get the latest committed state
+    db.expire_all()
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
     assert user.shirt_size == "L"
 
@@ -227,3 +218,103 @@ def test_sync_inactive_config(client, td_user, mock_sheets_service):
         json={"is_active": False},
     )
     assert _sync(client, t["id"], cfg["id"]).status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Backwards compatibility — legacy type names in saved configs
+# ---------------------------------------------------------------------------
+
+def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_service, db):
+    """
+    A saved config with type 'availability_row' (old name) should sync
+    correctly after being coerced to 'matrix_row' on read.
+    """
+    login(client, "td@test.com", "tdpass")
+    t = _make_tournament(client)
+
+    # Bypass schema validation by injecting the legacy type directly into the DB
+    from app.models.models import SheetConfig
+    import json
+    legacy_mappings = {
+        "Email Address":   {"field": "email",        "type": "string"},
+        "First Name":      {"field": "first_name",   "type": "string"},
+        "Last Name":       {"field": "last_name",    "type": "string"},
+        "Availability [8:00 AM - 10:00 AM]": {
+            "field": "availability", "type": "availability_row",
+            "row_key": "8:00 AM - 10:00 AM",
+        },
+    }
+    cfg_obj = SheetConfig(
+        tournament_id=t["id"],
+        label="Legacy Config",
+        sheet_type="interest",
+        sheet_url=FAKE_URL,
+        sheet_name="Form Responses 1",
+        spreadsheet_id="fake123",
+        column_mappings=legacy_mappings,
+        is_active=True,
+    )
+    db.add(cfg_obj)
+    db.commit()
+    db.refresh(cfg_obj)
+
+    mock_sheets_service.get_rows.return_value = [{
+        "Email Address": "legacy@example.com",
+        "First Name": "Legacy",
+        "Last Name": "User",
+        "Availability [8:00 AM - 10:00 AM]": "Thursday 5/21",
+    }]
+
+    response = _sync(client, t["id"], cfg_obj.id)
+    assert response.status_code == 200
+    assert response.json()["created"] == 1
+    assert response.json()["errors"] == []
+
+
+def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_service, db):
+    """
+    A saved config with type 'category_events' (removed type) should sync
+    without crashing — the column is coerced to 'string' and stored as-is.
+    """
+    login(client, "td@test.com", "tdpass")
+    t = _make_tournament(client)
+
+    from app.models.models import SheetConfig
+    legacy_mappings = {
+        "Email Address": {"field": "email",            "type": "string"},
+        "First Name":    {"field": "first_name",       "type": "string"},
+        "Last Name":     {"field": "last_name",        "type": "string"},
+        "Which events?": {"field": "event_preference", "type": "category_events"},
+    }
+    cfg_obj = SheetConfig(
+        tournament_id=t["id"],
+        label="Legacy Config",
+        sheet_type="interest",
+        sheet_url=FAKE_URL,
+        sheet_name="Form Responses 1",
+        spreadsheet_id="fake123",
+        column_mappings=legacy_mappings,
+        is_active=True,
+    )
+    db.add(cfg_obj)
+    db.commit()
+    db.refresh(cfg_obj)
+
+    mock_sheets_service.get_rows.return_value = [{
+        "Email Address": "legacy2@example.com",
+        "First Name": "Legacy",
+        "Last Name": "User",
+        "Which events?": "Technology & Engineering (Boomilever)",
+    }]
+
+    response = _sync(client, t["id"], cfg_obj.id)
+    assert response.status_code == 200
+    assert response.json()["created"] == 1
+    assert response.json()["errors"] == []
+
+    memberships = _list_memberships(client, t["id"])
+    from app.models.models import User as UserModel
+    user = db.query(UserModel).filter(UserModel.email == "legacy2@example.com").first()
+    m = [m for m in memberships if m["user_id"] == user.id][0]
+    # Stored as single-element list after category_events → string coercion + list wrap
+    assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]

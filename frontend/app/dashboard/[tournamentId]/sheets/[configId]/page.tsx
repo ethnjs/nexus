@@ -6,7 +6,7 @@ import { membershipsApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { IconArrowLeft, IconEdit, IconWarning } from "@/components/ui/Icons";
+import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
   RichMappingRow,
   makeRichRow,
@@ -27,6 +27,24 @@ function fmtDateTime(iso: string) {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
   });
+}
+
+// ─── Export helper ────────────────────────────────────────────────────────────
+
+function exportJson(cfg: SheetConfig) {
+  const payload = {
+    label: cfg.label,
+    sheet_type: cfg.sheet_type,
+    sheet_name: cfg.sheet_name,
+    column_mappings: cfg.column_mappings,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${cfg.label.replace(/\s+/g, "_")}_mappings.json`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Delete Confirmation Modals ───────────────────────────────────────────────
@@ -164,7 +182,6 @@ export default function ViewSheetConfigPage() {
   const [deleteLoading, setDeleteLoading]                 = useState(false);
   const [deleteError, setDeleteError]                     = useState("");
 
-  // View-only rows derived from config (no editable state needed)
   const [viewRows, setViewRows] = useState<RichMappingRow[]>([]);
 
   useEffect(() => {
@@ -175,7 +192,6 @@ export default function ViewSheetConfigPage() {
         const cfg = await sheetsApi.getConfig(tournamentId, configId);
         setConfig(cfg);
 
-        // Build view-only RichMappingRows — all state = "same", baseline = current value
         const rows: RichMappingRow[] = Object.entries(cfg.column_mappings).map(([header, mapping]) => {
           const base = {
             header,
@@ -183,6 +199,8 @@ export default function ViewSheetConfigPage() {
             type:      mapping.type      ?? "ignore",
             row_key:   mapping.row_key   ?? "",
             extra_key: mapping.extra_key ?? "",
+            delimiter: mapping.delimiter ?? "",
+            rules:     mapping.rules     ?? [],
           };
           return makeRichRow(base, base);
         });
@@ -213,8 +231,6 @@ export default function ViewSheetConfigPage() {
     setDeleteLoading(true);
     setDeleteError("");
     try {
-      // Fetch all memberships directly and delete each one.
-      // TODO: replace with a single backend endpoint DELETE /tournaments/{id}/memberships/
       const memberships = await membershipsApi.listByTournament(tournamentId);
       await Promise.all(
         memberships.map((m) => membershipsApi.delete(tournamentId, m.id))
@@ -251,8 +267,8 @@ export default function ViewSheetConfigPage() {
   }
 
   const mappingEntries = Object.entries(config.column_mappings);
-  const mappedCount   = mappingEntries.filter(([, m]) => m.type !== "ignore").length;
-  const ignoredCount  = mappingEntries.filter(([, m]) => m.type === "ignore").length;
+  const mappedCount    = mappingEntries.filter(([, m]) => m.type !== "ignore").length;
+  const ignoredCount   = mappingEntries.filter(([, m]) => m.type === "ignore").length;
 
   return (
     <div style={{ width: "100%" }}>
@@ -260,14 +276,24 @@ export default function ViewSheetConfigPage() {
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
         <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
-        >
-          <IconEdit size={18} />
-          Edit
-        </Button>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => exportJson(config)}
+          >
+            <IconExport size={18} />
+            Export JSON
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
+          >
+            <IconEdit size={18} />
+            Edit
+          </Button>
+        </div>
       </div>
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>{config.label}</h1>
@@ -279,16 +305,13 @@ export default function ViewSheetConfigPage() {
 
         {/* ── Metadata ── */}
         <div style={{
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr 1fr",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-md)",
-          overflow: "hidden",
+          display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr",
+          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "hidden",
         }}>
           {[
-            { label: "Type",       value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
-            { label: "Sheet Tab",  value: config.sheet_name },
-            { label: "Status",     value: config.is_active ? "Active" : "Inactive" },
+            { label: "Type",        value: SHEET_TYPE_LABELS[config.sheet_type] ?? config.sheet_type },
+            { label: "Sheet Tab",   value: config.sheet_name },
+            { label: "Status",      value: config.is_active ? "Active" : "Inactive" },
             { label: "Last Synced", value: config.last_synced_at ? fmtDateTime(config.last_synced_at) : "Never" },
           ].map(({ label, value }, i, arr) => (
             <div
@@ -299,18 +322,10 @@ export default function ViewSheetConfigPage() {
                 background: "var(--color-surface)",
               }}
             >
-              <p style={{
-                fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-                textTransform: "uppercase", letterSpacing: "0.07em",
-                color: "var(--color-text-tertiary)", marginBottom: "4px",
-              }}>
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", marginBottom: "4px" }}>
                 {label}
               </p>
-              <p style={{
-                fontFamily: "var(--font-mono)", fontSize: "12px",
-                color: "var(--color-text-primary)",
-                whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-              }}>
+              <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {value}
               </p>
             </div>
@@ -324,7 +339,6 @@ export default function ViewSheetConfigPage() {
               {mappedCount} mapped, {ignoredCount} ignored
             </span>
           </div>
-
           <SheetConfigMappingTable
             rows={viewRows}
             knownFields={[]}
@@ -334,13 +348,7 @@ export default function ViewSheetConfigPage() {
         </div>
 
         {/* ── Danger zone ── */}
-        <div style={{
-          borderTop: "1px solid var(--color-border)",
-          paddingTop: "24px",
-          display: "flex",
-          flexDirection: "column",
-          gap: "12px",
-        }}>
+        <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: "24px", display: "flex", flexDirection: "column", gap: "12px" }}>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
             Danger Zone
           </p>
@@ -371,7 +379,6 @@ export default function ViewSheetConfigPage() {
 
       </div>
 
-      {/* ── Modals ── */}
       {showDeleteConfig && (
         <DeleteConfigModal
           label={config.label}

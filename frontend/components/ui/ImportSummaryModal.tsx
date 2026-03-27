@@ -1,6 +1,6 @@
 'use client'
 
-import { ImportSummary } from '@/lib/importMappings'
+import { ImportSummary, RuleDiff, FieldDiff, describeRule } from '@/lib/importMappings'
 import { Button } from '@/components/ui/Button'
 
 interface ImportSummaryModalProps {
@@ -8,277 +8,273 @@ interface ImportSummaryModalProps {
   onClose: () => void
 }
 
-const KNOWN_FIELDS_LABELS: Record<string, string> = {
-  "__ignore__":          "Ignore",
-  "first_name":          "First Name",
-  "last_name":           "Last Name",
-  "email":               "Email",
-  "phone":               "Phone",
-  "shirt_size":          "Shirt Size",
-  "dietary_restriction": "Dietary Restriction",
-  "university":          "University",
-  "major":               "Major",
-  "employer":            "Employer",
-  "role_preference":     "Role Preference",
-  "event_preference":    "Event Preference",
-  "availability":        "Availability",
-  "lunch_order":         "Lunch Order",
-  "notes":               "Notes",
-  "extra_data":          "Extra Data",
-}
+// ─── Rule diff row ────────────────────────────────────────────────────────────
 
-const TYPE_LABELS: Record<string, string> = {
-  string:          "Text",
-  ignore:          "Ignore",
-  boolean:         "Yes/No",
-  integer:         "Number",
-  multi_select:    "Multi-select",
-  matrix_row:      "Availability Row",
-  category_events: "Category Events",
-}
+function RuleDiffRow({ diff }: { diff: RuleDiff }) {
+  const idx = diff.index + 1
 
-function fieldLabel(field: string) {
-  return KNOWN_FIELDS_LABELS[field] ?? field
-}
+  if (diff.status === 'unchanged') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '5px 8px',
+        background: 'var(--color-bg)',
+        border: '1px solid var(--color-border)',
+        borderRadius: 'var(--radius-sm)',
+        opacity: 0.55,
+      }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: 'var(--color-text-tertiary)', minWidth: '16px', flexShrink: 0 }}>
+          {idx}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-secondary)' }}>
+          {describeRule(diff.from!)}
+        </span>
+      </div>
+    )
+  }
 
-function typeLabel(type: string) {
-  return TYPE_LABELS[type] ?? type
-}
+  if (diff.status === 'removed') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '5px 8px',
+        background: '#FFF5F5', border: '1px solid #FCA5A5',
+        borderRadius: 'var(--radius-sm)',
+      }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#DC2626', minWidth: '16px', flexShrink: 0, lineHeight: 1, alignSelf: 'center' }}>
+          {idx}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#DC2626', flex: 1 }}>
+          {describeRule(diff.from!)}
+        </span>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '10px', color: '#DC2626', flexShrink: 0 }}>removed</span>
+      </div>
+    )
+  }
 
-function describeRow(field: string, type: string, row_key: string, extra_key: string) {
-  const parts = [`${fieldLabel(field)} (${typeLabel(type)})`]
-  if (row_key)   parts.push(`row: ${row_key}`)
-  if (extra_key) parts.push(`key: ${extra_key}`)
-  return parts.join(', ')
-}
+  if (diff.status === 'added') {
+    return (
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '5px 8px',
+        background: '#F0FDF4', border: '1px solid #86EFAC',
+        borderRadius: 'var(--radius-sm)',
+      }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: '#16A34A', minWidth: '16px', flexShrink: 0, lineHeight: 1, alignSelf: 'center' }}>
+          {idx}
+        </span>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#16A34A', fontWeight: 600, flex: 1 }}>
+          {describeRule(diff.to!)}
+        </span>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '10px', color: '#16A34A', flexShrink: 0 }}>added</span>
+      </div>
+    )
+  }
 
-export function ImportSummaryModal({ summary, onClose }: ImportSummaryModalProps) {
-  const { updated, unchanged, notInSheet, notInFile } = summary
-
+  // changed — single box, number column centered, red line / green line flush with divider
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,0.35)',
-        zIndex: 200,
+    <div style={{
+      display: 'flex', alignItems: 'stretch',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius-sm)',
+      overflow: 'hidden',
+    }}>
+      {/* Rule number — centered vertically across both lines */}
+      <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background:   'var(--color-surface)',
-          border:       '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-lg)',
-          padding:      '28px',
-          width:        520,
-          maxWidth:     'calc(100vw - 32px)',
-          maxHeight:    '80vh',
-          display:      'flex',
-          flexDirection:'column',
-          boxShadow:    'var(--shadow-lg)',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <h2 style={{
-          fontFamily:   'Georgia, serif',
-          fontSize:     '22px',
-          color:        'var(--color-text-primary)',
-          marginBottom: '4px',
-          flexShrink:   0,
+        padding: '0 10px',
+        background: 'var(--color-bg)',
+        borderRight: '1px solid var(--color-border)',
+        flexShrink: 0,
+      }}>
+        <span style={{ fontFamily: 'var(--font-mono)', fontSize: '10px', fontWeight: 700, color: 'var(--color-text-tertiary)' }}>
+          {idx}
+        </span>
+      </div>
+      {/* Stacked lines — padding on both sides so text is flush with the divider gap */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+        <div style={{
+          padding: '5px 8px',
+          background: '#FFF5F5',
+          borderBottom: '1px solid var(--color-border)',
         }}>
-          Import Summary
-        </h2>
-        <p style={{
-          fontFamily:   'var(--font-sans)',
-          fontSize:     '13px',
-          color:        'var(--color-text-secondary)',
-          marginBottom: '20px',
-          flexShrink:   0,
-        }}>
-          {updated.length} updated · {unchanged} unchanged · {notInSheet.length} ignored · {notInFile.length} untouched
-        </p>
-
-        {/* Scrollable body */}
-        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-          {/* Updated */}
-          {updated.length > 0 && (
-            <Section title={`Updated (${updated.length})`} color="var(--color-text-primary)">
-              {updated.map(({ header, from, to }) => (
-                <div key={header} style={{
-                  padding:      '10px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background:   'var(--color-bg)',
-                  border:       '1px solid var(--color-border)',
-                }}>
-                  <div style={{
-                    fontFamily:   'var(--font-mono)',
-                    fontSize:     '12px',
-                    fontWeight:   600,
-                    color:        'var(--color-text-primary)',
-                    marginBottom: '6px',
-                  }}>
-                    {header}
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    <DiffLine
-                      label="From"
-                      value={describeRow(from.field, from.type, from.row_key, from.extra_key)}
-                      color="var(--color-danger)"
-                      bg="var(--color-danger-subtle)"
-                    />
-                    <DiffLine
-                      label="To"
-                      value={describeRow(to.field, to.type, to.row_key, to.extra_key)}
-                      color="var(--color-success)"
-                      bg="#F0FDF4"
-                    />
-                  </div>
-                </div>
-              ))}
-            </Section>
-          )}
-
-          {/* Unchanged */}
-          {unchanged > 0 && (
-            <Section title={`Unchanged (${unchanged})`} color="var(--color-text-secondary)">
-              <p style={{
-                fontFamily: 'var(--font-sans)',
-                fontSize:   '13px',
-                color:      'var(--color-text-secondary)',
-              }}>
-                {unchanged} column{unchanged !== 1 ? 's' : ''} matched and had no changes.
-              </p>
-            </Section>
-          )}
-
-          {/* Not in file — in sheet but file didn't mention them */}
-          {notInFile.length > 0 && (
-            <Section title={`Not in file — untouched (${notInFile.length})`} color="var(--color-text-secondary)">
-              <p style={{
-                fontFamily:   'var(--font-sans)',
-                fontSize:     '12px',
-                color:        'var(--color-text-secondary)',
-                marginBottom: '8px',
-              }}>
-                These sheet columns weren&apos;t in the import file — their mappings were left as-is.
-              </p>
-              <TagList items={notInFile} />
-            </Section>
-          )}
-
-          {/* Not in sheet — in file but no matching header */}
-          {notInSheet.length > 0 && (
-            <Section title={`Not in sheet — ignored (${notInSheet.length})`} color="var(--color-text-secondary)">
-              <p style={{
-                fontFamily:   'var(--font-sans)',
-                fontSize:     '12px',
-                color:        'var(--color-text-secondary)',
-                marginBottom: '8px',
-              }}>
-                These headers were in the import file but don&apos;t exist in the current sheet — they were ignored.
-              </p>
-              <TagList items={notInSheet} />
-            </Section>
-          )}
-
-          {/* All good, nothing to show */}
-          {updated.length === 0 && notInSheet.length === 0 && notInFile.length === 0 && (
-            <p style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize:   '13px',
-              color:      'var(--color-text-secondary)',
-            }}>
-              All columns matched and no changes were needed.
-            </p>
-          )}
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#DC2626' }}>
+            {describeRule(diff.from!)}
+          </span>
         </div>
-
-        {/* Footer */}
-        <div style={{ paddingTop: '20px', flexShrink: 0 }}>
-          <Button variant="secondary" size="md" onClick={onClose}>Close</Button>
+        <div style={{
+          padding: '5px 8px',
+          background: '#F0FDF4',
+        }}>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#16A34A', fontWeight: 600 }}>
+            {describeRule(diff.to!)}
+          </span>
         </div>
       </div>
     </div>
   )
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Field diff row ───────────────────────────────────────────────────────────
 
-function Section({
-  title, color, children,
-}: {
-  title: string; color: string; children: React.ReactNode
-}) {
+function FieldDiffRow({ diff }: { diff: FieldDiff }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', flexWrap: 'wrap' }}>
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 700,
+        textTransform: 'uppercase', letterSpacing: '0.05em',
+        color: 'var(--color-text-tertiary)', minWidth: '72px', flexShrink: 0,
+      }}>
+        {diff.label}
+      </span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: '#DC2626', background: '#FFF5F5', borderRadius: '3px', padding: '1px 5px' }}>
+        {diff.from}
+      </span>
+      <span style={{ color: 'var(--color-text-tertiary)', fontSize: '10px' }}>→</span>
+      <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', fontWeight: 600, color: '#16A34A', background: '#F0FDF4', borderRadius: '3px', padding: '1px 5px' }}>
+        {diff.to}
+      </span>
+    </div>
+  )
+}
+
+// ─── Updated row card ─────────────────────────────────────────────────────────
+
+function UpdatedRowCard({ entry }: { entry: ImportSummary['updated'][0] }) {
+  const { header, fieldDiffs, ruleDiffs } = entry
+  const hasFieldDiffs  = fieldDiffs.length > 0
+  const hasAnyRules    = ruleDiffs.length > 0
+  const hasRuleChanges = ruleDiffs.some((d) => d.status !== 'unchanged')
+
+  return (
+    <div style={{
+      borderRadius: 'var(--radius-sm)',
+      background:   'var(--color-bg)',
+      border:       '1px solid var(--color-border)',
+      overflow:     'hidden',
+    }}>
+      <div style={{
+        padding: '8px 12px',
+        borderBottom: '1px solid var(--color-border)',
+        background: 'var(--color-surface)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: '12px', fontWeight: 600,
+        color: 'var(--color-text-primary)',
+      }}>
+        {header}
+      </div>
+
+      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+        {hasFieldDiffs && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {fieldDiffs.map((diff) => <FieldDiffRow key={diff.label} diff={diff} />)}
+          </div>
+        )}
+        {hasAnyRules && (
+          <div>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--color-text-tertiary)', marginBottom: '6px' }}>
+              Parse Rules{!hasRuleChanges && ' (unchanged)'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {ruleDiffs.map((diff) => <RuleDiffRow key={diff.index} diff={diff} />)}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Section wrapper ──────────────────────────────────────────────────────────
+
+function Section({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   return (
     <div>
-      <p style={{
-        fontFamily:   'var(--font-sans)',
-        fontSize:     '11px',
-        fontWeight:   600,
-        textTransform:'uppercase',
-        letterSpacing:'0.07em',
-        color,
-        marginBottom: '10px',
-      }}>
+      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.07em', color, marginBottom: '10px' }}>
         {title}
       </p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {children}
       </div>
     </div>
   )
 }
 
-function DiffLine({ label, value, color, bg }: { label: string; value: string; color: string; bg: string }) {
-  return (
-    <div style={{
-      display:      'flex',
-      gap:          '8px',
-      alignItems:   'baseline',
-      background:   bg,
-      borderRadius: 'var(--radius-sm)',
-      padding:      '3px 8px',
-    }}>
-      <span style={{
-        fontFamily:  'var(--font-sans)',
-        fontSize:    '10px',
-        fontWeight:  700,
-        color,
-        flexShrink:  0,
-        width:       '28px',
-      }}>
-        {label}
-      </span>
-      <span style={{
-        fontFamily: 'var(--font-mono)',
-        fontSize:   '11px',
-        color:      'var(--color-text-primary)',
-      }}>
-        {value}
-      </span>
-    </div>
-  )
-}
+// ─── Tag list ─────────────────────────────────────────────────────────────────
 
 function TagList({ items }: { items: string[] }) {
   return (
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
       {items.map((item) => (
-        <span key={item} style={{
-          fontFamily:   'var(--font-mono)',
-          fontSize:     '11px',
-          color:        'var(--color-text-secondary)',
-          background:   'var(--color-bg)',
-          border:       '1px solid var(--color-border)',
-          borderRadius: 'var(--radius-sm)',
-          padding:      '2px 8px',
-        }}>
+        <span key={item} style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-secondary)', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-sm)', padding: '2px 8px' }}>
           {item}
         </span>
       ))}
+    </div>
+  )
+}
+
+// ─── Modal ────────────────────────────────────────────────────────────────────
+
+export function ImportSummaryModal({ summary, onClose }: ImportSummaryModalProps) {
+  const { updated, unchanged, notInSheet, notInFile } = summary
+
+  return (
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={onClose}
+    >
+      <div
+        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '28px', width: 720, maxWidth: 'calc(100vw - 32px)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 style={{ fontFamily: 'Georgia, serif', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '4px', flexShrink: 0 }}>
+          Import Summary
+        </h2>
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '20px', flexShrink: 0 }}>
+          {updated.length} updated · {unchanged} unchanged · {notInSheet.length} ignored · {notInFile.length} untouched
+        </p>
+
+        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {updated.length > 0 && (
+            <Section title={`Updated (${updated.length})`} color="var(--color-text-primary)">
+              {updated.map((entry) => <UpdatedRowCard key={entry.header} entry={entry} />)}
+            </Section>
+          )}
+          {unchanged > 0 && (
+            <Section title={`Unchanged (${unchanged})`} color="var(--color-text-secondary)">
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                {unchanged} column{unchanged !== 1 ? 's' : ''} matched the import file exactly — no changes applied.
+              </p>
+            </Section>
+          )}
+          {notInFile.length > 0 && (
+            <Section title={`Not in file — untouched (${notInFile.length})`} color="var(--color-text-secondary)">
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                These sheet columns weren&apos;t in the import file — their mappings were left as-is.
+              </p>
+              <TagList items={notInFile} />
+            </Section>
+          )}
+          {notInSheet.length > 0 && (
+            <Section title={`Not in sheet — ignored (${notInSheet.length})`} color="var(--color-text-secondary)">
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                These headers were in the import file but don&apos;t exist in the current sheet — they were ignored.
+              </p>
+              <TagList items={notInSheet} />
+            </Section>
+          )}
+          {updated.length === 0 && notInSheet.length === 0 && notInFile.length === 0 && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+              All columns matched and no changes were needed.
+            </p>
+          )}
+        </div>
+
+        <div style={{ paddingTop: '20px', flexShrink: 0 }}>
+          <Button variant="secondary" size="md" onClick={onClose}>Close</Button>
+        </div>
+      </div>
     </div>
   )
 }

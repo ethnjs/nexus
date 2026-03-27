@@ -42,7 +42,8 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
     ("Dietary Restrictions","dietary_restriction", "string", None),
     # Role & preference
     ("Volunteering Role Preference", "role_preference", "multi_select", None),
-    ("Which event would you like?",  "event_preference","category_events", None),
+    # event_preference columns are now suggested as multi_select (not category_events)
+    ("Which event would you like?",  "event_preference", "multi_select", None),
     ("General Volunteer Interest",   "extra_data", "multi_select", None),
     # Logistics
     ("Lunch Order",         "lunch_order",  "string",       None),
