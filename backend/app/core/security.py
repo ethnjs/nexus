@@ -10,7 +10,7 @@ async def verify_api_key(api_key: str = Security(API_KEY_HEADER)) -> str:
     settings = get_settings()
 
     # In development with no key set, skip auth entirely
-    if settings.app_env == "development" and not settings.api_key:
+    if settings.app_env in ("development", "test") and not settings.api_key:
         return "dev"
 
     if not api_key or api_key != settings.api_key:
