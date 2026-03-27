@@ -316,7 +316,8 @@ def test_alias_rules_empty_when_all_aliases_match():
 @pytest.mark.parametrize("title,expected", [
     ("First Name",                  "first_name"),
     ("What is your shirt size?",    "what_is_your_shirt_size"),
-    ("Do you have a conflict of interest?", "do_you_have_a_conflict_of_interes"),  # capped at 50
+    ("Do you have a conflict of interest?", "do_you_have_a_conflict_of_interest"),
+    ("What is your experience with Science Olympiad competitions", "what_is_your_experience_with_science_olympiad_comp")  # capped at 50
 ])
 def test_slugify(title, expected):
     assert _slugify(title) == expected
