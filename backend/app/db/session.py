@@ -4,27 +4,33 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-# SQLite needs this pragma for foreign key enforcement
-# PostgreSQL enforces FKs by default, so this is a no-op there
-connect_args = {}
-if settings.database_url.startswith("sqlite"):
-    connect_args["check_same_thread"] = False
+# In CI/test environments DATABASE_URL may be blank — conftest provides its
+# own in-memory engine, so we skip building one here to avoid a crash on import.
+if settings.database_url:
+    # SQLite needs this pragma for foreign key enforcement
+    # PostgreSQL enforces FKs by default, so this is a no-op there
+    connect_args = {}
+    if settings.database_url.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
 
-engine = create_engine(
-    settings.database_url,
-    connect_args=connect_args,
-    echo=(settings.app_env == "development"),  # Log SQL in dev
-)
+    engine = create_engine(
+        settings.database_url,
+        connect_args=connect_args,
+        echo=(settings.app_env == "development"),  # Log SQL in dev
+    )
 
-# Enable FK constraints on every SQLite connection
-if settings.database_url.startswith("sqlite"):
-    @event.listens_for(engine, "connect")
-    def set_sqlite_pragma(dbapi_connection, connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
+    # Enable FK constraints on every SQLite connection
+    if settings.database_url.startswith("sqlite"):
+        @event.listens_for(engine, "connect")
+        def set_sqlite_pragma(dbapi_connection, connection_record):
+            cursor = dbapi_connection.cursor()
+            cursor.execute("PRAGMA foreign_keys=ON")
+            cursor.close()
 
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+else:
+    engine = None
+    SessionLocal = None
 
 
 class Base(DeclarativeBase):
@@ -40,6 +46,8 @@ def get_db():
         def my_route(db: Session = Depends(get_db)):
             ...
     """
+    if SessionLocal is None:
+        raise RuntimeError("DATABASE_URL is not set")
     db = SessionLocal()
     try:
         yield db
