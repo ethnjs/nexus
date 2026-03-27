@@ -41,14 +41,16 @@ _ALIAS_PATTERNS: list[tuple[re.Pattern[str], str]] = [
 def _suggest_alias(raw: str) -> str:
     """
     Auto-suggest a short alias for a raw form option string.
-    Applies _ALIAS_PATTERNS in order; returns the first result that
-    produces a non-empty string, otherwise returns the raw value as-is.
+    Applies _ALIAS_PATTERNS in order; returns the first result where the
+    pattern actually matched (i.e. the string changed), otherwise returns
+    the raw value as-is.
     """
+    stripped = raw.strip()
     for pattern, replacement in _ALIAS_PATTERNS:
-        candidate = pattern.sub(replacement, raw).strip()
-        if candidate:
+        candidate = pattern.sub(replacement, stripped).strip()
+        if candidate != stripped and candidate:
             return candidate
-    return raw.strip()
+    return stripped
 
 
 class FormsService:

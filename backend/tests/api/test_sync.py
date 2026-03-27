@@ -49,7 +49,7 @@ def _make_config(client, tournament_id):
     return client.post(f"/tournaments/{tournament_id}/sheets/configs/", json={
         "tournament_id": tournament_id,
         "label": "Interest Form",
-        "sheet_type": "interest",
+        "sheet_type": "volunteers",
         "sheet_url": FAKE_URL,
         "sheet_name": "Form Responses 1",
         "column_mappings": COLUMN_MAPPINGS,
