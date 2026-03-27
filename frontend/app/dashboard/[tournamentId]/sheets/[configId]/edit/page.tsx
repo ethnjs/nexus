@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetType } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -28,10 +28,9 @@ import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal 
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SHEET_TYPES = [
-  { value: "interest",     label: "Interest Form" },
-  { value: "confirmation", label: "Confirmation Form" },
-  { value: "events",       label: "Events" },
+const SHEET_TYPES: { value: SheetType; label: string }[] = [
+  { value: "volunteers", label: "Volunteers" },
+  { value: "events",     label: "Events" },
 ];
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -69,7 +68,7 @@ export default function EditSheetPage() {
   // Config + form fields
   const [config,        setConfig]        = useState<SheetConfig | null>(null);
   const [label,         setLabel]         = useState("");
-  const [sheetType,     setSheetType]     = useState("interest");
+  const [sheetType,     setSheetType]     = useState<SheetType>("volunteers");
   const [selectedTab,   setSelectedTab]   = useState("");
   const [availableTabs, setAvailableTabs] = useState<string[]>([]);
   const [isActive,      setIsActive]      = useState(true);
@@ -88,14 +87,14 @@ export default function EditSheetPage() {
   const [loadError, setLoadError] = useState("");
 
   // Save / sync
-  const [saveLoading,  setSaveLoading]  = useState(false);
-  const [syncLoading,  setSyncLoading]  = useState(false);
-  const [saveSuccess,  setSaveSuccess]  = useState(false);
-  const [syncResult,         setSyncResult]         = useState<SyncResult | null>(null);
+  const [saveLoading,          setSaveLoading]          = useState(false);
+  const [syncLoading,          setSyncLoading]          = useState(false);
+  const [saveSuccess,          setSaveSuccess]          = useState(false);
+  const [syncResult,           setSyncResult]           = useState<SyncResult | null>(null);
   const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
   const [showErrorsModal,      setShowErrorsModal]      = useState(false);
 
-  // Validation (shared hook)
+  // Validation
   const {
     validationErrors, validationWarnings, validationGeneration,
     clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
@@ -118,7 +117,7 @@ export default function EditSheetPage() {
         const cfg = await sheetsApi.getConfig(tournamentId, configId);
         setConfig(cfg);
         setLabel(cfg.label);
-        setSheetType(cfg.sheet_type);
+        setSheetType(cfg.sheet_type as SheetType);
         setSelectedTab(cfg.sheet_name);
         setIsActive(cfg.is_active);
 
@@ -147,7 +146,14 @@ export default function EditSheetPage() {
     setHeadersError("");
 
     try {
-      const result = await sheetsApi.headers(tournamentId, cfg.sheet_url, tabName);
+      // Edit page re-fetches headers without a form URL — the saved column_mappings
+      // already contain the compiled rules from the original wizard run.
+      const result = await sheetsApi.headers(
+        tournamentId,
+        cfg.sheet_url,
+        tabName,
+        cfg.sheet_type as SheetType,
+      );
       if (controller.signal.aborted) return;
 
       setKnownFields(result.known_fields);
@@ -163,7 +169,6 @@ export default function EditSheetPage() {
         const saved = cfg.column_mappings[header];
         if (saved) {
           const base = emptyMappingRow(header, saved);
-          // Open accordion by default for rows that already have rules
           rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0));
         } else {
           const base = emptyMappingRow(header, result.suggestions[header]);
@@ -222,7 +227,6 @@ export default function EditSheetPage() {
     e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
-
     if (!isJson) {
       setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
       return;
@@ -247,10 +251,8 @@ export default function EditSheetPage() {
         }));
 
       const { updatedRows, summary } = applyImport(activeRows, parsed);
-
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
 
-      // Single setMappingRows call — merges import data and openOnMount flag atomically
       setMappingRows((prev) =>
         prev.map((r) => {
           if (r.state === "removed") return r;
@@ -268,12 +270,10 @@ export default function EditSheetPage() {
       );
 
       if (parsed.label && !label) setLabel(parsed.label);
-      if (parsed.sheet_type) setSheetType(parsed.sheet_type);
+      if (parsed.sheet_type) setSheetType(parsed.sheet_type as SheetType);
 
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
-
-      // Clear openOnMount after a tick so the effect only fires once
       setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
     };
     reader.readAsText(file);
@@ -297,12 +297,10 @@ export default function EditSheetPage() {
 
   // ── Save & Sync ─────────────────────────────────────────────────────────
 
-  // ── Validate + save helpers ────────────────────────────────────────────
-
   function buildPayload() {
     return {
       label,
-      sheet_type:      sheetType as SheetConfig["sheet_type"],
+      sheet_type:      sheetType,
       sheet_name:      selectedTab,
       column_mappings: buildColumnMappings(),
       is_active:       isActive,
@@ -362,7 +360,7 @@ export default function EditSheetPage() {
       if (shouldConfirm) { setShowWarningsConfirm(true); return; }
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
-    } catch (e: unknown) {
+    } catch {
       setGenericError("Failed to validate.");
     } finally {
       setSyncLoading(false);
@@ -413,18 +411,11 @@ export default function EditSheetPage() {
 
         {/* ── Config fields ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <Input
-            label="Label"
-            id="label"
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            font="sans"
-            fullWidth
-          />
+          <Input label="Label" id="label" value={label} onChange={(e) => setLabel(e.target.value)} font="sans" fullWidth />
           <Select
             label="Sheet Type"
             value={sheetType}
-            onChange={setSheetType}
+            onChange={(v) => setSheetType(v as SheetType)}
             options={SHEET_TYPES}
             fullWidth
           />
@@ -446,12 +437,10 @@ export default function EditSheetPage() {
 
         {/* ── Mapping table ── */}
         <div>
-          {/* Validation banner — top of mapping section */}
           {(validationErrors.length > 0 || validationWarnings.length > 0) && (
             <div style={{ marginBottom: "12px" }}>{renderErrorBanner()}</div>
           )}
 
-          {/* Toolbar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "10px" }}>
             {!headersLoading && mappingRows.length > 0 && (
               <div style={{ display: "flex", gap: "12px", flexWrap: "wrap" }}>
@@ -469,9 +458,7 @@ export default function EditSheetPage() {
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>Fetching headers…</span>
             )}
             <div style={{ flexShrink: 0 }}>
-              <Button variant="secondary" size="sm" onClick={triggerImport}>
-                Import JSON
-              </Button>
+              <Button variant="secondary" size="sm" onClick={triggerImport}>Import JSON</Button>
               <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>

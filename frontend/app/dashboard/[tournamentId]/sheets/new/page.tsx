@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse, SheetType } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -29,7 +29,7 @@ import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Step = "url" | "sheet-select" | "mapping" | "syncing" | "results";
+type Step = "url" | "sheet-select" | "form-url" | "mapping" | "syncing" | "results";
 
 interface ValidateResult {
   spreadsheet_id:    string;
@@ -47,22 +47,32 @@ interface SyncResult {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SHEET_TYPES = [
-  { value: "interest",     label: "Interest Form" },
-  { value: "confirmation", label: "Confirmation Form" },
-  { value: "events",       label: "Events" },
+const SHEET_TYPES: { value: SheetType; label: string; description: string }[] = [
+  { value: "volunteers", label: "Volunteers", description: "Interest forms, confirmation forms — maps to volunteer records" },
+  { value: "events",     label: "Events",     description: "Event list — maps to tournament event data" },
 ];
 
-const WIZARD_STEPS = [
-  { key: "url",          label: "URL" },
-  { key: "sheet-select", label: "Select Sheet" },
-  { key: "mapping",      label: "Map Columns" },
-  { key: "results",      label: "Done" },
-];
+// Wizard steps vary by sheet type — volunteers has a form URL step, events skips it.
+function getWizardSteps(sheetType: SheetType) {
+  if (sheetType === "volunteers") {
+    return [
+      { key: "url",          label: "URL" },
+      { key: "sheet-select", label: "Select Sheet" },
+      { key: "form-url",     label: "Form URL" },
+      { key: "mapping",      label: "Map Columns" },
+      { key: "results",      label: "Done" },
+    ];
+  }
+  return [
+    { key: "url",          label: "URL" },
+    { key: "sheet-select", label: "Select Sheet" },
+    { key: "mapping",      label: "Map Columns" },
+    { key: "results",      label: "Done" },
+  ];
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Build an empty MappingRow (baseline defaults). */
 function emptyMappingRow(header: string, s?: ColumnMapping): MappingRow {
   return {
     header,
@@ -132,32 +142,35 @@ export default function NewSheetPage() {
 
   const [step, setStep] = useState<Step>("url");
 
-  // Step 1
+  // Step 1 — Sheet URL
   const [sheetUrl,        setSheetUrl]        = useState("");
   const [urlLoading,      setUrlLoading]      = useState(false);
   const [urlError,        setUrlError]        = useState("");
   const [validateResult,  setValidateResult]  = useState<ValidateResult | null>(null);
   const [existingConfigs, setExistingConfigs] = useState<SheetConfig[]>([]);
 
-  // Step 2
-  const [selectedSheet,  setSelectedSheet]  = useState("");
-  const [sheetType,      setSheetType]      = useState("interest");
-  const [sheetLabel,     setSheetLabel]     = useState("");
-  const [headersLoading, setHeadersLoading] = useState(false);
-  const [headersError,   setHeadersError]   = useState("");
-  const [headersResult,  setHeadersResult]  = useState<SheetHeadersResponse | null>(null);
+  // Step 2 — Tab + Type
+  const [selectedSheet, setSelectedSheet] = useState("");
+  const [sheetType,     setSheetType]     = useState<SheetType>("volunteers");
+  const [sheetLabel,    setSheetLabel]    = useState("");
 
-  // Step 3
-  const [mappingRows,       setMappingRows]       = useState<RichMappingRow[]>([]);
-  const [saveLoading,       setSaveLoading]       = useState(false);
-  const [showSaveConfirm,   setShowSaveConfirm]   = useState(false);
+  // Step 3 — Form URL (volunteers only)
+  const [formUrl,        setFormUrl]        = useState("");
+  const [formUrlError,   setFormUrlError]   = useState("");
+  const [formUrlLoading, setFormUrlLoading] = useState(false);
+
+  // Step 4 — Mapping
+  const [headersResult,  setHeadersResult]  = useState<SheetHeadersResponse | null>(null);
+  const [mappingRows,    setMappingRows]    = useState<RichMappingRow[]>([]);
+  const [saveLoading,    setSaveLoading]    = useState(false);
+  const [showSaveConfirm,      setShowSaveConfirm]      = useState(false);
   const [showWarningsConfirm,  setShowWarningsConfirm]  = useState(false);
   const [showErrorsModal,      setShowErrorsModal]      = useState(false);
-  const [importBanner,      setImportBanner]      = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
-  const [showImportSummary, setShowImportSummary] = useState(false);
+  const [importBanner,         setImportBanner]         = useState<{ variant: "success" | "error"; message: string; summary?: ImportSummary } | null>(null);
+  const [showImportSummary,    setShowImportSummary]    = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  // Validation (shared hook)
+  // Validation
   const {
     validationErrors, validationWarnings, validationGeneration,
     clearAll, clearRow, handle422, handleSaveSuccess, handleValidateResult, setGenericError, renderErrorBanner,
@@ -204,14 +217,32 @@ export default function NewSheetPage() {
     }
   }
 
-  // ── Step 2: Fetch Headers ─────────────────────────────────────────────────
+  // ── Step 2 → 3: Advance from sheet select ────────────────────────────────
 
-  async function handleFetchHeaders() {
+  function handleSheetSelectNext() {
+    if (sheetType === "volunteers") {
+      setStep("form-url");
+    } else {
+      // Events — skip form URL step, go straight to fetch headers
+      handleFetchHeaders();
+    }
+  }
+
+  // ── Step 3: Fetch Headers (called after form URL step or directly for events) ──
+
+  async function handleFetchHeaders(providedFormUrl?: string) {
     if (!selectedSheet) return;
-    setHeadersLoading(true);
-    setHeadersError("");
+    setFormUrlLoading(true);
+    setFormUrlError("");
     try {
-      const result = await sheetsApi.headers(tournamentId, sheetUrl.trim(), selectedSheet);
+      const url = providedFormUrl ?? (sheetType === "volunteers" ? formUrl.trim() : undefined);
+      const result = await sheetsApi.headers(
+        tournamentId,
+        sheetUrl.trim(),
+        selectedSheet,
+        sheetType,
+        url || undefined,
+      );
       setHeadersResult(result);
 
       const rows: RichMappingRow[] = result.headers.map((header) => {
@@ -222,14 +253,27 @@ export default function NewSheetPage() {
       setMappingRows(rows);
       if (!sheetLabel) setSheetLabel(validateResult?.spreadsheet_title ?? "");
       setStep("mapping");
-    } catch {
-      setHeadersError("Failed to fetch sheet headers. Make sure the sheet tab exists and is accessible.");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "";
+      const isFormError = msg.includes("form") || msg.includes("403") || msg.includes("access");
+      setFormUrlError(
+        isFormError
+          ? "Could not access this form. Make sure it's shared with the NEXUS service account."
+          : "Failed to fetch sheet headers. Make sure the sheet tab exists and is accessible."
+      );
     } finally {
-      setHeadersLoading(false);
+      setFormUrlLoading(false);
     }
   }
 
-  // ── Step 3: Import file ───────────────────────────────────────────────────
+  // ── Step 3 (form-url): Advance ────────────────────────────────────────────
+
+  async function handleFormUrlNext() {
+    if (!formUrl.trim()) return;
+    await handleFetchHeaders(formUrl.trim());
+  }
+
+  // ── Import file ───────────────────────────────────────────────────────────
 
   function triggerImport() {
     setImportBanner(null);
@@ -242,7 +286,6 @@ export default function NewSheetPage() {
     e.target.value = "";
 
     const isJson = file.name.endsWith(".json") || file.type === "application/json";
-
     if (!isJson) {
       setImportBanner({ variant: "error", message: "Unsupported file type. Please upload a .json file." });
       return;
@@ -252,7 +295,6 @@ export default function NewSheetPage() {
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       const parsed: MappingsExport | null = parseMappingsJson(text);
-
       if (!parsed) {
         setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
         return;
@@ -265,7 +307,6 @@ export default function NewSheetPage() {
       }));
 
       const { updatedRows, summary } = applyImport(plainRows, parsed);
-
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
 
       setMappingRows((prev) =>
@@ -282,17 +323,16 @@ export default function NewSheetPage() {
       );
 
       if (parsed.label && !sheetLabel) setSheetLabel(parsed.label);
-      if (parsed.sheet_type) setSheetType(parsed.sheet_type);
+      if (parsed.sheet_type) setSheetType(parsed.sheet_type as SheetType);
 
       const shortMsg = `${updatedList.length} updated, ${unchanged} unchanged, ${notInSheet.length} ignored, ${notInFile.length} untouched`;
       setImportBanner({ variant: "success", message: `Import successful: ${shortMsg}`, summary });
-
       setTimeout(() => setMappingRows((prev) => prev.map((r) => ({ ...r, openOnMount: undefined }))), 100);
     };
     reader.readAsText(file);
   }
 
-  // ── Step 3: Build payload ─────────────────────────────────────────────────
+  // ── Build payload ─────────────────────────────────────────────────────────
 
   const buildColumnMappings = useCallback((): Record<string, ColumnMapping> => {
     const result: Record<string, ColumnMapping> = {};
@@ -307,10 +347,8 @@ export default function NewSheetPage() {
     return result;
   }, [mappingRows]);
 
-  // ── Step 3: Save + Sync ───────────────────────────────────────────────────
+  // ── Save + Sync ───────────────────────────────────────────────────────────
 
-  // Performs the actual create + sync (only called after validation passes and
-  // any confirm modals are dismissed).
   async function doSaveAndSync() {
     setShowSaveConfirm(false);
     setShowWarningsConfirm(false);
@@ -320,7 +358,7 @@ export default function NewSheetPage() {
       const config = await sheetsApi.createConfig(tournamentId, {
         tournament_id:   tournamentId,
         label:           sheetLabel || validateResult?.spreadsheet_title || "Untitled Sheet",
-        sheet_type:      sheetType as "interest" | "confirmation" | "events",
+        sheet_type:      sheetType,
         sheet_url:       sheetUrl.trim(),
         sheet_name:      selectedSheet,
         column_mappings: buildColumnMappings(),
@@ -339,10 +377,7 @@ export default function NewSheetPage() {
 
   async function handleSaveAndSync() {
     const dupes = getDuplicatesForSelection();
-    if (dupes.length > 0) {
-      setShowSaveConfirm(true);
-      return;
-    }
+    if (dupes.length > 0) { setShowSaveConfirm(true); return; }
     setSaveLoading(true);
     try {
       const validation = await sheetsApi.validateMappings(tournamentId, buildColumnMappings());
@@ -351,7 +386,7 @@ export default function NewSheetPage() {
       if (shouldConfirm) { setShowWarningsConfirm(true); return; }
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
-    } catch (e: unknown) {
+    } catch {
       setGenericError("Failed to validate.");
     } finally {
       setSaveLoading(false);
@@ -370,10 +405,11 @@ export default function NewSheetPage() {
     if (header) clearRow(header);
   }
 
-  // ── Counts ────────────────────────────────────────────────────────────────
+  // ── Derived ───────────────────────────────────────────────────────────────
 
-  const changedCount  = mappingRows.filter((r) => r.state === "changed").length;
-  const indicatorStep = step === "syncing" ? "mapping" : step;
+  const changedCount    = mappingRows.filter((r) => r.state === "changed").length;
+  const wizardSteps     = getWizardSteps(sheetType);
+  const indicatorStep   = step === "syncing" ? "mapping" : step;
   const selectStepDupes = step === "sheet-select" ? getDuplicatesForSelection() : [];
 
   // ── Render ────────────────────────────────────────────────────────────────
@@ -392,12 +428,12 @@ export default function NewSheetPage() {
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>Add Sheet</h1>
       <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "32px" }}>
-        Connect a Google Sheet to import volunteer data.
+        Connect a Google Sheet to import volunteer or event data.
       </p>
 
-      {step !== "syncing" && <StepIndicator steps={WIZARD_STEPS} current={indicatorStep} />}
+      {step !== "syncing" && <StepIndicator steps={wizardSteps} current={indicatorStep} />}
 
-      {/* ── STEP 1: URL ── */}
+      {/* ── STEP 1: Sheet URL ── */}
       {step === "url" && (
         <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
           <Input
@@ -420,7 +456,7 @@ export default function NewSheetPage() {
         </div>
       )}
 
-      {/* ── STEP 2: Sheet Select ── */}
+      {/* ── STEP 2: Tab + Type ── */}
       {step === "sheet-select" && validateResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "14px 16px", display: "flex", gap: "12px", alignItems: "flex-start" }}>
@@ -464,33 +500,75 @@ export default function NewSheetPage() {
             <div>
               <FieldLabel>Sheet Type</FieldLabel>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {SHEET_TYPES.map(({ value, label }) => (
-                  <RadioOption key={value} name="sheet_type" value={value} checked={sheetType === value} onChange={setSheetType} label={label} />
+                {SHEET_TYPES.map(({ value, label, description }) => (
+                  <RadioOption
+                    key={value}
+                    name="sheet_type"
+                    value={value}
+                    checked={sheetType === value}
+                    onChange={(v) => setSheetType(v as SheetType)}
+                    label={label}
+                    description={description}
+                  />
                 ))}
               </div>
             </div>
           </div>
 
-          {headersError && <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{headersError}</p>}
-
           <div style={{ display: "flex", gap: "10px" }}>
             <Button variant="secondary" size="lg" onClick={() => setStep("url")}>Back</Button>
-            <Button variant="primary" size="lg" loading={headersLoading} disabled={!selectedSheet} onClick={handleFetchHeaders}>
+            <Button variant="primary" size="lg" disabled={!selectedSheet} onClick={handleSheetSelectNext}>
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── STEP 3: Form URL (volunteers only) ── */}
+      {step === "form-url" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "14px 16px" }}>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
+              NEXUS uses your Google Form to understand the question types and answer options in your sheet.
+              This allows it to auto-suggest field mappings and clean up option text automatically.
+            </p>
+          </div>
+
+          <Input
+            label="Google Form URL"
+            type="url"
+            placeholder="https://docs.google.com/forms/d/..."
+            value={formUrl}
+            onChange={(e) => { setFormUrl(e.target.value); setFormUrlError(""); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && formUrl.trim()) handleFormUrlNext(); }}
+            error={formUrlError}
+            helper="Make sure the form is shared with the NEXUS service account. This is the same email you shared your sheet with."
+            fullWidth
+            autoFocus
+          />
+
+          <div style={{ display: "flex", gap: "10px" }}>
+            <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
+            <Button
+              variant="primary"
+              size="lg"
+              loading={formUrlLoading}
+              disabled={!formUrl.trim()}
+              onClick={handleFormUrlNext}
+            >
               Next — Map Columns
             </Button>
           </div>
         </div>
       )}
 
-      {/* ── STEP 3: Column Mapping ── */}
+      {/* ── STEP 4: Column Mapping ── */}
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
-          {/* Validation banner — top of mapping section */}
           {(validationErrors.length > 0 || validationWarnings.length > 0) && (
             <div>{renderErrorBanner()}</div>
           )}
 
-          {/* Toolbar */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
             <div style={{ display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
               <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: 0 }}>
@@ -504,14 +582,11 @@ export default function NewSheetPage() {
               )}
             </div>
             <div style={{ flexShrink: 0 }}>
-              <Button variant="secondary" size="sm" onClick={triggerImport}>
-                Import JSON
-              </Button>
+              <Button variant="secondary" size="sm" onClick={triggerImport}>Import JSON</Button>
               <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>
 
-          {/* Import feedback */}
           {importBanner && (
             <Banner
               variant={importBanner.variant}
@@ -538,7 +613,7 @@ export default function NewSheetPage() {
           <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
             {renderErrorBanner()}
             <div style={{ display: "flex", gap: "10px" }}>
-              <Button variant="secondary" size="lg" onClick={() => setStep("sheet-select")}>Back</Button>
+              <Button variant="secondary" size="lg" onClick={() => setStep(sheetType === "volunteers" ? "form-url" : "sheet-select")}>Back</Button>
               <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync}>
                 Save &amp; Sync
               </Button>
@@ -553,7 +628,7 @@ export default function NewSheetPage() {
           <div style={{ width: "40px", height: "40px", border: "3px solid var(--color-border)", borderTopColor: "var(--color-accent)", borderRadius: "50%", animation: "spin 700ms linear infinite" }} />
           <div>
             <p style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "6px" }}>Saving &amp; syncing…</p>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>Importing volunteer data from your sheet. This may take a moment.</p>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>Importing data from your sheet. This may take a moment.</p>
           </div>
           <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         </div>
@@ -598,6 +673,7 @@ export default function NewSheetPage() {
         </div>
       )}
 
+      {/* ── Modals ── */}
       {showSaveConfirm && (
         <SaveConfirmModal
           duplicates={getDuplicatesForSelection()}
