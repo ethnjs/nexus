@@ -5,11 +5,15 @@ from pydantic import BaseModel, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
-# Core fields that map directly to User or Membership columns.
-# These are the only fields the sync service handles explicitly.
-# Everything else goes into extra_data via the custom field system.
+# Known fields, scoped by sheet type.
+# VOLUNTEER_KNOWN_FIELDS — fields that map to User + Membership tables.
+# EVENT_KNOWN_FIELDS     — stub, populated when events import is implemented.
+# ALL_KNOWN_FIELDS       — union used by ColumnMapping validator.
+#
+# KNOWN_FIELDS is kept as an alias for VOLUNTEER_KNOWN_FIELDS so that any
+# existing code referencing it directly continues to work during the migration.
 # ---------------------------------------------------------------------------
-KNOWN_FIELDS: list[str] = [
+VOLUNTEER_KNOWN_FIELDS: list[str] = [
     "__ignore__",
     # User identity (→ User table)
     "first_name",
@@ -31,6 +35,25 @@ KNOWN_FIELDS: list[str] = [
     "extra_data",
 ]
 
+# Stub — field list will be defined when events import is implemented
+EVENT_KNOWN_FIELDS: list[str] = [
+    "__ignore__",
+    # Event fields (→ Event table) — TBD
+    "extra_data",
+]
+
+# Union of all valid fields across all sheet types — used by ColumnMapping validator
+ALL_KNOWN_FIELDS: set[str] = set(VOLUNTEER_KNOWN_FIELDS) | set(EVENT_KNOWN_FIELDS)
+
+# Backwards-compat alias — existing code referencing KNOWN_FIELDS still works
+KNOWN_FIELDS = VOLUNTEER_KNOWN_FIELDS
+
+# Map of sheet type → its scoped field list, for SheetHeadersResponse
+KNOWN_FIELDS_BY_TYPE: dict[str, list[str]] = {
+    "volunteers": VOLUNTEER_KNOWN_FIELDS,
+    "events":     EVENT_KNOWN_FIELDS,
+}
+
 # ---------------------------------------------------------------------------
 # Valid column mapping types — tells the sync service how to process a column
 # ---------------------------------------------------------------------------
@@ -45,7 +68,7 @@ VALID_MAPPING_TYPES: set[str] = {
                      # requires row_key
 }
 
-VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
+VALID_SHEET_TYPES = {"volunteers", "events"}
 
 # ---------------------------------------------------------------------------
 # Backwards compatibility — map removed/renamed type names to current ones.
@@ -54,6 +77,13 @@ VALID_SHEET_TYPES = {"interest", "confirmation", "events"}
 _LEGACY_TYPE_MAP: dict[str, str] = {
     "availability_row": "matrix_row",   # renamed in feat/sheet-config-parse-rules
     "category_events":  "string",       # removed in feat/sheet-config-parse-rules
+}
+
+# Legacy sheet_type values → current equivalents.
+# Used by the Alembic migration and any runtime coercion needed on old records.
+LEGACY_SHEET_TYPE_MAP: dict[str, str] = {
+    "interest":     "volunteers",
+    "confirmation": "volunteers",
 }
 
 
@@ -180,8 +210,8 @@ class ColumnMapping(BaseModel):
     @field_validator("field")
     @classmethod
     def validate_field(cls, v: str) -> str:
-        if v not in KNOWN_FIELDS:
-            raise ValueError(f"Unknown field '{v}'. Must be one of: {KNOWN_FIELDS}")
+        if v not in ALL_KNOWN_FIELDS:
+            raise ValueError(f"Unknown field '{v}'. Must be one of: {ALL_KNOWN_FIELDS}")
         return v
 
     @field_validator("type")
@@ -211,6 +241,49 @@ class ColumnMapping(BaseModel):
                     )
 
         return self
+
+
+# ---------------------------------------------------------------------------
+# FormQuestion — a single question fetched from a linked Google Form.
+# Returned in SheetHeadersResponse to power the option alias editor in the
+# mapping wizard. The frontend uses this to render form-native UI instead of
+# the raw rules accordion for choice questions.
+# ---------------------------------------------------------------------------
+
+# Maps Google Forms API question types to NEXUS ColumnMapping types.
+# Used by FormsService when building FormQuestion objects.
+FORMS_TYPE_MAP: dict[str, str] = {
+    "TEXT":           "string",       # short text
+    "PARAGRAPH_TEXT": "string",       # long text
+    "MULTIPLE_CHOICE": "string",      # radio — pick one
+    "CHECKBOX":       "multi_select", # pick many
+    "DROP_DOWN":      "string",       # dropdown — pick one
+    "LINEAR_SCALE":   "integer",      # numeric rating
+    "SCALE":          "integer",      # numeric scale
+    "GRID":           "matrix_row",   # checkbox/radio grid → multiple matrix_row mappings
+    "DATE":           "string",
+    "TIME":           "string",
+}
+
+
+class FormQuestionOption(BaseModel):
+    """A single answer choice from a Google Form choice question."""
+    raw: str                    # exact string as it appears in the form
+    alias: str                  # auto-suggested short version for DB storage
+
+
+class FormQuestion(BaseModel):
+    """
+    Structured representation of a single Google Form question.
+    question_id matches the Forms API questionId, used to cross-reference
+    with sheet column headers during mapping suggestion.
+    """
+    question_id: str
+    title: str                              # question title as shown to respondents
+    nexus_type: str                         # mapped NEXUS ColumnMapping type
+    options: list[FormQuestionOption] | None = None   # for CHECKBOX / MULTIPLE_CHOICE / DROP_DOWN
+    grid_rows: list[str] | None = None      # for GRID questions — row labels (time ranges etc.)
+    grid_columns: list[str] | None = None   # for GRID questions — column labels
 
 
 # ---------------------------------------------------------------------------
@@ -300,23 +373,36 @@ class SheetValidateResponse(BaseModel):
 class SheetHeadersRequest(BaseModel):
     sheet_url: str
     sheet_name: str
+    sheet_type: Literal["volunteers", "events"]
+    form_url: str | None = None     # required for volunteers; ignored for events
+
+    @field_validator("form_url")
+    @classmethod
+    def validate_form_url(cls, v: str | None) -> str | None:
+        if v is not None and "docs.google.com/forms" not in v:
+            raise ValueError("Must be a valid Google Forms URL")
+        return v
 
 
 class SheetHeadersResponse(BaseModel):
     """
     Returns column headers and auto-detected rich mapping suggestions.
     suggestions maps each header to a ColumnMapping dict.
-    known_fields lists all valid field names for the UI dropdown.
+    known_fields lists valid field names for the UI dropdown, scoped to sheet_type.
     valid_types lists all valid type strings for the UI dropdown.
     valid_rule_conditions and valid_rule_actions list valid values for rule editors.
+    form_questions carries structured question data from the linked Google Form
+    (volunteers only) to power the option alias editor in the mapping wizard.
     """
     sheet_name: str
+    sheet_type: str
     headers: list[str]
     suggestions: dict[str, ColumnMapping]
-    known_fields: list[str] = KNOWN_FIELDS
+    known_fields: list[str] = VOLUNTEER_KNOWN_FIELDS
     valid_types: list[str] = list(VALID_MAPPING_TYPES)
     valid_rule_conditions: list[str] = list(VALID_RULE_CONDITIONS)
     valid_rule_actions: list[str] = list(VALID_RULE_ACTIONS)
+    form_questions: list[FormQuestion] | None = None   # None for events sheets
 
 
 # ---------------------------------------------------------------------------
