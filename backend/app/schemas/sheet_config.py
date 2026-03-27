@@ -300,6 +300,7 @@ class SheetConfigBase(BaseModel):
     @field_validator("sheet_type")
     @classmethod
     def validate_sheet_type(cls, v: str) -> str:
+        v = LEGACY_SHEET_TYPE_MAP.get(v, v)
         if v not in VALID_SHEET_TYPES:
             raise ValueError(f"sheet_type must be one of: {VALID_SHEET_TYPES}")
         return v
@@ -319,6 +320,7 @@ class SheetConfigCreate(SheetConfigBase):
 class SheetConfigUpdate(BaseModel):
     """Partial update — all fields optional."""
     label: str | None = None
+    sheet_type: str | None = None
     sheet_name: str | None = None
     column_mappings: dict[str, ColumnMapping] | None = None
     is_active: bool | None = None
