@@ -1,0 +1,36 @@
+name: Backend Tests
+
+on:
+  pull_request:
+    branches: [staging, main]
+    paths:
+      - "backend/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        env:
+          APP_ENV: test
+          API_KEY: ""
+          JWT_SECRET: test-secret
+          DATABASE_URL: ""   # your conftest uses SQLite in-memory, so this can be blank
+        run: pytest

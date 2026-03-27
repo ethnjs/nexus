@@ -43,9 +43,10 @@ HEADER_DETECTION_HINTS: list[tuple[str, ColumnMapping]] = [
     # Role & preference
     ("volunteering role preference", ColumnMapping(field="role_preference",  type="multi_select")),
     ("role preference",              ColumnMapping(field="role_preference",  type="multi_select")),
-    ("if interested in event",       ColumnMapping(field="event_preference", type="category_events")),
-    ("which event",                  ColumnMapping(field="event_preference", type="category_events")),
-    ("event preference",             ColumnMapping(field="event_preference", type="category_events")),
+    # event_preference: suggested as multi_select — TD adds parse rules to normalize
+    ("if interested in event",       ColumnMapping(field="event_preference", type="multi_select")),
+    ("which event",                  ColumnMapping(field="event_preference", type="multi_select")),
+    ("event preference",             ColumnMapping(field="event_preference", type="multi_select")),
     ("if you are interested in general", ColumnMapping(field="extra_data", type="multi_select", extra_key="general_volunteer_interest")),
     ("general volunteer",            ColumnMapping(field="extra_data", type="multi_select", extra_key="general_volunteer_interest")),
 

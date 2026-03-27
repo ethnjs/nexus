@@ -2,10 +2,11 @@
 Sync service — reads rows from a Google Sheet and upserts Users + Memberships.
 
 Flow per row:
-  1. Parse all columns using their ColumnMapping type
-  2. Upsert User by email
-  3. Upsert Membership by (user_id, tournament_id)
-  4. Return SyncResult summary
+  1. Apply parse rules to raw cell value (string transforms, in order)
+  2. Type-coerce the result
+  3. Upsert User by email
+  4. Upsert Membership by (user_id, tournament_id)
+  5. Return SyncResult summary
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
-from app.schemas.sheet_config import SyncError, SyncResult
+from app.schemas.sheet_config import SyncError, SyncResult, coerce_legacy_type
 from app.services.sheets_service import SheetsService
 
 
@@ -55,7 +56,6 @@ def _parse_time_range(row_key: str) -> tuple[str, str]:
     Normalizes extra whitespace around the dash first.
     Returns ("08:00", "10:00").
     """
-    # Normalize multiple spaces to single space, then split on " - "
     normalized = re.sub(r"\s+", " ", row_key.strip())
     parts = normalized.split(" - ", 1)
     if len(parts) != 2:
@@ -80,7 +80,6 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     """
     day_str = day_str.strip()
 
-    # Extract M/DD pattern
     date_match = re.search(r"(\d{1,2})/(\d{1,2})", day_str)
     if not date_match:
         return None
@@ -88,7 +87,6 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     month = int(date_match.group(1))
     day = int(date_match.group(2))
 
-    # Try to find a matching block date
     for block in (tournament.blocks or []):
         block_date_str = block.get("date", "")
         if not block_date_str:
@@ -100,7 +98,6 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
         except ValueError:
             continue
 
-    # Fallback: use tournament start_date year with parsed month/day
     if tournament.start_date:
         year = tournament.start_date.year
         try:
@@ -153,19 +150,16 @@ def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dic
     """
     all_slots = list(existing) + list(new_slots)
 
-    # Group by date
     by_date: dict[str, list[dict]] = {}
     for slot in all_slots:
         by_date.setdefault(slot["date"], []).append(slot)
 
     merged = []
     for date, slots in sorted(by_date.items()):
-        # Sort by start time
         slots.sort(key=lambda s: s["start"])
         current = dict(slots[0])
         for slot in slots[1:]:
             if slot["start"] <= current["end"]:
-                # Contiguous or overlapping — extend end if needed
                 if slot["end"] > current["end"]:
                     current["end"] = slot["end"]
             else:
@@ -177,43 +171,104 @@ def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dic
 
 
 # ---------------------------------------------------------------------------
-# category_events parsing
+# Rule application
 # ---------------------------------------------------------------------------
 
-def _parse_category_events(
-    cell_value: str,
-    tournament_events: list[Event],
-) -> list[str]:
+def _rule_matches(
+    value: str,
+    condition: str,
+    match: str | None,
+    case_sensitive: bool,
+) -> bool:
     """
-    Parse a category_events cell like:
-    "Technology & Engineering (Boomilever, Helicopter, Scrambler),
-     Earth and Space Science (Astronomy, Meteorology)"
-
-    Extracts all event names from inside parentheses and matches them
-    against tournament events by partial name match.
-
-    Returns list of matched event names.
+    Check whether a rule's condition fires against the current cell value.
+    Returns True for condition "always" unconditionally.
     """
-    if not cell_value or cell_value.strip().lower() == "none":
-        return []
+    if condition == "always":
+        return True
+    if match is None:
+        return False
 
-    # Extract all content inside parentheses
-    raw_names: list[str] = []
-    for group in re.findall(r"\(([^)]+)\)", cell_value):
-        for name in group.split(","):
-            raw_names.append(name.strip())
+    compare_value = value if case_sensitive else value.lower()
+    compare_match = match if case_sensitive else match.lower()
 
-    # Match against tournament event names (case-insensitive partial match)
-    event_names = [e.name for e in tournament_events]
-    matched = []
-    for raw in raw_names:
-        for event_name in event_names:
-            if raw.lower() in event_name.lower() or event_name.lower() in raw.lower():
-                if event_name not in matched:
-                    matched.append(event_name)
-                break
+    if condition == "contains":
+        return compare_match in compare_value
+    if condition == "equals":
+        return compare_value == compare_match
+    if condition == "starts_with":
+        return compare_value.startswith(compare_match)
+    if condition == "ends_with":
+        return compare_value.endswith(compare_match)
+    if condition == "regex":
+        flags = 0 if case_sensitive else re.IGNORECASE
+        return bool(re.search(match, value, flags))
 
-    return matched
+    return False
+
+
+def _apply_rules(
+    value: str,
+    rules: list[dict],
+    mapping: dict,
+    tournament: Tournament,
+) -> str | list[dict] | None:
+    """
+    Apply an ordered list of parse rules to a raw cell string.
+
+    Rules run sequentially — each rule sees the output of the previous one.
+    All matching rules fire (not first-match-wins).
+
+    Returns either:
+    - A string  — normal case; type coercion runs after this
+    - list[dict] — parse_availability short-circuited; skip type coercion
+    - None       — a discard rule fired; treat cell as empty
+    """
+    current: str = value
+
+    for rule in rules:
+        condition = rule.get("condition", "always")
+        match = rule.get("match")
+        case_sensitive = rule.get("case_sensitive", False)
+        action = rule.get("action")
+        rule_value = rule.get("value", "")
+
+        if not _rule_matches(current, condition, match, case_sensitive):
+            continue
+
+        if action == "discard":
+            return None
+
+        if action == "parse_availability":
+            # Short-circuit — run availability parsing and return immediately.
+            # Any rules after parse_availability are unreachable (validated at
+            # save time, but we guard here too).
+            row_key = mapping.get("row_key", "")
+            return _parse_availability(current, row_key, tournament)
+
+        if action == "set":
+            current = rule_value
+
+        elif action == "replace":
+            if condition == "regex" and match:
+                flags = 0 if case_sensitive else re.IGNORECASE
+                current = re.sub(match, rule_value, current, flags=flags)
+            elif match:
+                if not case_sensitive:
+                    # Case-insensitive literal replace via regex
+                    current = re.sub(
+                        re.escape(match), rule_value, current, flags=re.IGNORECASE
+                    )
+                else:
+                    current = current.replace(match, rule_value)
+
+        elif action == "prepend":
+            current = rule_value + current
+
+        elif action == "append":
+            current = current + rule_value
+
+    return current
 
 
 # ---------------------------------------------------------------------------
@@ -224,17 +279,43 @@ def _process_cell(
     value: str,
     mapping: dict,
     tournament: Tournament,
-    tournament_events: list[Event],
 ) -> Any:
     """
     Process a single cell value according to its ColumnMapping type.
+
+    Pipeline:
+      1. Apply parse rules (string transforms) in order
+      2. Type-coerce the result
+
     Returns the processed value, or raises ValueError on bad input.
     """
-    field_type = mapping.get("type", "string")
+    field_type = coerce_legacy_type(mapping.get("type", "string"))
 
     if field_type == "ignore":
         return None
 
+    # ------------------------------------------------------------------
+    # Step 1 — Apply parse rules (runs on the raw string)
+    # ------------------------------------------------------------------
+    rules = mapping.get("rules") or []
+    if rules:
+        result = _apply_rules(value, rules, mapping, tournament)
+
+        # parse_availability short-circuited — return slots list directly,
+        # skipping type coercion
+        if isinstance(result, list):
+            return result
+
+        # discard rule fired
+        if result is None:
+            return None
+
+        # Update value for type coercion below
+        value = result
+
+    # ------------------------------------------------------------------
+    # Step 2 — Type coercion
+    # ------------------------------------------------------------------
     if field_type == "string":
         return value.strip() if value else None
 
@@ -255,15 +336,15 @@ def _process_cell(
     if field_type == "multi_select":
         if not value or not value.strip():
             return []
-        return [v.strip() for v in value.split(",") if v.strip()]
+        delimiter = mapping.get("delimiter") or ","
+        return [v.strip() for v in value.split(delimiter) if v.strip()]
 
     if field_type == "matrix_row":
-        row_key = mapping.get("row_key", "")
-        return _parse_availability(value, row_key, tournament)
+        # No parse_availability rule present — store raw string.
+        # The TD must add a parse_availability rule for availability fields.
+        return value.strip() if value else None
 
-    if field_type == "category_events":
-        return _parse_category_events(value, tournament_events)
-
+    # Unknown type — fall back to raw string rather than crashing
     return value.strip() if value else None
 
 
@@ -286,11 +367,6 @@ def sync_sheet(
     if not tournament:
         raise ValueError(f"Tournament {config.tournament_id} not found")
 
-    tournament_events = db.query(Event).filter(
-        Event.tournament_id == config.tournament_id
-    ).all()
-
-    # Fetch all rows from the sheet
     rows = sheets_svc.get_rows(config.spreadsheet_id, config.sheet_name)
 
     created = updated = skipped = 0
@@ -315,18 +391,15 @@ def sync_sheet(
                     continue
 
                 field = mapping.get("field")
-                field_type = mapping.get("type")
+                field_type = coerce_legacy_type(mapping.get("type", "string"))
 
                 if field_type == "ignore" or field == "__ignore__":
                     continue
 
-                processed = _process_cell(
-                    raw_value, mapping, tournament, tournament_events
-                )
+                processed = _process_cell(raw_value, mapping, tournament)
 
                 if field == "availability":
-                    # Accumulate slots across all matrix rows
-                    if processed:
+                    if processed and isinstance(processed, list):
                         availability_slots.extend(processed)
 
                 elif field == "extra_data":
@@ -343,6 +416,11 @@ def sync_sheet(
                 else:
                     # Membership fields
                     if processed is not None:
+                        # event_preference is list[str] in the schema — if the column
+                        # is typed as string (not multi_select), wrap it in a list so
+                        # the response serializer doesn't reject it
+                        if field == "event_preference" and isinstance(processed, str):
+                            processed = [processed]
                         membership_fields[field] = processed
 
             # Email is required
@@ -363,7 +441,6 @@ def sync_sheet(
                     setattr(user, k, v)
                 db.flush()
             else:
-                # Ensure required fields present
                 if not user_fields.get("first_name") or not user_fields.get("last_name"):
                     errors.append(SyncError(
                         row=row_index,
@@ -374,7 +451,7 @@ def sync_sheet(
                     continue
                 user = User(**user_fields)
                 db.add(user)
-                db.flush()  # get user.id
+                db.flush()
 
             # ----------------------------------------------------------------
             # Step 3 — Upsert Membership
@@ -384,15 +461,12 @@ def sync_sheet(
                 Membership.tournament_id == tournament.id,
             ).first()
 
-            # Merge availability slots (consecutive slots on same date get merged)
             merged_availability = _merge_availability([], availability_slots)
 
             if membership:
-                # Overwrite membership fields from this sync
                 for k, v in membership_fields.items():
                     setattr(membership, k, v)
                 membership.availability = merged_availability
-                # Merge extra_data
                 existing_extra = dict(membership.extra_data or {})
                 existing_extra.update(extra_data)
                 membership.extra_data = existing_extra
@@ -419,7 +493,6 @@ def sync_sheet(
             skipped += 1
             continue
 
-    # Commit all successful rows together
     try:
         now = datetime.now(timezone.utc)
         config.last_synced_at = now

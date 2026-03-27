@@ -48,7 +48,7 @@ def seed_dev_data(db: Session) -> None:
         email="admin@nexus.dev",
         hashed_password=hash_password("admin1234"),
         first_name="Admin",
-        last_name="Nexus",
+        last_name="User",
         role="admin",
         is_active=True,
     )
@@ -70,20 +70,20 @@ def seed_dev_data(db: Session) -> None:
 
     # Sample tournament owned by the regular user
     tournament = Tournament(
-        name="Nexus Beta Invitational 2025",
-        start_date=datetime(2025, 11, 15, 8, 0),
-        end_date=datetime(2025, 11, 15, 18, 0),
-        location="Beta High School",
+        name="2026 National Tournament @ USC",
+        start_date=datetime(2026, 5, 21, 8, 0),
+        end_date=datetime(2026, 5, 23, 18, 0),
+        location="University of Southern California",
         owner_id=td.id,
         blocks=[
-            {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
-            {"number": 2, "label": "Block 2", "date": "2025-11-15", "start": "09:15", "end": "10:15"},
-            {"number": 3, "label": "Block 3", "date": "2025-11-15", "start": "10:30", "end": "11:30"},
-            {"number": 4, "label": "Block 4", "date": "2025-11-15", "start": "12:30", "end": "13:30"},
-            {"number": 5, "label": "Block 5", "date": "2025-11-15", "start": "13:45", "end": "14:45"},
-            {"number": 6, "label": "Block 6", "date": "2025-11-15", "start": "15:00", "end": "16:00"},
-            {"number": 7, "label": "Scoring",  "date": "2025-11-15", "start": "16:15", "end": "17:15"},
-            {"number": 8, "label": "Awards",   "date": "2025-11-15", "start": "17:30", "end": "18:30"},
+            {"number": 1, "label": "Block 1", "date": "2026-05-23", "start": "08:00", "end": "09:00"},
+            {"number": 2, "label": "Block 2", "date": "2026-05-23", "start": "09:15", "end": "10:15"},
+            {"number": 3, "label": "Block 3", "date": "2026-05-23", "start": "10:30", "end": "11:30"},
+            {"number": 4, "label": "Block 4", "date": "2026-05-23", "start": "12:30", "end": "13:30"},
+            {"number": 5, "label": "Block 5", "date": "2026-05-23", "start": "13:45", "end": "14:45"},
+            {"number": 6, "label": "Block 6", "date": "2026-05-23", "start": "15:00", "end": "16:00"},
+            {"number": 7, "label": "Scoring",  "date": "2026-05-23", "start": "16:15", "end": "17:15"},
+            {"number": 8, "label": "Awards",   "date": "2026-05-23", "start": "17:30", "end": "18:30"},
         ],
         volunteer_schema={
             "custom_fields": [],
@@ -124,6 +124,6 @@ if __name__ == "__main__":
 
     init_db()
 
-    if settings.app_env == "development":
+    if settings.app_env in ("development", "preview"):
         with SessionLocal() as db:
             seed_dev_data(db)

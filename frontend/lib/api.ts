@@ -11,9 +11,12 @@ interface RequestOptions {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  /** The raw `detail` value from the response body (may be a string or object). */
+  detail: unknown
+  constructor(public status: number, message: string, detail?: unknown) {
     super(message)
-    this.name = 'ApiError'
+    this.name   = 'ApiError'
+    this.detail = detail
   }
 }
 
@@ -31,12 +34,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   })
 
   if (!res.ok) {
-    let detail = `HTTP ${res.status}`
+    let detail: unknown = `HTTP ${res.status}`
     try {
       const data = await res.json()
       detail = data.detail ?? detail
     } catch {}
-    throw new ApiError(res.status, detail)
+    const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
+    throw new ApiError(res.status, message, detail)
   }
 
   if (res.status === 204) return undefined as T
@@ -60,7 +64,7 @@ export interface AuthUser {
   email:      string
   first_name: string | null
   last_name:  string | null
-  role:       'admin' | 'user'   // "td" and "volunteer" no longer exist
+  role:       'admin' | 'user'
   is_active:  boolean
   created_at: string
 }
@@ -225,7 +229,7 @@ export interface Membership {
   // Drives title + system permissions within this tournament
   positions:         string[] | null
 
-  // Day-of block schedule — [{block: int, duty: str}, ...]
+  // Day-of block schedule — one entry per block.
   schedule:          ScheduleSlot[] | null
 
   status:            MembershipStatus
@@ -236,7 +240,6 @@ export interface Membership {
   notes:             string | null
 
   // All tournament-specific arbitrary data lives here
-  // e.g. { transportation, general_volunteer_interest, carpool_seats, ... }
   extra_data:        Record<string, unknown> | null
 
   created_at:        string
@@ -257,6 +260,29 @@ export const membershipsApi = {
     api.patch<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
+
+  /**
+   * Delete all memberships in a tournament whose user email is in the provided list.
+   *
+   * TEMP IMPLEMENTATION: fetches all memberships (which include user data via the
+   * joined list endpoint), filters by email, then deletes one by one. This is O(n)
+   * HTTP requests and not suitable for large volunteer lists.
+   *
+   * TODO: replace with a single backend endpoint
+   * POST /tournaments/{id}/memberships/delete-by-emails/ { emails: string[] }
+   * tracked in GitHub issue.
+   */
+  deleteMembershipsByEmails: async (tournamentId: number, emails: string[]): Promise<{ deleted: number }> => {
+    const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
+    const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
+    const toDelete = memberships.filter(
+      (m) => m.user?.email && emailSet.has(m.user.email.toLowerCase().trim())
+    )
+    await Promise.all(
+      toDelete.map((m) => api.delete<void>(`/tournaments/${tournamentId}/memberships/${m.id}/`))
+    )
+    return { deleted: toDelete.length }
+  },
 }
 
 // -------------------------------------------------------------------------
@@ -264,11 +290,24 @@ export const membershipsApi = {
 // -------------------------------------------------------------------------
 export type SheetType = 'interest' | 'confirmation' | 'events'
 
+export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
+export type ParseRuleAction    = 'set' | 'replace' | 'prepend' | 'append' | 'discard' | 'parse_availability'
+
+export interface ParseRule {
+  condition:      ParseRuleCondition
+  match?:         string    // required unless condition === 'always'
+  case_sensitive: boolean
+  action:         ParseRuleAction
+  value?:         string    // required for set / replace / prepend / append
+}
+
 export interface ColumnMapping {
   field:      string
-  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row' | 'category_events'
+  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
   row_key?:   string
   extra_key?: string
+  rules?:     ParseRule[]
+  delimiter?: string        // only valid when type === 'multi_select'
 }
 
 export interface SheetConfig {
@@ -286,6 +325,10 @@ export interface SheetConfig {
   updated_at:      string
 }
 
+export interface SheetConfigWithWarnings extends SheetConfig {
+  warnings: ValidationIssue[];
+}
+
 export interface SyncResult {
   created:        number
   updated:        number
@@ -294,25 +337,71 @@ export interface SyncResult {
   last_synced_at: string
 }
 
+/** Structured validation issue returned in a 422 response body from CREATE/PATCH */
+export interface ValidationIssue {
+  header?:     string[] | string | null   // which column mapping; absent = config-level issue
+  message:     string
+  rule_index?: number   // which rule within that mapping; absent = mapping-level issue
+}
+
+export interface ValidateMappingsResult {
+  ok:       boolean
+  errors:   ValidationIssue[]
+  warnings: ValidationIssue[]
+}
+
+export interface SheetHeadersResponse {
+  sheet_name:           string
+  headers:              string[]
+  suggestions:          Record<string, ColumnMapping>
+  known_fields:         string[]
+  valid_types:          string[]
+  valid_rule_conditions: string[]
+  valid_rule_actions:   string[]
+}
+
 export const sheetsApi = {
   validate: (tournamentId: number, sheet_url: string) =>
     api.post<{ spreadsheet_id: string; spreadsheet_title: string; sheet_names: string[] }>(
       `/tournaments/${tournamentId}/sheets/validate/`, { sheet_url }
     ),
   headers: (tournamentId: number, sheet_url: string, sheet_name: string) =>
-    api.post<{ sheet_name: string; headers: string[]; suggestions: Record<string, ColumnMapping>; known_fields: string[]; valid_types: string[] }>(
+    api.post<SheetHeadersResponse>(
       `/tournaments/${tournamentId}/sheets/headers/`, { sheet_url, sheet_name }
     ),
   listConfigs:  (tournamentId: number) =>
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
   getConfig:    (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
+  validateMappings: (tournamentId: number, column_mappings: Record<string, ColumnMapping>) =>
+    api.post<ValidateMappingsResult>(`/tournaments/${tournamentId}/sheets/configs/validate-mappings/`, { column_mappings }),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
-    api.post<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/`, body),
+    api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),
   updateConfig: (tournamentId: number, id: number, body: Partial<SheetConfig>) =>
-    api.patch<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
+    api.patch<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/${id}/`, body),
   deleteConfig: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
+
+  /**
+   * Get emails of all volunteers in this tournament for the nuclear delete.
+   *
+   * TEMP IMPLEMENTATION: fetches all memberships (which include joined user data)
+   * and extracts emails client-side. Does not cross-reference the live Google Sheet —
+   * deletes ALL memberships in the tournament, not just those whose email appears
+   * in the current sheet rows.
+   *
+   * TODO: replace with GET /tournaments/{id}/sheets/configs/{configId}/rows/
+   * which proxies sheets_service.get_rows() so the email list matches the live sheet.
+   * Tracked in GitHub issue.
+   */
+  getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
+    const memberships = await api.get<{ user?: { email?: string } }[]>(
+      `/tournaments/${tournamentId}/memberships/`
+    )
+    return memberships
+      .map((m) => m.user?.email)
+      .filter((e): e is string => Boolean(e))
+  },
 }
