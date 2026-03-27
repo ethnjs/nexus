@@ -413,7 +413,7 @@ export default function NewSheetPage() {
     }
   }
 
-  function updateRow(idx: number, patch: Partial<MappingRow>) {
+  function updateRow(idx: number, patch: Partial<RichMappingRow>) {
     setMappingRows((prev) =>
       prev.map((r, i) => {
         if (i !== idx) return r;

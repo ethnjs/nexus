@@ -808,7 +808,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
-  onChange?: (patch: Partial<MappingRow>) => void;
+  onChange?: (patch: Partial<RichMappingRow>) => void;
   isFirst: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
   validationGeneration?: number;
@@ -1205,7 +1205,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
 export interface SheetConfigMappingTableProps {
   rows: RichMappingRow[]; knownFields: string[]; validTypes: string[];
   validConditions?: string[]; validActions?: string[];
-  onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
+  onChangeRow?: (idx: number, patch: Partial<RichMappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
   validationGeneration?: number;
