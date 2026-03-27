@@ -245,9 +245,28 @@ export default function NewSheetPage() {
       );
       setHeadersResult(result);
 
+      // Build a title → FormQuestion index for cross-referencing headers
+      const questionByTitle = new Map(
+        (result.form_questions ?? []).map((q) => [q.title.toLowerCase(), q])
+      );
+      // Also index grid row variants: "{title} [{row}]"
+      for (const q of result.form_questions ?? []) {
+        for (const row of q.grid_rows ?? []) {
+          questionByTitle.set(`${q.title.toLowerCase()} [${row.toLowerCase()}]`, q);
+        }
+      }
+
       const rows: RichMappingRow[] = result.headers.map((header) => {
         const base = emptyMappingRow(header, result.suggestions[header]);
-        return makeRichRow(base, base);
+        // Match header to a form question (same logic as backend _match_header_to_question)
+        const lower = header.toLowerCase();
+        let formQuestion = questionByTitle.get(lower);
+        if (!formQuestion) {
+          for (const [title, q] of questionByTitle) {
+            if (lower.startsWith(title)) { formQuestion = q; break; }
+          }
+        }
+        return makeRichRow(base, base, undefined, undefined, undefined, formQuestion);
       });
 
       setMappingRows(rows);

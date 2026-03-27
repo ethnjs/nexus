@@ -2,7 +2,7 @@
 
 import { useRef, useState, useCallback, useEffect, memo } from "react";
 import type { MappingRow } from "@/lib/importMappings";
-import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue } from "@/lib/api";
+import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue, FormQuestion, FormQuestionOption } from "@/lib/api";
 import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
 import { Select } from "@/components/ui/Select";
 
@@ -68,6 +68,8 @@ export interface RichMappingRow extends MappingRow {
   openOnMount?:   boolean;
   /** Increments when new validation results arrive — opens accordion if this row has rule-level issues. */
   validationGeneration?: number;
+  /** Form question metadata from the linked Google Form. Drives the alias editor UI. */
+  formQuestion?:  FormQuestion;
 }
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
@@ -93,6 +95,152 @@ const inputStyle: React.CSSProperties = {
   color: "var(--color-text-primary)", background: "var(--color-bg)",
   outline: "none", cursor: "text",
 };
+
+// ─── Alias helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Build ParseRule[] from a list of option aliases.
+ * Generates one `contains → replace` rule per option where alias differs from raw.
+ * Options where alias === raw produce no rule (no transformation needed).
+ */
+function aliasesToRules(options: FormQuestionOption[]): ParseRule[] {
+  return options
+    .filter((o) => o.alias.trim() !== o.raw.trim())
+    .map((o): ParseRule => ({
+      condition:      "contains",
+      match:          o.raw,
+      case_sensitive: false,
+      action:         "replace",
+      value:          o.alias,
+    }));
+}
+
+/**
+ * Reconstruct alias list from saved ParseRules so the alias editor stays
+ * in sync when editing a config that was previously saved.
+ * Falls back to the form question's original aliases if a rule isn't found.
+ */
+function rulesAndOptionsToAliases(
+  rules: ParseRule[],
+  options: FormQuestionOption[],
+): FormQuestionOption[] {
+  return options.map((opt) => {
+    const rule = rules.find(
+      (r) => r.condition === "contains" && r.match === opt.raw && r.action === "replace"
+    );
+    return rule ? { ...opt, alias: rule.value ?? opt.alias } : opt;
+  });
+}
+
+// ─── Alias Editor ─────────────────────────────────────────────────────────────
+
+/**
+ * Form-native option alias editor.
+ * Shown instead of the rules accordion for CHECKBOX / choice questions
+ * that have form question metadata. TDs see form options and editable
+ * aliases — parse rules are compiled silently on save.
+ */
+const AliasEditor = memo(function AliasEditor({
+  question,
+  currentRules,
+  onChangeRules,
+  isRemoved,
+}: {
+  question:      FormQuestion;
+  currentRules:  ParseRule[];
+  onChangeRules: (rules: ParseRule[]) => void;
+  isRemoved:     boolean;
+}) {
+  const options = question.options ?? [];
+
+  // Reconstruct current alias values from saved rules
+  const [aliases, setAliases] = useState<FormQuestionOption[]>(() =>
+    rulesAndOptionsToAliases(currentRules, options)
+  );
+
+  // Sync when rules change externally (e.g. import)
+  useEffect(() => {
+    setAliases(rulesAndOptionsToAliases(currentRules, options));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRules]);
+
+  function handleAliasChange(idx: number, value: string) {
+    const next = aliases.map((a, i) => i === idx ? { ...a, alias: value } : a);
+    setAliases(next);
+    onChangeRules(aliasesToRules(next));
+  }
+
+  if (options.length === 0) return null;
+
+  return (
+    <div style={{ background: "var(--color-bg)", padding: "12px 14px 14px 28px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+          Answer options
+        </span>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+          Stored as
+        </span>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {aliases.map((opt, idx) => {
+          const unchanged = opt.alias.trim() === opt.raw.trim();
+          return (
+            <div
+              key={idx}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto 1fr",
+                alignItems: "center",
+                gap: "10px",
+                padding: "7px 10px",
+                background: "var(--color-surface)",
+                border: `1px solid ${unchanged ? "var(--color-border)" : "var(--color-accent)"}`,
+                borderRadius: "var(--radius-sm)",
+                opacity: isRemoved ? 0.5 : 1,
+              }}
+            >
+              {/* Raw option from form */}
+              <span style={{
+                fontFamily: "var(--font-sans)",
+                fontSize: "12px",
+                color: "var(--color-text-secondary)",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }} title={opt.raw}>
+                {opt.raw}
+              </span>
+
+              {/* Arrow */}
+              <span style={{ color: "var(--color-text-tertiary)", fontSize: "12px", flexShrink: 0 }}>→</span>
+
+              {/* Editable alias */}
+              <input
+                value={opt.alias}
+                disabled={isRemoved}
+                onChange={(e) => handleAliasChange(idx, e.target.value)}
+                style={{
+                  ...inputStyle,
+                  height: "28px",
+                  fontSize: "12px",
+                  width: "100%",
+                  borderColor: unchanged ? "var(--color-border)" : "var(--color-accent)",
+                  background: unchanged ? "var(--color-bg)" : "var(--color-accent-subtle)",
+                }}
+              />
+            </div>
+          );
+        })}
+      </div>
+
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "10px", margin: "10px 0 0" }}>
+        Options that differ from the form text are transformed automatically on sync.
+      </p>
+    </div>
+  );
+});
 
 // ─── Diff tooltip ─────────────────────────────────────────────────────────────
 
@@ -174,7 +322,6 @@ function TooltipRuleDiff({ diff }: { diff: RuleLineDiff }) {
     );
   }
 
-  // changed — single box, number centered, red/green flush with divider
   return (
     <div style={{ display: "flex", alignItems: "stretch", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px", background: "var(--color-bg)", borderRight: "1px solid var(--color-border)", flexShrink: 0 }}>
@@ -299,12 +446,9 @@ const RuleRow = memo(function RuleRow({
   const showMatch = rule.condition !== "always";
   const showValue = !VALUELESS_ACTIONS.has(rule.action as ParseRuleAction);
 
-  // Local state for text inputs — keeps keystrokes purely local,
-  // flushes to parent only on blur so the whole table doesn't re-render per keystroke.
   const [localMatch, setLocalMatch] = useState(rule.match ?? "");
   const [localValue, setLocalValue] = useState(rule.value ?? "");
 
-  // Sync local state when the rule prop changes from outside (e.g. import, reorder)
   useEffect(() => { setLocalMatch(rule.match ?? ""); }, [rule.match]);
   useEffect(() => { setLocalValue(rule.value ?? ""); }, [rule.value]);
 
@@ -498,41 +642,46 @@ const MappingRowComponent = memo(function MappingRowComponent({
   errors: ValidationIssue[]; warnings: ValidationIssue[];
   validationGeneration?: number;
 }) {
-  const hasRules  = row.rules.length > 0;
-  const isRemoved = row.state === "removed";
-  const isIgnored = row.type === "ignore" || row.field === "__ignore__";
+  const hasRules      = row.rules.length > 0;
+  const isRemoved     = row.state === "removed";
+  const isIgnored     = row.type === "ignore" || row.field === "__ignore__";
 
-  // Accordion open by default when the row already has rules, or forced open by parent
-  const [open,    setOpen]    = useState(hasRules || (row.openOnMount ?? false));
-  const [mounted, setMounted] = useState(hasRules || (row.openOnMount ?? false));
+  // Use alias editor when a form question with options is attached and type is multi_select.
+  // Grid questions (matrix_row) don't need it — row_key and parse_availability are auto-set.
+  const hasAliasEditor = !!(
+    row.formQuestion?.options &&
+    row.formQuestion.options.length > 0 &&
+    row.type === "multi_select" &&
+    !viewOnly
+  );
 
-  // When opening: mount immediately, then set open on next tick so the
-  // browser has a frame to register the 0fr starting state before animating.
+  // Accordion: open by default when row has rules or is forced open.
+  // For alias editor rows, always start open so options are visible.
+  const defaultOpen = hasRules || (row.openOnMount ?? false) || hasAliasEditor;
+  const [open,    setOpen]    = useState(defaultOpen);
+  const [mounted, setMounted] = useState(defaultOpen);
+
   function openAccordion() {
     setMounted(true);
     requestAnimationFrame(() => setOpen(true));
   }
 
-  // When closing: set open false (starts animation), unmount after it finishes.
   function closeAccordion() {
     setOpen(false);
     setTimeout(() => setMounted(false), 220);
   }
 
-  // Auto-close when all rules are removed
+  // Auto-close when all rules are removed (only for non-alias-editor rows)
   useEffect(() => {
-    if (!hasRules) closeAccordion();
+    if (!hasRules && !hasAliasEditor) closeAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasRules]);
+  }, [hasRules, hasAliasEditor]);
 
-  // Open accordion when openOnMount is set (e.g. after import adds/changes rules).
-  // This handles already-mounted rows — useState only fires at initial mount.
   useEffect(() => {
     if (row.openOnMount) openAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.openOnMount]);
 
-  // Open accordion when new validation results arrive with rule-level issues for this row
   const hasRuleLevelIssues = errors.some((e) => e.rule_index != null) || warnings.some((w) => w.rule_index != null);
   useEffect(() => {
     if (validationGeneration > 0 && hasRuleLevelIssues) openAccordion();
@@ -556,12 +705,16 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasWarnings     = !hasErrors && warnings.length > 0;
   const hasRuleErrors   = errors.some((e) => e.rule_index != null);
   const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
-  const rulesLabel      = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
 
-  // Background + left border: error/warning > row state > ignored > default
-  const ignoredBg = "var(--color-bg)";
+  // Badge label for accordion: alias editor rows show option count, others show rule count
+  const accordionLabel = hasAliasEditor
+    ? `${row.formQuestion!.options!.length} option${row.formQuestion!.options!.length !== 1 ? "s" : ""}`
+    : hasRules
+    ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}`
+    : null;
+
   const rowBg = isIgnored && !isRemoved
-    ? ignoredBg
+    ? "var(--color-bg)"
     : hasErrors
     ? "#FFF5F5"
     : hasWarnings
@@ -578,22 +731,17 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ? `3px solid ${colors.border}`
     : "3px solid transparent";
 
-  // Icon in rightmost column:
-  // - removed/ignored → nothing
-  // - has rules → chevron (toggles accordion)
-  // - no rules, not ignored → plus (adds first rule)
-  const showChevron = !isRemoved && !isIgnored && hasRules && !viewOnly;
-  const showPlus    = !isRemoved && !isIgnored && !hasRules && !viewOnly;
+  // Chevron shown when: has rules OR has alias editor (always collapsible)
+  const showChevron = !isRemoved && !isIgnored && (hasRules || hasAliasEditor) && !viewOnly;
+  const showPlus    = !isRemoved && !isIgnored && !hasRules && !hasAliasEditor && !viewOnly;
 
   function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
     if (viewOnly || isRemoved || isIgnored) return;
-    // Only toggle accordion when there are rules and the click wasn't on an interactive element
-    if (!hasRules) return;
+    if (!hasRules && !hasAliasEditor) return;
     const target = e.target as HTMLElement;
     const tag = target.tagName;
     if (["SELECT", "INPUT", "BUTTON", "LABEL"].includes(tag)) return;
     if (target.closest("label")) return;
-    // Guard against clicks inside the custom Select dropdown panel (fixed-positioned divs)
     if (target.closest("[data-select-panel]") || target.closest("[data-select-trigger]")) return;
     if (open) { closeAccordion(); } else { openAccordion(); }
   }
@@ -669,8 +817,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
           background: rowBg,
           borderTop: isFirst ? "none" : "2px solid var(--color-border)",
           borderLeft,
-          // Only show pointer cursor when there are rules to toggle
-          cursor: (!viewOnly && !isRemoved && !isIgnored && hasRules) ? "pointer" : "default",
+          cursor: (!viewOnly && !isRemoved && !isIgnored && (hasRules || hasAliasEditor)) ? "pointer" : "default",
         }}
       >
         {/* Col 1: header + badges */}
@@ -683,9 +830,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
               {badge.label}
             </span>
           )}
-          {rulesLabel && !viewOnly && (
+          {accordionLabel && !viewOnly && (
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-              {rulesLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
+              {accordionLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
             </span>
           )}
         </div>
@@ -746,7 +893,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         </div>
       </div>
 
-      {/* Rules accordion (edit mode) — animated via grid-template-rows */}
+      {/* Accordion (edit mode) — alias editor or rules panel */}
       {!viewOnly && !isIgnored && !isRemoved && mounted && (
         <div
           style={{
@@ -757,12 +904,21 @@ const MappingRowComponent = memo(function MappingRowComponent({
           }}
         >
           <div style={{ minHeight: 0 }}>
-            <RulesPanel
-              row={row} validConditions={validConditions} validActions={validActions}
-              onChangeRules={(rules) => onChange?.({ rules })}
-              onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
-              rowErrors={errors} rowWarnings={warnings}
-            />
+            {hasAliasEditor ? (
+              <AliasEditor
+                question={row.formQuestion!}
+                currentRules={row.rules}
+                onChangeRules={(rules) => onChange?.({ rules })}
+                isRemoved={isRemoved}
+              />
+            ) : (
+              <RulesPanel
+                row={row} validConditions={validConditions} validActions={validActions}
+                onChangeRules={(rules) => onChange?.({ rules })}
+                onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
+                rowErrors={errors} rowWarnings={warnings}
+              />
+            )}
           </div>
         </div>
       )}
@@ -870,7 +1026,6 @@ export interface SheetConfigMappingTableProps {
   onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
-  /** Increment each time new validation results arrive — triggers accordion open for rows with rule-level issues. */
   validationGeneration?: number;
 }
 
@@ -883,13 +1038,9 @@ export function SheetConfigMappingTable({
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
-  // Keep a stable ref to onChangeRow so per-row callbacks don't change identity
-  // on every render, which would defeat memo on MappingRowComponent.
   const onChangeRowRef = useRef(onChangeRow);
   useEffect(() => { onChangeRowRef.current = onChangeRow; }, [onChangeRow]);
 
-  // One stable callback per row header. We key by header string (stable across
-  // renders) so memo sees the same function reference unless the row is new.
   const stableCallbacks = useRef<Map<string, (patch: Partial<MappingRow>) => void>>(new Map());
   rows.forEach((row, idx) => {
     if (!stableCallbacks.current.has(row.header)) {
@@ -898,7 +1049,6 @@ export function SheetConfigMappingTable({
       });
     }
   });
-  // Clean up headers that no longer exist
   const currentHeaders = new Set(rows.map((r) => r.header));
   stableCallbacks.current.forEach((_, key) => {
     if (!currentHeaders.has(key)) stableCallbacks.current.delete(key);
@@ -917,7 +1067,6 @@ export function SheetConfigMappingTable({
       </div>
       <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "visible" }}>
         {rows.map((row, idx) => {
-          // header is list[str] | string | null — normalise to array for consistent matching.
           const matchesHeader = (h: string[] | string | null | undefined) => {
             if (!h) return false;
             if (Array.isArray(h)) return h.includes(row.header);
@@ -948,8 +1097,9 @@ export function makeRichRow(
   values: MappingRow, baseline: MappingRow,
   forcedState?: "new" | "removed", importedValue?: MappingRow,
   openOnMount?: boolean,
+  formQuestion?: FormQuestion,
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  return { ...values, state, baseline, importedValue, openOnMount };
+  return { ...values, state, baseline, importedValue, openOnMount, formQuestion };
 }
