@@ -438,15 +438,7 @@ export default function EditSheetPage() {
         {/* ── Mapping table ── */}
         <div>
           {(validationErrors.length > 0 || validationWarnings.length > 0) && (
-            <div style={{ marginBottom: "12px" }}>
-              {renderErrorBanner()}
-              {validationErrors.length === 0 && validationWarnings.length > 0 && (
-                <Banner
-                  variant="warning"
-                  message={`${validationWarnings.length} warning${validationWarnings.length !== 1 ? "s" : ""} — review highlighted rows. Click Save or Save & Sync again to proceed anyway.`}
-                />
-              )}
-            </div>
+            <div style={{ marginBottom: "12px" }}>{renderErrorBanner()}</div>
           )}
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "10px" }}>

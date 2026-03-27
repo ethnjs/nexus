@@ -586,15 +586,7 @@ export default function NewSheetPage() {
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {(validationErrors.length > 0 || validationWarnings.length > 0) && (
-            <div>
-              {renderErrorBanner()}
-              {validationErrors.length === 0 && validationWarnings.length > 0 && (
-                <Banner
-                  variant="warning"
-                  message={`${validationWarnings.length} warning${validationWarnings.length !== 1 ? "s" : ""} — review highlighted rows. Click Save & Sync again to proceed anyway.`}
-                />
-              )}
-            </div>
+            <div>{renderErrorBanner()}</div>
           )}
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
