@@ -20,6 +20,7 @@ from app.schemas.sheet_config import (
     SyncResult,
 )
 from app.services.sheets_service import SheetsService
+from app.services.forms_service import FormsService
 from app.services.sync_service import sync_sheet
 from app.services.sheets_validation import validate_column_mappings, ValidationResult
 
@@ -30,6 +31,10 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/sheets", tags=["sheets"]
 
 def get_sheets_service() -> SheetsService:
     return SheetsService()
+
+
+def get_forms_service() -> FormsService:
+    return FormsService()
 
 
 def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> SheetConfig:
@@ -92,17 +97,29 @@ def validate_sheet(
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 2 — Fetch headers from a specific tab
+# Wizard steps 2 & 3 — Fetch headers (tab select) + form questions (form URL)
 # ---------------------------------------------------------------------------
 @router.post("/headers/", response_model=SheetHeadersResponse)
 def get_sheet_headers(
     tournament_id: int,
     payload: SheetHeadersRequest,
     svc: SheetsService = Depends(get_sheets_service),
+    forms_svc: FormsService = Depends(get_forms_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
     try:
-        return svc.get_headers(payload.sheet_url, payload.sheet_name)
+        # Fetch form questions when a form URL is provided (volunteers sheets).
+        # FormsService errors surface as the same 403/400 shape as SheetsService.
+        form_questions = None
+        if payload.form_url:
+            form_questions = forms_svc.get_form_questions(payload.form_url)
+
+        return svc.get_headers(
+            sheet_url=payload.sheet_url,
+            sheet_name=payload.sheet_name,
+            sheet_type=payload.sheet_type,
+            form_questions=form_questions,
+        )
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:
@@ -137,7 +154,7 @@ def validate_mappings(
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 3 — Save the finalized column mapping
+# Wizard step 4 — Save the finalized column mapping
 # ---------------------------------------------------------------------------
 @router.post(
     "/configs/",
