@@ -403,6 +403,7 @@ export default function NewSheetPage() {
       const { ok, shouldConfirm } = handleValidateResult(validation);
       if (!ok) { setShowErrorsModal(true); return; }
       if (shouldConfirm) { setShowWarningsConfirm(true); return; }
+      // First attempt with warnings — rows are highlighted, banner shown via validationWarnings
       if (validation.warnings.length > 0) return;
       await doSaveAndSync();
     } catch {
@@ -417,7 +418,7 @@ export default function NewSheetPage() {
       prev.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
-        return makeRichRow(next, r.baseline, undefined, r.importedValue);
+        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.formQuestion);
       })
     );
     const header = mappingRows[idx]?.header;
@@ -585,7 +586,15 @@ export default function NewSheetPage() {
       {step === "mapping" && headersResult && (
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
           {(validationErrors.length > 0 || validationWarnings.length > 0) && (
-            <div>{renderErrorBanner()}</div>
+            <div>
+              {renderErrorBanner()}
+              {validationErrors.length === 0 && validationWarnings.length > 0 && (
+                <Banner
+                  variant="warning"
+                  message={`${validationWarnings.length} warning${validationWarnings.length !== 1 ? "s" : ""} — review highlighted rows. Click Save & Sync again to proceed anyway.`}
+                />
+              )}
+            </div>
           )}
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>

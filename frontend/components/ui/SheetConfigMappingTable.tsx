@@ -5,6 +5,7 @@ import type { MappingRow } from "@/lib/importMappings";
 import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue, FormQuestion, FormQuestionOption } from "@/lib/api";
 import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
 import { Select } from "@/components/ui/Select";
+import { IconSwitch } from "@/components/ui/Icons";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,9 @@ export interface RichMappingRow extends MappingRow {
   validationGeneration?: number;
   /** Form question metadata from the linked Google Form. Drives the alias editor UI. */
   formQuestion?:  FormQuestion;
+  /** Whether the alias editor (true) or rules editor (false) is shown. Stored in parent state
+   *  so it survives remounts caused by rule changes. Defaults to true when formQuestion present. */
+  showAliasEditor?: boolean;
 }
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
@@ -135,109 +139,276 @@ function rulesAndOptionsToAliases(
 // ─── Alias Editor ─────────────────────────────────────────────────────────────
 
 /**
+ * Determine whether a rule is an "alias rule" — one that can be represented
+ * as a raw → alias pair in the alias editor.
+ */
+function isAliasRule(rule: ParseRule, options: FormQuestionOption[]): boolean {
+  return (
+    rule.condition === "contains" &&
+    rule.action    === "replace"  &&
+    options.some((o) => o.raw === rule.match)
+  );
+}
+
+/**
  * Form-native option alias editor.
- * Shown instead of the rules accordion for CHECKBOX / choice questions
- * that have form question metadata. TDs see form options and editable
- * aliases — parse rules are compiled silently on save.
+ * Always shown for CHECKBOX, RADIO, and DROPDOWN questions.
+ * - Alias pairs are always visible and editable — editing never switches view.
+ * - A switch button lets TDs toggle to rules view if they prefer.
+ * - Any extra rules (not representable as alias pairs) appear below the alias list.
+ * - showAliasEditor and setShowAliasEditor are owned by the parent (MappingRowComponent)
+ *   so the toggle state survives alias edits without remounting.
  */
 const AliasEditor = memo(function AliasEditor({
   question,
   currentRules,
   onChangeRules,
   isRemoved,
+  showAliasEditor,
+  onToggleView,
+  validConditions,
+  validActions,
+  rowErrors,
+  rowWarnings,
 }: {
-  question:      FormQuestion;
-  currentRules:  ParseRule[];
-  onChangeRules: (rules: ParseRule[]) => void;
-  isRemoved:     boolean;
+  question:        FormQuestion;
+  currentRules:    ParseRule[];
+  onChangeRules:   (rules: ParseRule[]) => void;
+  isRemoved:       boolean;
+  showAliasEditor: boolean;
+  onToggleView:    () => void;
+  validConditions: string[];
+  validActions:    string[];
+  rowErrors:       ValidationIssue[];
+  rowWarnings:     ValidationIssue[];
 }) {
   const options = question.options ?? [];
 
-  // Reconstruct current alias values from saved rules
+  // Track whether the last rules change came from inside this component (alias edit)
+  // or from outside (TD editing in rules view). Only sync aliases when change is external.
+  const internalChangeRef = useRef(false);
+
   const [aliases, setAliases] = useState<FormQuestionOption[]>(() =>
     rulesAndOptionsToAliases(currentRules, options)
   );
 
-  // Sync when rules change externally (e.g. import)
+  // Sync aliases when currentRules changes from outside (rules view edits).
+  // Skip sync when we triggered the change ourselves to avoid clobbering in-progress edits.
   useEffect(() => {
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
     setAliases(rulesAndOptionsToAliases(currentRules, options));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRules]);
 
+  // Extra rules: any saved rules that aren't alias rules for this question's options.
+  const extraRules = currentRules.filter((r) => !isAliasRule(r, options));
+
   function handleAliasChange(idx: number, value: string) {
     const next = aliases.map((a, i) => i === idx ? { ...a, alias: value } : a);
     setAliases(next);
-    onChangeRules(aliasesToRules(next));
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(next), ...extraRules]);
   }
 
-  if (options.length === 0) return null;
+  function handleExtraRuleChange(idx: number, patch: Partial<ParseRule>) {
+    const next = extraRules.map((r, i) => i === idx ? { ...r, ...patch } : r);
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
+
+  function handleExtraRuleMove(idx: number, dir: -1 | 1) {
+    const next = [...extraRules];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
+
+  function handleAddExtraRule() {
+    const newRule: ParseRule = { condition: "always", case_sensitive: false, action: "set", value: "" };
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...extraRules, newRule]);
+  }
+
+  function handleRemoveExtraRule(idx: number) {
+    const next = extraRules.filter((_, i) => i !== idx);
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
 
   return (
     <div style={{ background: "var(--color-bg)", padding: "12px 14px 14px 28px" }}>
+
+      {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-          Answer options
+          {showAliasEditor ? "Answer options" : "Parse rules"}
         </span>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
-          Stored as
-        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {showAliasEditor && options.length > 0 && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+              Stored as
+            </span>
+          )}
+          <button
+            onClick={onToggleView}
+            title={showAliasEditor ? "Switch to rules editor" : "Switch to options editor"}
+            style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", padding: "3px 7px", cursor: "pointer", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "11px" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-accent)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)"; e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+          >
+            <IconSwitch size={12} />
+            {showAliasEditor ? "Rules" : "Options"}
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {aliases.map((opt, idx) => {
-          const unchanged = opt.alias.trim() === opt.raw.trim();
-          return (
-            <div
-              key={idx}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr auto 1fr",
-                alignItems: "center",
-                gap: "10px",
-                padding: "7px 10px",
-                background: "var(--color-surface)",
-                border: `1px solid ${unchanged ? "var(--color-border)" : "var(--color-accent)"}`,
-                borderRadius: "var(--radius-sm)",
-                opacity: isRemoved ? 0.5 : 1,
-              }}
-            >
-              {/* Raw option from form */}
-              <span style={{
-                fontFamily: "var(--font-sans)",
-                fontSize: "12px",
-                color: "var(--color-text-secondary)",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }} title={opt.raw}>
-                {opt.raw}
-              </span>
-
-              {/* Arrow */}
-              <span style={{ color: "var(--color-text-tertiary)", fontSize: "12px", flexShrink: 0 }}>→</span>
-
-              {/* Editable alias */}
-              <input
-                value={opt.alias}
-                disabled={isRemoved}
-                onChange={(e) => handleAliasChange(idx, e.target.value)}
-                style={{
-                  ...inputStyle,
-                  height: "28px",
-                  fontSize: "12px",
-                  width: "100%",
-                  borderColor: unchanged ? "var(--color-border)" : "var(--color-accent)",
-                  background: unchanged ? "var(--color-bg)" : "var(--color-accent-subtle)",
-                }}
-              />
+      {/* ── Alias editor view ── */}
+      {showAliasEditor && (
+        <>
+          {options.length === 0 ? (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
+              No options found for this question.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {aliases.map((opt, idx) => {
+                const unchanged = opt.alias.trim() === opt.raw.trim();
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto 1fr",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "7px 10px",
+                      background: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
+                      borderLeft: unchanged ? "1px solid var(--color-border)" : "3px solid #FDBA74",
+                      borderRadius: "var(--radius-sm)",
+                      opacity: isRemoved ? 0.5 : 1,
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt.raw}>
+                      {opt.raw}
+                    </span>
+                    <span style={{ color: "var(--color-text-tertiary)", fontSize: "12px", flexShrink: 0 }}>→</span>
+                    <input
+                      value={opt.alias}
+                      disabled={isRemoved}
+                      onChange={(e) => handleAliasChange(idx, e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        height: "28px",
+                        fontSize: "12px",
+                        width: "100%",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    />
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          )}
 
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "10px", margin: "10px 0 0" }}>
-        Options that differ from the form text are transformed automatically on sync.
-      </p>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", margin: "10px 0 0" }}>
+            Options that differ from the form text are transformed automatically on sync.
+          </p>
+
+          {/* Extra rules below alias list */}
+          {extraRules.length > 0 && (
+            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--color-border)" }}>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", display: "block", marginBottom: "8px" }}>
+                Additional rules
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "8px" }}>
+                {extraRules.map((rule, idx) => {
+                  const globalIdx = currentRules.indexOf(rule);
+                  const ruleError   = rowErrors.find((e) => e.rule_index === globalIdx)?.message;
+                  const ruleWarning = rowWarnings.find((w) => w.rule_index === globalIdx)?.message;
+                  return (
+                    <RuleRow
+                      key={idx} rule={rule} index={idx} total={extraRules.length}
+                      validConditions={validConditions} validActions={validActions}
+                      onChange={(patch) => handleExtraRuleChange(idx, patch)}
+                      onMove={(dir) => handleExtraRuleMove(idx, dir)}
+                      onRemove={() => handleRemoveExtraRule(idx)}
+                      error={ruleError} warning={ruleWarning} isRemoved={isRemoved}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isRemoved && (
+            <button
+              onClick={handleAddExtraRule}
+              style={{ display: "flex", alignItems: "center", gap: "5px", background: "none", border: "none", padding: "8px 0 0", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+            >
+              + Add rule
+            </button>
+          )}
+        </>
+      )}
+
+      {/* ── Rules view (full rules panel when TD switches) ── */}
+      {!showAliasEditor && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {currentRules.length === 0 && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
+              No rules — raw value passes through
+            </span>
+          )}
+          {currentRules.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "8px" }}>
+              {currentRules.map((rule, idx) => {
+                const ruleError   = rowErrors.find((e) => e.rule_index === idx)?.message;
+                const ruleWarning = rowWarnings.find((w) => w.rule_index === idx)?.message;
+                return (
+                  <RuleRow
+                    key={idx} rule={rule} index={idx} total={currentRules.length}
+                    validConditions={validConditions} validActions={validActions}
+                    onChange={(patch) => onChangeRules(currentRules.map((r, i) => i === idx ? { ...r, ...patch } : r))}
+                    onMove={(dir) => {
+                      const next = [...currentRules];
+                      const swap = idx + dir;
+                      if (swap < 0 || swap >= next.length) return;
+                      [next[idx], next[swap]] = [next[swap], next[idx]];
+                      onChangeRules(next);
+                    }}
+                    onRemove={() => onChangeRules(currentRules.filter((_, i) => i !== idx))}
+                    error={ruleError} warning={ruleWarning} isRemoved={isRemoved}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {rowErrors.filter((e) => e.rule_index == null).map((e, i) => (
+            <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: "0 0 4px" }}>{e.message}</p>
+          ))}
+          {rowWarnings.filter((w) => w.rule_index == null).map((w, i) => (
+            <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: "0 0 4px" }}>{w.message}</p>
+          ))}
+          {!isRemoved && (
+            <button
+              onClick={() => onChangeRules([...currentRules, { condition: "always", case_sensitive: false, action: "set", value: "" }])}
+              style={{ display: "flex", alignItems: "center", gap: "5px", background: "none", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "5px 10px", cursor: "pointer", width: "100%", justifyContent: "center", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-accent)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)"; e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+            >
+              + Add rule
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 });
@@ -646,14 +817,19 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const isRemoved     = row.state === "removed";
   const isIgnored     = row.type === "ignore" || row.field === "__ignore__";
 
-  // Use alias editor when a form question with options is attached and type is multi_select.
+  // Use alias editor when a form question with options is attached.
+  // Applies to CHECKBOX (multi_select), RADIO and DROPDOWN (string) — any question with options.
   // Grid questions (matrix_row) don't need it — row_key and parse_availability are auto-set.
   const hasAliasEditor = !!(
     row.formQuestion?.options &&
     row.formQuestion.options.length > 0 &&
-    row.type === "multi_select" &&
     !viewOnly
   );
+
+  // showAliasEditor lives on the row in parent state — not local state — so it
+  // survives remounts caused by rule changes triggering parent re-renders.
+  // Defaults to true (show alias editor) when a formQuestion is present.
+  const showAliasEditor = row.showAliasEditor ?? true;
 
   // Accordion: open by default when row has rules or is forced open.
   // For alias editor rows, always start open so options are visible.
@@ -910,6 +1086,12 @@ const MappingRowComponent = memo(function MappingRowComponent({
                 currentRules={row.rules}
                 onChangeRules={(rules) => onChange?.({ rules })}
                 isRemoved={isRemoved}
+                showAliasEditor={showAliasEditor}
+                onToggleView={() => onChange?.({ showAliasEditor: !showAliasEditor })}
+                validConditions={validConditions}
+                validActions={validActions}
+                rowErrors={errors}
+                rowWarnings={warnings}
               />
             ) : (
               <RulesPanel
@@ -1101,5 +1283,7 @@ export function makeRichRow(
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  return { ...values, state, baseline, importedValue, openOnMount, formQuestion };
+  // Preserve showAliasEditor if it's already on the incoming values object
+  const showAliasEditor = (values as Partial<RichMappingRow>).showAliasEditor;
+  return { ...values, state, baseline, importedValue, openOnMount, formQuestion, showAliasEditor };
 }

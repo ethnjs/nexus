@@ -160,6 +160,15 @@ export function IconExport({ size = 14, ...props }: IconProps) {
   );
 }
 
+export function IconSwitch({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <path d="M2 5h10M9 2l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 11H4M7 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ─── Directional ─────────────────────────────────────────────────────────────
 
 export function IconChevronDown({ size = 14, ...props }: IconProps) {
