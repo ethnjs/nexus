@@ -24,8 +24,6 @@ from app.services.forms_service import FormsService
 from app.services.sync_service import sync_sheet
 from app.services.sheets_validation import validate_column_mappings
 
-# Tournament-scoped routes nested under /tournaments/{tournament_id}/sheets/...
-# All sheet config routes require manage_tournament.
 router = APIRouter(prefix="/tournaments/{tournament_id}/sheets", tags=["sheets"])
 
 
@@ -38,7 +36,6 @@ def get_forms_service() -> FormsService:
 
 
 def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> SheetConfig:
-    """Fetch config and validate it belongs to the given tournament."""
     config = db.query(SheetConfig).filter(SheetConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sheet config not found")
@@ -48,10 +45,6 @@ def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> Sheet
 
 
 def _validate_or_422(column_mappings: dict) -> list[dict]:
-    """
-    Run validate_column_mappings. Raise 422 with structured body on hard errors.
-    Returns warnings list (may be non-empty even when no errors).
-    """
     result = validate_column_mappings(column_mappings)
     if not result.ok:
         raise HTTPException(
@@ -62,7 +55,7 @@ def _validate_or_422(column_mappings: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 1 — Validate URL and return available tabs
+# Wizard step 1 — Validate URL
 # ---------------------------------------------------------------------------
 @router.post("/validate/", response_model=SheetValidateResponse)
 def validate_sheet(
@@ -71,10 +64,6 @@ def validate_sheet(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Given a Google Sheets URL, return the spreadsheet title and list of tabs.
-    Called when the user pastes a URL in the wizard.
-    """
     try:
         return svc.validate_sheet_url(payload.sheet_url)
     except PermissionError as e:
@@ -84,7 +73,7 @@ def validate_sheet(
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 2 — Fetch headers and form-enriched mapping suggestions
+# Wizard step 2 — Fetch headers
 # ---------------------------------------------------------------------------
 @router.post("/headers/", response_model=SheetHeadersResponse)
 def get_sheet_headers(
@@ -94,14 +83,6 @@ def get_sheet_headers(
     forms_svc: FormsService = Depends(get_forms_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Given a URL + sheet name + sheet type, return a flat list of MappedHeaders.
-
-    When form_url is provided (volunteers sheets), fetches form question metadata
-    from the Google Forms API and cross-references it with sheet column headers
-    to produce richer suggestions. The response.mappings list has one entry per
-    sheet column with field, type, rules, and form enrichment pre-merged.
-    """
     form_questions = None
     if payload.form_url:
         try:
@@ -125,7 +106,7 @@ def get_sheet_headers(
 
 
 # ---------------------------------------------------------------------------
-# Validate mappings without saving (pre-save check)
+# Validate mappings without saving
 # ---------------------------------------------------------------------------
 @router.post("/configs/validate-mappings/", response_model=ValidateMappingsResponse)
 def validate_mappings(
@@ -133,10 +114,6 @@ def validate_mappings(
     payload: ValidateMappingsRequest,
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Validate column mappings without writing to the database.
-    Returns { ok, errors, warnings } — always 200, errors are in the body.
-    """
     result = validate_column_mappings(
         {k: v.model_dump() for k, v in payload.column_mappings.items()}
     )
@@ -163,8 +140,6 @@ def create_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """Save a completed column mapping for a tournament."""
-    # Validate before writing
     raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
     warnings = _validate_or_422(raw_mappings)
 
@@ -219,7 +194,6 @@ def update_sheet_config(
     if payload.column_mappings is not None:
         raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
         warnings = _validate_or_422(raw_mappings)
-        # Merge incoming keys into existing mappings
         existing = dict(config.column_mappings or {})
         existing.update(raw_mappings)
         config.column_mappings = existing
@@ -257,11 +231,17 @@ def sync_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """Sync the sheet data into the NEXUS database."""
     config = _get_config_or_404(config_id, tournament_id, db)
+
+    if not config.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Sheet config is not active",
+        )
+
     try:
-        return sync_sheet(config, svc, db)
+        return sync_sheet(config, db, svc)  # fixed arg order: config, db, sheets_svc
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

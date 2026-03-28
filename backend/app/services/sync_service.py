@@ -17,7 +17,12 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
-from app.schemas.sheet_config import SyncError, SyncResult, coerce_legacy_type
+from app.schemas.sheet_config import (
+    PARSE_TIME_RANGE_ACTIONS,
+    SyncError,
+    SyncResult,
+    coerce_legacy_type,
+)
 from app.services.sheets_service import SheetsService
 
 
@@ -26,10 +31,6 @@ from app.services.sheets_service import SheetsService
 # ---------------------------------------------------------------------------
 
 def _parse_time(raw: str) -> str:
-    """
-    Convert human-readable time to HH:MM 24hr format.
-    Handles: "8:00 AM", "10:00 AM", "NOON", "12:00 PM", "2:00 PM"
-    """
     raw = raw.strip().upper()
     if raw in ("NOON", "12:00 PM", "12:00PM"):
         return "12:00"
@@ -44,18 +45,13 @@ def _parse_time(raw: str) -> str:
     if period == "AM":
         if h == 12:
             h = 0
-    else:  # PM
+    else:
         if h != 12:
             h += 12
     return f"{h:02d}:{m:02d}"
 
 
 def _parse_time_range(row_key: str) -> tuple[str, str]:
-    """
-    Parse row_key like "8:00 AM - 10:00 AM" or "NOON - 2:00 PM".
-    Normalizes extra whitespace around the dash first.
-    Returns ("08:00", "10:00").
-    """
     normalized = re.sub(r"\s+", " ", row_key.strip())
     parts = normalized.split(" - ", 1)
     if len(parts) != 2:
@@ -68,16 +64,6 @@ def _parse_time_range(row_key: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
-    """
-    Convert a day string like "Thursday 5/21" or "Saturday 5/23" to a
-    YYYY-MM-DD date string by cross-referencing tournament blocks.
-
-    Strategy:
-    - Extract M/DD from the string (e.g. "5/21")
-    - Find a block whose date matches that month/day
-    - Use the block's full date (which includes the year)
-    - Falls back to start_date year if no block matches
-    """
     day_str = day_str.strip()
 
     date_match = re.search(r"(\d{1,2})/(\d{1,2})", day_str)
@@ -117,15 +103,6 @@ def _parse_availability(
     row_key: str,
     tournament: Tournament,
 ) -> list[dict]:
-    """
-    Parse one matrix row cell into availability slots.
-
-    cell_value: "Thursday 5/21, Saturday 5/23" or "None"
-    row_key:    "8:00 AM - 10:00 AM"
-
-    Returns list of {date, start, end} dicts.
-    Returns [] if cell is "None" or empty.
-    """
     if not cell_value or cell_value.strip().lower() == "none":
         return []
 
@@ -141,13 +118,6 @@ def _parse_availability(
 
 
 def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dict]:
-    """
-    Merge new slots into existing availability list.
-    Consecutive slots on the same date are merged if they are contiguous.
-
-    e.g. {date: X, start: 08:00, end: 10:00} + {date: X, start: 10:00, end: 12:00}
-         → {date: X, start: 08:00, end: 12:00}
-    """
     all_slots = list(existing) + list(new_slots)
 
     by_date: dict[str, list[dict]] = {}
@@ -180,10 +150,6 @@ def _rule_matches(
     match: str | None,
     case_sensitive: bool,
 ) -> bool:
-    """
-    Check whether a rule's condition fires against the current cell value.
-    Returns True for condition "always" unconditionally.
-    """
     if condition == "always":
         return True
     if match is None:
@@ -216,13 +182,10 @@ def _apply_rules(
     """
     Apply an ordered list of parse rules to a raw cell string.
 
-    Rules run sequentially — each rule sees the output of the previous one.
-    All matching rules fire (not first-match-wins).
-
-    Returns either:
-    - A string  — normal case; type coercion runs after this
-    - list[dict] — parse_availability short-circuited; skip type coercion
-    - None       — a discard rule fired; treat cell as empty
+    Returns:
+    - list[dict] — parse_time_range / parse_availability fired; skip type coercion
+    - None       — discard fired
+    - str        — transformed string; type coercion runs next
     """
     current: str = value
 
@@ -239,10 +202,8 @@ def _apply_rules(
         if action == "discard":
             return None
 
-        if action == "parse_availability":
-            # Short-circuit — run availability parsing and return immediately.
-            # Any rules after parse_availability are unreachable (validated at
-            # save time, but we guard here too).
+        # Both canonical (parse_time_range) and legacy alias (parse_availability)
+        if action in PARSE_TIME_RANGE_ACTIONS:
             row_key = mapping.get("row_key", "")
             return _parse_availability(current, row_key, tournament)
 
@@ -255,7 +216,6 @@ def _apply_rules(
                 current = re.sub(match, rule_value, current, flags=flags)
             elif match:
                 if not case_sensitive:
-                    # Case-insensitive literal replace via regex
                     current = re.sub(
                         re.escape(match), rule_value, current, flags=re.IGNORECASE
                     )
@@ -280,42 +240,23 @@ def _process_cell(
     mapping: dict,
     tournament: Tournament,
 ) -> Any:
-    """
-    Process a single cell value according to its ColumnMapping type.
-
-    Pipeline:
-      1. Apply parse rules (string transforms) in order
-      2. Type-coerce the result
-
-    Returns the processed value, or raises ValueError on bad input.
-    """
     field_type = coerce_legacy_type(mapping.get("type", "string"))
 
     if field_type == "ignore":
         return None
 
-    # ------------------------------------------------------------------
-    # Step 1 — Apply parse rules (runs on the raw string)
-    # ------------------------------------------------------------------
     rules = mapping.get("rules") or []
     if rules:
         result = _apply_rules(value, rules, mapping, tournament)
 
-        # parse_availability short-circuited — return slots list directly,
-        # skipping type coercion
         if isinstance(result, list):
             return result
 
-        # discard rule fired
         if result is None:
             return None
 
-        # Update value for type coercion below
         value = result
 
-    # ------------------------------------------------------------------
-    # Step 2 — Type coercion
-    # ------------------------------------------------------------------
     if field_type == "string":
         return value.strip() if value else None
 
@@ -340,11 +281,8 @@ def _process_cell(
         return [v.strip() for v in value.split(delimiter) if v.strip()]
 
     if field_type == "matrix_row":
-        # No parse_availability rule present — store raw string.
-        # The TD must add a parse_availability rule for availability fields.
         return value.strip() if value else None
 
-    # Unknown type — fall back to raw string rather than crashing
     return value.strip() if value else None
 
 
@@ -357,10 +295,6 @@ def sync_sheet(
     db: Session,
     sheets_svc: SheetsService,
 ) -> SyncResult:
-    """
-    Sync all rows from a sheet config into Users + Memberships.
-    Performs a full upsert — existing records are updated.
-    """
     tournament = db.query(Tournament).filter(
         Tournament.id == config.tournament_id
     ).first()
@@ -372,12 +306,9 @@ def sync_sheet(
     created = updated = skipped = 0
     errors: list[SyncError] = []
 
-    for row_index, row in enumerate(rows, start=2):  # row 1 is header
+    for row_index, row in enumerate(rows, start=2):
         email = None
         try:
-            # ----------------------------------------------------------------
-            # Step 1 — Parse all columns
-            # ----------------------------------------------------------------
             user_fields: dict[str, Any] = {}
             membership_fields: dict[str, Any] = {}
             availability_slots: list[dict] = []
@@ -414,16 +345,11 @@ def sync_sheet(
                         user_fields[field] = processed
 
                 else:
-                    # Membership fields
                     if processed is not None:
-                        # event_preference is list[str] in the schema — if the column
-                        # is typed as string (not multi_select), wrap it in a list so
-                        # the response serializer doesn't reject it
                         if field == "event_preference" and isinstance(processed, str):
                             processed = [processed]
                         membership_fields[field] = processed
 
-            # Email is required
             email = user_fields.get("email")
             if not email:
                 errors.append(SyncError(
@@ -432,9 +358,6 @@ def sync_sheet(
                 skipped += 1
                 continue
 
-            # ----------------------------------------------------------------
-            # Step 2 — Upsert User
-            # ----------------------------------------------------------------
             user = db.query(User).filter(User.email == email).first()
             if user:
                 for k, v in user_fields.items():
@@ -445,7 +368,7 @@ def sync_sheet(
                     errors.append(SyncError(
                         row=row_index,
                         email=email,
-                        detail="Missing first_name or last_name"
+                        detail="Missing first_name or last_name",
                     ))
                     skipped += 1
                     continue
@@ -453,9 +376,6 @@ def sync_sheet(
                 db.add(user)
                 db.flush()
 
-            # ----------------------------------------------------------------
-            # Step 3 — Upsert Membership
-            # ----------------------------------------------------------------
             membership = db.query(Membership).filter(
                 Membership.user_id == user.id,
                 Membership.tournament_id == tournament.id,

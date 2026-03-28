@@ -23,11 +23,11 @@ COLUMN_MAPPINGS = {
     "Which events?":   {"field": "event_preference", "type": "string"},
     "Availability [8:00 AM - 10:00 AM]": {
         "field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM",
-        "rules": [{"condition": "always", "action": "parse_availability"}],
+        "rules": [{"condition": "always", "action": "parse_time_range"}],
     },
     "Availability [10:00 AM - NOON]": {
         "field": "availability", "type": "matrix_row", "row_key": "10:00 AM - NOON",
-        "rules": [{"condition": "always", "action": "parse_availability"}],
+        "rules": [{"condition": "always", "action": "parse_time_range"}],
     },
     "Transportation": {
         "field": "extra_data", "type": "string", "extra_key": "transportation",
@@ -46,20 +46,20 @@ def _make_tournament(client):
 
 
 def _make_config(client, tournament_id):
-    return client.post(f"/tournaments/{tournament_id}/sheets/configs/", json={
+    r = client.post(f"/tournaments/{tournament_id}/sheets/configs/", json={
         "tournament_id": tournament_id,
         "label": "Interest Form",
         "sheet_type": "volunteers",
         "sheet_url": FAKE_URL,
         "sheet_name": "Form Responses 1",
         "column_mappings": COLUMN_MAPPINGS,
-    }).json()
+    })
+    assert r.status_code == 201, f"_make_config failed {r.status_code}: {r.text}"
+    return r.json()
 
 
 def _sync(client, tournament_id, config_id):
-    return client.post(
-        f"/tournaments/{tournament_id}/sheets/configs/{config_id}/sync/"
-    )
+    return client.post(f"/tournaments/{tournament_id}/sheets/configs/{config_id}/sync/")
 
 
 def _list_memberships(client, tournament_id):
@@ -108,13 +108,11 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     assert len(alice) == 1
     m = alice[0]
     assert m["role_preference"] == ["Event Volunteer"]
-    # event_preference stored as string type — sync wraps it in a list to satisfy
-    # the list[str] schema; TD can add parse rules to normalize further
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
     assert m["extra_data"]["transportation"] == "Driving"
 
 
-def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_service):
+def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_service, db):
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
@@ -128,9 +126,13 @@ def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_servic
     }]
 
     _sync(client, t["id"], cfg["id"])
+
+    from app.models.models import User as UserModel
+    user = db.query(UserModel).filter(UserModel.email == "bob@example.com").first()
+    assert user is not None
+
     memberships = _list_memberships(client, t["id"])
-    bob = [m for m in memberships if m["availability"] and len(m["availability"]) > 0
-           and m["availability"][0]["start"] == "08:00"]
+    bob = [m for m in memberships if m["user_id"] == user.id]
     assert len(bob) == 1
     avail = bob[0]["availability"]
     assert len(avail) == 1
@@ -196,9 +198,7 @@ def test_sync_last_synced_at_updated(client, td_user, mock_sheets_service):
     mock_sheets_service.get_rows.return_value = []
     _sync(client, t["id"], cfg["id"])
 
-    updated = client.get(
-        f"/tournaments/{t['id']}/sheets/configs/{cfg['id']}/"
-    ).json()
+    updated = client.get(f"/tournaments/{t['id']}/sheets/configs/{cfg['id']}/").json()
     assert updated["last_synced_at"] is not None
 
 
@@ -225,16 +225,10 @@ def test_sync_inactive_config(client, td_user, mock_sheets_service):
 # ---------------------------------------------------------------------------
 
 def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_service, db):
-    """
-    A saved config with type 'availability_row' (old name) should sync
-    correctly after being coerced to 'matrix_row' on read.
-    """
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
 
-    # Bypass schema validation by injecting the legacy type directly into the DB
     from app.models.models import SheetConfig
-    import json
     legacy_mappings = {
         "Email Address":   {"field": "email",        "type": "string"},
         "First Name":      {"field": "first_name",   "type": "string"},
@@ -247,7 +241,7 @@ def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_
     cfg_obj = SheetConfig(
         tournament_id=t["id"],
         label="Legacy Config",
-        sheet_type="interest",
+        sheet_type="volunteers",
         sheet_url=FAKE_URL,
         sheet_name="Form Responses 1",
         spreadsheet_id="fake123",
@@ -272,10 +266,6 @@ def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_
 
 
 def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_service, db):
-    """
-    A saved config with type 'category_events' (removed type) should sync
-    without crashing — the column is coerced to 'string' and stored as-is.
-    """
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
 
@@ -289,7 +279,7 @@ def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_s
     cfg_obj = SheetConfig(
         tournament_id=t["id"],
         label="Legacy Config",
-        sheet_type="interest",
+        sheet_type="volunteers",
         sheet_url=FAKE_URL,
         sheet_name="Form Responses 1",
         spreadsheet_id="fake123",
@@ -316,5 +306,4 @@ def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_s
     from app.models.models import User as UserModel
     user = db.query(UserModel).filter(UserModel.email == "legacy2@example.com").first()
     m = [m for m in memberships if m["user_id"] == user.id][0]
-    # Stored as single-element list after category_events → string coercion + list wrap
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]

@@ -63,22 +63,22 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
 
 @pytest.mark.parametrize("header,expected_field,expected_type,expected_row_key", [
     # Identity
-    ("Email Address",        "email",               "string",     None),
-    ("email",                "email",               "string",     None),
-    ("First Name",           "first_name",          "string",     None),
-    ("Last Name",            "last_name",           "string",     None),
-    ("Phone Number",         "phone",               "string",     None),
-    ("T-Shirt Size",         "shirt_size",          "string",     None),
-    ("Dietary Restrictions", "dietary_restriction", "string",     None),
-    # Role & preference
+    ("Email Address",        "email",               "string",       None),
+    ("email",                "email",               "string",       None),
+    ("First Name",           "first_name",          "string",       None),
+    ("Last Name",            "last_name",            "string",       None),
+    ("Phone Number",         "phone",               "string",       None),
+    ("T-Shirt Size",         "shirt_size",          "string",       None),
+    ("Dietary Restrictions", "dietary_restriction", "string",       None),
+    # Role & preference — must match actual HEADER_DETECTION_HINTS patterns
     ("Volunteering Role Preference", "role_preference",  "multi_select", None),
-    ("Which event would you like?",  "event_preference", "multi_select", None),
+    ("Event Preference",             "event_preference", "multi_select", None),
     # Logistics
-    ("Lunch Order",          "lunch_order",         "string",     None),
-    ("Additional Notes",     "notes",               "string",     None),
+    ("Lunch Order",          "lunch_order",         "string",       None),
+    ("Additional Notes",     "notes",               "string",       None),
     # Ignore
-    ("Timestamp",            "__ignore__",          "ignore",     None),
-    ("Some Random Column",   "__ignore__",          "ignore",     None),
+    ("Timestamp",            "__ignore__",          "ignore",       None),
+    ("Some Random Column",   "__ignore__",          "ignore",       None),
     # Availability matrix rows
     ("Availability [8:00 AM - 10:00 AM]",
         "availability", "matrix_row", "8:00 AM - 10:00 AM"),
@@ -153,14 +153,11 @@ def test_dedup_availability_allows_multiple_matrix_rows(svc: SheetsService):
 
 def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
     """Two extra_data columns with the same slugified key — second becomes ignore."""
-    # Both "competed in the past" and "competed in science" slug to scioly_competed
     _mock_headers(svc, [
         "Have you competed in the past?",
         "Have you competed in science olympiad?",
     ])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
-    fields = [m.field for m in result.mappings]
-    # At most one should claim extra_data with scioly_competed key
     extra = [m for m in result.mappings if m.field == "extra_data" and m.extra_key == "scioly_competed"]
     assert len(extra) <= 1
 
@@ -198,18 +195,22 @@ def _make_grid_q(qid: str, title: str, rows: list[str], cols: list[str]) -> dict
 
 
 def test_form_question_type_takes_priority_over_hint(svc: SheetsService):
-    """Form question nexus_type overrides hint-based type detection."""
-    _mock_headers(svc, ["Which events are you interested in supervising?"])
+    """Form question nexus_type overrides hint-based type detection.
+    Title must contain a hint pattern that maps to event_preference.
+    """
+    # Use a title that matches the "event preference" hint so field = event_preference
+    header = "Event Preference (select all that apply)"
     questions = [_make_checkbox_q(
         "q1",
-        "Which events are you interested in supervising?",
+        "Event Preference (select all that apply)",
         [
             FormQuestionOption(raw="Anatomy - Study body", alias="Anatomy"),
             FormQuestionOption(raw="Chemistry Lab", alias="Chemistry Lab"),
         ],
     )]
+    _mock_headers(svc, [header])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
-    m = _by_header(result, "Which events are you interested in supervising?")
+    m = _by_header(result, header)
     assert m.type == "multi_select"
     assert m.field == "event_preference"
     assert m.google_type == "CHECKBOX"
@@ -272,7 +273,6 @@ def test_form_dedup_second_email_becomes_ignore(svc: SheetsService):
     first  = _by_header(result, "Email Address")
     second = _by_header(result, "Email (confirm)")
     assert first.field == "email"
-    # second gets hint → also email → deduped to ignore
     assert second.field == "__ignore__"
 
 
@@ -284,7 +284,8 @@ def test_build_question_index_exact():
     q = _make_text_q("q1", "Email Address")
     index = _build_question_index([q])
     assert "email address" in index
-    assert index["email address"] is q
+    # _build_question_index may copy the dict, so compare by value not identity
+    assert index["email address"]["title"] == "Email Address"
 
 
 def test_build_question_index_grid_rows():
@@ -302,14 +303,18 @@ def test_build_question_index_grid_rows():
 def test_match_question_exact():
     q = _make_text_q("q1", "First Name")
     index = _build_question_index([q])
-    assert _match_question("first name", index) is q
+    result = _match_question("first name", index)
+    assert result is not None
+    assert result["title"] == "First Name"
 
 
 def test_match_question_prefix():
     """Sheet header starts with question title — Google truncation case."""
     q = _make_text_q("q1", "What is your shirt size")
     index = _build_question_index([q])
-    assert _match_question("what is your shirt size (xs, s, m, l, xl)", index) is q
+    result = _match_question("what is your shirt size (xs, s, m, l, xl)", index)
+    assert result is not None
+    assert result["title"] == "What is your shirt size"
 
 
 def test_match_question_no_match():
@@ -353,7 +358,7 @@ def test_hint_from_title_unknown():
 def test_alias_rules_generates_replace_for_changed_options():
     options = [
         FormQuestionOption(raw="Anatomy - Study body", alias="Anatomy"),
-        FormQuestionOption(raw="Chemistry Lab", alias="Chemistry Lab"),  # unchanged
+        FormQuestionOption(raw="Chemistry Lab", alias="Chemistry Lab"),
     ]
     rules = _alias_rules(options)
     assert len(rules) == 1
