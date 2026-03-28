@@ -56,7 +56,7 @@ const SHEET_TYPES: { value: SheetType; label: string; description: string }[] = 
 function getWizardSteps(sheetType: SheetType) {
   if (sheetType === "volunteers") {
     return [
-      { key: "url",          label: "URL" },
+      { key: "url",          label: "Sheet URL" },
       { key: "sheet-select", label: "Select Sheet" },
       { key: "form-url",     label: "Form URL" },
       { key: "mapping",      label: "Map Columns" },
@@ -64,7 +64,7 @@ function getWizardSteps(sheetType: SheetType) {
     ];
   }
   return [
-    { key: "url",          label: "URL" },
+    { key: "url",          label: "Sheet URL" },
     { key: "sheet-select", label: "Select Sheet" },
     { key: "mapping",      label: "Map Columns" },
     { key: "results",      label: "Done" },
@@ -274,9 +274,16 @@ export default function NewSheetPage() {
       setStep("mapping");
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "";
-      const isFormError = msg.includes("form") || msg.includes("403") || msg.includes("access");
+      const detail = (e as { detail?: unknown }).detail;
+      const isInvalidUrl = Array.isArray(detail) &&
+        detail.some((d: { loc?: unknown[]; type?: string }) =>
+          d.type === "value_error" && Array.isArray(d.loc) && d.loc.includes("form_url")
+        );
+      const isAccessError = msg.includes("403") || msg.includes("access");
       setFormUrlError(
-        isFormError
+        isInvalidUrl
+          ? "That doesn't look like a valid Google Forms URL. Make sure you're pasting a link to a form, not a spreadsheet."
+          : isAccessError
           ? "Could not access this form. Make sure it's shared with the NEXUS service account."
           : "Failed to fetch sheet headers. Make sure the sheet tab exists and is accessible."
       );
