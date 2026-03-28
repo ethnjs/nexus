@@ -28,34 +28,34 @@ class ValidationResult:
         """True if there are no hard errors (warnings are fine)."""
         return len(self.errors) == 0
 
-    def to_response_dict(self) -> dict:
-        """Serialise to a dict suitable for an HTTP error response body."""
-        def _normalise_header(h: list[str] | str | None) -> list[str] | None:
-            """Always return header as list[str] or None for consistent API shape."""
-            if h is None:
-                return None
-            if isinstance(h, list):
-                return h
-            return [h]
+    @staticmethod
+    def _normalise_header(h: list[str] | str | None) -> list[str] | None:
+        """Always return header as list[str] or None for consistent API shape."""
+        if h is None:
+            return None
+        if isinstance(h, list):
+            return h
+        return [h]
 
+    def _serialise_issues(self, issues: list[ValidationIssue]) -> list[dict]:
+        return [
+            {
+                "header":     self._normalise_header(i.header),
+                "rule_index": i.rule_index,
+                "message":    i.message,
+            }
+            for i in issues
+        ]
+
+    def to_response_dict(self) -> dict:
+        """
+        Serialise for HTTP 422 error response bodies (raised when validation
+        blocks a CREATE or PATCH). Shape: { ok, errors, warnings }.
+        """
         return {
-            "detail": "column_mappings validation failed",
-            "errors": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.errors
-            ],
-            "warnings": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.warnings
-            ],
+            "ok":   self.ok,
+            "errors":   self._serialise_issues(self.errors),
+            "warnings": self._serialise_issues(self.warnings),
         }
 
 
