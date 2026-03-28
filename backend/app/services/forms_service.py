@@ -141,6 +141,16 @@ class FormsService:
         questions: list[dict] = []
 
         for item in form.get("items", []):
+            # Handle questionGroupItem (grid questions)
+            question_group = item.get("questionGroupItem")
+            if question_group:
+                title = item.get("title", "").strip()
+                parsed = self._parse_question_group(title, question_group)
+                if parsed:
+                    questions.append(parsed)
+                continue
+
+            # Handle regular questionItem
             question_item = item.get("questionItem")
             if not question_item:
                 # Section headers, images, videos — skip
@@ -149,6 +159,14 @@ class FormsService:
             question = question_item.get("question", {})
             question_id = question.get("questionId", "")
             title = item.get("title", "").strip()
+
+            # Check for paragraph text — textQuestion with paragraph: true
+            text_q = question.get("textQuestion")
+            if text_q and text_q.get("paragraph"):
+                questions.append(
+                    _make_question(question_id, title, "PARAGRAPH_TEXT", "string")
+                )
+                continue
 
             parsed = self._parse_question(question_id, title, question)
             if parsed:
@@ -180,8 +198,6 @@ class FormsService:
             return _make_question(question_id, title, "DATE", "string")
         if "timeQuestion" in question:
             return _make_question(question_id, title, "TIME", "string")
-        if "gridQuestion" in question:
-            return self._parse_grid(question_id, title, question["gridQuestion"])
 
         return None
 
@@ -195,7 +211,8 @@ class FormsService:
         google_type = choice.get("type", "MULTIPLE_CHOICE")
         nexus_type = FORMS_TYPE_MAP.get(google_type, "string")
 
-        raw_options = [opt.get("value", "") for opt in choice.get("options", [])]
+        raw_options = [opt.get("value", "") for opt in choice.get("options", [])
+                       if not opt.get("isOther")]
         options = [
             FormQuestionOption(raw=raw, alias=_suggest_alias(raw))
             for raw in raw_options
@@ -206,22 +223,49 @@ class FormsService:
             question_id, title, google_type, nexus_type, options=options
         )
 
-    def _parse_grid(
+    def _parse_question_group(
         self,
-        question_id: str,
         title: str,
-        grid: dict,
-    ) -> dict:
+        group: dict,
+    ) -> dict | None:
         """
-        Checkbox or radio grid — maps to multiple matrix_row columns in the sheet.
-        Row labels are the time slots (or other row keys).
-        Column labels are the response options (e.g. "Available", "Maybe").
+        Parse a questionGroupItem (grid question).
+
+        Grid questions have rows (individual sub-questions) and columns
+        (the response options). In the sheet, each row becomes its own column
+        with header pattern: "{title} [{row_title}]".
+
+        Returns a single question dict with grid_rows and grid_columns populated.
         """
-        rows = [r.get("value", "") for r in grid.get("rows", []) if r.get("value")]
+        questions = group.get("questions", [])
+        grid = group.get("grid", {})
+
+        if not questions or not grid:
+            return None
+
+        # Extract row labels from rowQuestion titles
+        rows = []
+        first_question_id = ""
+        for q in questions:
+            if not first_question_id:
+                first_question_id = q.get("questionId", "")
+            row_q = q.get("rowQuestion", {})
+            row_title = row_q.get("title", "")
+            if row_title:
+                rows.append(row_title)
+
+        # Extract column labels from grid columns
         columns_data = grid.get("columns", {})
-        columns = [c.get("value", "") for c in columns_data.get("options", []) if c.get("value")]
+        columns = [
+            c.get("value", "")
+            for c in columns_data.get("options", [])
+            if c.get("value")
+        ]
+
+        if not rows:
+            return None
 
         return _make_question(
-            question_id, title, "GRID", "matrix_row",
-            grid_rows=rows, grid_columns=columns
+            first_question_id, title, "GRID", "matrix_row",
+            grid_rows=rows, grid_columns=columns,
         )

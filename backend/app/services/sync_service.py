@@ -27,6 +27,43 @@ from app.services.sheets_service import SheetsService
 
 
 # ---------------------------------------------------------------------------
+# User fields — fields that map to User table columns
+# ---------------------------------------------------------------------------
+_USER_FIELDS = frozenset({
+    "first_name", "last_name", "email", "phone",
+    "shirt_size", "dietary_restriction",
+    "university", "major", "employer",
+    "student_status", "competition_exp", "volunteering_exp",
+})
+
+
+# ---------------------------------------------------------------------------
+# Name splitting
+# ---------------------------------------------------------------------------
+
+def _split_full_name(full_name: str) -> tuple[str, str]:
+    """
+    Split a full name into (first_name, last_name).
+
+    Simple heuristic: everything before the last space is the first name,
+    everything after is the last name. Handles single-word names by using
+    the whole string as first_name with empty last_name.
+
+    Examples:
+        "Alice Smith"       → ("Alice", "Smith")
+        "Mary Jane Watson"  → ("Mary Jane", "Watson")
+        "Madonna"           → ("Madonna", "")
+        "  Bob  Jones  "    → ("Bob", "Jones")
+    """
+    parts = full_name.strip().split()
+    if not parts:
+        return ("", "")
+    if len(parts) == 1:
+        return (parts[0], "")
+    return (" ".join(parts[:-1]), parts[-1])
+
+
+# ---------------------------------------------------------------------------
 # Time parsing helpers
 # ---------------------------------------------------------------------------
 
@@ -313,6 +350,8 @@ def sync_sheet(
             membership_fields: dict[str, Any] = {}
             availability_slots: list[dict] = []
             extra_data: dict[str, Any] = {}
+            lunch_parts: dict[str, Any] = {}
+            event_pref_ranked: dict[str, str] = {}  # row_key → cell value for grid ranking
 
             mappings: dict = config.column_mappings or {}
 
@@ -329,26 +368,70 @@ def sync_sheet(
 
                 processed = _process_cell(raw_value, mapping, tournament)
 
-                if field == "availability":
+                if field == "full_name":
+                    # Split full name into first_name + last_name
+                    if processed and isinstance(processed, str):
+                        first, last = _split_full_name(processed)
+                        if first:
+                            user_fields["first_name"] = first
+                        if last:
+                            user_fields["last_name"] = last
+
+                elif field == "availability":
                     if processed and isinstance(processed, list):
                         availability_slots.extend(processed)
+
+                elif field == "event_preference":
+                    if field_type == "matrix_row":
+                        # Grid-ranked event preference: row_key is the event name,
+                        # cell value is the rank (e.g. "1st choice", "2nd choice")
+                        row_key = mapping.get("row_key", "")
+                        if processed and row_key:
+                            event_pref_ranked[row_key] = str(processed)
+                    elif processed is not None:
+                        if isinstance(processed, str):
+                            processed = [processed]
+                        membership_fields.setdefault("event_preference", [])
+                        membership_fields["event_preference"].extend(
+                            processed if isinstance(processed, list) else [processed]
+                        )
+
+                elif field == "lunch_order":
+                    # Accumulate lunch parts into a dict
+                    if processed is not None:
+                        # Use a slugified version of the header as the key
+                        lunch_key = _lunch_key_from_header(header)
+                        lunch_parts[lunch_key] = processed
 
                 elif field == "extra_data":
                     extra_key = mapping.get("extra_key")
                     if extra_key and processed is not None:
                         extra_data[extra_key] = processed
 
-                elif field in ("first_name", "last_name", "email", "phone",
-                               "shirt_size", "dietary_restriction",
-                               "university", "major", "employer"):
+                elif field in _USER_FIELDS:
                     if processed is not None:
                         user_fields[field] = processed
 
                 else:
                     if processed is not None:
-                        if field == "event_preference" and isinstance(processed, str):
+                        if field == "role_preference" and isinstance(processed, str):
                             processed = [processed]
                         membership_fields[field] = processed
+
+            # Resolve grid-ranked event preferences into an ordered list
+            if event_pref_ranked:
+                ranked_list = _resolve_ranked_preferences(event_pref_ranked)
+                existing = membership_fields.get("event_preference", [])
+                membership_fields["event_preference"] = ranked_list + existing
+
+            # Store lunch_parts as the lunch_order value
+            if lunch_parts:
+                if len(lunch_parts) == 1:
+                    # Single lunch field — store the value directly
+                    membership_fields["lunch_order"] = next(iter(lunch_parts.values()))
+                else:
+                    # Multiple lunch fields — store as dict
+                    membership_fields["lunch_order"] = lunch_parts
 
             email = user_fields.get("email")
             if not email:
@@ -428,3 +511,76 @@ def sync_sheet(
         errors=errors,
         last_synced_at=now,
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _lunch_key_from_header(header: str) -> str:
+    """
+    Derive a short key from a lunch-related column header.
+
+    Examples:
+        "Which protein do you want in your Chipotle burrito?" → "protein"
+        "What would you like to drink?"                       → "drink"
+        "Lunch Order"                                         → "lunch_order"
+    """
+    lower = header.lower()
+    if "protein" in lower or "burrito" in lower:
+        return "protein"
+    if "drink" in lower:
+        return "drink"
+    if "side" in lower:
+        return "side"
+    return "lunch_order"
+
+
+# Ranked-preference column ordering
+# Maps common ranking labels to sort order. Lower = higher priority.
+_RANK_ORDER: dict[str, int] = {
+    "1st choice": 1,
+    "1st": 1,
+    "first choice": 1,
+    "2nd choice": 2,
+    "2nd": 2,
+    "second choice": 2,
+    "3rd choice": 3,
+    "3rd": 3,
+    "third choice": 3,
+    "4th choice": 4,
+    "4th": 4,
+    "5th choice": 5,
+    "5th": 5,
+}
+
+
+def _rank_sort_key(rank_value: str) -> int:
+    """
+    Convert a rank label to a sort-order int.
+    Falls back to parsing leading digits, then 999 for unknowns.
+    """
+    lower = rank_value.strip().lower()
+    if lower in _RANK_ORDER:
+        return _RANK_ORDER[lower]
+    # Try parsing leading digit: "1st choice" variants
+    m = re.match(r"(\d+)", lower)
+    if m:
+        return int(m.group(1))
+    return 999
+
+
+def _resolve_ranked_preferences(ranked: dict[str, str]) -> list[str]:
+    """
+    Convert a {event_name: rank_label} dict into an ordered list of event names.
+
+    The rank_label is the grid column value (e.g. "1st choice", "2nd choice").
+    Events are sorted by rank. Events without a parseable rank go at the end.
+
+    Example:
+        {"Anatomy": "2nd choice", "Forensics": "1st choice", "Chem Lab": "3rd choice"}
+        → ["Forensics", "Anatomy", "Chem Lab"]
+    """
+    items = [(event, _rank_sort_key(rank)) for event, rank in ranked.items()]
+    items.sort(key=lambda x: x[1])
+    return [event for event, _ in items]

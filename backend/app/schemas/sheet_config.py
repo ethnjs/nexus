@@ -12,10 +12,14 @@ from pydantic import BaseModel, field_validator, model_validator
 #
 # KNOWN_FIELDS is kept as an alias for VOLUNTEER_KNOWN_FIELDS so that any
 # existing code referencing it directly continues to work.
+#
+# full_name is a mapping-only field — sync splits it into first_name + last_name
+# before writing to the User table. It never becomes a DB column.
 # ---------------------------------------------------------------------------
 VOLUNTEER_KNOWN_FIELDS: list[str] = [
     "__ignore__",
     # User identity (→ User table)
+    "full_name",
     "first_name",
     "last_name",
     "email",
@@ -25,6 +29,9 @@ VOLUNTEER_KNOWN_FIELDS: list[str] = [
     "university",
     "major",
     "employer",
+    "student_status",
+    "competition_exp",
+    "volunteering_exp",
     # Membership fields (→ Membership table)
     "role_preference",
     "event_preference",
@@ -237,6 +244,9 @@ class FormQuestionOption(BaseModel):
 # One entry per sheet column, with suggested mapping and form enrichment
 # already cross-referenced by the service layer. The frontend maps these
 # directly to RichMappingRow objects — no client-side cross-referencing needed.
+#
+# google_type has been removed — the backend resolves the mapping type fully.
+# The frontend Type dropdown is always editable by the TD.
 # ---------------------------------------------------------------------------
 class MappedHeader(BaseModel):
     """
@@ -251,7 +261,6 @@ class MappedHeader(BaseModel):
     delimiter:   str | None = None
 
     # Form question enrichment — None when no form URL provided or no question matched
-    google_type:  str | None = None   # raw Google Forms type e.g. "CHECKBOX", "RADIO"
     options:      list[FormQuestionOption] | None = None
     grid_rows:    list[str] | None = None
     grid_columns: list[str] | None = None

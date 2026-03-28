@@ -7,11 +7,16 @@ from app.services.sheets_service import (
     _build_question_index,
     _match_question,
     _extract_row_key,
-    _hint_from_title,
+    _hint_field,
     _alias_rules,
     _slugify,
     _dedup,
     _mapped_from_hint,
+)
+from app.services.volunteer_hints import (
+    AVAILABILITY_BRACKET_PATTERN,
+    FieldHint,
+    match_volunteer_hint,
 )
 from app.schemas.sheet_config import (
     FormQuestionOption,
@@ -59,6 +64,9 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
 
 # ---------------------------------------------------------------------------
 # get_headers — flat mappings list, no form questions
+#
+# Without form data, hints predict field only; type always defaults to "string"
+# except for availability bracket pattern → "matrix_row".
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("header,expected_field,expected_type,expected_row_key", [
@@ -66,20 +74,39 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
     ("Email Address",        "email",               "string",       None),
     ("email",                "email",               "string",       None),
     ("First Name",           "first_name",          "string",       None),
-    ("Last Name",            "last_name",            "string",       None),
+    ("Last Name",            "last_name",           "string",       None),
+    ("First & Last Name",    "full_name",           "string",       None),
     ("Phone Number",         "phone",               "string",       None),
     ("T-Shirt Size",         "shirt_size",          "string",       None),
-    ("Dietary Restrictions", "dietary_restriction", "string",       None),
-    # Role & preference — must match actual HEADER_DETECTION_HINTS patterns
-    ("Volunteering Role Preference", "role_preference",  "multi_select", None),
-    ("Event Preference",             "event_preference", "multi_select", None),
-    # Logistics
-    ("Lunch Order",          "lunch_order",         "string",       None),
+    ("Dietary Restrictions", "dietary_restriction",  "string",       None),
+    # New user fields
+    ("If you are a college student, what year are you in?",
+                             "student_status",       "string",       None),
+    ("I am a ...",           "student_status",       "string",       None),
+    ("Have you competed in Science Olympiad in the past?",
+                             "competition_exp",      "string",       None),
+    ("Have you volunteered for past Science Olympiad competitions?",
+                             "volunteering_exp",     "string",       None),
+    # Role & preference — type defaults to "string" without form data
+    ("Volunteering Role Preference", "role_preference",  "string", None),
+    ("Event Preference",             "event_preference", "string", None),
+    # Lunch
+    ("Which protein do you want in your Chipotle burrito?",
+                             "lunch_order",          "string",       None),
+    ("What would you like to drink?",
+                             "lunch_order",          "string",       None),
+    ("Lunch Order",          "lunch_order",          "string",       None),
+    # Notes
     ("Additional Notes",     "notes",               "string",       None),
+    # Extra data with keys
+    ("Where are you coming from?",  "extra_data",   "string",       None),
+    ("Do you have any potential conflict of interests?",
+                             "extra_data",           "string",       None),
     # Ignore
     ("Timestamp",            "__ignore__",          "ignore",       None),
+    ("How did you hear about us?", "__ignore__",    "ignore",       None),
     ("Some Random Column",   "__ignore__",          "ignore",       None),
-    # Availability matrix rows
+    # Availability matrix rows — bracket pattern forces matrix_row
     ("Availability [8:00 AM - 10:00 AM]",
         "availability", "matrix_row", "8:00 AM - 10:00 AM"),
     ("Availability from 5/21 to 5/23 [8:00 AM  - 10:00 AM]",
@@ -124,6 +151,37 @@ def test_get_headers_events_sheet_scopes_known_fields(svc: SheetsService):
 
 
 # ---------------------------------------------------------------------------
+# Hint extra_key tests
+# ---------------------------------------------------------------------------
+
+def test_hint_extra_key_conflict_of_interest(svc: SheetsService):
+    """Conflict of interest maps to extra_data with key conflict_of_interest."""
+    _mock_headers(svc, ["Do you have any potential conflict of interests?"])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    m = result.mappings[0]
+    assert m.field == "extra_data"
+    assert m.extra_key == "conflict_of_interest"
+
+
+def test_hint_extra_key_transportation(svc: SheetsService):
+    """Transportation question maps to extra_data with key transportation."""
+    _mock_headers(svc, ["How will you get to the Nationals Tournament @ USC?"])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    m = result.mappings[0]
+    assert m.field == "extra_data"
+    assert m.extra_key == "transportation"
+
+
+def test_hint_extra_key_location(svc: SheetsService):
+    """Location question maps to extra_data with key location."""
+    _mock_headers(svc, ["Which area will you be coming from?"])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    m = result.mappings[0]
+    assert m.field == "extra_data"
+    assert m.extra_key == "location"
+
+
+# ---------------------------------------------------------------------------
 # get_headers — deduplication
 # ---------------------------------------------------------------------------
 
@@ -151,15 +209,29 @@ def test_dedup_availability_allows_multiple_matrix_rows(svc: SheetsService):
         assert m.type == "matrix_row"
 
 
-def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
-    """Two extra_data columns with the same slugified key — second becomes ignore."""
+def test_dedup_second_lunch_becomes_ignore(svc: SheetsService):
+    """Two lunch-related columns — second one falls back to ignore (without form data)."""
     _mock_headers(svc, [
-        "Have you competed in the past?",
-        "Have you competed in science olympiad?",
+        "Which protein do you want?",
+        "What would you like to drink?",
     ])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
-    extra = [m for m in result.mappings if m.field == "extra_data" and m.extra_key == "scioly_competed"]
-    assert len(extra) <= 1
+    first = result.mappings[0]
+    second = result.mappings[1]
+    assert first.field == "lunch_order"
+    # Without form data, lunch_order is claimed by first match, second becomes ignore
+    assert second.field == "__ignore__"
+
+
+def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
+    """Two extra_data columns with the same hint extra_key — second becomes ignore."""
+    _mock_headers(svc, [
+        "Where are you coming from?",
+        "Which area will you be coming from?",
+    ])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    locations = [m for m in result.mappings if m.field == "extra_data" and m.extra_key == "location"]
+    assert len(locations) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -189,20 +261,29 @@ def _make_checkbox_q(qid: str, title: str, options: list[FormQuestionOption]) ->
             "nexus_type": "multi_select", "options": options, "grid_rows": None, "grid_columns": None}
 
 
+def _make_radio_q(qid: str, title: str, options: list[FormQuestionOption]) -> dict:
+    return {"question_id": qid, "title": title, "google_type": "MULTIPLE_CHOICE",
+            "nexus_type": "string", "options": options, "grid_rows": None, "grid_columns": None}
+
+
 def _make_grid_q(qid: str, title: str, rows: list[str], cols: list[str]) -> dict:
     return {"question_id": qid, "title": title, "google_type": "GRID",
             "nexus_type": "matrix_row", "options": None, "grid_rows": rows, "grid_columns": cols}
 
 
-def test_form_question_type_takes_priority_over_hint(svc: SheetsService):
-    """Form question nexus_type overrides hint-based type detection.
-    Title must contain a hint pattern that maps to event_preference.
+def _make_dropdown_q(qid: str, title: str, options: list[FormQuestionOption]) -> dict:
+    return {"question_id": qid, "title": title, "google_type": "DROP_DOWN",
+            "nexus_type": "string", "options": options, "grid_rows": None, "grid_columns": None}
+
+
+def test_form_question_type_takes_priority(svc: SheetsService):
+    """Form question nexus_type overrides default string type.
+    Checkbox → multi_select even though hint alone would give string.
     """
-    # Use a title that matches the "event preference" hint so field = event_preference
-    header = "Event Preference (select all that apply)"
+    header = "If interested in event volunteering, which event(s) would you prefer helping with?"
     questions = [_make_checkbox_q(
         "q1",
-        "Event Preference (select all that apply)",
+        "If interested in event volunteering, which event(s) would you prefer helping with?",
         [
             FormQuestionOption(raw="Anatomy - Study body", alias="Anatomy"),
             FormQuestionOption(raw="Chemistry Lab", alias="Chemistry Lab"),
@@ -213,14 +294,41 @@ def test_form_question_type_takes_priority_over_hint(svc: SheetsService):
     m = _by_header(result, header)
     assert m.type == "multi_select"
     assert m.field == "event_preference"
-    assert m.google_type == "CHECKBOX"
     assert m.rules is not None
     assert any(r.action == "replace" and r.match == "Anatomy - Study body" for r in m.rules)
     assert not any(r.match == "Chemistry Lab" for r in m.rules)
 
 
-def test_form_grid_gets_parse_time_range_and_row_key(svc: SheetsService):
-    """Grid question columns get matrix_row type, row_key, and parse_time_range rule."""
+def test_form_radio_maps_to_string(svc: SheetsService):
+    """RADIO / MULTIPLE_CHOICE form type → string (single selection)."""
+    header = "I am a ..."
+    questions = [_make_radio_q("q1", "I am a ...", [
+        FormQuestionOption(raw="UCI Undergraduate student", alias="UCI Undergraduate student"),
+        FormQuestionOption(raw="UCI Graduate student", alias="UCI Graduate student"),
+    ])]
+    _mock_headers(svc, [header])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    m = _by_header(result, header)
+    assert m.type == "string"
+    assert m.field == "student_status"
+
+
+def test_form_dropdown_maps_to_string(svc: SheetsService):
+    """DROP_DOWN form type → string."""
+    header = "Current employer or university:"
+    questions = [_make_dropdown_q("q1", "Current employer or university:", [
+        FormQuestionOption(raw="USC", alias="USC"),
+        FormQuestionOption(raw="UCLA", alias="UCLA"),
+    ])]
+    _mock_headers(svc, [header])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    m = _by_header(result, header)
+    assert m.type == "string"
+    assert m.field == "employer"
+
+
+def test_form_availability_grid_gets_parse_time_range(svc: SheetsService):
+    """Availability grid question columns get matrix_row type, row_key, and parse_time_range rule."""
     _mock_headers(svc, [
         "Availability [8:00 AM - 10:00 AM]",
         "Availability [10:00 AM - 12:00 PM]",
@@ -239,18 +347,37 @@ def test_form_grid_gets_parse_time_range_and_row_key(svc: SheetsService):
         assert m.type == "matrix_row"
         assert m.field == "availability"
         assert m.row_key == expected_key
-        assert m.google_type == "GRID"
         assert m.rules is not None
         assert any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
 
 
-def test_form_google_type_passed_through(svc: SheetsService):
-    """google_type from the question dict is surfaced on MappedHeader."""
+def test_form_event_preference_grid_no_parse_time_range(svc: SheetsService):
+    """Event preference grid columns get matrix_row type but NO parse_time_range rule."""
+    _mock_headers(svc, [
+        "Please select the top 3 events [Anatomy and Physiology (B/C)]",
+        "Please select the top 3 events [Forensics (C)]",
+    ])
+    questions = [_make_grid_q(
+        "q3", "Please select the top 3 events",
+        rows=["Anatomy and Physiology (B/C)", "Forensics (C)"],
+        cols=["1st choice", "2nd choice", "3rd choice"],
+    )]
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    for m in result.mappings:
+        assert m.type == "matrix_row"
+        assert m.field == "event_preference"
+        # Should NOT have parse_time_range rule
+        if m.rules:
+            assert not any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
+
+
+def test_form_no_google_type_on_mapped_header(svc: SheetsService):
+    """MappedHeader should NOT have a google_type field."""
     _mock_headers(svc, ["Email Address"])
     questions = [_make_text_q("q1", "Email Address")]
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     m = _by_header(result, "Email Address")
-    assert m.google_type == "TEXT"
+    assert not hasattr(m, "google_type") or m.model_dump().get("google_type") is None
 
 
 def test_unmatched_column_falls_back_to_hint(svc: SheetsService):
@@ -277,6 +404,63 @@ def test_form_dedup_second_email_becomes_ignore(svc: SheetsService):
 
 
 # ---------------------------------------------------------------------------
+# volunteer_hints — match_volunteer_hint
+# ---------------------------------------------------------------------------
+
+def test_volunteer_hint_full_name():
+    hint = match_volunteer_hint("first & last name")
+    assert hint is not None
+    assert hint.field == "full_name"
+
+
+def test_volunteer_hint_student_status():
+    hint = match_volunteer_hint("i am a ...")
+    assert hint is not None
+    assert hint.field == "student_status"
+
+
+def test_volunteer_hint_competition_exp():
+    hint = match_volunteer_hint("have you competed in the past?")
+    assert hint is not None
+    assert hint.field == "competition_exp"
+
+
+def test_volunteer_hint_volunteering_exp():
+    hint = match_volunteer_hint("have you volunteered for past science olympiad competitions?")
+    assert hint is not None
+    assert hint.field == "volunteering_exp"
+
+
+def test_volunteer_hint_availability_catch_all():
+    hint = match_volunteer_hint("will you be available for the full day?")
+    assert hint is not None
+    assert hint.field == "availability"
+
+
+def test_volunteer_hint_event_preference_supervising():
+    hint = match_volunteer_hint("if interested in event volunteering, which event(s)")
+    assert hint is not None
+    assert hint.field == "event_preference"
+
+
+def test_volunteer_hint_confirmation():
+    hint = match_volunteer_hint("i will volunteer for the oc regional")
+    assert hint is not None
+    assert hint.field == "extra_data"
+    assert hint.extra_key == "confirmed"
+
+
+def test_volunteer_hint_no_match():
+    assert match_volunteer_hint("some completely random column") is None
+
+
+def test_volunteer_hint_ignore():
+    hint = match_volunteer_hint("timestamp")
+    assert hint is not None
+    assert hint.field == "__ignore__"
+
+
+# ---------------------------------------------------------------------------
 # _build_question_index
 # ---------------------------------------------------------------------------
 
@@ -284,7 +468,6 @@ def test_build_question_index_exact():
     q = _make_text_q("q1", "Email Address")
     index = _build_question_index([q])
     assert "email address" in index
-    # _build_question_index may copy the dict, so compare by value not identity
     assert index["email address"]["title"] == "Email Address"
 
 
@@ -336,19 +519,24 @@ def test_extract_row_key_fallback():
 
 
 # ---------------------------------------------------------------------------
-# _hint_from_title
+# _hint_field
 # ---------------------------------------------------------------------------
 
-def test_hint_from_title_known():
-    field, t = _hint_from_title("Email Address")
-    assert field == "email"
-    assert t == "string"
+def test_hint_field_known():
+    hint = _hint_field("Email Address")
+    assert hint.field == "email"
 
 
-def test_hint_from_title_unknown():
-    field, t = _hint_from_title("Some Obscure Column")
-    assert field == "extra_data"
-    assert t == "string"
+def test_hint_field_unknown():
+    hint = _hint_field("Some Obscure Column")
+    assert hint.field == "extra_data"
+    assert hint.extra_key is not None  # slugified
+
+
+def test_hint_field_with_extra_key():
+    hint = _hint_field("Do you have any potential conflict of interests?")
+    assert hint.field == "extra_data"
+    assert hint.extra_key == "conflict_of_interest"
 
 
 # ---------------------------------------------------------------------------
@@ -429,6 +617,16 @@ def test_dedup_availability_never_claimed():
     _dedup("availability", "matrix_row", None, claimed_fields, claimed_keys)
     _dedup("availability", "matrix_row", None, claimed_fields, claimed_keys)
     assert "availability" not in claimed_fields
+
+
+def test_dedup_event_preference_never_claimed():
+    """event_preference allows multiple entries (grid rows)."""
+    claimed_fields: set = set()
+    claimed_keys: set = set()
+    _dedup("event_preference", "matrix_row", None, claimed_fields, claimed_keys)
+    f, t, _ = _dedup("event_preference", "matrix_row", None, claimed_fields, claimed_keys)
+    assert f == "event_preference"
+    assert "event_preference" not in claimed_fields
 
 
 def test_dedup_extra_key_collision():
