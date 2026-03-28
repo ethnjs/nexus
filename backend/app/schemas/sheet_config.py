@@ -161,7 +161,34 @@ class ParseRule(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Google Forms integration
+# ---------------------------------------------------------------------------
+FORMS_TYPE_MAP: dict[str, str] = {
+    "TEXT":            "string",
+    "PARAGRAPH_TEXT":  "string",
+    "MULTIPLE_CHOICE": "string",
+    "CHECKBOX":        "multi_select",
+    "DROP_DOWN":       "string",
+    "LINEAR_SCALE":    "integer",
+    "SCALE":           "integer",
+    "GRID":            "matrix_row",
+    "DATE":            "string",
+    "TIME":            "string",
+}
+
+
+class FormQuestionOption(BaseModel):
+    """A single answer choice from a Google Form choice question."""
+    raw: str    # exact string as it appears in the form
+    alias: str  # auto-suggested short version for DB storage
+
+
+# ---------------------------------------------------------------------------
 # ColumnMapping
+#
+# options, grid_rows, and grid_columns are persisted alongside rules/delimiter
+# so the alias editor works on the edit page and in JSON exports without
+# re-fetching form data. No migration needed — column_mappings is a JSON column.
 # ---------------------------------------------------------------------------
 class ColumnMapping(BaseModel):
     model_config = {"populate_by_name": True}
@@ -172,6 +199,11 @@ class ColumnMapping(BaseModel):
     extra_key: str | None = None
     rules: list[ParseRule] | None = None
     delimiter: str | None = None
+
+    # Form question enrichment — persisted so edit page + exports retain alias editor context
+    options:      list[FormQuestionOption] | None = None
+    grid_rows:    list[str] | None = None
+    grid_columns: list[str] | None = None
 
     def model_dump(self, **kwargs):
         kwargs.setdefault("exclude_none", True)
@@ -213,29 +245,6 @@ class ColumnMapping(BaseModel):
                         f"Rule {i}: {rule.action} is only valid on matrix_row fields"
                     )
         return self
-
-
-# ---------------------------------------------------------------------------
-# Google Forms integration
-# ---------------------------------------------------------------------------
-FORMS_TYPE_MAP: dict[str, str] = {
-    "TEXT":            "string",
-    "PARAGRAPH_TEXT":  "string",
-    "MULTIPLE_CHOICE": "string",
-    "CHECKBOX":        "multi_select",
-    "DROP_DOWN":       "string",
-    "LINEAR_SCALE":    "integer",
-    "SCALE":           "integer",
-    "GRID":            "matrix_row",
-    "DATE":            "string",
-    "TIME":            "string",
-}
-
-
-class FormQuestionOption(BaseModel):
-    """A single answer choice from a Google Form choice question."""
-    raw: str    # exact string as it appears in the form
-    alias: str  # auto-suggested short version for DB storage
 
 
 # ---------------------------------------------------------------------------
