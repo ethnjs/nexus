@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from app.services.forms_service import FormsService, _suggest_alias
-from app.schemas.sheet_config import FormQuestion, FormQuestionOption
 
 
 @pytest.fixture
@@ -60,10 +59,32 @@ def test_get_form_questions_404(svc: FormsService):
 
 
 # ---------------------------------------------------------------------------
+# get_form_questions — return shape is list[dict] with google_type + nexus_type
+# ---------------------------------------------------------------------------
+
+def test_returns_plain_dicts(svc: FormsService):
+    """get_form_questions returns plain dicts, not Pydantic models."""
+    svc._client.forms().get().execute.return_value = _make_form_response([
+        {
+            "itemId": "001",
+            "title": "First Name",
+            "questionItem": {
+                "question": {"questionId": "q1", "textQuestion": {"paragraph": False}}
+            },
+        }
+    ])
+    questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
+    assert isinstance(questions, list)
+    assert isinstance(questions[0], dict)
+    assert "google_type" in questions[0]
+    assert "nexus_type" in questions[0]
+
+
+# ---------------------------------------------------------------------------
 # get_form_questions — skips non-question items
 # ---------------------------------------------------------------------------
 
-def test_get_form_questions_skips_section_headers(svc: FormsService):
+def test_skips_section_headers(svc: FormsService):
     svc._client.forms().get().execute.return_value = _make_form_response([
         {"itemId": "001", "title": "Section 1"},  # no questionItem
         {
@@ -76,7 +97,7 @@ def test_get_form_questions_skips_section_headers(svc: FormsService):
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert len(questions) == 1
-    assert questions[0].title == "Email"
+    assert questions[0]["title"] == "Email"
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +116,9 @@ def test_parses_short_text_question(svc: FormsService):
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     assert len(questions) == 1
-    assert questions[0].nexus_type == "string"
-    assert questions[0].options is None
+    assert questions[0]["google_type"] == "TEXT"
+    assert questions[0]["nexus_type"] == "string"
+    assert questions[0]["options"] is None
 
 
 def test_parses_paragraph_question(svc: FormsService):
@@ -110,14 +132,14 @@ def test_parses_paragraph_question(svc: FormsService):
         }
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
-    assert questions[0].nexus_type == "string"
+    assert questions[0]["nexus_type"] == "string"
 
 
 # ---------------------------------------------------------------------------
 # get_form_questions — choice questions
 # ---------------------------------------------------------------------------
 
-def test_parses_checkbox_question_as_multi_select(svc: FormsService):
+def test_parses_checkbox_as_multi_select(svc: FormsService):
     svc._client.forms().get().execute.return_value = _make_form_response([
         {
             "itemId": "001",
@@ -138,15 +160,17 @@ def test_parses_checkbox_question_as_multi_select(svc: FormsService):
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     q = questions[0]
-    assert q.nexus_type == "multi_select"
-    assert len(q.options) == 2
-    assert q.options[0].raw == "Anatomy and Physiology - Study the human body"
-    assert q.options[0].alias == "Anatomy and Physiology"
-    assert q.options[1].raw == "Chemistry Lab - Hands-on lab skills"
-    assert q.options[1].alias == "Chemistry Lab"
+    assert q["google_type"] == "CHECKBOX"
+    assert q["nexus_type"] == "multi_select"
+    assert len(q["options"]) == 2
+    # options are FormQuestionOption objects
+    assert q["options"][0].raw == "Anatomy and Physiology - Study the human body"
+    assert q["options"][0].alias == "Anatomy and Physiology"
+    assert q["options"][1].raw == "Chemistry Lab - Hands-on lab skills"
+    assert q["options"][1].alias == "Chemistry Lab"
 
 
-def test_parses_radio_question_as_string(svc: FormsService):
+def test_parses_radio_as_string(svc: FormsService):
     svc._client.forms().get().execute.return_value = _make_form_response([
         {
             "itemId": "001",
@@ -163,11 +187,12 @@ def test_parses_radio_question_as_string(svc: FormsService):
         }
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
-    assert questions[0].nexus_type == "string"
-    assert len(questions[0].options) == 3
+    assert questions[0]["google_type"] == "MULTIPLE_CHOICE"
+    assert questions[0]["nexus_type"] == "string"
+    assert len(questions[0]["options"]) == 3
 
 
-def test_parses_dropdown_question_as_string(svc: FormsService):
+def test_parses_dropdown_as_string(svc: FormsService):
     svc._client.forms().get().execute.return_value = _make_form_response([
         {
             "itemId": "001",
@@ -184,14 +209,15 @@ def test_parses_dropdown_question_as_string(svc: FormsService):
         }
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
-    assert questions[0].nexus_type == "string"
+    assert questions[0]["google_type"] == "DROP_DOWN"
+    assert questions[0]["nexus_type"] == "string"
 
 
 # ---------------------------------------------------------------------------
 # get_form_questions — scale questions
 # ---------------------------------------------------------------------------
 
-def test_parses_scale_question_as_integer(svc: FormsService):
+def test_parses_scale_as_integer(svc: FormsService):
     svc._client.forms().get().execute.return_value = _make_form_response([
         {
             "itemId": "001",
@@ -205,8 +231,9 @@ def test_parses_scale_question_as_integer(svc: FormsService):
         }
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
-    assert questions[0].nexus_type == "integer"
-    assert questions[0].options is None
+    assert questions[0]["google_type"] == "LINEAR_SCALE"
+    assert questions[0]["nexus_type"] == "integer"
+    assert questions[0]["options"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -237,10 +264,11 @@ def test_parses_grid_question(svc: FormsService):
     ])
     questions = svc.get_form_questions("https://docs.google.com/forms/d/abc/edit")
     q = questions[0]
-    assert q.nexus_type == "matrix_row"
-    assert q.grid_rows == ["8:00 AM - 10:00 AM", "10:00 AM - 12:00 PM"]
-    assert q.grid_columns == ["Available", "Maybe"]
-    assert q.options is None
+    assert q["google_type"] == "GRID"
+    assert q["nexus_type"] == "matrix_row"
+    assert q["grid_rows"] == ["8:00 AM - 10:00 AM", "10:00 AM - 12:00 PM"]
+    assert q["grid_columns"] == ["Available", "Maybe"]
+    assert q["options"] is None
 
 
 # ---------------------------------------------------------------------------

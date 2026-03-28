@@ -3,10 +3,11 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
+from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, MappedHeader
 from app.models.models import Membership
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
+FAKE_FORM_URL = "https://docs.google.com/forms/d/fake_form/edit"
 
 SAMPLE_MAPPINGS = {
     "Email Address": {"field": "email",      "type": "string"},
@@ -74,6 +75,68 @@ def test_validate_volunteer_member_forbidden(
 
 
 # ---------------------------------------------------------------------------
+# Headers endpoint
+# ---------------------------------------------------------------------------
+
+def test_get_headers_returns_mappings_list(client, td_user, td_tournament, mock_sheets_service):
+    """Response has flat mappings list, not headers+suggestions."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={
+            "sheet_url": FAKE_URL,
+            "sheet_name": "Form Responses 1",
+            "sheet_type": "volunteers",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "mappings" in data
+    assert isinstance(data["mappings"], list)
+    assert "suggestions" not in data
+    assert "headers" not in data
+    assert "form_questions" not in data
+
+
+def test_get_headers_requires_sheet_type(client, td_user, td_tournament, mock_sheets_service):
+    """sheet_type is required in the request body."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={"sheet_url": FAKE_URL, "sheet_name": "Form Responses 1"},
+    )
+    assert response.status_code == 422
+
+
+def test_get_headers_with_form_url(client, td_user, td_tournament, mock_sheets_service, mock_forms_service):
+    """form_url triggers FormsService.get_form_questions call."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={
+            "sheet_url": FAKE_URL,
+            "sheet_name": "Form Responses 1",
+            "sheet_type": "volunteers",
+            "form_url": FAKE_FORM_URL,
+        },
+    )
+    assert response.status_code == 200
+    mock_forms_service.get_form_questions.assert_called_once_with(FAKE_FORM_URL)
+
+
+def test_get_headers_non_member_404(client, td_user, other_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(
+        f"/tournaments/{other_tournament.id}/sheets/headers/",
+        json={
+            "sheet_url": FAKE_URL,
+            "sheet_name": "Form Responses 1",
+            "sheet_type": "volunteers",
+        },
+    ).status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Create config
 # ---------------------------------------------------------------------------
 
@@ -95,14 +158,14 @@ def test_create_sheet_config_tournament_id_mismatch(
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     response = client.post(
         f"/tournaments/{td_tournament.id}/sheets/configs/",
-        json={**{k: v for k, v in {
+        json={
             "tournament_id": 9999,
             "label": "Interest Form",
             "sheet_type": "volunteers",
             "sheet_url": FAKE_URL,
             "sheet_name": "Form Responses 1",
             "column_mappings": SAMPLE_MAPPINGS,
-        }.items()}},
+        },
     )
     assert response.status_code == 400
 
