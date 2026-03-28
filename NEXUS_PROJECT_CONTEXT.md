@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: feature/backend-headers-refactor — flat MappedHeader response, google_type lock, dedup, parse_time_range*
+*Last updated: fix/sync-parse-time-range — _apply_rules handles parse_time_range + parse_availability, sync route arg order fix, test suite alignment*
 
 > **Stylization:** Always **NEXUS** (all caps) in UI/docs. Lowercase `nexus` only in code/URLs.
 > **API version:** `0.2.0`
@@ -650,6 +650,7 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/
 - [x] **GitHub Actions CI** — pytest workflow on every push
 - [x] **feature/backend-forms-api-mapping** — FormsService, FormQuestion models, sheet_type volunteers/events, form_url wizard step, alias editor backend
 - [x] **feature/backend-headers-refactor** — flat MappedHeader response, google_type lock, dedup, parse_time_range canonical action
+- [x] **fix/sync-parse-time-range** — `_apply_rules` now checks `action in PARSE_TIME_RANGE_ACTIONS` (was `== "parse_availability"` only, silently skipping `parse_time_range`); sync route arg order fixed (`config, db, svc`); `is_active` guard added to sync endpoint; full test suite alignment
 - [ ] **feature/frontend-headers-refactor** — Update frontend for new SheetHeadersResponse shape (see Frontend Work section above)
 - [ ] **Phase 7f** — Events + volunteers tables (proper, not temp)
 - [ ] **Phase 7g** — Assignment dashboard
@@ -671,7 +672,6 @@ When a backend bug is found during frontend work: document here + open GitHub is
 - **[GitHub issue] `DateTime` without timezone** — datetimes display as local time. Temp: `fmtDateTime` appends `Z`. Fix: `DateTime(timezone=True)` + migration + remove frontend normalization.
 - **[GitHub issue] Bulk membership delete + raw sheet row endpoints** — temp implementations in `api.ts` need real routes.
 - **[GitHub issue] Add `sheet_config_ids` to Membership** — provenance tracking.
-- **[TODO] sync_service.py** — update `_apply_rules()` to check `action in {"parse_time_range", "parse_availability"}` instead of `action == "parse_availability"` (import `PARSE_TIME_RANGE_ACTIONS` from `sheet_config`).
 - **`SplitButton`** — unused, can be removed.
 
 ---
