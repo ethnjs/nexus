@@ -882,11 +882,20 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasRuleErrors   = errors.some((e) => e.rule_index != null);
   const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
 
+  // For alias editor rows, count rules that aren't alias mappings (extra rules)
+  const extraRuleCount = hasAliasEditor
+    ? row.rules.filter((r) => !isAliasRule(r, row.formQuestion!.options ?? [])).length
+    : 0;
+
   // Badge label for accordion: alias editor rows show option count, others show rule count
   const accordionLabel = hasAliasEditor
     ? `${row.formQuestion!.options!.length} option${row.formQuestion!.options!.length !== 1 ? "s" : ""}`
     : hasRules
     ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}`
+    : null;
+
+  const extraRulesLabel = hasAliasEditor && extraRuleCount > 0
+    ? `${extraRuleCount} rule${extraRuleCount !== 1 ? "s" : ""}`
     : null;
 
   const rowBg = isIgnored && !isRemoved
@@ -1009,6 +1018,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
           {accordionLabel && !viewOnly && (
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
               {accordionLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
+            </span>
+          )}
+          {extraRulesLabel && !viewOnly && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
+              {extraRulesLabel}
             </span>
           )}
         </div>
