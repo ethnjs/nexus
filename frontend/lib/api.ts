@@ -262,25 +262,19 @@ export const membershipsApi = {
 export type SheetType = 'volunteers' | 'events'
 
 // -------------------------------------------------------------------------
-// Form questions — returned by the headers endpoint when a form URL is provided.
-// Powers the option alias editor in the mapping wizard.
+// Form question option — a single answer choice from a Google Form.
+// Returned inside MappedHeader when the backend matched a form question.
 // -------------------------------------------------------------------------
 export interface FormQuestionOption {
   raw:   string   // exact string as it appears in the form
   alias: string   // auto-suggested short version for DB storage
 }
 
-export interface FormQuestion {
-  question_id:   string
-  title:         string
-  nexus_type:    string   // mapped NEXUS ColumnMapping type
-  options?:      FormQuestionOption[]   // for CHECKBOX / MULTIPLE_CHOICE / DROP_DOWN
-  grid_rows?:    string[]               // for GRID questions — row labels (time ranges etc.)
-  grid_columns?: string[]               // for GRID questions — column labels
-}
-
 export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
-export type ParseRuleAction    = 'set' | 'replace' | 'prepend' | 'append' | 'discard' | 'parse_availability'
+export type ParseRuleAction    =
+  | 'set' | 'replace' | 'prepend' | 'append' | 'discard'
+  | 'parse_time_range'    // canonical action (backend refactor)
+  | 'parse_availability'  // legacy alias — kept for backwards compat
 
 export interface ParseRule {
   condition:      ParseRuleCondition
@@ -297,6 +291,26 @@ export interface ColumnMapping {
   extra_key?: string
   rules?:     ParseRule[]
   delimiter?: string
+}
+
+// -------------------------------------------------------------------------
+// MappedHeader — one entry per sheet column in the flat /headers/ response.
+// Replaces the old headers[] + suggestions{} + form_questions[] triple.
+// Enrichment from the Google Form is already cross-referenced server-side.
+// -------------------------------------------------------------------------
+export interface MappedHeader {
+  header:        string             // raw column header from the sheet
+  field:         string             // suggested target field
+  type:          string             // suggested mapping type
+  row_key?:      string
+  extra_key?:    string
+  rules?:        ParseRule[]
+  delimiter?:    string
+  // Form enrichment — null/absent when no form URL or no question matched
+  google_type?:  string             // raw Forms API type e.g. "CHECKBOX", "GRID", "TEXT"
+  options?:      FormQuestionOption[]
+  grid_rows?:    string[]
+  grid_columns?: string[]
 }
 
 export interface SheetConfig {
@@ -338,16 +352,15 @@ export interface ValidateMappingsResult {
   warnings: ValidationIssue[]
 }
 
+// Flat response — one MappedHeader per sheet column, enrichment already merged.
 export interface SheetHeadersResponse {
   sheet_name:            string
-  sheet_type:            SheetType
-  headers:               string[]
-  suggestions:           Record<string, ColumnMapping>
+  sheet_type:            string
+  mappings:              MappedHeader[]
   known_fields:          string[]
   valid_types:           string[]
   valid_rule_conditions: string[]
   valid_rule_actions:    string[]
-  form_questions?:       FormQuestion[]   // present for volunteers sheets; absent for events
 }
 
 export const sheetsApi = {

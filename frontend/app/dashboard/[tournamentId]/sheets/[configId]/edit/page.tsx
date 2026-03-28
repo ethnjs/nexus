@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetType } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetType, MappedHeader } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -161,21 +161,34 @@ export default function EditSheetPage() {
       setValidConditions(result.valid_rule_conditions);
       setValidActions(result.valid_rule_actions);
 
-      const liveHeaders  = new Set(result.headers);
+      // Build a set of live headers (from backend) and saved headers (from config).
+      // result.mappings is the flat list — one MappedHeader per sheet column.
+      const liveHeaders  = new Set(result.mappings.map((m: MappedHeader) => m.header));
       const savedHeaders = new Set(Object.keys(cfg.column_mappings));
       const rows: RichMappingRow[] = [];
 
-      for (const header of result.headers) {
-        const saved = cfg.column_mappings[header];
+      // Live headers — prefer saved mapping; fall back to backend suggestion.
+      for (const m of result.mappings) {
+        const saved = cfg.column_mappings[m.header];
         if (saved) {
-          const base = emptyMappingRow(header, saved);
-          rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0));
+          const base = emptyMappingRow(m.header, saved);
+          // Preserve googleType/options from the live MappedHeader even when using saved mapping.
+          rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0, m.google_type, m.options));
         } else {
-          const base = emptyMappingRow(header, result.suggestions[header]);
-          rows.push(makeRichRow(base, base, "new"));
+          // New header not in saved config — use backend suggestion.
+          const base = emptyMappingRow(m.header, {
+            field:     m.field,
+            type:      m.type as ColumnMapping["type"],
+            row_key:   m.row_key,
+            extra_key: m.extra_key,
+            rules:     m.rules,
+            delimiter: m.delimiter,
+          });
+          rows.push(makeRichRow(base, base, "new", undefined, undefined, m.google_type, m.options));
         }
       }
 
+      // Saved headers no longer present in the live sheet — mark as removed.
       for (const header of savedHeaders) {
         if (!liveHeaders.has(header)) {
           const base = emptyMappingRow(header, cfg.column_mappings[header]);
@@ -207,7 +220,7 @@ export default function EditSheetPage() {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
         if (r.state === "new" || r.state === "removed") return { ...next, state: r.state };
-        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.formQuestion);
+        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.googleType, r.options);
       })
     );
     const header = mappingRows[idx]?.header;
@@ -264,7 +277,7 @@ export default function EditSheetPage() {
           );
           const base = r.state === "new"
             ? { ...r, ...updated, importedValue }
-            : makeRichRow(updated, r.baseline, undefined, importedValue);
+            : makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.googleType, r.options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );

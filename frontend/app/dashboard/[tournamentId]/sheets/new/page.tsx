@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse, SheetType } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse, SheetType, MappedHeader } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -73,15 +73,15 @@ function getWizardSteps(sheetType: SheetType) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function emptyMappingRow(header: string, s?: ColumnMapping): MappingRow {
+function emptyMappingRow(header: string, m: MappedHeader): MappingRow {
   return {
     header,
-    field:     s?.field     ?? "__ignore__",
-    type:      s?.type      ?? "ignore",
-    row_key:   s?.row_key   ?? "",
-    extra_key: s?.extra_key ?? "",
-    delimiter: s?.delimiter ?? "",
-    rules:     s?.rules     ?? [],
+    field:     m.field     ?? "__ignore__",
+    type:      m.type      ?? "ignore",
+    row_key:   m.row_key   ?? "",
+    extra_key: m.extra_key ?? "",
+    delimiter: m.delimiter ?? "",
+    rules:     m.rules     ?? [],
   };
 }
 
@@ -228,7 +228,7 @@ export default function NewSheetPage() {
     }
   }
 
-  // ── Step 3: Fetch Headers (called after form URL step or directly for events) ──
+  // ── Step 3: Fetch Headers ─────────────────────────────────────────────────
 
   async function handleFetchHeaders(providedFormUrl?: string) {
     if (!selectedSheet) return;
@@ -245,28 +245,12 @@ export default function NewSheetPage() {
       );
       setHeadersResult(result);
 
-      // Build a title → FormQuestion index for cross-referencing headers
-      const questionByTitle = new Map(
-        (result.form_questions ?? []).map((q) => [q.title.toLowerCase(), q])
-      );
-      // Also index grid row variants: "{title} [{row}]"
-      for (const q of result.form_questions ?? []) {
-        for (const row of q.grid_rows ?? []) {
-          questionByTitle.set(`${q.title.toLowerCase()} [${row.toLowerCase()}]`, q);
-        }
-      }
-
-      const rows: RichMappingRow[] = result.headers.map((header) => {
-        const base = emptyMappingRow(header, result.suggestions[header]);
-        // Match header to a form question (same logic as backend _match_header_to_question)
-        const lower = header.toLowerCase();
-        let formQuestion = questionByTitle.get(lower);
-        if (!formQuestion) {
-          for (const [title, q] of questionByTitle) {
-            if (lower.startsWith(title)) { formQuestion = q; break; }
-          }
-        }
-        return makeRichRow(base, base, undefined, undefined, undefined, formQuestion);
+      // Build RichMappingRows directly from the flat MappedHeader list.
+      // Enrichment (googleType, options) is already baked in by the backend — no
+      // client-side cross-referencing needed.
+      const rows: RichMappingRow[] = result.mappings.map((m: MappedHeader) => {
+        const base = emptyMappingRow(m.header, m);
+        return makeRichRow(base, base, undefined, undefined, undefined, m.google_type, m.options);
       });
 
       setMappingRows(rows);
@@ -343,7 +327,7 @@ export default function NewSheetPage() {
           const hadRuleChanges = updatedList.some(
             (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
-          const base = makeRichRow(updated, r.baseline, undefined, importedValue);
+          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.googleType, r.options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
@@ -425,7 +409,7 @@ export default function NewSheetPage() {
       prev.map((r, i) => {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
-        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.formQuestion);
+        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.googleType, r.options);
       })
     );
     const header = mappingRows[idx]?.header;
@@ -688,7 +672,7 @@ export default function NewSheetPage() {
               </div>
             </div>
           ) : (
-            <div style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
+            <div style={{ background: "var(--color-surface)", border: "1px solid var(--color/border)", borderRadius: "var(--radius-md)", padding: "16px", display: "flex", alignItems: "center", gap: "10px" }}>
               <span style={{ color: "var(--color-success)" }}><IconCheckCircle /></span>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>All rows imported successfully — no errors.</span>
             </div>
