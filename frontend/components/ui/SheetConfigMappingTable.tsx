@@ -11,6 +11,7 @@ import { IconSwitch } from "@/components/ui/Icons";
 
 export const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "__ignore__":          "Ignore",
+  "full_name":           "Full Name",
   "first_name":          "First Name",
   "last_name":           "Last Name",
   "email":               "Email",
@@ -20,6 +21,9 @@ export const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "university":          "University",
   "major":               "Major",
   "employer":            "Employer",
+  "student_status":      "Student Status",
+  "competition_exp":     "Competition Experience",
+  "volunteering_exp":    "Volunteering Experience",
   "role_preference":     "Role Preference",
   "event_preference":    "Event Preference",
   "availability":        "Availability",
@@ -75,13 +79,7 @@ export interface RichMappingRow extends MappingRow {
   openOnMount?:   boolean;
   /** Increments when new validation results arrive — opens accordion if this row has rule-level issues. */
   validationGeneration?: number;
-  /**
-   * Raw Google Forms question type for this column (e.g. "CHECKBOX", "GRID", "TEXT").
-   * Present when the backend matched a form question to this header.
-   * When set, the Type dropdown is rendered read-only — the form controls the type.
-   */
-  googleType?: string;
-  /** Form answer options — present when googleType is set and the question has choices. */
+  /** Form answer options — present when the backend matched a form question with choices. */
   options?: FormQuestionOption[];
   /** Whether the alias editor (true) or rules editor (false) is shown. Stored in parent state
    *  so it survives remounts caused by rule changes. Defaults to true when options present. */
@@ -114,11 +112,6 @@ const inputStyle: React.CSSProperties = {
 
 // ─── Alias helpers ────────────────────────────────────────────────────────────
 
-/**
- * Build ParseRule[] from a list of option aliases.
- * Generates one `contains → replace` rule per option where alias differs from raw.
- * Options where alias === raw produce no rule (no transformation needed).
- */
 function aliasesToRules(options: FormQuestionOption[]): ParseRule[] {
   return options
     .filter((o) => o.alias.trim() !== o.raw.trim())
@@ -131,11 +124,6 @@ function aliasesToRules(options: FormQuestionOption[]): ParseRule[] {
     }));
 }
 
-/**
- * Reconstruct alias list from saved ParseRules so the alias editor stays
- * in sync when editing a config that was previously saved.
- * Falls back to the option's original alias if a matching rule isn't found.
- */
 function rulesAndOptionsToAliases(
   rules: ParseRule[],
   options: FormQuestionOption[],
@@ -150,10 +138,6 @@ function rulesAndOptionsToAliases(
 
 // ─── Alias Editor ─────────────────────────────────────────────────────────────
 
-/**
- * Determine whether a rule is an "alias rule" — one that can be represented
- * as a raw → alias pair in the alias editor.
- */
 function isAliasRule(rule: ParseRule, options: FormQuestionOption[]): boolean {
   return (
     rule.condition === "contains" &&
@@ -162,10 +146,6 @@ function isAliasRule(rule: ParseRule, options: FormQuestionOption[]): boolean {
   );
 }
 
-/**
- * Form-native option alias editor.
- * Shown for rows where the backend supplied options[] (CHECKBOX, RADIO, DROPDOWN).
- */
 const AliasEditor = memo(function AliasEditor({
   options,
   currentRules,
@@ -189,15 +169,12 @@ const AliasEditor = memo(function AliasEditor({
   rowErrors:       ValidationIssue[];
   rowWarnings:     ValidationIssue[];
 }) {
-  // Track whether the last rules change came from inside this component (alias edit)
-  // or from outside (TD editing in rules view). Only sync aliases when change is external.
   const internalChangeRef = useRef(false);
 
   const [aliases, setAliases] = useState<FormQuestionOption[]>(() =>
     rulesAndOptionsToAliases(currentRules, options)
   );
 
-  // Sync aliases when currentRules changes from outside (rules view edits).
   useEffect(() => {
     if (internalChangeRef.current) {
       internalChangeRef.current = false;
@@ -207,7 +184,6 @@ const AliasEditor = memo(function AliasEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRules]);
 
-  // Extra rules: any saved rules that aren't alias rules for this question's options.
   const extraRules = currentRules.filter((r) => !isAliasRule(r, options));
 
   function handleAliasChange(idx: number, value: string) {
@@ -247,7 +223,6 @@ const AliasEditor = memo(function AliasEditor({
   return (
     <div style={{ background: "var(--color-bg)", padding: "12px 14px 14px 28px" }}>
 
-      {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
           {showAliasEditor ? "Answer options" : "Parse rules"}
@@ -271,7 +246,6 @@ const AliasEditor = memo(function AliasEditor({
         </div>
       </div>
 
-      {/* ── Alias editor view ── */}
       {showAliasEditor && (
         <>
           {options.length === 0 ? (
@@ -324,7 +298,6 @@ const AliasEditor = memo(function AliasEditor({
             Options that differ from the form text are transformed automatically on sync.
           </p>
 
-          {/* Extra rules below alias list */}
           {extraRules.length > 0 && (
             <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--color-border)" }}>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", display: "block", marginBottom: "8px" }}>
@@ -363,7 +336,6 @@ const AliasEditor = memo(function AliasEditor({
         </>
       )}
 
-      {/* ── Rules view (full rules panel when TD switches) ── */}
       {!showAliasEditor && (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
           {currentRules.length === 0 && (
@@ -821,21 +793,14 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const isRemoved     = row.state === "removed";
   const isIgnored     = row.type === "ignore" || row.field === "__ignore__";
 
-  // Use alias editor when backend returned options[] for this header.
-  // Applies to CHECKBOX (multi_select), RADIO and DROPDOWN (string) questions.
-  // Grid questions (matrix_row) don't need it — row_key and parse_time_range are auto-set.
   const hasAliasEditor = !!(
     row.options &&
     row.options.length > 0 &&
     !viewOnly
   );
 
-  // showAliasEditor lives on the row in parent state — not local state — so it
-  // survives remounts caused by rule changes triggering parent re-renders.
   const showAliasEditor = row.showAliasEditor ?? true;
 
-  // Accordion: open by default when row has rules or is forced open.
-  // For alias editor rows, always start open so options are visible.
   const defaultOpen = hasRules || (row.openOnMount ?? false) || hasAliasEditor;
   const [open,    setOpen]    = useState(defaultOpen);
   const [mounted, setMounted] = useState(defaultOpen);
@@ -850,7 +815,6 @@ const MappingRowComponent = memo(function MappingRowComponent({
     setTimeout(() => setMounted(false), 220);
   }
 
-  // Auto-close when all rules are removed (only for non-alias-editor rows)
   useEffect(() => {
     if (!hasRules && !hasAliasEditor) closeAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -885,12 +849,10 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasRuleErrors   = errors.some((e) => e.rule_index != null);
   const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
 
-  // For alias editor rows, count rules that aren't alias mappings (extra rules)
   const extraRuleCount = hasAliasEditor
     ? row.rules.filter((r) => !isAliasRule(r, row.options ?? [])).length
     : 0;
 
-  // Badge label for accordion: alias editor rows show option count, others show rule count
   const accordionLabel = hasAliasEditor
     ? `${row.options!.length} option${row.options!.length !== 1 ? "s" : ""}`
     : hasRules
@@ -919,7 +881,6 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ? `3px solid ${colors.border}`
     : "3px solid transparent";
 
-  // Chevron shown when: has rules OR has alias editor (always collapsible)
   const showChevron = !isRemoved && !isIgnored && (hasRules || hasAliasEditor) && !viewOnly;
   const showPlus    = !isRemoved && !isIgnored && !hasRules && !hasAliasEditor && !viewOnly;
 
@@ -967,7 +928,6 @@ const MappingRowComponent = memo(function MappingRowComponent({
     let type = row.type;
     if (field === "__ignore__")                                           type = "ignore";
     else if (field === "availability")                                    type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference") type = "multi_select";
     else if (type === "ignore")                                           type = "string";
     onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
@@ -1047,13 +1007,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
           />
         )}
 
-        {/* Col 3: type — read-only when googleType is set (form controls the type) */}
-        {viewOnly || row.googleType ? (
-          <span style={{
-            fontFamily: row.googleType ? "var(--font-mono)" : "var(--font-sans)",
-            fontSize: "12px",
-            color: "var(--color-text-secondary)",
-          }}>
+        {/* Col 3: type — always editable (google_type lock removed) */}
+        {viewOnly ? (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
             {TYPE_LABELS[row.type] ?? row.type}
           </span>
         ) : (
@@ -1302,12 +1258,10 @@ export function makeRichRow(
   values: MappingRow, baseline: MappingRow,
   forcedState?: "new" | "removed", importedValue?: MappingRow,
   openOnMount?: boolean,
-  googleType?: string,
   options?: FormQuestionOption[],
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  // Preserve showAliasEditor if it's already on the incoming values object
   const showAliasEditor = (values as Partial<RichMappingRow>).showAliasEditor;
-  return { ...values, state, baseline, importedValue, openOnMount, googleType, options, showAliasEditor };
+  return { ...values, state, baseline, importedValue, openOnMount, options, showAliasEditor };
 }

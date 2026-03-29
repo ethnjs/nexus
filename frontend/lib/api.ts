@@ -179,6 +179,9 @@ export interface User {
   university:          string | null
   major:               string | null
   employer:            string | null
+  student_status:      string | null
+  competition_exp:     string | null
+  volunteering_exp:    string | null
   role:                'admin' | 'user'
   is_active:           boolean
   created_at:          string
@@ -222,7 +225,7 @@ export interface Membership {
   role_preference:   string[] | null
   event_preference:  string[] | null
   availability:      AvailabilitySlot[] | null
-  lunch_order:       string | null
+  lunch_order:       Record<string, unknown> | string | null
   notes:             string | null
   extra_data:        Record<string, unknown> | null
   created_at:        string
@@ -264,6 +267,7 @@ export type SheetType = 'volunteers' | 'events'
 // -------------------------------------------------------------------------
 // Form question option — a single answer choice from a Google Form.
 // Returned inside MappedHeader when the backend matched a form question.
+// Also persisted in ColumnMapping so edit page + exports retain alias editor.
 // -------------------------------------------------------------------------
 export interface FormQuestionOption {
   raw:   string   // exact string as it appears in the form
@@ -285,18 +289,25 @@ export interface ParseRule {
 }
 
 export interface ColumnMapping {
-  field:      string
-  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
-  row_key?:   string
-  extra_key?: string
-  rules?:     ParseRule[]
-  delimiter?: string
+  field:         string
+  type:          'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
+  row_key?:      string
+  extra_key?:    string
+  rules?:        ParseRule[]
+  delimiter?:    string
+  // Persisted form enrichment — powers alias editor on edit page + JSON exports
+  options?:      FormQuestionOption[]
+  grid_rows?:    string[]
+  grid_columns?: string[]
 }
 
 // -------------------------------------------------------------------------
 // MappedHeader — one entry per sheet column in the flat /headers/ response.
 // Replaces the old headers[] + suggestions{} + form_questions[] triple.
 // Enrichment from the Google Form is already cross-referenced server-side.
+//
+// google_type has been removed — the backend resolves the type fully.
+// The frontend Type dropdown is always editable by the TD.
 // -------------------------------------------------------------------------
 export interface MappedHeader {
   header:        string             // raw column header from the sheet
@@ -307,7 +318,6 @@ export interface MappedHeader {
   rules?:        ParseRule[]
   delimiter?:    string
   // Form enrichment — null/absent when no form URL or no question matched
-  google_type?:  string             // raw Forms API type e.g. "CHECKBOX", "GRID", "TEXT"
   options?:      FormQuestionOption[]
   grid_rows?:    string[]
   grid_columns?: string[]

@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetType, MappedHeader } from "@/lib/api";
+import { sheetsApi, ColumnMapping, SheetConfig, SheetType, MappedHeader, FormQuestionOption } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -57,6 +57,17 @@ function emptyMappingRow(header: string, s?: ColumnMapping): MappingRow {
   };
 }
 
+/**
+ * Resolve options for a header: prefer live MappedHeader options (freshest),
+ * fall back to saved ColumnMapping options (persisted from wizard).
+ */
+function resolveOptions(
+  liveMapping?: MappedHeader,
+  savedMapping?: ColumnMapping,
+): FormQuestionOption[] | undefined {
+  return liveMapping?.options ?? savedMapping?.options ?? undefined;
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function EditSheetPage() {
@@ -81,6 +92,9 @@ export default function EditSheetPage() {
   const [validActions,    setValidActions]    = useState<string[]>([]);
   const [headersLoading,  setHeadersLoading]  = useState(false);
   const [headersError,    setHeadersError]    = useState("");
+
+  // Track options per header for buildColumnMappings persistence
+  const [headerOptions, setHeaderOptions] = useState<Map<string, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Load state
   const [loading,   setLoading]   = useState(true);
@@ -146,8 +160,6 @@ export default function EditSheetPage() {
     setHeadersError("");
 
     try {
-      // Edit page re-fetches headers without a form URL — the saved column_mappings
-      // already contain the compiled rules from the original wizard run.
       const result = await sheetsApi.headers(
         tournamentId,
         cfg.sheet_url,
@@ -161,21 +173,28 @@ export default function EditSheetPage() {
       setValidConditions(result.valid_rule_conditions);
       setValidActions(result.valid_rule_actions);
 
-      // Build a set of live headers (from backend) and saved headers (from config).
-      // result.mappings is the flat list — one MappedHeader per sheet column.
       const liveHeaders  = new Set(result.mappings.map((m: MappedHeader) => m.header));
       const savedHeaders = new Set(Object.keys(cfg.column_mappings));
       const rows: RichMappingRow[] = [];
+      const optionsMap = new Map<string, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
-      // Live headers — prefer saved mapping; fall back to backend suggestion.
       for (const m of result.mappings) {
         const saved = cfg.column_mappings[m.header];
+        // Resolve options: prefer live (freshest), fall back to saved (persisted from wizard)
+        const options = resolveOptions(m, saved);
+        const enrichment = {
+          options: options,
+          grid_rows: m.grid_rows ?? saved?.grid_rows,
+          grid_columns: m.grid_columns ?? saved?.grid_columns,
+        };
+        if (enrichment.options || enrichment.grid_rows || enrichment.grid_columns) {
+          optionsMap.set(m.header, enrichment);
+        }
+
         if (saved) {
           const base = emptyMappingRow(m.header, saved);
-          // Preserve googleType/options from the live MappedHeader even when using saved mapping.
-          rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0, m.google_type, m.options));
+          rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0, options));
         } else {
-          // New header not in saved config — use backend suggestion.
           const base = emptyMappingRow(m.header, {
             field:     m.field,
             type:      m.type as ColumnMapping["type"],
@@ -184,18 +203,24 @@ export default function EditSheetPage() {
             rules:     m.rules,
             delimiter: m.delimiter,
           });
-          rows.push(makeRichRow(base, base, "new", undefined, undefined, m.google_type, m.options));
+          rows.push(makeRichRow(base, base, "new", undefined, undefined, options));
         }
       }
 
-      // Saved headers no longer present in the live sheet — mark as removed.
+      // Saved headers no longer in live sheet — mark as removed
       for (const header of savedHeaders) {
         if (!liveHeaders.has(header)) {
-          const base = emptyMappingRow(header, cfg.column_mappings[header]);
-          rows.push(makeRichRow(base, base, "removed"));
+          const saved = cfg.column_mappings[header];
+          const base = emptyMappingRow(header, saved);
+          const options = saved?.options ?? undefined;
+          if (saved?.options || saved?.grid_rows || saved?.grid_columns) {
+            optionsMap.set(header, { options: saved.options, grid_rows: saved.grid_rows, grid_columns: saved.grid_columns });
+          }
+          rows.push(makeRichRow(base, base, "removed", undefined, undefined, options));
         }
       }
 
+      setHeaderOptions(optionsMap);
       setMappingRows(rows);
     } catch {
       if (controller.signal.aborted) return;
@@ -220,7 +245,7 @@ export default function EditSheetPage() {
         if (i !== idx) return r;
         const next = { ...r, ...patch };
         if (r.state === "new" || r.state === "removed") return { ...next, state: r.state };
-        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.googleType, r.options);
+        return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.options);
       })
     );
     const header = mappingRows[idx]?.header;
@@ -277,7 +302,7 @@ export default function EditSheetPage() {
           );
           const base = r.state === "new"
             ? { ...r, ...updated, importedValue }
-            : makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.googleType, r.options);
+            : makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
@@ -303,10 +328,15 @@ export default function EditSheetPage() {
       if (row.field === "extra_data"  && row.extra_key)  mapping.extra_key = row.extra_key;
       if (row.type === "multi_select" && row.delimiter)  mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
+      // Persist form enrichment so alias editor works on next edit + in exports
+      const enrichment = headerOptions.get(row.header);
+      if (enrichment?.options)      mapping.options      = enrichment.options;
+      if (enrichment?.grid_rows)    mapping.grid_rows    = enrichment.grid_rows;
+      if (enrichment?.grid_columns) mapping.grid_columns = enrichment.grid_columns;
       result[row.header] = mapping;
     }
     return result;
-  }, [mappingRows]);
+  }, [mappingRows, headerOptions]);
 
   // ── Save & Sync ─────────────────────────────────────────────────────────
 
@@ -425,23 +455,11 @@ export default function EditSheetPage() {
         {/* ── Config fields ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <Input label="Label" id="label" value={label} onChange={(e) => setLabel(e.target.value)} font="sans" fullWidth />
-          <Select
-            label="Sheet Type"
-            value={sheetType}
-            onChange={(v) => setSheetType(v as SheetType)}
-            options={SHEET_TYPES}
-            fullWidth
-          />
+          <Select label="Sheet Type" value={sheetType} onChange={(v) => setSheetType(v as SheetType)} options={SHEET_TYPES} fullWidth />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "16px", alignItems: "end" }}>
-          <Select
-            label="Sheet Tab"
-            value={selectedTab}
-            onChange={handleTabChange}
-            options={availableTabs.map((tab) => ({ value: tab, label: tab }))}
-            fullWidth
-          />
+          <Select label="Sheet Tab" value={selectedTab} onChange={handleTabChange} options={availableTabs.map((tab) => ({ value: tab, label: tab }))} fullWidth />
           <label style={{ display: "flex", alignItems: "center", gap: "8px", height: "44px", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", flexShrink: 0 }}>
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px" }} />
             Active
@@ -478,14 +496,7 @@ export default function EditSheetPage() {
 
           {importBanner && (
             <div style={{ marginBottom: "10px" }}>
-              <Banner
-                variant={importBanner.variant}
-                message={importBanner.message}
-                onDismiss={() => setImportBanner(null)}
-                action={importBanner.summary ? (
-                  <Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>Show summary</Button>
-                ) : undefined}
-              />
+              <Banner variant={importBanner.variant} message={importBanner.message} onDismiss={() => setImportBanner(null)} action={importBanner.summary ? (<Button variant="ghost" size="sm" onClick={() => setShowImportSummary(true)}>Show summary</Button>) : undefined} />
             </div>
           )}
 
@@ -516,24 +527,16 @@ export default function EditSheetPage() {
             <Banner variant="success" message="Changes saved successfully." onDismiss={() => setSaveSuccess(false)} />
           )}
           <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)}>
-              Cancel
-            </Button>
-            <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave}>
-              Save
-            </Button>
-            <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync}>
-              Save &amp; Sync
-            </Button>
+            <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)}>Cancel</Button>
+            <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave}>Save</Button>
+            <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync}>Save &amp; Sync</Button>
           </div>
         </div>
 
         {/* ── Sync results ── */}
         {syncResult && (
           <div style={{ display: "flex", flexDirection: "column", gap: "16px", borderTop: "1px solid var(--color-border)", paddingTop: "24px" }}>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
-              Sync Results
-            </p>
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>Sync Results</p>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px" }}>
               <StatCard label="Created" value={syncResult.created} color="var(--color-success)" />
               <StatCard label="Updated" value={syncResult.updated} />
@@ -562,9 +565,7 @@ export default function EditSheetPage() {
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>All rows imported successfully — no errors.</span>
               </div>
             )}
-            <div>
-              <Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>Back to Sheets</Button>
-            </div>
+            <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
           </div>
         )}
 
@@ -575,19 +576,11 @@ export default function EditSheetPage() {
       )}
 
       {showWarningsConfirm && (
-        <SheetMappingValidationWarningsModal
-          warnings={validationWarnings}
-          onConfirm={doSaveAndSync}
-          onCancel={() => setShowWarningsConfirm(false)}
-        />
+        <SheetMappingValidationWarningsModal warnings={validationWarnings} onConfirm={doSaveAndSync} onCancel={() => setShowWarningsConfirm(false)} />
       )}
 
       {showErrorsModal && (
-        <SheetMappingValidationErrorsModal
-          errors={validationErrors}
-          warnings={validationWarnings}
-          onClose={() => setShowErrorsModal(false)}
-        />
+        <SheetMappingValidationErrorsModal errors={validationErrors} warnings={validationWarnings} onClose={() => setShowErrorsModal(false)} />
       )}
     </div>
   );
