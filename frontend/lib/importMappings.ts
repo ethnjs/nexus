@@ -1,4 +1,4 @@
-import type { ColumnMapping, ParseRule } from "@/lib/api";
+import type { ColumnMapping, ParseRule, FormQuestionOption } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +55,7 @@ export interface ImportSummary {
 
 const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "__ignore__":          "Ignore",
+  "full_name":           "Full Name",
   "first_name":          "First Name",
   "last_name":           "Last Name",
   "email":               "Email",
@@ -64,6 +65,9 @@ const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "university":          "University",
   "major":               "Major",
   "employer":            "Employer",
+  "student_status":      "Student Status",
+  "competition_exp":     "Competition Experience",
+  "volunteering_exp":    "Volunteering Experience",
   "role_preference":     "Role Preference",
   "event_preference":    "Event Preference",
   "availability":        "Availability",
@@ -96,6 +100,7 @@ const ACTION_LABELS: Record<string, string> = {
   prepend:           "Prepend",
   append:            "Append",
   discard:           "Discard",
+  parse_time_range:  "Parse time range",
   parse_availability:"Parse availability",
 };
 
@@ -219,7 +224,7 @@ export function parseMappingsJson(text: string): MappingsExport | null {
  *
  * Returns the new rows and a full ImportSummary for the modal.
  *
- * Rules/delimiter from the import file are carried through if present.
+ * Rules/delimiter/options from the import file are carried through if present.
  */
 export function applyImport(
   currentRows: MappingRow[],

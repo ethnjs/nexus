@@ -28,35 +28,40 @@ class ValidationResult:
         """True if there are no hard errors (warnings are fine)."""
         return len(self.errors) == 0
 
-    def to_response_dict(self) -> dict:
-        """Serialise to a dict suitable for an HTTP error response body."""
-        def _normalise_header(h: list[str] | str | None) -> list[str] | None:
-            """Always return header as list[str] or None for consistent API shape."""
-            if h is None:
-                return None
-            if isinstance(h, list):
-                return h
-            return [h]
+    @staticmethod
+    def _normalise_header(h: list[str] | str | None) -> list[str] | None:
+        """Always return header as list[str] or None for consistent API shape."""
+        if h is None:
+            return None
+        if isinstance(h, list):
+            return h
+        return [h]
 
+    def _serialise_issues(self, issues: list[ValidationIssue]) -> list[dict]:
+        return [
+            {
+                "header":     self._normalise_header(i.header),
+                "rule_index": i.rule_index,
+                "message":    i.message,
+            }
+            for i in issues
+        ]
+
+    def to_response_dict(self) -> dict:
+        """
+        Serialise for HTTP 422 error response bodies (raised when validation
+        blocks a CREATE or PATCH). Shape: { ok, errors, warnings }.
+        """
         return {
-            "detail": "column_mappings validation failed",
-            "errors": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.errors
-            ],
-            "warnings": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.warnings
-            ],
+            "ok":   self.ok,
+            "errors":   self._serialise_issues(self.errors),
+            "warnings": self._serialise_issues(self.warnings),
         }
+
+
+# Both the canonical action and its legacy alias are valid for parse_time_range.
+# sync_service._apply_rules() accepts both.
+PARSE_TIME_RANGE_ACTIONS = {"parse_time_range", "parse_availability"}
 
 
 def validate_column_mappings(
@@ -148,17 +153,18 @@ def validate_column_mappings(
                 message="'delimiter' is only valid for multi_select type.",
             ))
 
-        # matrix_row mapped to availability with no parse_availability rule
+        # matrix_row mapped to availability with no parse_time_range rule (warning)
+        # Accepts both the canonical action and its legacy alias.
         if field_type == "matrix_row" and field_name == "availability":
-            has_parse_avail = any(
-                r.get("action") == "parse_availability" for r in rules
+            has_parse_time_range = any(
+                r.get("action") in PARSE_TIME_RANGE_ACTIONS for r in rules
             )
-            if not has_parse_avail:
+            if not has_parse_time_range:
                 result.warnings.append(ValidationIssue(
                     header=header,
                     message=(
                         "This matrix_row is mapped to 'availability' but has no "
-                        "'parse_availability' rule. Availability data will not be parsed during sync."
+                        "'parse_time_range' rule. Availability data will not be parsed during sync."
                     ),
                 ))
 
@@ -172,20 +178,20 @@ def validate_column_mappings(
             match_str = rule.get("match")
             action = rule.get("action", "")
 
-            # parse_availability only on matrix_row
-            if action == "parse_availability" and field_type != "matrix_row":
+            # parse_time_range (and legacy parse_availability) only valid on matrix_row
+            if action in PARSE_TIME_RANGE_ACTIONS and field_type != "matrix_row":
                 result.errors.append(ValidationIssue(
                     header=header,
                     rule_index=i,
-                    message="'parse_availability' action is only valid on matrix_row fields.",
+                    message=f"'{action}' action is only valid on matrix_row fields.",
                 ))
 
-            # parse_availability must use condition "always"
-            if action == "parse_availability" and condition != "always":
+            # parse_time_range (and legacy parse_availability) must use condition "always"
+            if action in PARSE_TIME_RANGE_ACTIONS and condition != "always":
                 result.errors.append(ValidationIssue(
                     header=header,
                     rule_index=i,
-                    message="'parse_availability' action requires condition 'always'.",
+                    message=f"'{action}' action requires condition 'always'.",
                 ))
 
             # regex must compile

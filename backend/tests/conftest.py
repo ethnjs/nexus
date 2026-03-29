@@ -32,9 +32,9 @@ from app.core.auth import hash_password
 from app.core.permissions import DEFAULT_POSITIONS
 from app.models.models import Membership, Tournament, User
 from app.schemas.sheet_config import (
-    ColumnMapping,
-    FormQuestion,
     FormQuestionOption,
+    MappedHeader,
+    ParseRule,
     SheetHeadersResponse,
     SheetValidateResponse,
 )
@@ -44,6 +44,7 @@ test_engine = create_engine(
     connect_args={"check_same_thread": False},
     echo=False,
 )
+
 
 @event.listens_for(test_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -166,17 +167,13 @@ def other_tournament(db, other_user):
 
 
 # ---------------------------------------------------------------------------
-# Sheets mock
+# Service mocks
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
 def mock_sheets_service() -> MagicMock:
     return _make_mock_sheets_service()
 
-
-# ---------------------------------------------------------------------------
-# Forms mock
-# ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
 def mock_forms_service() -> MagicMock:
@@ -197,15 +194,9 @@ def client(db, mock_sheets_service, mock_forms_service):
         finally:
             pass
 
-    def override_get_sheets_service():
-        return mock_sheets_service
-
-    def override_get_forms_service():
-        return mock_forms_service
-
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_sheets_service] = override_get_sheets_service
-    app.dependency_overrides[get_forms_service] = override_get_forms_service
+    app.dependency_overrides[get_sheets_service] = lambda: mock_sheets_service
+    app.dependency_overrides[get_forms_service] = lambda: mock_forms_service
 
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
@@ -239,27 +230,21 @@ def _make_mock_sheets_service() -> MagicMock:
     mock.get_headers.return_value = SheetHeadersResponse(
         sheet_name="Form Responses 1",
         sheet_type="volunteers",
-        headers=[
-            "Timestamp",
-            "Email Address",
-            "First Name",
-            "Last Name",
-            "Phone Number",
-            "T-Shirt Size",
-            "Availability [8:00 AM - 10:00 AM]",
-        ],
-        suggestions={
-            "Timestamp":        ColumnMapping(field="__ignore__",  type="ignore"),
-            "Email Address":    ColumnMapping(field="email",       type="string"),
-            "First Name":       ColumnMapping(field="first_name",  type="string"),
-            "Last Name":        ColumnMapping(field="last_name",   type="string"),
-            "Phone Number":     ColumnMapping(field="phone",       type="string"),
-            "T-Shirt Size":     ColumnMapping(field="shirt_size",  type="string"),
-            "Availability [8:00 AM - 10:00 AM]": ColumnMapping(
-                field="availability", type="matrix_row", row_key="8:00 AM - 10:00 AM"
+        mappings=[
+            MappedHeader(header="Timestamp",     field="__ignore__", type="ignore"),
+            MappedHeader(header="Email Address", field="email",      type="string"),
+            MappedHeader(header="First Name",    field="first_name", type="string"),
+            MappedHeader(header="Last Name",     field="last_name",  type="string"),
+            MappedHeader(header="Phone Number",  field="phone",      type="string"),
+            MappedHeader(header="T-Shirt Size",  field="shirt_size", type="string"),
+            MappedHeader(
+                header="Availability [8:00 AM - 10:00 AM]",
+                field="availability",
+                type="matrix_row",
+                row_key="8:00 AM - 10:00 AM",
+                rules=[ParseRule(condition="always", action="parse_time_range")],
             ),
-        },
-        form_questions=None,
+        ],
     )
 
     mock.get_rows.return_value = []
@@ -268,24 +253,28 @@ def _make_mock_sheets_service() -> MagicMock:
 
 # ---------------------------------------------------------------------------
 # Forms mock factory
+# Returns plain dicts matching the real FormsService.get_form_questions shape.
 # ---------------------------------------------------------------------------
 
 def _make_mock_forms_service() -> MagicMock:
     mock = MagicMock(spec=FormsService)
-
     mock.extract_form_id.return_value = "fake_form_id_abc123"
-
     mock.get_form_questions.return_value = [
-        FormQuestion(
-            question_id="q001",
-            title="Email Address",
-            nexus_type="string",
-        ),
-        FormQuestion(
-            question_id="q002",
-            title="Which events are you interested in supervising?",
-            nexus_type="multi_select",
-            options=[
+        {
+            "question_id": "q001",
+            "title": "Email Address",
+            "google_type": "TEXT",
+            "nexus_type": "string",
+            "options": None,
+            "grid_rows": None,
+            "grid_columns": None,
+        },
+        {
+            "question_id": "q002",
+            "title": "Which events are you interested in supervising?",
+            "google_type": "CHECKBOX",
+            "nexus_type": "multi_select",
+            "options": [
                 FormQuestionOption(
                     raw="Anatomy and Physiology - Study the human body",
                     alias="Anatomy and Physiology",
@@ -295,14 +284,17 @@ def _make_mock_forms_service() -> MagicMock:
                     alias="Chemistry Lab",
                 ),
             ],
-        ),
-        FormQuestion(
-            question_id="q003",
-            title="Availability",
-            nexus_type="matrix_row",
-            grid_rows=["8:00 AM - 10:00 AM", "10:00 AM - 12:00 PM"],
-            grid_columns=["Available", "Maybe"],
-        ),
+            "grid_rows": None,
+            "grid_columns": None,
+        },
+        {
+            "question_id": "q003",
+            "title": "Availability",
+            "google_type": "GRID",
+            "nexus_type": "matrix_row",
+            "options": None,
+            "grid_rows": ["8:00 AM - 10:00 AM", "10:00 AM - 12:00 PM"],
+            "grid_columns": ["Available", "Maybe"],
+        },
     ]
-
     return mock

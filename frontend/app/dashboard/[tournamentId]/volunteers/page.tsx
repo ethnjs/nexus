@@ -339,7 +339,13 @@ export default function VolunteersPage() {
                   </td>
 
                   {/* Lunch */}
-                  <td style={tdSec}>{m.lunch_order ?? "—"}</td>
+                  <td style={tdSec}>
+                    {m.lunch_order == null
+                      ? "—"
+                      : typeof m.lunch_order === "object"
+                        ? Object.entries(m.lunch_order).map(([k, v]) => `${k}: ${v}`).join(", ")
+                        : m.lunch_order}
+                  </td>
 
                   {/* Positions — tags */}
                   <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "160px" }}>

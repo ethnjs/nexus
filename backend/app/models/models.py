@@ -94,6 +94,11 @@ class User(Base):
     major = Column(String(255), nullable=True)
     employer = Column(String(255), nullable=True)
 
+    # Promoted from extra_data — user-level attributes that travel across tournaments
+    student_status = Column(String(255), nullable=True)      # e.g. "1st Year", "Graduate", "Alumni"
+    competition_exp = Column(Text, nullable=True)             # free-form competition experience
+    volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
+
     # Auth fields
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
@@ -167,7 +172,11 @@ class Membership(Base):
     # Parsed from form at sync time to match block format for easy comparison
     availability = Column(JSON, nullable=True)
 
-    lunch_order = Column(String(255), nullable=True)
+    # Lunch order — stored as JSON dict for structured orders
+    # e.g. {"protein": "Chicken", "drink": "Coke"}
+    # or simple string for single-field lunch orders
+    lunch_order = Column(JSON, nullable=True)
+
     notes = Column(Text, nullable=True)
 
     # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.

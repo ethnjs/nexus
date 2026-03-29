@@ -9,9 +9,11 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
+  volunteers: "Volunteers",
+  events:     "Events",
+  // legacy — kept for configs saved before the migration
   interest:     "Interest Form",
   confirmation: "Confirmation Form",
-  events:       "Events",
 };
 
 function fmtDateTime(iso: string) {

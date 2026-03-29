@@ -208,7 +208,7 @@ def test_availability_matrix_row_no_rule_is_warning():
         },
     }))
     assert result.ok  # warning only, not an error
-    assert any("parse_availability" in w.message for w in result.warnings)
+    assert any("parse_time_range" in w.message for w in result.warnings)
 
 def test_availability_matrix_row_with_rule_no_warning():
     result = validate_column_mappings(_base_mappings(**{

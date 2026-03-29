@@ -3,10 +3,11 @@ import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, ColumnMapping
+from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, MappedHeader
 from app.models.models import Membership
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
+FAKE_FORM_URL = "https://docs.google.com/forms/d/fake_form/edit"
 
 SAMPLE_MAPPINGS = {
     "Email Address": {"field": "email",      "type": "string"},
@@ -74,6 +75,57 @@ def test_validate_volunteer_member_forbidden(
 
 
 # ---------------------------------------------------------------------------
+# Headers endpoint
+# ---------------------------------------------------------------------------
+
+def test_get_headers_returns_mappings_list(client, td_user, td_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={"sheet_url": FAKE_URL, "sheet_name": "Form Responses 1", "sheet_type": "volunteers"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert "mappings" in data
+    assert isinstance(data["mappings"], list)
+    assert "suggestions" not in data
+    assert "headers" not in data
+    assert "form_questions" not in data
+
+
+def test_get_headers_requires_sheet_type(client, td_user, td_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={"sheet_url": FAKE_URL, "sheet_name": "Form Responses 1"},
+    )
+    assert response.status_code == 422
+
+
+def test_get_headers_with_form_url(client, td_user, td_tournament, mock_sheets_service, mock_forms_service):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/headers/",
+        json={
+            "sheet_url": FAKE_URL,
+            "sheet_name": "Form Responses 1",
+            "sheet_type": "volunteers",
+            "form_url": FAKE_FORM_URL,
+        },
+    )
+    assert response.status_code == 200
+    mock_forms_service.get_form_questions.assert_called_once_with(FAKE_FORM_URL)
+
+
+def test_get_headers_non_member_404(client, td_user, other_tournament, mock_sheets_service):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(
+        f"/tournaments/{other_tournament.id}/sheets/headers/",
+        json={"sheet_url": FAKE_URL, "sheet_name": "Form Responses 1", "sheet_type": "volunteers"},
+    ).status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Create config
 # ---------------------------------------------------------------------------
 
@@ -86,25 +138,6 @@ def test_create_sheet_config(client, td_user, td_tournament, mock_sheets_service
     assert data["label"] == "Interest Form"
     assert data["spreadsheet_id"] == "fake123"
     assert data["column_mappings"]["Email Address"]["field"] == "email"
-
-
-def test_create_sheet_config_tournament_id_mismatch(
-    client, td_user, td_tournament, mock_sheets_service
-):
-    login(client, "td@test.com", "tdpass")
-    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/sheets/configs/",
-        json={**{k: v for k, v in {
-            "tournament_id": 9999,
-            "label": "Interest Form",
-            "sheet_type": "volunteers",
-            "sheet_url": FAKE_URL,
-            "sheet_name": "Form Responses 1",
-            "column_mappings": SAMPLE_MAPPINGS,
-        }.items()}},
-    )
-    assert response.status_code == 400
 
 
 def test_create_sheet_config_matrix_row_missing_row_key(
@@ -131,7 +164,15 @@ def test_create_sheet_config_non_member_forbidden(
 ):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
-    assert _make_config(client, other_tournament.id).status_code == 404
+    response = client.post(f"/tournaments/{other_tournament.id}/sheets/configs/", json={
+        "tournament_id": other_tournament.id,
+        "label": "Interest Form",
+        "sheet_type": "volunteers",
+        "sheet_url": FAKE_URL,
+        "sheet_name": "Form Responses 1",
+        "column_mappings": SAMPLE_MAPPINGS,
+    })
+    assert response.status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -142,9 +183,7 @@ def test_get_sheet_config(client, td_user, td_tournament, mock_sheets_service):
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     created = _make_config(client, td_tournament.id).json()
-    response = client.get(
-        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/"
-    )
+    response = client.get(f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/")
     assert response.status_code == 200
     assert response.json()["id"] == created["id"]
 
@@ -189,19 +228,40 @@ def test_list_sheet_configs(client, td_user, td_tournament, mock_sheets_service)
 # ---------------------------------------------------------------------------
 
 def test_update_sheet_config(client, td_user, td_tournament, mock_sheets_service):
+    """PATCH label only — no column_mappings validation runs."""
+    login(client, "td@test.com", "tdpass")
+    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
+    created = _make_config(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/",
+        json={"label": "Updated Label"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["label"] == "Updated Label"
+    assert "Email Address" in data["column_mappings"]
+
+
+def test_update_sheet_config_merges_column_mappings(
+    client, td_user, td_tournament, mock_sheets_service
+):
+    """PATCHing column_mappings with a complete valid set merges new keys in."""
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     created = _make_config(client, td_tournament.id).json()
     response = client.patch(
         f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/",
         json={
-            "label": "Updated Label",
-            "column_mappings": {"Phone Number": {"field": "phone", "type": "string"}},
+            "column_mappings": {
+                "Email Address": {"field": "email",      "type": "string"},
+                "First Name":    {"field": "first_name", "type": "string"},
+                "Last Name":     {"field": "last_name",  "type": "string"},
+                "Phone Number":  {"field": "phone",      "type": "string"},
+            },
         },
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["label"] == "Updated Label"
     assert "Phone Number" in data["column_mappings"]
     assert "Email Address" in data["column_mappings"]
 

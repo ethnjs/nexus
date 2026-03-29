@@ -15,17 +15,15 @@ from app.schemas.sheet_config import (
     SheetHeadersResponse,
     SheetValidateRequest,
     SheetValidateResponse,
+    SyncResult,
     ValidateMappingsRequest,
     ValidateMappingsResponse,
-    SyncResult,
 )
 from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.services.sync_service import sync_sheet
-from app.services.sheets_validation import validate_column_mappings, ValidationResult
+from app.services.sheets_validation import validate_column_mappings
 
-# Tournament-scoped routes nested under /tournaments/{tournament_id}/sheets/...
-# All sheet config routes require manage_tournament.
 router = APIRouter(prefix="/tournaments/{tournament_id}/sheets", tags=["sheets"])
 
 
@@ -38,7 +36,6 @@ def get_forms_service() -> FormsService:
 
 
 def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> SheetConfig:
-    """Fetch config and validate it belongs to the given tournament."""
     config = db.query(SheetConfig).filter(SheetConfig.id == config_id).first()
     if not config:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sheet config not found")
@@ -47,39 +44,18 @@ def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> Sheet
     return config
 
 
-def _validate_or_422(mappings: dict) -> ValidationResult:
-    """
-    Run validate_column_mappings and raise HTTP 422 with structured body if
-    there are hard errors. Returns the ValidationResult so callers can include
-    warnings in successful responses.
-    """
-    result = validate_column_mappings(mappings)
+def _validate_or_422(column_mappings: dict) -> list[dict]:
+    result = validate_column_mappings(column_mappings)
     if not result.ok:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=result.to_response_dict(),
         )
-    return result
-
-
-def _warnings_from_result(result: ValidationResult) -> list[dict]:
-    """Serialise ValidationResult warnings to a list of dicts for the response."""
-    return [
-        {
-            "header": (
-                i.header if isinstance(i.header, list)
-                else [i.header] if i.header is not None
-                else None
-            ),
-            "rule_index": i.rule_index,
-            "message": i.message,
-        }
-        for i in result.warnings
-    ]
+    return result.warnings
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 1 — Validate URL and return available tabs
+# Wizard step 1 — Validate URL
 # ---------------------------------------------------------------------------
 @router.post("/validate/", response_model=SheetValidateResponse)
 def validate_sheet(
@@ -97,7 +73,7 @@ def validate_sheet(
 
 
 # ---------------------------------------------------------------------------
-# Wizard steps 2 & 3 — Fetch headers (tab select) + form questions (form URL)
+# Wizard step 2 — Fetch headers
 # ---------------------------------------------------------------------------
 @router.post("/headers/", response_model=SheetHeadersResponse)
 def get_sheet_headers(
@@ -107,16 +83,19 @@ def get_sheet_headers(
     forms_svc: FormsService = Depends(get_forms_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    try:
-        # Fetch form questions when a form URL is provided (volunteers sheets).
-        # FormsService errors surface as the same 403/400 shape as SheetsService.
-        form_questions = None
-        if payload.form_url:
+    form_questions = None
+    if payload.form_url:
+        try:
             form_questions = forms_svc.get_form_questions(payload.form_url)
+        except PermissionError as e:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
+    try:
         return svc.get_headers(
-            sheet_url=payload.sheet_url,
-            sheet_name=payload.sheet_name,
+            payload.sheet_url,
+            payload.sheet_name,
             sheet_type=payload.sheet_type,
             form_questions=form_questions,
         )
@@ -127,7 +106,7 @@ def get_sheet_headers(
 
 
 # ---------------------------------------------------------------------------
-# Validate mappings — run validation without saving
+# Validate mappings without saving
 # ---------------------------------------------------------------------------
 @router.post("/configs/validate-mappings/", response_model=ValidateMappingsResponse)
 def validate_mappings(
@@ -135,32 +114,25 @@ def validate_mappings(
     payload: ValidateMappingsRequest,
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """
-    Validate column mappings without saving. Returns errors and warnings.
-    Call before createConfig or updateConfig so the frontend can surface
-    issues inline before committing any DB write.
-    """
-    serialized = {
-        header: mapping.model_dump(exclude_none=True)
-        for header, mapping in payload.column_mappings.items()
-    }
-    result = validate_column_mappings(serialized)
-    response = result.to_response_dict()
-    return ValidateMappingsResponse(
-        ok=result.ok,
-        errors=response["errors"],
-        warnings=response["warnings"],
+    result = validate_column_mappings(
+        {k: v.model_dump() for k, v in payload.column_mappings.items()}
     )
+    return result.to_response_dict()
 
 
 # ---------------------------------------------------------------------------
-# Wizard step 4 — Save the finalized column mapping
+# Sheet config CRUD
 # ---------------------------------------------------------------------------
-@router.post(
-    "/configs/",
-    response_model=SheetConfigReadWithWarnings,
-    status_code=status.HTTP_201_CREATED,
-)
+@router.get("/configs/", response_model=list[SheetConfigRead])
+def list_sheet_configs(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+):
+    return db.query(SheetConfig).filter(SheetConfig.tournament_id == tournament_id).all()
+
+
+@router.post("/configs/", response_model=SheetConfigReadWithWarnings, status_code=status.HTTP_201_CREATED)
 def create_sheet_config(
     tournament_id: int,
     payload: SheetConfigCreate,
@@ -168,23 +140,8 @@ def create_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """Save a completed column mapping for a tournament."""
-    if payload.tournament_id != tournament_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="tournament_id in body does not match URL",
-        )
-
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    serialized_mappings = {
-        header: mapping.model_dump(exclude_none=True)
-        for header, mapping in payload.column_mappings.items()
-    }
-
-    validation = _validate_or_422(serialized_mappings)
+    raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
+    warnings = _validate_or_422(raw_mappings)
 
     spreadsheet_id = svc.extract_spreadsheet_id(payload.sheet_url)
 
@@ -195,38 +152,17 @@ def create_sheet_config(
         sheet_url=payload.sheet_url,
         spreadsheet_id=spreadsheet_id,
         sheet_name=payload.sheet_name,
-        column_mappings=serialized_mappings,
+        column_mappings=raw_mappings,
     )
     db.add(config)
     db.commit()
     db.refresh(config)
 
-    return SheetConfigReadWithWarnings(
-        **SheetConfigRead.model_validate(config).model_dump(),
-        warnings=_warnings_from_result(validation),
-    )
+    response = SheetConfigReadWithWarnings.model_validate(config)
+    response.warnings = [w.__dict__ if hasattr(w, "__dict__") else w for w in warnings]
+    return response
 
 
-# ---------------------------------------------------------------------------
-# GET /configs/ — list all configs for a tournament
-# ---------------------------------------------------------------------------
-@router.get("/configs/", response_model=list[SheetConfigRead])
-def list_sheet_configs(
-    tournament_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
-):
-    return (
-        db.query(SheetConfig)
-        .filter(SheetConfig.tournament_id == tournament_id)
-        .order_by(SheetConfig.created_at.desc())
-        .all()
-    )
-
-
-# ---------------------------------------------------------------------------
-# GET /configs/{config_id}/
-# ---------------------------------------------------------------------------
 @router.get("/configs/{config_id}/", response_model=SheetConfigRead)
 def get_sheet_config(
     tournament_id: int,
@@ -237,9 +173,6 @@ def get_sheet_config(
     return _get_config_or_404(config_id, tournament_id, db)
 
 
-# ---------------------------------------------------------------------------
-# PATCH /configs/{config_id}/
-# ---------------------------------------------------------------------------
 @router.patch("/configs/{config_id}/", response_model=SheetConfigReadWithWarnings)
 def update_sheet_config(
     tournament_id: int,
@@ -248,40 +181,33 @@ def update_sheet_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    """Update label, sheet_name, column_mappings, or is_active."""
     config = _get_config_or_404(config_id, tournament_id, db)
 
-    update_data = payload.model_dump(exclude_none=True)
-
-    # Merge incoming column_mappings into existing ones rather than replacing
-    if "column_mappings" in update_data and payload.column_mappings:
-        merged = dict(config.column_mappings or {})
-        merged.update({
-            header: mapping.model_dump(exclude_none=True)
-            for header, mapping in payload.column_mappings.items()
-        })
-        update_data["column_mappings"] = merged
-
-    # Validate the full merged mappings before saving
-    validation = ValidationResult()  # default empty (no warnings) if no mappings to validate
-    if "column_mappings" in update_data:
-        validation = _validate_or_422(update_data["column_mappings"])
-
-    for field, value in update_data.items():
-        setattr(config, field, value)
+    if payload.label is not None:
+        config.label = payload.label
+    if payload.sheet_type is not None:
+        config.sheet_type = payload.sheet_type
+    if payload.sheet_name is not None:
+        config.sheet_name = payload.sheet_name
+    if payload.is_active is not None:
+        config.is_active = payload.is_active
+    if payload.column_mappings is not None:
+        raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
+        warnings = _validate_or_422(raw_mappings)
+        existing = dict(config.column_mappings or {})
+        existing.update(raw_mappings)
+        config.column_mappings = existing
+    else:
+        warnings = []
 
     db.commit()
     db.refresh(config)
 
-    return SheetConfigReadWithWarnings(
-        **SheetConfigRead.model_validate(config).model_dump(),
-        warnings=_warnings_from_result(validation),
-    )
+    response = SheetConfigReadWithWarnings.model_validate(config)
+    response.warnings = [w.__dict__ if hasattr(w, "__dict__") else w for w in warnings]
+    return response
 
 
-# ---------------------------------------------------------------------------
-# DELETE /configs/{config_id}/
-# ---------------------------------------------------------------------------
 @router.delete("/configs/{config_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_sheet_config(
     tournament_id: int,
@@ -295,7 +221,7 @@ def delete_sheet_config(
 
 
 # ---------------------------------------------------------------------------
-# POST /configs/{config_id}/sync/
+# Sync
 # ---------------------------------------------------------------------------
 @router.post("/configs/{config_id}/sync/", response_model=SyncResult)
 def sync_sheet_config(
@@ -314,7 +240,7 @@ def sync_sheet_config(
         )
 
     try:
-        return sync_sheet(config, db, svc)
+        return sync_sheet(config, db, svc)  # fixed arg order: config, db, sheets_svc
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(e))
     except ValueError as e:

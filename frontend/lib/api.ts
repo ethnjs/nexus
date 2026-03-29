@@ -125,13 +125,8 @@ export interface Tournament {
 }
 
 export const tournamentsApi = {
-  // GET /tournaments/me/ — returns tournaments the current user has a membership in
-  // (admin sees all; regular users see only their own)
   list:   ()                                      => api.get<Tournament[]>('/tournaments/me/'),
-
-  // GET /tournaments/ — admin only, returns ALL tournaments
   listAll: ()                                     => api.get<Tournament[]>('/tournaments/'),
-
   get:    (id: number)                            => api.get<Tournament>(`/tournaments/${id}/`),
   create: (body: Partial<Tournament>)             => api.post<Tournament>('/tournaments/', body),
   update: (id: number, body: Partial<Tournament>) => api.patch<Tournament>(`/tournaments/${id}/`, body),
@@ -171,7 +166,7 @@ export const eventsApi = {
 }
 
 // -------------------------------------------------------------------------
-// Users — /users/ routes are admin-only
+// Users
 // -------------------------------------------------------------------------
 export interface User {
   id:                  number
@@ -184,6 +179,9 @@ export interface User {
   university:          string | null
   major:               string | null
   employer:            string | null
+  student_status:      string | null
+  competition_exp:     string | null
+  volunteering_exp:    string | null
   role:                'admin' | 'user'
   is_active:           boolean
   created_at:          string
@@ -191,20 +189,17 @@ export interface User {
 }
 
 export const usersApi = {
-  // Admin-only global routes
   list:       ()                                 => api.get<User[]>('/users/'),
   get:        (id: number)                       => api.get<User>(`/users/${id}/`),
   getByEmail: (email: string)                    => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
   update:     (id: number, body: Partial<User>)  => api.patch<User>(`/users/${id}/`, body),
   delete:     (id: number)                       => api.delete<void>(`/users/${id}/`),
-
-  // Tournament-scoped — requires manage_volunteers or manage_tournament
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<User>(`/tournaments/${tournamentId}/users/${userId}/`),
 }
 
 // -------------------------------------------------------------------------
-// Memberships — nested under /tournaments/{id}/memberships/
+// Memberships
 // -------------------------------------------------------------------------
 export type MembershipStatus = 'interested' | 'confirmed' | 'declined' | 'assigned' | 'removed'
 
@@ -215,8 +210,8 @@ export interface AvailabilitySlot {
 }
 
 export interface ScheduleSlot {
-  block: number   // block number
-  duty:  string   // position key or free string, e.g. "event_supervisor"
+  block: number
+  duty:  string
 }
 
 export interface Membership {
@@ -224,24 +219,15 @@ export interface Membership {
   user_id:           number
   tournament_id:     number
   assigned_event_id: number | null
-
-  // Position keys from tournament.volunteer_schema["positions"]
-  // Drives title + system permissions within this tournament
   positions:         string[] | null
-
-  // Day-of block schedule — one entry per block.
   schedule:          ScheduleSlot[] | null
-
   status:            MembershipStatus
   role_preference:   string[] | null
   event_preference:  string[] | null
   availability:      AvailabilitySlot[] | null
-  lunch_order:       string | null
+  lunch_order:       Record<string, unknown> | string | null
   notes:             string | null
-
-  // All tournament-specific arbitrary data lives here
   extra_data:        Record<string, unknown> | null
-
   created_at:        string
   updated_at:        string
   user?:             User
@@ -260,18 +246,6 @@ export const membershipsApi = {
     api.patch<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
-
-  /**
-   * Delete all memberships in a tournament whose user email is in the provided list.
-   *
-   * TEMP IMPLEMENTATION: fetches all memberships (which include user data via the
-   * joined list endpoint), filters by email, then deletes one by one. This is O(n)
-   * HTTP requests and not suitable for large volunteer lists.
-   *
-   * TODO: replace with a single backend endpoint
-   * POST /tournaments/{id}/memberships/delete-by-emails/ { emails: string[] }
-   * tracked in GitHub issue.
-   */
   deleteMembershipsByEmails: async (tournamentId: number, emails: string[]): Promise<{ deleted: number }> => {
     const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
     const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
@@ -286,28 +260,67 @@ export const membershipsApi = {
 }
 
 // -------------------------------------------------------------------------
-// Sheet Configs — nested under /tournaments/{id}/sheets/
+// Sheet Configs
 // -------------------------------------------------------------------------
-export type SheetType = 'interest' | 'confirmation' | 'events'
+export type SheetType = 'volunteers' | 'events'
+
+// -------------------------------------------------------------------------
+// Form question option — a single answer choice from a Google Form.
+// Returned inside MappedHeader when the backend matched a form question.
+// Also persisted in ColumnMapping so edit page + exports retain alias editor.
+// -------------------------------------------------------------------------
+export interface FormQuestionOption {
+  raw:   string   // exact string as it appears in the form
+  alias: string   // auto-suggested short version for DB storage
+}
 
 export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
-export type ParseRuleAction    = 'set' | 'replace' | 'prepend' | 'append' | 'discard' | 'parse_availability'
+export type ParseRuleAction    =
+  | 'set' | 'replace' | 'prepend' | 'append' | 'discard'
+  | 'parse_time_range'    // canonical action (backend refactor)
+  | 'parse_availability'  // legacy alias — kept for backwards compat
 
 export interface ParseRule {
   condition:      ParseRuleCondition
-  match?:         string    // required unless condition === 'always'
+  match?:         string
   case_sensitive: boolean
   action:         ParseRuleAction
-  value?:         string    // required for set / replace / prepend / append
+  value?:         string
 }
 
 export interface ColumnMapping {
-  field:      string
-  type:       'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
-  row_key?:   string
-  extra_key?: string
-  rules?:     ParseRule[]
-  delimiter?: string        // only valid when type === 'multi_select'
+  field:         string
+  type:          'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
+  row_key?:      string
+  extra_key?:    string
+  rules?:        ParseRule[]
+  delimiter?:    string
+  // Persisted form enrichment — powers alias editor on edit page + JSON exports
+  options?:      FormQuestionOption[]
+  grid_rows?:    string[]
+  grid_columns?: string[]
+}
+
+// -------------------------------------------------------------------------
+// MappedHeader — one entry per sheet column in the flat /headers/ response.
+// Replaces the old headers[] + suggestions{} + form_questions[] triple.
+// Enrichment from the Google Form is already cross-referenced server-side.
+//
+// google_type has been removed — the backend resolves the type fully.
+// The frontend Type dropdown is always editable by the TD.
+// -------------------------------------------------------------------------
+export interface MappedHeader {
+  header:        string             // raw column header from the sheet
+  field:         string             // suggested target field
+  type:          string             // suggested mapping type
+  row_key?:      string
+  extra_key?:    string
+  rules?:        ParseRule[]
+  delimiter?:    string
+  // Form enrichment — null/absent when no form URL or no question matched
+  options?:      FormQuestionOption[]
+  grid_rows?:    string[]
+  grid_columns?: string[]
 }
 
 export interface SheetConfig {
@@ -337,11 +350,10 @@ export interface SyncResult {
   last_synced_at: string
 }
 
-/** Structured validation issue returned in a 422 response body from CREATE/PATCH */
 export interface ValidationIssue {
-  header?:     string[] | string | null   // which column mapping; absent = config-level issue
+  header?:     string[] | string | null
   message:     string
-  rule_index?: number   // which rule within that mapping; absent = mapping-level issue
+  rule_index?: number
 }
 
 export interface ValidateMappingsResult {
@@ -350,14 +362,15 @@ export interface ValidateMappingsResult {
   warnings: ValidationIssue[]
 }
 
+// Flat response — one MappedHeader per sheet column, enrichment already merged.
 export interface SheetHeadersResponse {
-  sheet_name:           string
-  headers:              string[]
-  suggestions:          Record<string, ColumnMapping>
-  known_fields:         string[]
-  valid_types:          string[]
+  sheet_name:            string
+  sheet_type:            string
+  mappings:              MappedHeader[]
+  known_fields:          string[]
+  valid_types:           string[]
   valid_rule_conditions: string[]
-  valid_rule_actions:   string[]
+  valid_rule_actions:    string[]
 }
 
 export const sheetsApi = {
@@ -365,9 +378,16 @@ export const sheetsApi = {
     api.post<{ spreadsheet_id: string; spreadsheet_title: string; sheet_names: string[] }>(
       `/tournaments/${tournamentId}/sheets/validate/`, { sheet_url }
     ),
-  headers: (tournamentId: number, sheet_url: string, sheet_name: string) =>
+  headers: (
+    tournamentId: number,
+    sheet_url: string,
+    sheet_name: string,
+    sheet_type: SheetType,
+    form_url?: string,
+  ) =>
     api.post<SheetHeadersResponse>(
-      `/tournaments/${tournamentId}/sheets/headers/`, { sheet_url, sheet_name }
+      `/tournaments/${tournamentId}/sheets/headers/`,
+      { sheet_url, sheet_name, sheet_type, ...(form_url ? { form_url } : {}) }
     ),
   listConfigs:  (tournamentId: number) =>
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
@@ -383,19 +403,6 @@ export const sheetsApi = {
     api.delete<void>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
-
-  /**
-   * Get emails of all volunteers in this tournament for the nuclear delete.
-   *
-   * TEMP IMPLEMENTATION: fetches all memberships (which include joined user data)
-   * and extracts emails client-side. Does not cross-reference the live Google Sheet —
-   * deletes ALL memberships in the tournament, not just those whose email appears
-   * in the current sheet rows.
-   *
-   * TODO: replace with GET /tournaments/{id}/sheets/configs/{configId}/rows/
-   * which proxies sheets_service.get_rows() so the email list matches the live sheet.
-   * Tracked in GitHub issue.
-   */
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
     const memberships = await api.get<{ user?: { email?: string } }[]>(
       `/tournaments/${tournamentId}/memberships/`

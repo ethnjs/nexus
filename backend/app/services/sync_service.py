@@ -17,8 +17,50 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
-from app.schemas.sheet_config import SyncError, SyncResult, coerce_legacy_type
+from app.schemas.sheet_config import (
+    PARSE_TIME_RANGE_ACTIONS,
+    SyncError,
+    SyncResult,
+    coerce_legacy_type,
+)
 from app.services.sheets_service import SheetsService
+
+
+# ---------------------------------------------------------------------------
+# User fields — fields that map to User table columns
+# ---------------------------------------------------------------------------
+_USER_FIELDS = frozenset({
+    "first_name", "last_name", "email", "phone",
+    "shirt_size", "dietary_restriction",
+    "university", "major", "employer",
+    "student_status", "competition_exp", "volunteering_exp",
+})
+
+
+# ---------------------------------------------------------------------------
+# Name splitting
+# ---------------------------------------------------------------------------
+
+def _split_full_name(full_name: str) -> tuple[str, str]:
+    """
+    Split a full name into (first_name, last_name).
+
+    Simple heuristic: everything before the last space is the first name,
+    everything after is the last name. Handles single-word names by using
+    the whole string as first_name with empty last_name.
+
+    Examples:
+        "Alice Smith"       → ("Alice", "Smith")
+        "Mary Jane Watson"  → ("Mary Jane", "Watson")
+        "Madonna"           → ("Madonna", "")
+        "  Bob  Jones  "    → ("Bob", "Jones")
+    """
+    parts = full_name.strip().split()
+    if not parts:
+        return ("", "")
+    if len(parts) == 1:
+        return (parts[0], "")
+    return (" ".join(parts[:-1]), parts[-1])
 
 
 # ---------------------------------------------------------------------------
@@ -26,10 +68,6 @@ from app.services.sheets_service import SheetsService
 # ---------------------------------------------------------------------------
 
 def _parse_time(raw: str) -> str:
-    """
-    Convert human-readable time to HH:MM 24hr format.
-    Handles: "8:00 AM", "10:00 AM", "NOON", "12:00 PM", "2:00 PM"
-    """
     raw = raw.strip().upper()
     if raw in ("NOON", "12:00 PM", "12:00PM"):
         return "12:00"
@@ -44,18 +82,13 @@ def _parse_time(raw: str) -> str:
     if period == "AM":
         if h == 12:
             h = 0
-    else:  # PM
+    else:
         if h != 12:
             h += 12
     return f"{h:02d}:{m:02d}"
 
 
 def _parse_time_range(row_key: str) -> tuple[str, str]:
-    """
-    Parse row_key like "8:00 AM - 10:00 AM" or "NOON - 2:00 PM".
-    Normalizes extra whitespace around the dash first.
-    Returns ("08:00", "10:00").
-    """
     normalized = re.sub(r"\s+", " ", row_key.strip())
     parts = normalized.split(" - ", 1)
     if len(parts) != 2:
@@ -68,16 +101,6 @@ def _parse_time_range(row_key: str) -> tuple[str, str]:
 # ---------------------------------------------------------------------------
 
 def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
-    """
-    Convert a day string like "Thursday 5/21" or "Saturday 5/23" to a
-    YYYY-MM-DD date string by cross-referencing tournament blocks.
-
-    Strategy:
-    - Extract M/DD from the string (e.g. "5/21")
-    - Find a block whose date matches that month/day
-    - Use the block's full date (which includes the year)
-    - Falls back to start_date year if no block matches
-    """
     day_str = day_str.strip()
 
     date_match = re.search(r"(\d{1,2})/(\d{1,2})", day_str)
@@ -117,15 +140,6 @@ def _parse_availability(
     row_key: str,
     tournament: Tournament,
 ) -> list[dict]:
-    """
-    Parse one matrix row cell into availability slots.
-
-    cell_value: "Thursday 5/21, Saturday 5/23" or "None"
-    row_key:    "8:00 AM - 10:00 AM"
-
-    Returns list of {date, start, end} dicts.
-    Returns [] if cell is "None" or empty.
-    """
     if not cell_value or cell_value.strip().lower() == "none":
         return []
 
@@ -141,13 +155,6 @@ def _parse_availability(
 
 
 def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dict]:
-    """
-    Merge new slots into existing availability list.
-    Consecutive slots on the same date are merged if they are contiguous.
-
-    e.g. {date: X, start: 08:00, end: 10:00} + {date: X, start: 10:00, end: 12:00}
-         → {date: X, start: 08:00, end: 12:00}
-    """
     all_slots = list(existing) + list(new_slots)
 
     by_date: dict[str, list[dict]] = {}
@@ -180,10 +187,6 @@ def _rule_matches(
     match: str | None,
     case_sensitive: bool,
 ) -> bool:
-    """
-    Check whether a rule's condition fires against the current cell value.
-    Returns True for condition "always" unconditionally.
-    """
     if condition == "always":
         return True
     if match is None:
@@ -216,13 +219,10 @@ def _apply_rules(
     """
     Apply an ordered list of parse rules to a raw cell string.
 
-    Rules run sequentially — each rule sees the output of the previous one.
-    All matching rules fire (not first-match-wins).
-
-    Returns either:
-    - A string  — normal case; type coercion runs after this
-    - list[dict] — parse_availability short-circuited; skip type coercion
-    - None       — a discard rule fired; treat cell as empty
+    Returns:
+    - list[dict] — parse_time_range / parse_availability fired; skip type coercion
+    - None       — discard fired
+    - str        — transformed string; type coercion runs next
     """
     current: str = value
 
@@ -239,10 +239,8 @@ def _apply_rules(
         if action == "discard":
             return None
 
-        if action == "parse_availability":
-            # Short-circuit — run availability parsing and return immediately.
-            # Any rules after parse_availability are unreachable (validated at
-            # save time, but we guard here too).
+        # Both canonical (parse_time_range) and legacy alias (parse_availability)
+        if action in PARSE_TIME_RANGE_ACTIONS:
             row_key = mapping.get("row_key", "")
             return _parse_availability(current, row_key, tournament)
 
@@ -255,7 +253,6 @@ def _apply_rules(
                 current = re.sub(match, rule_value, current, flags=flags)
             elif match:
                 if not case_sensitive:
-                    # Case-insensitive literal replace via regex
                     current = re.sub(
                         re.escape(match), rule_value, current, flags=re.IGNORECASE
                     )
@@ -272,6 +269,50 @@ def _apply_rules(
 
 
 # ---------------------------------------------------------------------------
+# Field processing helpers
+# ---------------------------------------------------------------------------
+
+def _split_multi_select_options(
+    value: str,
+    options: list[str],
+    delimiter: str = ",",
+) -> list[str]:
+    """
+    Greedily split a multi-select cell value against a known option list.
+
+    Handles commas that appear inside option text by matching longest options
+    first, so "Life, Personal & Social Science, Chemistry Lab" splits correctly
+    when "Life, Personal & Social Science" is a known option.
+
+    Falls back to delimiter split for any portion that doesn't match a known option.
+    """
+    result = []
+    remaining = value.strip()
+    sep = delimiter.strip()
+
+    while remaining:
+        matched = False
+        for opt in options:
+            opt_stripped = opt.strip()
+            if remaining.startswith(opt_stripped):
+                result.append(opt_stripped)
+                remaining = remaining[len(opt_stripped):].lstrip()
+                if remaining.startswith(sep):
+                    remaining = remaining[len(sep):].lstrip()
+                matched = True
+                break
+        if not matched:
+            idx = remaining.find(sep)
+            if idx == -1:
+                result.append(remaining.strip())
+                break
+            result.append(remaining[:idx].strip())
+            remaining = remaining[idx + len(sep):].lstrip()
+
+    return [v for v in result if v]
+
+
+# ---------------------------------------------------------------------------
 # Field processing
 # ---------------------------------------------------------------------------
 
@@ -280,42 +321,23 @@ def _process_cell(
     mapping: dict,
     tournament: Tournament,
 ) -> Any:
-    """
-    Process a single cell value according to its ColumnMapping type.
-
-    Pipeline:
-      1. Apply parse rules (string transforms) in order
-      2. Type-coerce the result
-
-    Returns the processed value, or raises ValueError on bad input.
-    """
     field_type = coerce_legacy_type(mapping.get("type", "string"))
 
     if field_type == "ignore":
         return None
 
-    # ------------------------------------------------------------------
-    # Step 1 — Apply parse rules (runs on the raw string)
-    # ------------------------------------------------------------------
     rules = mapping.get("rules") or []
     if rules:
         result = _apply_rules(value, rules, mapping, tournament)
 
-        # parse_availability short-circuited — return slots list directly,
-        # skipping type coercion
         if isinstance(result, list):
             return result
 
-        # discard rule fired
         if result is None:
             return None
 
-        # Update value for type coercion below
         value = result
 
-    # ------------------------------------------------------------------
-    # Step 2 — Type coercion
-    # ------------------------------------------------------------------
     if field_type == "string":
         return value.strip() if value else None
 
@@ -337,14 +359,22 @@ def _process_cell(
         if not value or not value.strip():
             return []
         delimiter = mapping.get("delimiter") or ","
+        options = mapping.get("options")
+        if options:
+            # Option-aware splitting: greedily match known options so commas
+            # inside option text (e.g. "Life, Personal & Social Science") are
+            # not treated as delimiters.
+            alias_options = sorted(
+                [o["alias"] if isinstance(o, dict) else o.alias for o in options],
+                key=len,
+                reverse=True,
+            )
+            return _split_multi_select_options(value, alias_options, delimiter)
         return [v.strip() for v in value.split(delimiter) if v.strip()]
 
     if field_type == "matrix_row":
-        # No parse_availability rule present — store raw string.
-        # The TD must add a parse_availability rule for availability fields.
         return value.strip() if value else None
 
-    # Unknown type — fall back to raw string rather than crashing
     return value.strip() if value else None
 
 
@@ -357,10 +387,6 @@ def sync_sheet(
     db: Session,
     sheets_svc: SheetsService,
 ) -> SyncResult:
-    """
-    Sync all rows from a sheet config into Users + Memberships.
-    Performs a full upsert — existing records are updated.
-    """
     tournament = db.query(Tournament).filter(
         Tournament.id == config.tournament_id
     ).first()
@@ -372,16 +398,15 @@ def sync_sheet(
     created = updated = skipped = 0
     errors: list[SyncError] = []
 
-    for row_index, row in enumerate(rows, start=2):  # row 1 is header
+    for row_index, row in enumerate(rows, start=2):
         email = None
         try:
-            # ----------------------------------------------------------------
-            # Step 1 — Parse all columns
-            # ----------------------------------------------------------------
             user_fields: dict[str, Any] = {}
             membership_fields: dict[str, Any] = {}
             availability_slots: list[dict] = []
             extra_data: dict[str, Any] = {}
+            lunch_parts: dict[str, Any] = {}
+            event_pref_ranked: dict[str, str] = {}  # row_key → cell value for grid ranking
 
             mappings: dict = config.column_mappings or {}
 
@@ -398,32 +423,71 @@ def sync_sheet(
 
                 processed = _process_cell(raw_value, mapping, tournament)
 
-                if field == "availability":
+                if field == "full_name":
+                    # Split full name into first_name + last_name
+                    if processed and isinstance(processed, str):
+                        first, last = _split_full_name(processed)
+                        if first:
+                            user_fields["first_name"] = first
+                        if last:
+                            user_fields["last_name"] = last
+
+                elif field == "availability":
                     if processed and isinstance(processed, list):
                         availability_slots.extend(processed)
+
+                elif field == "event_preference":
+                    if field_type == "matrix_row":
+                        # Grid-ranked event preference: row_key is the event name,
+                        # cell value is the rank (e.g. "1st choice", "2nd choice")
+                        row_key = mapping.get("row_key", "")
+                        if processed and row_key:
+                            event_pref_ranked[row_key] = str(processed)
+                    elif processed is not None:
+                        if isinstance(processed, str):
+                            processed = [processed]
+                        membership_fields.setdefault("event_preference", [])
+                        membership_fields["event_preference"].extend(
+                            processed if isinstance(processed, list) else [processed]
+                        )
+
+                elif field == "lunch_order":
+                    # Accumulate lunch parts into a dict
+                    if processed is not None:
+                        # Use a slugified version of the header as the key
+                        lunch_key = _lunch_key_from_header(header)
+                        lunch_parts[lunch_key] = processed
 
                 elif field == "extra_data":
                     extra_key = mapping.get("extra_key")
                     if extra_key and processed is not None:
                         extra_data[extra_key] = processed
 
-                elif field in ("first_name", "last_name", "email", "phone",
-                               "shirt_size", "dietary_restriction",
-                               "university", "major", "employer"):
+                elif field in _USER_FIELDS:
                     if processed is not None:
                         user_fields[field] = processed
 
                 else:
-                    # Membership fields
                     if processed is not None:
-                        # event_preference is list[str] in the schema — if the column
-                        # is typed as string (not multi_select), wrap it in a list so
-                        # the response serializer doesn't reject it
-                        if field == "event_preference" and isinstance(processed, str):
+                        if field == "role_preference" and isinstance(processed, str):
                             processed = [processed]
                         membership_fields[field] = processed
 
-            # Email is required
+            # Resolve grid-ranked event preferences into an ordered list
+            if event_pref_ranked:
+                ranked_list = _resolve_ranked_preferences(event_pref_ranked)
+                existing = membership_fields.get("event_preference", [])
+                membership_fields["event_preference"] = ranked_list + existing
+
+            # Store lunch_parts as the lunch_order value
+            if lunch_parts:
+                if len(lunch_parts) == 1:
+                    # Single lunch field — store the value directly
+                    membership_fields["lunch_order"] = next(iter(lunch_parts.values()))
+                else:
+                    # Multiple lunch fields — store as dict
+                    membership_fields["lunch_order"] = lunch_parts
+
             email = user_fields.get("email")
             if not email:
                 errors.append(SyncError(
@@ -432,9 +496,6 @@ def sync_sheet(
                 skipped += 1
                 continue
 
-            # ----------------------------------------------------------------
-            # Step 2 — Upsert User
-            # ----------------------------------------------------------------
             user = db.query(User).filter(User.email == email).first()
             if user:
                 for k, v in user_fields.items():
@@ -445,7 +506,7 @@ def sync_sheet(
                     errors.append(SyncError(
                         row=row_index,
                         email=email,
-                        detail="Missing first_name or last_name"
+                        detail="Missing first_name or last_name",
                     ))
                     skipped += 1
                     continue
@@ -453,9 +514,6 @@ def sync_sheet(
                 db.add(user)
                 db.flush()
 
-            # ----------------------------------------------------------------
-            # Step 3 — Upsert Membership
-            # ----------------------------------------------------------------
             membership = db.query(Membership).filter(
                 Membership.user_id == user.id,
                 Membership.tournament_id == tournament.id,
@@ -508,3 +566,76 @@ def sync_sheet(
         errors=errors,
         last_synced_at=now,
     )
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _lunch_key_from_header(header: str) -> str:
+    """
+    Derive a short key from a lunch-related column header.
+
+    Examples:
+        "Which protein do you want in your Chipotle burrito?" → "protein"
+        "What would you like to drink?"                       → "drink"
+        "Lunch Order"                                         → "lunch_order"
+    """
+    lower = header.lower()
+    if "protein" in lower or "burrito" in lower:
+        return "protein"
+    if "drink" in lower:
+        return "drink"
+    if "side" in lower:
+        return "side"
+    return "lunch_order"
+
+
+# Ranked-preference column ordering
+# Maps common ranking labels to sort order. Lower = higher priority.
+_RANK_ORDER: dict[str, int] = {
+    "1st choice": 1,
+    "1st": 1,
+    "first choice": 1,
+    "2nd choice": 2,
+    "2nd": 2,
+    "second choice": 2,
+    "3rd choice": 3,
+    "3rd": 3,
+    "third choice": 3,
+    "4th choice": 4,
+    "4th": 4,
+    "5th choice": 5,
+    "5th": 5,
+}
+
+
+def _rank_sort_key(rank_value: str) -> int:
+    """
+    Convert a rank label to a sort-order int.
+    Falls back to parsing leading digits, then 999 for unknowns.
+    """
+    lower = rank_value.strip().lower()
+    if lower in _RANK_ORDER:
+        return _RANK_ORDER[lower]
+    # Try parsing leading digit: "1st choice" variants
+    m = re.match(r"(\d+)", lower)
+    if m:
+        return int(m.group(1))
+    return 999
+
+
+def _resolve_ranked_preferences(ranked: dict[str, str]) -> list[str]:
+    """
+    Convert a {event_name: rank_label} dict into an ordered list of event names.
+
+    The rank_label is the grid column value (e.g. "1st choice", "2nd choice").
+    Events are sorted by rank. Events without a parseable rank go at the end.
+
+    Example:
+        {"Anatomy": "2nd choice", "Forensics": "1st choice", "Chem Lab": "3rd choice"}
+        → ["Forensics", "Anatomy", "Chem Lab"]
+    """
+    items = [(event, _rank_sort_key(rank)) for event, rank in ranked.items()]
+    items.sort(key=lambda x: x[1])
+    return [event for event, _ in items]
