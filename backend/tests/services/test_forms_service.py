@@ -241,24 +241,22 @@ def test_parses_scale_as_integer(svc: FormsService):
 # ---------------------------------------------------------------------------
 
 def test_parses_grid_question(svc: FormsService):
+    # Grid questions use questionGroupItem at the item level (not questionItem).
+    # The group has a list of sub-questions (rows) and a grid with columns.
     svc._client.forms().get().execute.return_value = _make_form_response([
         {
             "itemId": "001",
             "title": "Availability",
-            "questionItem": {
-                "question": {
-                    "questionId": "q1",
-                    "gridQuestion": {
-                        "rows": [
-                            {"value": "8:00 AM - 10:00 AM"},
-                            {"value": "10:00 AM - 12:00 PM"},
-                        ],
-                        "columns": {
-                            "type": "CHECKBOX",
-                            "options": [{"value": "Available"}, {"value": "Maybe"}],
-                        },
-                    },
-                }
+            "questionGroupItem": {
+                "questions": [
+                    {"questionId": "q1", "rowQuestion": {"title": "8:00 AM - 10:00 AM"}},
+                    {"questionId": "q2", "rowQuestion": {"title": "10:00 AM - 12:00 PM"}},
+                ],
+                "grid": {
+                    "columns": {
+                        "options": [{"value": "Available"}, {"value": "Maybe"}],
+                    }
+                },
             },
         }
     ])
