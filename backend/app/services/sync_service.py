@@ -269,6 +269,50 @@ def _apply_rules(
 
 
 # ---------------------------------------------------------------------------
+# Field processing helpers
+# ---------------------------------------------------------------------------
+
+def _split_multi_select_options(
+    value: str,
+    options: list[str],
+    delimiter: str = ",",
+) -> list[str]:
+    """
+    Greedily split a multi-select cell value against a known option list.
+
+    Handles commas that appear inside option text by matching longest options
+    first, so "Life, Personal & Social Science, Chemistry Lab" splits correctly
+    when "Life, Personal & Social Science" is a known option.
+
+    Falls back to delimiter split for any portion that doesn't match a known option.
+    """
+    result = []
+    remaining = value.strip()
+    sep = delimiter.strip()
+
+    while remaining:
+        matched = False
+        for opt in options:
+            opt_stripped = opt.strip()
+            if remaining.startswith(opt_stripped):
+                result.append(opt_stripped)
+                remaining = remaining[len(opt_stripped):].lstrip()
+                if remaining.startswith(sep):
+                    remaining = remaining[len(sep):].lstrip()
+                matched = True
+                break
+        if not matched:
+            idx = remaining.find(sep)
+            if idx == -1:
+                result.append(remaining.strip())
+                break
+            result.append(remaining[:idx].strip())
+            remaining = remaining[idx + len(sep):].lstrip()
+
+    return [v for v in result if v]
+
+
+# ---------------------------------------------------------------------------
 # Field processing
 # ---------------------------------------------------------------------------
 
@@ -315,6 +359,17 @@ def _process_cell(
         if not value or not value.strip():
             return []
         delimiter = mapping.get("delimiter") or ","
+        options = mapping.get("options")
+        if options:
+            # Option-aware splitting: greedily match known options so commas
+            # inside option text (e.g. "Life, Personal & Social Science") are
+            # not treated as delimiters.
+            alias_options = sorted(
+                [o["alias"] if isinstance(o, dict) else o.alias for o in options],
+                key=len,
+                reverse=True,
+            )
+            return _split_multi_select_options(value, alias_options, delimiter)
         return [v.strip() for v in value.split(delimiter) if v.strip()]
 
     if field_type == "matrix_row":
