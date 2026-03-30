@@ -362,9 +362,7 @@ function ConfigCard({
     }
   }
 
-  const mappingCount = Object.keys(cfg.column_mappings).filter(
-    (k) => cfg.column_mappings[k].type !== "ignore"
-  ).length;
+  const mappingCount = cfg.column_mappings.filter((m) => m.type !== "ignore").length;
 
   return (
     <>

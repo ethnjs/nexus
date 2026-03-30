@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetType, MappedHeader, FormQuestionOption } from "@/lib/api";
+import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetType, MappedHeader, FormQuestionOption } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -45,8 +45,9 @@ interface SyncResult {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function emptyMappingRow(header: string, s?: ColumnMapping): MappingRow {
+function emptyMappingRow(header: string, s?: Partial<ColumnMappingEntry>): MappingRow {
   return {
+    column_index: s?.column_index ?? -1,
     header,
     field:     s?.field     ?? "__ignore__",
     type:      s?.type      ?? "ignore",
@@ -93,8 +94,8 @@ export default function EditSheetPage() {
   const [headersLoading,  setHeadersLoading]  = useState(false);
   const [headersError,    setHeadersError]    = useState("");
 
-  // Track options per header for buildColumnMappings persistence
-  const [headerOptions, setHeaderOptions] = useState<Map<string, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  // Track options per column index for buildColumnMappings persistence
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Load state
   const [loading,   setLoading]   = useState(true);
@@ -173,13 +174,15 @@ export default function EditSheetPage() {
       setValidConditions(result.valid_rule_conditions);
       setValidActions(result.valid_rule_actions);
 
-      const liveHeaders  = new Set(result.mappings.map((m: MappedHeader) => m.header));
-      const savedHeaders = new Set(Object.keys(cfg.column_mappings));
+      const savedByIndex = new Map<number, ColumnMappingEntry>(
+        cfg.column_mappings.map((m) => [m.column_index, m]),
+      );
+      const liveIndices  = new Set(result.mappings.map((m: MappedHeader) => m.column_index));
       const rows: RichMappingRow[] = [];
-      const optionsMap = new Map<string, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       for (const m of result.mappings) {
-        const saved = cfg.column_mappings[m.header];
+        const saved = savedByIndex.get(m.column_index);
         // Resolve options: prefer live (freshest), fall back to saved (persisted from wizard)
         const options = resolveOptions(m, saved);
         const enrichment = {
@@ -188,11 +191,12 @@ export default function EditSheetPage() {
           grid_columns: m.grid_columns ?? saved?.grid_columns,
         };
         if (enrichment.options || enrichment.grid_rows || enrichment.grid_columns) {
-          optionsMap.set(m.header, enrichment);
+          optionsMap.set(m.column_index, enrichment);
         }
 
         if (saved) {
-          const base = emptyMappingRow(m.header, saved);
+          const base = emptyMappingRow(m.header, { ...saved, column_index: m.column_index } as ColumnMappingEntry);
+          base.column_index = m.column_index;
           rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0, options));
         } else {
           const base = emptyMappingRow(m.header, {
@@ -203,18 +207,19 @@ export default function EditSheetPage() {
             rules:     m.rules,
             delimiter: m.delimiter,
           });
+          base.column_index = m.column_index;
           rows.push(makeRichRow(base, base, "new", undefined, undefined, options));
         }
       }
 
       // Saved headers no longer in live sheet — mark as removed
-      for (const header of savedHeaders) {
-        if (!liveHeaders.has(header)) {
-          const saved = cfg.column_mappings[header];
-          const base = emptyMappingRow(header, saved);
+      for (const saved of cfg.column_mappings) {
+        if (!liveIndices.has(saved.column_index)) {
+          const base = emptyMappingRow(saved.header, saved);
+          base.column_index = saved.column_index;
           const options = saved?.options ?? undefined;
           if (saved?.options || saved?.grid_rows || saved?.grid_columns) {
-            optionsMap.set(header, { options: saved.options, grid_rows: saved.grid_rows, grid_columns: saved.grid_columns });
+            optionsMap.set(saved.column_index, { options: saved.options, grid_rows: saved.grid_rows, grid_columns: saved.grid_columns });
           }
           rows.push(makeRichRow(base, base, "removed", undefined, undefined, options));
         }
@@ -248,8 +253,8 @@ export default function EditSheetPage() {
         return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.options);
       })
     );
-    const header = mappingRows[idx]?.header;
-    if (header) clearRow(header);
+    const row = mappingRows[idx];
+    if (row) clearRow(row.column_index, row.header);
   }
 
   // ── Import ──────────────────────────────────────────────────────────────
@@ -276,14 +281,15 @@ export default function EditSheetPage() {
       const parsed: MappingsExport | null = parseMappingsJson(text);
 
       if (!parsed) {
-        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
+        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: [ ... ] }" });
         return;
       }
 
       const activeRows: MappingRow[] = mappingRows
         .filter((r) => r.state !== "removed")
         .map((r) => ({
-          header: r.header, field: r.field, type: r.type,
+        column_index: r.column_index,
+        header: r.header, field: r.field, type: r.type,
           row_key: r.row_key, extra_key: r.extra_key,
           delimiter: r.delimiter, rules: r.rules,
         }));
@@ -294,11 +300,11 @@ export default function EditSheetPage() {
       setMappingRows((prev) =>
         prev.map((r) => {
           if (r.state === "removed") return r;
-          const updated = updatedRows.find((u) => u.header === r.header);
+          const updated = updatedRows.find((u) => u.column_index === r.column_index);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
           const hadRuleChanges = updatedList.some(
-            (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+            (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
           const base = r.state === "new"
             ? { ...r, ...updated, importedValue }
@@ -319,8 +325,8 @@ export default function EditSheetPage() {
 
   // ── Build column mappings ───────────────────────────────────────────────
 
-  const buildColumnMappings = useCallback((): Record<string, ColumnMapping> => {
-    const result: Record<string, ColumnMapping> = {};
+  const buildColumnMappings = useCallback((): ColumnMappingEntry[] => {
+    const result: ColumnMappingEntry[] = [];
     for (const row of mappingRows) {
       if (row.state === "removed") continue;
       const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
@@ -329,13 +335,17 @@ export default function EditSheetPage() {
       if (row.type === "multi_select" && row.delimiter)  mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       // Persist form enrichment so alias editor works on next edit + in exports
-      const enrichment = headerOptions.get(row.header);
+      const enrichment = headerOptions.get(row.column_index);
       if (enrichment?.options)      mapping.options      = enrichment.options;
       if (enrichment?.grid_rows)    mapping.grid_rows    = enrichment.grid_rows;
       if (enrichment?.grid_columns) mapping.grid_columns = enrichment.grid_columns;
-      result[row.header] = mapping;
+      result.push({
+        column_index: row.column_index,
+        header: row.header,
+        ...mapping,
+      });
     }
-    return result;
+    return result.sort((a, b) => a.column_index - b.column_index);
   }, [mappingRows, headerOptions]);
 
   // ── Save & Sync ─────────────────────────────────────────────────────────

@@ -1199,22 +1199,6 @@ export function SheetConfigMappingTable({
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
 
-  const onChangeRowRef = useRef(onChangeRow);
-  useEffect(() => { onChangeRowRef.current = onChangeRow; }, [onChangeRow]);
-
-  const stableCallbacks = useRef<Map<string, (patch: Partial<MappingRow>) => void>>(new Map());
-  rows.forEach((row, idx) => {
-    if (!stableCallbacks.current.has(row.header)) {
-      stableCallbacks.current.set(row.header, (patch) => {
-        onChangeRowRef.current?.(idx, patch);
-      });
-    }
-  });
-  const currentHeaders = new Set(rows.map((r) => r.header));
-  stableCallbacks.current.forEach((_, key) => {
-    if (!currentHeaders.has(key)) stableCallbacks.current.delete(key);
-  });
-
   if (rows.length === 0) {
     return <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>No columns mapped yet.</p>;
   }
@@ -1228,19 +1212,24 @@ export function SheetConfigMappingTable({
       </div>
       <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "visible" }}>
         {rows.map((row, idx) => {
+          const matchesColumnIndex = (ci: number[] | number | null | undefined) => {
+            if (ci == null) return false;
+            if (Array.isArray(ci)) return ci.includes(row.column_index);
+            return ci === row.column_index;
+          };
           const matchesHeader = (h: string[] | string | null | undefined) => {
             if (!h) return false;
             if (Array.isArray(h)) return h.includes(row.header);
             return h === row.header;
           };
-          const rowErrors   = validationErrors.filter((e)   => matchesHeader(e.header));
-          const rowWarnings = validationWarnings.filter((w) => matchesHeader(w.header));
+          const rowErrors   = validationErrors.filter((e)   => matchesColumnIndex(e.column_index) || matchesHeader(e.header));
+          const rowWarnings = validationWarnings.filter((w) => matchesColumnIndex(w.column_index) || matchesHeader(w.header));
           return (
             <MappingRowComponent
-              key={row.header} row={row}
+              key={`${row.column_index}:${row.header}`} row={row}
               knownFields={knownFields} validTypes={validTypes}
               validConditions={validConditions} validActions={validActions}
-              onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
+              onChange={isViewOnly ? undefined : ((patch) => onChangeRow?.(idx, patch))}
               isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
               validationGeneration={validationGeneration}

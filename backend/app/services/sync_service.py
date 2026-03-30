@@ -22,6 +22,7 @@ from app.schemas.sheet_config import (
     SyncError,
     SyncResult,
     coerce_legacy_type,
+    normalize_column_mappings_input,
 )
 from app.services.sheets_service import SheetsService
 
@@ -443,7 +444,25 @@ def sync_sheet(
     if not tournament:
         raise ValueError(f"Tournament {config.tournament_id} not found")
 
-    rows = sheets_svc.get_rows(config.spreadsheet_id, config.sheet_name)
+    # Canonical mapping shape is list entries with (column_index, header, mapping...).
+    mappings: list[dict[str, Any]] = normalize_column_mappings_input(config.column_mappings or [])
+
+    headers: list[str] = []
+    rows: list[list[str]] = []
+    try:
+        headers, rows = sheets_svc.get_rows_with_headers(config.spreadsheet_id, config.sheet_name)
+    except Exception:
+        # Backwards-compat fallback for older mocks/services that only expose get_rows().
+        legacy_rows = sheets_svc.get_rows(config.spreadsheet_id, config.sheet_name)
+        if legacy_rows and isinstance(legacy_rows[0], dict):
+            headers = [str(m.get("header", "")) for m in mappings]
+            rows = [
+                [str(r.get(h, "")) for h in headers]
+                for r in legacy_rows
+            ]
+        else:
+            headers = []
+            rows = []
 
     created = updated = skipped = 0
     errors: list[SyncError] = []
@@ -458,12 +477,13 @@ def sync_sheet(
             lunch_parts: dict[str, Any] = {}
             event_pref_ranked: dict[str, str] = {}  # row_key → cell value for grid ranking
 
-            mappings: dict = config.column_mappings or {}
-
-            for header, raw_value in row.items():
-                mapping = mappings.get(header)
-                if not mapping:
+            for mapping in mappings:
+                header = str(mapping.get("header", ""))
+                col_idx = int(mapping.get("column_index", -1))
+                if col_idx < 0:
                     continue
+
+                raw_value = row[col_idx] if col_idx < len(row) else ""
 
                 field = mapping.get("field")
                 field_type = coerce_legacy_type(mapping.get("type", "string"))

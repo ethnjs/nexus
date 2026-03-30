@@ -143,9 +143,9 @@ class SheetsService:
         claimed_extra_keys: set[str] = set()
 
         mappings: list[MappedHeader] = []
-        for header in headers:
+        for column_index, header in enumerate(headers):
             mapped = _map_header(
-                header, q_index, claimed_fields, claimed_extra_keys
+                header, column_index, q_index, claimed_fields, claimed_extra_keys
             )
             mappings.append(mapped)
 
@@ -161,6 +161,20 @@ class SheetsService:
     def get_rows(
         self, spreadsheet_id: str, sheet_name: str, skip_header: bool = True
     ) -> list[dict[str, Any]]:
+        headers, rows = self.get_rows_with_headers(
+            spreadsheet_id=spreadsheet_id,
+            sheet_name=sheet_name,
+            skip_header=skip_header,
+        )
+        result_dicts: list[dict[str, Any]] = []
+        for row in rows:
+            padded = row + [""] * (len(headers) - len(row))
+            result_dicts.append(dict(zip(headers, padded)))
+        return result_dicts
+
+    def get_rows_with_headers(
+        self, spreadsheet_id: str, sheet_name: str, skip_header: bool = True
+    ) -> tuple[list[str], list[list[str]]]:
         range_notation = f"'{sheet_name}'"
         try:
             result = (
@@ -176,17 +190,11 @@ class SheetsService:
 
         rows = result.get("values", [])
         if not rows:
-            return []
+            return ([], [])
 
         headers = rows[0]
         data_rows = rows[1:] if skip_header else rows
-
-        result_dicts = []
-        for row in data_rows:
-            padded = row + [""] * (len(headers) - len(row))
-            result_dicts.append(dict(zip(headers, padded)))
-
-        return result_dicts
+        return headers, data_rows
 
 
 # ---------------------------------------------------------------------------
@@ -303,6 +311,7 @@ def _dedup(
 
 def _map_header(
     header: str,
+    column_index: int,
     q_index: dict,
     claimed_fields: set[str],
     claimed_extra_keys: set[str],
@@ -319,13 +328,14 @@ def _map_header(
 
     q = _match_question(lower, q_index)
     if q is not None:
-        return _mapped_from_question(header, q, claimed_fields, claimed_extra_keys)
+        return _mapped_from_question(header, column_index, q, claimed_fields, claimed_extra_keys)
 
-    return _mapped_from_hint(header, lower, claimed_fields, claimed_extra_keys)
+    return _mapped_from_hint(header, column_index, lower, claimed_fields, claimed_extra_keys)
 
 
 def _mapped_from_question(
     header: str,
+    column_index: int,
     q: dict,
     claimed_fields: set[str],
     claimed_extra_keys: set[str],
@@ -355,6 +365,7 @@ def _mapped_from_question(
             rules = [_PARSE_TIME_RANGE_RULE]
 
         return MappedHeader(
+            column_index=column_index,
             header=header,
             field=grid_field,
             type="matrix_row",
@@ -393,6 +404,7 @@ def _mapped_from_question(
         ]
 
     return MappedHeader(
+        column_index=column_index,
         header=header,
         field=field,
         type=mapping_type,
@@ -404,6 +416,7 @@ def _mapped_from_question(
 
 def _mapped_from_hint(
     header: str,
+    column_index: int,
     lower: str,
     claimed_fields: set[str],
     claimed_extra_keys: set[str],
@@ -419,6 +432,7 @@ def _mapped_from_hint(
     if avail_match:
         row_key = avail_match.group(1).strip()
         return MappedHeader(
+            column_index=column_index,
             header=header,
             field="availability",
             type="matrix_row",
@@ -434,7 +448,7 @@ def _mapped_from_hint(
 
         # __ignore__ → ignore type
         if field == "__ignore__":
-            return MappedHeader(header=header, field="__ignore__", type="ignore")
+            return MappedHeader(column_index=column_index, header=header, field="__ignore__", type="ignore")
 
         # extra_data without a pre-defined extra_key → slugify the header
         if field == "extra_data" and not extra_key:
@@ -446,6 +460,7 @@ def _mapped_from_hint(
         )
 
         return MappedHeader(
+            column_index=column_index,
             header=header,
             field=field,
             type=mapping_type,
@@ -454,6 +469,7 @@ def _mapped_from_hint(
 
     # No match at all → ignore
     return MappedHeader(
+        column_index=column_index,
         header=header,
         field="__ignore__",
         type="ignore",

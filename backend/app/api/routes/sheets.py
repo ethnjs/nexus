@@ -44,7 +44,7 @@ def _get_config_or_404(config_id: int, tournament_id: int, db: Session) -> Sheet
     return config
 
 
-def _validate_or_422(column_mappings: dict) -> list[dict]:
+def _validate_or_422(column_mappings: list[dict]) -> list[dict]:
     result = validate_column_mappings(column_mappings)
     if not result.ok:
         raise HTTPException(
@@ -114,9 +114,7 @@ def validate_mappings(
     payload: ValidateMappingsRequest,
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    result = validate_column_mappings(
-        {k: v.model_dump() for k, v in payload.column_mappings.items()}
-    )
+    result = validate_column_mappings([m.model_dump() for m in payload.column_mappings])
     return result.to_response_dict()
 
 
@@ -140,7 +138,7 @@ def create_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
+    raw_mappings = [m.model_dump() for m in payload.column_mappings]
     warnings = _validate_or_422(raw_mappings)
 
     spreadsheet_id = svc.extract_spreadsheet_id(payload.sheet_url)
@@ -192,11 +190,19 @@ def update_sheet_config(
     if payload.is_active is not None:
         config.is_active = payload.is_active
     if payload.column_mappings is not None:
-        raw_mappings = {k: v.model_dump() for k, v in payload.column_mappings.items()}
+        raw_mappings = [m.model_dump() for m in payload.column_mappings]
         warnings = _validate_or_422(raw_mappings)
-        existing = dict(config.column_mappings or {})
-        existing.update(raw_mappings)
-        config.column_mappings = existing
+        existing_list = config.column_mappings or []
+        by_index: dict[int, dict] = {}
+
+        for m in existing_list:
+            md = m.model_dump(exclude_none=True) if hasattr(m, "model_dump") else dict(m)
+            by_index[int(md.get("column_index", -1))] = md
+        for m in raw_mappings:
+            by_index[int(m.get("column_index", -1))] = m
+
+        merged = [by_index[i] for i in sorted(by_index.keys()) if i >= 0]
+        config.column_mappings = merged
     else:
         warnings = []
 

@@ -192,9 +192,10 @@ export default function ViewSheetConfigPage() {
         const cfg = await sheetsApi.getConfig(tournamentId, configId);
         setConfig(cfg);
 
-        const rows: RichMappingRow[] = Object.entries(cfg.column_mappings).map(([header, mapping]) => {
+        const rows: RichMappingRow[] = cfg.column_mappings.map((mapping) => {
           const base = {
-            header,
+            column_index: mapping.column_index,
+            header: mapping.header,
             field:     mapping.field     ?? "__ignore__",
             type:      mapping.type      ?? "ignore",
             row_key:   mapping.row_key   ?? "",
@@ -266,9 +267,9 @@ export default function ViewSheetConfigPage() {
     );
   }
 
-  const mappingEntries = Object.entries(config.column_mappings);
-  const mappedCount    = mappingEntries.filter(([, m]) => m.type !== "ignore").length;
-  const ignoredCount   = mappingEntries.filter(([, m]) => m.type === "ignore").length;
+  const mappingEntries = config.column_mappings;
+  const mappedCount    = mappingEntries.filter((m) => m.type !== "ignore").length;
+  const ignoredCount   = mappingEntries.filter((m) => m.type === "ignore").length;
 
   return (
     <div style={{ width: "100%" }}>

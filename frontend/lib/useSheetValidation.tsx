@@ -51,9 +51,20 @@ export function useSheetValidation() {
     return { ok, shouldConfirm };
   }
 
-  function clearRow(header: string) {
-    setValidationErrors((prev)   => prev.filter((e) => e.header !== header));
-    setValidationWarnings((prev) => prev.filter((w) => w.header !== header));
+  function clearRow(columnIndex: number | undefined, header: string | undefined) {
+    const matches = (issue: ValidationIssue) => {
+      const ci = issue.column_index;
+      const ciMatch = columnIndex != null && (
+        Array.isArray(ci) ? ci.includes(columnIndex) : ci === columnIndex
+      );
+      const h = issue.header;
+      const hMatch = header != null && (
+        Array.isArray(h) ? h.includes(header) : h === header
+      );
+      return ciMatch || hMatch;
+    };
+    setValidationErrors((prev)   => prev.filter((e) => !matches(e)));
+    setValidationWarnings((prev) => prev.filter((w) => !matches(w)));
   }
 
   function handleSaveSuccess(responseBody: { warnings?: ValidationIssue[] } | null) {

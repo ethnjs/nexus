@@ -301,6 +301,11 @@ export interface ColumnMapping {
   grid_columns?: string[]
 }
 
+export interface ColumnMappingEntry extends ColumnMapping {
+  column_index: number
+  header: string
+}
+
 // -------------------------------------------------------------------------
 // MappedHeader — one entry per sheet column in the flat /headers/ response.
 // Replaces the old headers[] + suggestions{} + form_questions[] triple.
@@ -310,6 +315,7 @@ export interface ColumnMapping {
 // The frontend Type dropdown is always editable by the TD.
 // -------------------------------------------------------------------------
 export interface MappedHeader {
+  column_index:  number
   header:        string             // raw column header from the sheet
   field:         string             // suggested target field
   type:          string             // suggested mapping type
@@ -331,7 +337,7 @@ export interface SheetConfig {
   sheet_url:       string
   spreadsheet_id:  string
   sheet_name:      string
-  column_mappings: Record<string, ColumnMapping>
+  column_mappings: ColumnMappingEntry[]
   is_active:       boolean
   last_synced_at:  string | null
   created_at:      string
@@ -352,6 +358,7 @@ export interface SyncResult {
 
 export interface ValidationIssue {
   header?:     string[] | string | null
+  column_index?: number[] | number | null
   message:     string
   rule_index?: number
 }
@@ -393,7 +400,7 @@ export const sheetsApi = {
     api.get<SheetConfig[]>(`/tournaments/${tournamentId}/sheets/configs/`),
   getConfig:    (tournamentId: number, id: number) =>
     api.get<SheetConfig>(`/tournaments/${tournamentId}/sheets/configs/${id}/`),
-  validateMappings: (tournamentId: number, column_mappings: Record<string, ColumnMapping>) =>
+  validateMappings: (tournamentId: number, column_mappings: ColumnMappingEntry[]) =>
     api.post<ValidateMappingsResult>(`/tournaments/${tournamentId}/sheets/configs/validate-mappings/`, { column_mappings }),
   createConfig: (tournamentId: number, body: Partial<SheetConfig>) =>
     api.post<SheetConfigWithWarnings>(`/tournaments/${tournamentId}/sheets/configs/`, body),

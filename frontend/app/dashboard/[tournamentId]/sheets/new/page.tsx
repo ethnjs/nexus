@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, SheetConfig, SheetHeadersResponse, SheetType, MappedHeader } from "@/lib/api";
+import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetHeadersResponse, SheetType, MappedHeader } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -74,6 +74,7 @@ function getWizardSteps(sheetType: SheetType) {
 
 function emptyMappingRow(header: string, m: MappedHeader): MappingRow {
   return {
+    column_index: m.column_index,
     header,
     field:     m.field     ?? "__ignore__",
     type:      m.type      ?? "ignore",
@@ -169,8 +170,8 @@ export default function NewSheetPage() {
   const [showImportSummary,    setShowImportSummary]    = useState(false);
   const importInputRef = useRef<HTMLInputElement>(null);
 
-  // Track options per header so buildColumnMappings can persist them
-  const [headerOptions, setHeaderOptions] = useState<Map<string, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  // Track options per column index so duplicate headers stay distinct
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Validation
   const {
@@ -247,12 +248,12 @@ export default function NewSheetPage() {
       setHeadersResult(result);
 
       // Track options per header for buildColumnMappings persistence
-      const optionsMap = new Map<string, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       const rows: RichMappingRow[] = result.mappings.map((m: MappedHeader) => {
         const base = emptyMappingRow(m.header, m);
         if (m.options || m.grid_rows || m.grid_columns) {
-          optionsMap.set(m.header, { options: m.options, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
+          optionsMap.set(m.column_index, { options: m.options, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
         }
         return makeRichRow(base, base, undefined, undefined, undefined, m.options ?? undefined);
       });
@@ -309,11 +310,12 @@ export default function NewSheetPage() {
       const text = ev.target?.result as string;
       const parsed: MappingsExport | null = parseMappingsJson(text);
       if (!parsed) {
-        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: { ... } }" });
+        setImportBanner({ variant: "error", message: "Invalid JSON file — expected { column_mappings: [ ... ] }" });
         return;
       }
 
       const plainRows: MappingRow[] = mappingRows.map((r) => ({
+        column_index: r.column_index,
         header: r.header, field: r.field, type: r.type,
         row_key: r.row_key, extra_key: r.extra_key,
         delimiter: r.delimiter, rules: r.rules,
@@ -324,11 +326,11 @@ export default function NewSheetPage() {
 
       setMappingRows((prev) =>
         prev.map((r) => {
-          const updated = updatedRows.find((u) => u.header === r.header);
+          const updated = updatedRows.find((u) => u.column_index === r.column_index);
           if (!updated) return r;
           const importedValue: MappingRow = { ...updated };
           const hadRuleChanges = updatedList.some(
-            (entry) => entry.header === r.header && entry.ruleDiffs.some((d) => d.status !== "unchanged")
+            (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
           const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
@@ -347,8 +349,8 @@ export default function NewSheetPage() {
 
   // ── Build payload ─────────────────────────────────────────────────────────
 
-  const buildColumnMappings = useCallback((): Record<string, ColumnMapping> => {
-    const result: Record<string, ColumnMapping> = {};
+  const buildColumnMappings = useCallback((): ColumnMappingEntry[] => {
+    const result: ColumnMappingEntry[] = [];
     for (const row of mappingRows) {
       const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
       if (row.type === "matrix_row"   && row.row_key)   mapping.row_key   = row.row_key;
@@ -356,13 +358,17 @@ export default function NewSheetPage() {
       if (row.type === "multi_select" && row.delimiter) mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       // Persist form enrichment so edit page + exports retain alias editor context
-      const enrichment = headerOptions.get(row.header);
+      const enrichment = headerOptions.get(row.column_index);
       if (enrichment?.options)      mapping.options      = enrichment.options;
       if (enrichment?.grid_rows)    mapping.grid_rows    = enrichment.grid_rows;
       if (enrichment?.grid_columns) mapping.grid_columns = enrichment.grid_columns;
-      result[row.header] = mapping;
+      result.push({
+        column_index: row.column_index,
+        header: row.header,
+        ...mapping,
+      });
     }
-    return result;
+    return result.sort((a, b) => a.column_index - b.column_index);
   }, [mappingRows, headerOptions]);
 
   // ── Save + Sync ───────────────────────────────────────────────────────────
@@ -419,8 +425,8 @@ export default function NewSheetPage() {
         return makeRichRow(next, r.baseline, undefined, r.importedValue, undefined, r.options);
       })
     );
-    const header = mappingRows[idx]?.header;
-    if (header) clearRow(header);
+    const row = mappingRows[idx];
+    if (row) clearRow(row.column_index, row.header);
   }
 
   // ── Derived ───────────────────────────────────────────────────────────────

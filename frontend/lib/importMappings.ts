@@ -1,8 +1,9 @@
-import type { ColumnMapping, ParseRule, FormQuestionOption } from "@/lib/api";
+import type { ColumnMappingEntry, ParseRule } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MappingRow {
+  column_index: number;
   header:    string;
   field:     string;
   type:      string;
@@ -16,7 +17,7 @@ export interface MappingsExport {
   label?:          string;
   sheet_type?:     string;
   sheet_name?:     string;
-  column_mappings: Record<string, ColumnMapping>;
+  column_mappings: ColumnMappingEntry[];
 }
 
 export interface FieldDiff {
@@ -33,6 +34,7 @@ export interface RuleDiff {
 }
 
 export interface ImportSummaryEntry {
+  column_index: number;
   header:     string;
   from:       MappingRow;
   to:         MappingRow;
@@ -131,6 +133,7 @@ export function describeRule(rule: ParseRule): string {
 /** Shallow equality check for two MappingRows (including rules/delimiter). */
 export function mappingRowsEqual(a: MappingRow, b: MappingRow): boolean {
   if (
+    a.column_index !== b.column_index ||
     a.field     !== b.field     ||
     a.type      !== b.type      ||
     a.row_key   !== b.row_key   ||
@@ -207,6 +210,7 @@ export function parseMappingsJson(text: string): MappingsExport | null {
   try {
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== "object" || !parsed.column_mappings) return null;
+    if (!Array.isArray(parsed.column_mappings)) return null;
     return parsed as MappingsExport;
   } catch {
     return null;
@@ -218,7 +222,7 @@ export function parseMappingsJson(text: string): MappingsExport | null {
 /**
  * Apply a parsed import file onto the current mapping rows.
  *
- * - Rows whose header matches the file → updated (or unchanged if identical)
+ * - Rows whose column_index matches the file → updated (or unchanged if identical)
  * - Rows whose header is not in the file → untouched (notInFile)
  * - Headers in the file not present in currentRows → ignored (notInSheet)
  *
@@ -230,22 +234,27 @@ export function applyImport(
   currentRows: MappingRow[],
   parsed:      MappingsExport,
 ): { updatedRows: MappingRow[]; summary: ImportSummary } {
-  const importedMappings = parsed.column_mappings;
-  const currentHeaders   = new Set(currentRows.map((r) => r.header));
+  const importedByIndex = new Map<number, ColumnMappingEntry>(
+    parsed.column_mappings.map((m) => [m.column_index, m]),
+  );
+  const currentIndices = new Set(currentRows.map((r) => r.column_index));
 
   const updated:    ImportSummaryEntry[] = [];
   let   unchanged   = 0;
-  const notInSheet  = Object.keys(importedMappings).filter((h) => !currentHeaders.has(h));
+  const notInSheet  = parsed.column_mappings
+    .filter((m) => !currentIndices.has(m.column_index))
+    .map((m) => m.header);
   const notInFile:  string[] = [];
 
   const updatedRows = currentRows.map((row) => {
-    const m = importedMappings[row.header];
+    const m = importedByIndex.get(row.column_index);
     if (!m) {
       notInFile.push(row.header);
       return row;
     }
 
     const next: MappingRow = {
+      column_index: row.column_index,
       header:    row.header,
       field:     m.field     ?? row.field,
       type:      m.type      ?? row.type,
@@ -257,6 +266,7 @@ export function applyImport(
 
     if (!mappingRowsEqual(next, row)) {
       updated.push({
+        column_index: row.column_index,
         header:     row.header,
         from:       { ...row },
         to:         next,

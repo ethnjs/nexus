@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from pydantic import BaseModel, field_validator
 
 
@@ -228,6 +228,66 @@ class ColumnMapping(BaseModel):
             raise ValueError(f"type must be one of: {VALID_MAPPING_TYPES}")
         return v
 
+
+class ColumnMappingEntry(ColumnMapping):
+    """
+    A single mapped sheet column with stable identity by index.
+
+    This is the canonical shape for persisted/read mapping data:
+      {column_index, header, field, type, ...}
+    """
+    column_index: int
+    header: str
+
+    @field_validator("column_index")
+    @classmethod
+    def validate_column_index(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("column_index must be >= 0")
+        return v
+
+
+def normalize_column_mappings_input(
+    value: Any,
+) -> list[dict[str, Any]]:
+    """
+    Accept both legacy dict and new list-of-entries mapping payloads.
+
+    Legacy dict shape:
+      {"Header": {field, type, ...}, ...}
+
+    Canonical list shape:
+      [{"column_index": 0, "header": "Header", field, type, ...}, ...]
+    """
+    if value is None:
+        return []
+
+    # Legacy shape: dict[header] -> mapping
+    if isinstance(value, dict):
+        out: list[dict[str, Any]] = []
+        for idx, (header, mapping) in enumerate(value.items()):
+            md = mapping.model_dump(exclude_none=True) if hasattr(mapping, "model_dump") else dict(mapping)
+            out.append({
+                "column_index": idx,
+                "header": header,
+                **md,
+            })
+        return out
+
+    # Canonical shape: list[ColumnMappingEntry-like]
+    if isinstance(value, list):
+        out: list[dict[str, Any]] = []
+        for idx, entry in enumerate(value):
+            ed = entry.model_dump(exclude_none=True) if hasattr(entry, "model_dump") else dict(entry)
+            out.append({
+                "column_index": ed.get("column_index", idx),
+                "header": ed.get("header", ""),
+                **{k: v for k, v in ed.items() if k not in ("column_index", "header")},
+            })
+        return out
+
+    raise ValueError("column_mappings must be a dict or list")
+
 # ---------------------------------------------------------------------------
 # MappedHeader — flat response item replacing the old headers+suggestions split.
 #
@@ -242,6 +302,7 @@ class MappedHeader(BaseModel):
     """
     A single sheet column with its suggested mapping and optional form enrichment.
     """
+    column_index: int = 0
     header:      str
     field:       str
     type:        str
@@ -268,7 +329,7 @@ class SheetConfigBase(BaseModel):
     sheet_type: str
     sheet_url: str
     sheet_name: str
-    column_mappings: dict[str, ColumnMapping] = {}
+    column_mappings: list[ColumnMappingEntry] = []
 
     @field_validator("sheet_type")
     @classmethod
@@ -285,6 +346,11 @@ class SheetConfigBase(BaseModel):
             raise ValueError("Must be a Google Sheets URL")
         return v
 
+    @field_validator("column_mappings", mode="before")
+    @classmethod
+    def normalize_column_mappings(cls, v: Any) -> list[dict[str, Any]]:
+        return normalize_column_mappings_input(v)
+
 
 class SheetConfigCreate(SheetConfigBase):
     tournament_id: int
@@ -295,8 +361,15 @@ class SheetConfigUpdate(BaseModel):
     label:           str | None = None
     sheet_type:      str | None = None
     sheet_name:      str | None = None
-    column_mappings: dict[str, ColumnMapping] | None = None
+    column_mappings: list[ColumnMappingEntry] | None = None
     is_active:       bool | None = None
+
+    @field_validator("column_mappings", mode="before")
+    @classmethod
+    def normalize_column_mappings(cls, v: Any) -> list[dict[str, Any]] | None:
+        if v is None:
+            return None
+        return normalize_column_mappings_input(v)
 
 
 class SheetConfigRead(SheetConfigBase):
@@ -317,7 +390,12 @@ class SheetConfigReadWithWarnings(SheetConfigRead):
 
 
 class ValidateMappingsRequest(BaseModel):
-    column_mappings: dict[str, ColumnMapping] = {}
+    column_mappings: list[ColumnMappingEntry] = []
+
+    @field_validator("column_mappings", mode="before")
+    @classmethod
+    def normalize_column_mappings(cls, v: Any) -> list[dict[str, Any]]:
+        return normalize_column_mappings_input(v)
 
 
 class ValidateMappingsResponse(BaseModel):
