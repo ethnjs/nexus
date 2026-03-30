@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
+from app.core.phone import format_phone_us
 from app.schemas.sheet_config import (
     PARSE_TIME_RANGE_ACTIONS,
     SyncError,
@@ -390,7 +391,12 @@ def _process_cell(
         value = result
 
     if field_type == "string":
-        return value.strip() if value else None
+        parsed = value.strip() if value else None
+        if parsed is None:
+            return None
+        if mapping.get("field") == "phone":
+            return format_phone_us(parsed)
+        return parsed
 
     if field_type == "boolean":
         v = value.strip().lower()

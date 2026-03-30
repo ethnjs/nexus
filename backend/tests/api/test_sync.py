@@ -18,6 +18,7 @@ COLUMN_MAPPINGS = {
     "Email Address":   {"field": "email",            "type": "string"},
     "First Name":      {"field": "first_name",       "type": "string"},
     "Last Name":       {"field": "last_name",        "type": "string"},
+    "Phone Number":    {"field": "phone",            "type": "string"},
     "T-Shirt Size":    {"field": "shirt_size",       "type": "string"},
     "Role Preference": {"field": "role_preference",  "type": "multi_select"},
     "Which events?":   {"field": "event_preference", "type": "string"},
@@ -80,6 +81,7 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
         "Email Address": "alice@example.com",
         "First Name": "Alice",
         "Last Name": "Smith",
+        "Phone Number": "9495551234",
         "T-Shirt Size": "M",
         "Role Preference": "Event Volunteer",
         "Which events?": "Technology & Engineering (Boomilever)",
@@ -101,6 +103,7 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
     assert user is not None
     assert user.first_name == "Alice"
+    assert user.phone == "(949) 555-1234"
     assert user.shirt_size == "M"
 
     memberships = _list_memberships(client, t["id"])
