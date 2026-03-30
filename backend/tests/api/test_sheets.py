@@ -16,6 +16,12 @@ SAMPLE_MAPPINGS = {
     "Timestamp":     {"field": "__ignore__", "type": "ignore"},
 }
 
+def _entry_by_header(entries: list[dict], header: str) -> dict:
+    for e in entries:
+        if e.get("header") == header:
+            return e
+    raise AssertionError(f"No mapping entry found for header: {header!r}")
+
 
 def _make_config(client, tournament_id, **overrides):
     payload = {
@@ -179,7 +185,8 @@ def test_create_sheet_config(client, td_user, td_tournament, mock_sheets_service
     data = response.json()
     assert data["label"] == "Interest Form"
     assert data["spreadsheet_id"] == "fake123"
-    assert data["column_mappings"]["Email Address"]["field"] == "email"
+    email_entry = _entry_by_header(data["column_mappings"], "Email Address")
+    assert email_entry["field"] == "email"
 
 
 def test_create_sheet_config_matrix_row_missing_row_key(
@@ -281,7 +288,7 @@ def test_update_sheet_config(client, td_user, td_tournament, mock_sheets_service
     assert response.status_code == 200
     data = response.json()
     assert data["label"] == "Updated Label"
-    assert "Email Address" in data["column_mappings"]
+    _entry_by_header(data["column_mappings"], "Email Address")
 
 
 def test_update_sheet_config_merges_column_mappings(
@@ -304,8 +311,8 @@ def test_update_sheet_config_merges_column_mappings(
     )
     assert response.status_code == 200
     data = response.json()
-    assert "Phone Number" in data["column_mappings"]
-    assert "Email Address" in data["column_mappings"]
+    _entry_by_header(data["column_mappings"], "Phone Number")
+    _entry_by_header(data["column_mappings"], "Email Address")
 
 
 # ---------------------------------------------------------------------------
