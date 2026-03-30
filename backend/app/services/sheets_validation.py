@@ -139,6 +139,13 @@ def validate_column_mappings(
                 message="matrix_row type requires a row_key.",
             ))
 
+        # ignore type must map to __ignore__
+        if field_type == "ignore" and field_name != "__ignore__":
+            result.errors.append(ValidationIssue(
+                header=header,
+                message="type 'ignore' requires field '__ignore__'.",
+            ))
+
         # extra_data requires extra_key
         if field_name == "extra_data" and not mapping.get("extra_key"):
             result.errors.append(ValidationIssue(
@@ -153,9 +160,9 @@ def validate_column_mappings(
                 message="'delimiter' is only valid for multi_select type.",
             ))
 
-        # matrix_row mapped to availability with no parse_time_range rule (warning)
-        # Accepts both the canonical action and its legacy alias.
-        if field_type == "matrix_row" and field_name == "availability":
+        # availability mappings should include parse_time_range rule (warning only).
+        # Accepts both canonical action and legacy alias.
+        if field_name == "availability":
             has_parse_time_range = any(
                 r.get("action") in PARSE_TIME_RANGE_ACTIONS for r in rules
             )
@@ -163,7 +170,7 @@ def validate_column_mappings(
                 result.warnings.append(ValidationIssue(
                     header=header,
                     message=(
-                        "This matrix_row is mapped to 'availability' but has no "
+                        "This column is mapped to 'availability' but has no "
                         "'parse_time_range' rule. Availability data will not be parsed during sync."
                     ),
                 ))
@@ -177,14 +184,6 @@ def validate_column_mappings(
             condition = rule.get("condition", "")
             match_str = rule.get("match")
             action = rule.get("action", "")
-
-            # parse_time_range (and legacy parse_availability) only valid on matrix_row
-            if action in PARSE_TIME_RANGE_ACTIONS and field_type != "matrix_row":
-                result.errors.append(ValidationIssue(
-                    header=header,
-                    rule_index=i,
-                    message=f"'{action}' action is only valid on matrix_row fields.",
-                ))
 
             # parse_time_range (and legacy parse_availability) must use condition "always"
             if action in PARSE_TIME_RANGE_ACTIONS and condition != "always":
@@ -237,8 +236,8 @@ def validate_column_mappings(
             if action == "set":
                 set_fired_at = i
 
-        # row_key time range parseable (warning only)
-        if field_type == "matrix_row" and mapping.get("row_key"):
+        # availability row_key should be parseable as a time range (warning only)
+        if field_name == "availability" and mapping.get("row_key"):
             row_key = mapping["row_key"]
             normalized = re.sub(r"\s+", " ", row_key.strip())
             parts = normalized.split(" - ", 1)

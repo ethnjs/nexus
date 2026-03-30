@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, field_validator
 
 
 # ---------------------------------------------------------------------------
@@ -227,25 +227,6 @@ class ColumnMapping(BaseModel):
         if v not in VALID_MAPPING_TYPES:
             raise ValueError(f"type must be one of: {VALID_MAPPING_TYPES}")
         return v
-
-    @model_validator(mode="after")
-    def validate_mapping(self) -> ColumnMapping:
-        if self.type == "matrix_row" and not self.row_key:
-            raise ValueError("row_key is required for matrix_row type")
-        if self.type == "ignore" and self.field != "__ignore__":
-            raise ValueError("field must be '__ignore__' when type is 'ignore'")
-        if self.field == "extra_data" and not self.extra_key:
-            raise ValueError("extra_key is required when field is 'extra_data'")
-        if self.delimiter is not None and self.type != "multi_select":
-            raise ValueError("delimiter is only valid for multi_select type")
-        if self.rules:
-            for i, rule in enumerate(self.rules):
-                if rule.action in PARSE_TIME_RANGE_ACTIONS and self.type != "matrix_row":
-                    raise ValueError(
-                        f"Rule {i}: {rule.action} is only valid on matrix_row fields"
-                    )
-        return self
-
 
 # ---------------------------------------------------------------------------
 # MappedHeader — flat response item replacing the old headers+suggestions split.

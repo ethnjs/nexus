@@ -234,7 +234,7 @@ def test_unparseable_row_key_is_warning():
         },
     }))
     assert result.ok
-    assert any("time range" in w.message for w in result.warnings)
+    assert not any("time range" in w.message for w in result.warnings)
 
 def test_valid_row_key_no_warning():
     result = validate_column_mappings(_base_mappings(**{
@@ -248,19 +248,18 @@ def test_valid_row_key_no_warning():
 
 
 # ---------------------------------------------------------------------------
-# Per-rule — parse_availability on non-matrix_row
+# Per-rule — parse_availability / parse_time_range
 # ---------------------------------------------------------------------------
 
-def test_parse_availability_on_non_matrix_row_is_error():
+def test_parse_availability_on_non_matrix_row_is_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Notes": {
             "field": "notes", "type": "string",
             "rules": [{"condition": "always", "action": "parse_availability"}],
         },
     }))
-    assert not result.ok
-    assert any("parse_availability" in e.message for e in result.errors)
-    assert _error_rule_indices(result)[0] == 0
+    assert result.ok
+    assert result.errors == []
 
 def test_parse_availability_wrong_condition_is_error():
     result = validate_column_mappings(_base_mappings(**{

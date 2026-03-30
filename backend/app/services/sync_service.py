@@ -104,11 +104,29 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     day_str = day_str.strip()
 
     date_match = re.search(r"(\d{1,2})/(\d{1,2})", day_str)
-    if not date_match:
-        return None
+    month: int | None = None
+    day: int | None = None
+    if date_match:
+        month = int(date_match.group(1))
+        day = int(date_match.group(2))
+    else:
+        # Also accept month-name formats, e.g. "February 14" or "Feb 14".
+        month_name_match = re.search(
+            r"\b([A-Za-z]{3,9})\s+(\d{1,2})\b",
+            day_str,
+        )
+        if month_name_match:
+            month_word = month_name_match.group(1)
+            day = int(month_name_match.group(2))
+            for fmt in ("%B", "%b"):
+                try:
+                    month = datetime.strptime(month_word, fmt).month
+                    break
+                except ValueError:
+                    continue
 
-    month = int(date_match.group(1))
-    day = int(date_match.group(2))
+    if month is None or day is None:
+        return None
 
     for block in (tournament.blocks or []):
         block_date_str = block.get("date", "")
@@ -152,6 +170,31 @@ def _parse_availability(
             slots.append({"date": date_str, "start": start_time, "end": end_time})
 
     return slots
+
+
+_TIME_TOKEN_RE = r"(?:NOON|MIDNIGHT|\d{1,2}:\d{2}\s*(?:AM|PM))"
+_TIME_RANGE_RE = re.compile(
+    rf"(?P<start>{_TIME_TOKEN_RE})\s*-\s*(?P<end>{_TIME_TOKEN_RE})",
+    flags=re.IGNORECASE,
+)
+
+
+def _extract_row_key_and_day_text(value: str) -> tuple[str, str]:
+    """
+    Extract "start - end" and the remaining day text from a value string.
+
+    Example:
+        "February 14 7:00AM - 5:00PM" -> ("7:00AM - 5:00PM", "February 14")
+    """
+    m = _TIME_RANGE_RE.search(value or "")
+    if not m:
+        raise ValueError(f"Cannot parse time range from value: '{value}'")
+
+    start = m.group("start")
+    end = m.group("end")
+    row_key = f"{start} - {end}"
+    day_text = (value[:m.start()] + value[m.end():]).strip(" ,;-")
+    return row_key, day_text
 
 
 def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dict]:
@@ -241,8 +284,15 @@ def _apply_rules(
 
         # Both canonical (parse_time_range) and legacy alias (parse_availability)
         if action in PARSE_TIME_RANGE_ACTIONS:
-            row_key = mapping.get("row_key", "")
-            return _parse_availability(current, row_key, tournament)
+            row_key = (mapping.get("row_key") or "").strip()
+            day_value = current
+
+            # Allow parse_time_range on non-matrix mappings by extracting
+            # the time range from the current value when row_key is absent.
+            if not row_key:
+                row_key, day_value = _extract_row_key_and_day_text(current)
+
+            return _parse_availability(day_value, row_key, tournament)
 
         if action == "set":
             current = rule_value

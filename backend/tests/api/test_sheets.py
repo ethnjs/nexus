@@ -74,6 +74,48 @@ def test_validate_volunteer_member_forbidden(
     ).status_code == 403
 
 
+def test_validate_mappings_returns_200_with_structured_errors(
+    client, td_user, td_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/configs/validate-mappings/",
+        json={
+            "column_mappings": {
+                "Email Address": {"field": "email", "type": "string"},
+                "How many people can you take?": {"field": "extra_data", "type": "integer"},
+            }
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["ok"] is False
+    assert any("extra_key" in e["message"] for e in data["errors"])
+
+
+def test_validate_mappings_allows_parse_time_range_on_string_availability(
+    client, td_user, td_tournament
+):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/sheets/configs/validate-mappings/",
+        json={
+            "column_mappings": {
+                "Email Address": {"field": "email", "type": "string"},
+                "Will you be available for the full day?": {
+                    "field": "availability",
+                    "type": "string",
+                    "rules": [
+                        {"condition": "always", "action": "parse_time_range"},
+                    ],
+                },
+            }
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+
+
 # ---------------------------------------------------------------------------
 # Headers endpoint
 # ---------------------------------------------------------------------------
