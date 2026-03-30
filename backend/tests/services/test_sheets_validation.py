@@ -261,7 +261,7 @@ def test_parse_availability_on_non_matrix_row_is_ok():
     assert result.ok
     assert result.errors == []
 
-def test_parse_availability_wrong_condition_is_error():
+def test_parse_availability_non_always_condition_is_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
             "field": "availability", "type": "matrix_row",
@@ -269,8 +269,8 @@ def test_parse_availability_wrong_condition_is_error():
             "rules": [{"condition": "contains", "match": "Thu", "action": "parse_availability"}],
         },
     }))
-    assert not result.ok
-    assert any("always" in e.message for e in result.errors)
+    assert result.ok
+    assert not any("always" in e.message for e in result.errors)
 
 
 # ---------------------------------------------------------------------------

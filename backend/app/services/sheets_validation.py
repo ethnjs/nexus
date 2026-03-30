@@ -185,14 +185,6 @@ def validate_column_mappings(
             match_str = rule.get("match")
             action = rule.get("action", "")
 
-            # parse_time_range (and legacy parse_availability) must use condition "always"
-            if action in PARSE_TIME_RANGE_ACTIONS and condition != "always":
-                result.errors.append(ValidationIssue(
-                    header=header,
-                    rule_index=i,
-                    message=f"'{action}' action requires condition 'always'.",
-                ))
-
             # regex must compile
             if condition == "regex" and match_str:
                 try:
