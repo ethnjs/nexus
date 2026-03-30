@@ -273,6 +273,55 @@ def _slugify(text: str, max_len: int = 50) -> str:
     return slug[:max_len]
 
 
+def _infer_grid_field(
+    title: str,
+    grid_rows: list[str] | None,
+    grid_columns: list[str] | None,
+) -> str:
+    """
+    Infer matrix_row field with grid-aware heuristics.
+
+    Matrix questions should map to either availability or event_preference.
+    Generic hints like "major" in long question text should not override this.
+    """
+    title_lower = title.lower()
+    rows_lower = [r.lower() for r in (grid_rows or [])]
+    cols_lower = [c.lower() for c in (grid_columns or [])]
+
+    def _looks_like_time_label(text: str) -> bool:
+        # Strict-ish time parsing so words like "Anatomy" do not trigger on "am".
+        return (
+            bool(re.search(r"\b\d{1,2}:\d{2}\s*(am|pm)\b", text))
+            or bool(re.search(r"\b\d{1,2}\s*(am|pm)\b", text))
+            or "noon" in text
+            or "midnight" in text
+        )
+
+    # Availability intent from title or row labels.
+    if (
+        "availability" in title_lower
+        or "available" in title_lower
+        or any(_looks_like_time_label(r) for r in rows_lower)
+    ):
+        return "availability"
+
+    # Event preference intent from title/columns/rows.
+    if (
+        any(k in title_lower for k in ("event", "supervis", "top 3", "choice"))
+        or any("choice" in c or "preference" in c or c in {"1st", "2nd", "3rd"} for c in cols_lower)
+        or any("(b)" in r or "(c)" in r or "(b/c)" in r for r in rows_lower)
+    ):
+        return "event_preference"
+
+    # Fallback to hint on title only if it yields one of the allowed grid fields.
+    hinted = _hint_field(title).field
+    if hinted in {"availability", "event_preference"}:
+        return hinted
+
+    # Safe grid default.
+    return "availability"
+
+
 def _dedup(
     field: str,
     mapping_type: str,
@@ -354,9 +403,9 @@ def _mapped_from_question(
 
     # Grid questions → matrix_row, always get parse_time_range rule
     if nexus_type == "matrix_row":
-        # Determine field from hint — could be availability or event_preference
-        hint = _hint_field(title)
-        grid_field = hint.field if hint.field in ("availability", "event_preference") else "availability"
+        # Determine field with grid-aware inference so generic keywords like
+        # "major" inside long event question text do not misclassify.
+        grid_field = _infer_grid_field(title, grid_rows, grid_columns)
 
         row_key = _extract_row_key(header)
 

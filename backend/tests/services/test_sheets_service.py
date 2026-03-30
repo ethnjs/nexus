@@ -371,6 +371,33 @@ def test_form_event_preference_grid_no_parse_time_range(svc: SheetsService):
             assert not any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
 
 
+def test_form_event_preference_grid_with_major_keyword_still_maps_event_preference(svc: SheetsService):
+    """Long event grid titles containing 'major' should still map to event_preference."""
+    title = (
+        "Please select the top 3 events you would be interested in supervising. "
+        "If you are new to Science Olympiad and are unsure about the events, you can read "
+        "the event rules linked below or select \"assign me to an event based on my major "
+        "or interests\" at the bottom of the list."
+    )
+    _mock_headers(svc, [
+        f"{title} [Anatomy and Physiology (B/C)]",
+        f"{title} [Forensics (C)]",
+    ])
+    questions = [_make_grid_q(
+        "q3",
+        title,
+        rows=["Anatomy and Physiology (B/C)", "Forensics (C)"],
+        cols=["1st choice", "2nd choice", "3rd choice"],
+    )]
+
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    for m in result.mappings:
+        assert m.type == "matrix_row"
+        assert m.field == "event_preference"
+        if m.rules:
+            assert not any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
+
+
 def test_form_no_google_type_on_mapped_header(svc: SheetsService):
     """MappedHeader should NOT have a google_type field."""
     _mock_headers(svc, ["Email Address"])
