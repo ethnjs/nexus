@@ -31,8 +31,8 @@ class Tournament(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)
-    start_date = Column(DateTime, nullable=True)
-    end_date = Column(DateTime, nullable=True)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
     location = Column(String(255), nullable=True)
 
     # [{number, label, date, start, end}, ...]
@@ -50,8 +50,8 @@ class Tournament(Base):
     # Always has a membership with positions=["tournament_director"].
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
     sheet_configs = relationship(
@@ -104,8 +104,8 @@ class User(Base):
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     is_active = Column(Boolean, nullable=False, default=True)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     memberships = relationship(
         "Membership", back_populates="user", cascade="all, delete-orphan"
@@ -185,8 +185,8 @@ class Membership(Base):
     # Keys match the custom_field.key defined in the tournament's volunteer_schema.
     extra_data = Column(JSON, nullable=True)
 
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     # Relationships
     user = relationship("User", back_populates="memberships")
@@ -216,9 +216,9 @@ class SheetConfig(Base):
     sheet_name = Column(String(255), nullable=False)
     column_mappings = Column(JSON, nullable=False, default=dict)
     is_active = Column(Boolean, default=True)
-    last_synced_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
 
@@ -242,8 +242,8 @@ class Event(Base):
     floor = Column(String(64), nullable=True)
     volunteers_needed = Column(Integer, nullable=False, default=2)
     blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
-    created_at = Column(DateTime, default=utcnow)
-    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
     memberships = relationship("Membership", back_populates="assigned_event")
