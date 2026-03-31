@@ -17,8 +17,7 @@ const SHEET_TYPE_LABELS: Record<string, string> = {
 };
 
 function fmtDateTime(iso: string) {
-  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'
-  return new Date(normalized).toLocaleString("en-US", {
+  return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
   })
