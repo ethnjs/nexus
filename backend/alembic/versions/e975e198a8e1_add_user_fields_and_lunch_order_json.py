@@ -26,7 +26,8 @@ def upgrade() -> None:
         batch_op.alter_column('lunch_order',
                 existing_type=sa.VARCHAR(length=255),
                 type_=sa.JSON(),
-                existing_nullable=True)
+                existing_nullable=True,
+                postgresql_using='lunch_order::json')
     op.add_column('users', sa.Column('student_status', sa.String(length=255), nullable=True))
     op.add_column('users', sa.Column('competition_exp', sa.Text(), nullable=True))
     op.add_column('users', sa.Column('volunteering_exp', sa.Text(), nullable=True))
