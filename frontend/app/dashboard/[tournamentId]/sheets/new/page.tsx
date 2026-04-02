@@ -171,7 +171,7 @@ export default function NewSheetPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Track options per column index so duplicate headers stay distinct
-  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Validation
   const {
@@ -248,14 +248,15 @@ export default function NewSheetPage() {
       setHeadersResult(result);
 
       // Track options per header for buildColumnMappings persistence
-      const optionsMap = new Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       const rows: RichMappingRow[] = result.mappings.map((m: MappedHeader) => {
         const base = emptyMappingRow(m.header, m);
-        if (m.options || m.grid_rows || m.grid_columns) {
-          optionsMap.set(m.column_index, { options: m.options, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
+        const rawOptions = m.options?.map((o) => o.raw);
+        if (rawOptions || m.grid_rows || m.grid_columns) {
+          optionsMap.set(m.column_index, { options: rawOptions, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
         }
-        return makeRichRow(base, base, undefined, undefined, undefined, m.options ?? undefined);
+        return makeRichRow(base, base, undefined, undefined, undefined, rawOptions);
       });
 
       setHeaderOptions(optionsMap);

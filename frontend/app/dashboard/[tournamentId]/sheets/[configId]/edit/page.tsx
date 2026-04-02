@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetType, MappedHeader, FormQuestionOption } from "@/lib/api";
+import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetType, MappedHeader } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -65,8 +65,9 @@ function emptyMappingRow(header: string, s?: Partial<ColumnMappingEntry>): Mappi
 function resolveOptions(
   liveMapping?: MappedHeader,
   savedMapping?: ColumnMapping,
-): FormQuestionOption[] | undefined {
-  return liveMapping?.options ?? savedMapping?.options ?? undefined;
+): string[] | undefined {
+  if (liveMapping?.options) return liveMapping.options.map((o) => o.raw);
+  return savedMapping?.options ?? undefined;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ export default function EditSheetPage() {
   const [headersError,    setHeadersError]    = useState("");
 
   // Track options per column index for buildColumnMappings persistence
-  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Load state
   const [loading,   setLoading]   = useState(true);
@@ -179,7 +180,7 @@ export default function EditSheetPage() {
       );
       const liveIndices  = new Set(result.mappings.map((m: MappedHeader) => m.column_index));
       const rows: RichMappingRow[] = [];
-      const optionsMap = new Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       for (const m of result.mappings) {
         const saved = savedByIndex.get(m.column_index);

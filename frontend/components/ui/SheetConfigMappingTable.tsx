@@ -79,8 +79,8 @@ export interface RichMappingRow extends MappingRow {
   openOnMount?:   boolean;
   /** Increments when new validation results arrive — opens accordion if this row has rule-level issues. */
   validationGeneration?: number;
-  /** Form answer options — present when the backend matched a form question with choices. */
-  options?: FormQuestionOption[];
+  /** Raw form answer option strings — present when the backend matched a form question with choices. */
+  options?: string[];
   /** Whether the alias editor (true) or rules editor (false) is shown. Stored in parent state
    *  so it survives remounts caused by rule changes. Defaults to true when options present. */
   showAliasEditor?: boolean;
@@ -121,29 +121,24 @@ function aliasesToRules(options: FormQuestionOption[]): ParseRule[] {
       case_sensitive: false,
       action:         "replace",
       value:          o.alias,
+      is_alias:       true,
     }));
 }
 
 function rulesAndOptionsToAliases(
   rules: ParseRule[],
-  options: FormQuestionOption[],
+  options: string[],
 ): FormQuestionOption[] {
-  return options.map((opt) => {
-    const rule = rules.find(
-      (r) => r.condition === "contains" && r.match === opt.raw && r.action === "replace"
-    );
-    return rule ? { ...opt, alias: rule.value ?? opt.alias } : opt;
+  return options.map((raw) => {
+    const rule = rules.find((r) => r.is_alias && r.match === raw && r.action === "replace");
+    return { raw, alias: rule?.value ?? raw };
   });
 }
 
 // ─── Alias Editor ─────────────────────────────────────────────────────────────
 
-function isAliasRule(rule: ParseRule, options: FormQuestionOption[]): boolean {
-  return (
-    rule.condition === "contains" &&
-    rule.action    === "replace"  &&
-    options.some((o) => o.raw === rule.match)
-  );
+function isAliasRule(rule: ParseRule): boolean {
+  return rule.is_alias === true;
 }
 
 const AliasEditor = memo(function AliasEditor({
@@ -158,7 +153,7 @@ const AliasEditor = memo(function AliasEditor({
   rowErrors,
   rowWarnings,
 }: {
-  options:         FormQuestionOption[];
+  options:         string[];
   currentRules:    ParseRule[];
   onChangeRules:   (rules: ParseRule[]) => void;
   isRemoved:       boolean;
@@ -184,7 +179,7 @@ const AliasEditor = memo(function AliasEditor({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRules]);
 
-  const extraRules = currentRules.filter((r) => !isAliasRule(r, options));
+  const extraRules = currentRules.filter((r) => !isAliasRule(r));
 
   function handleAliasChange(idx: number, value: string) {
     const next = aliases.map((a, i) => i === idx ? { ...a, alias: value } : a);
@@ -850,7 +845,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
 
   const extraRuleCount = hasAliasEditor
-    ? row.rules.filter((r) => !isAliasRule(r, row.options ?? [])).length
+    ? row.rules.filter((r) => !isAliasRule(r)).length
     : 0;
 
   const accordionLabel = hasAliasEditor
@@ -1247,7 +1242,7 @@ export function makeRichRow(
   values: MappingRow, baseline: MappingRow,
   forcedState?: "new" | "removed", importedValue?: MappingRow,
   openOnMount?: boolean,
-  options?: FormQuestionOption[],
+  options?: string[],
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";

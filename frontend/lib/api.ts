@@ -286,6 +286,7 @@ export interface ParseRule {
   case_sensitive: boolean
   action:         ParseRuleAction
   value?:         string
+  is_alias?:      boolean
 }
 
 export interface ColumnMapping {
@@ -296,7 +297,8 @@ export interface ColumnMapping {
   rules?:        ParseRule[]
   delimiter?:    string
   // Persisted form enrichment — powers alias editor on edit page + JSON exports
-  options?:      FormQuestionOption[]
+  // options is a flat list of raw option strings; aliases are encoded in rules (is_alias=true)
+  options?:      string[]
   grid_rows?:    string[]
   grid_columns?: string[]
 }
