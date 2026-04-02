@@ -325,6 +325,25 @@ export default function NewSheetPage() {
       const { updatedRows, summary } = applyImport(plainRows, parsed);
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
 
+      // Carry options from the imported file into headerOptions state so the
+      // alias editor displays correctly and options are persisted on save.
+      const importedOptionsMap = new Map<number, string[]>();
+      for (const m of parsed.column_mappings) {
+        if (m.options && m.options.length > 0) {
+          importedOptionsMap.set(m.column_index, m.options as string[]);
+        }
+      }
+      if (importedOptionsMap.size > 0) {
+        setHeaderOptions((prev) => {
+          const next = new Map(prev);
+          for (const [idx, options] of importedOptionsMap) {
+            const existing = next.get(idx) ?? {};
+            next.set(idx, { ...existing, options });
+          }
+          return next;
+        });
+      }
+
       setMappingRows((prev) =>
         prev.map((r) => {
           const updated = updatedRows.find((u) => u.column_index === r.column_index);
@@ -333,7 +352,8 @@ export default function NewSheetPage() {
           const hadRuleChanges = updatedList.some(
             (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
-          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.options);
+          const options = importedOptionsMap.get(r.column_index) ?? r.options;
+          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );
