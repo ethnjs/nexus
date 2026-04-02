@@ -1,9 +1,11 @@
 from __future__ import annotations
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, field_validator
 from app.schemas.user import UserRead
 
 VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
+LunchOrderValue = str | dict[str, Any]
 
 
 class AvailabilitySlot(BaseModel):
@@ -44,7 +46,7 @@ class MembershipBase(BaseModel):
     # Normalized availability — [{date, start, end}, ...]
     availability: list[AvailabilitySlot] | None = None
 
-    lunch_order: str | None = None
+    lunch_order: LunchOrderValue | None = None
     notes: str | None = None
 
     # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
@@ -74,7 +76,7 @@ class MembershipUpdate(BaseModel):
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None
     availability: list[AvailabilitySlot] | None = None
-    lunch_order: str | None = None
+    lunch_order: LunchOrderValue | None = None
     notes: str | None = None
     extra_data: dict | None = None
 

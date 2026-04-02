@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, field_validator
-import re
+from app.core.phone import format_phone_us
 
 
 class UserBase(BaseModel):
@@ -22,6 +22,11 @@ class UserBase(BaseModel):
             raise ValueError("Invalid email address")
         return v.lower().strip()
 
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, v: str | None) -> str | None:
+        return format_phone_us(v)
+
 
 class UserCreate(UserBase):
     pass
@@ -41,6 +46,11 @@ class UserUpdate(BaseModel):
     university: str | None = None
     major: str | None = None
     employer: str | None = None
+
+    @field_validator("phone", mode="before")
+    @classmethod
+    def normalize_phone(cls, v: str | None) -> str | None:
+        return format_phone_us(v)
 
 
 class UserRead(UserBase):

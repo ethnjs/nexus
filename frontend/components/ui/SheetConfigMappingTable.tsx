@@ -2,14 +2,16 @@
 
 import { useRef, useState, useCallback, useEffect, memo } from "react";
 import type { MappingRow } from "@/lib/importMappings";
-import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue } from "@/lib/api";
+import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue, FormQuestionOption } from "@/lib/api";
 import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
 import { Select } from "@/components/ui/Select";
+import { IconSwitch } from "@/components/ui/Icons";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 export const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "__ignore__":          "Ignore",
+  "full_name":           "Full Name",
   "first_name":          "First Name",
   "last_name":           "Last Name",
   "email":               "Email",
@@ -19,6 +21,9 @@ export const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "university":          "University",
   "major":               "Major",
   "employer":            "Employer",
+  "student_status":      "Student Status",
+  "competition_exp":     "Competition Experience",
+  "volunteering_exp":    "Volunteering Experience",
   "role_preference":     "Role Preference",
   "event_preference":    "Event Preference",
   "availability":        "Availability",
@@ -51,10 +56,16 @@ const ACTION_LABELS: Record<string, string> = {
   prepend:           "Prepend",
   append:            "Append",
   discard:           "Discard",
-  parse_availability:"Parse availability",
+  parse_time_range:  "Parse time range",   // canonical
+  parse_availability:"Parse availability", // legacy alias
 };
 
-const VALUELESS_ACTIONS = new Set<ParseRuleAction>(["discard", "parse_availability"]);
+// Both parse_time_range and parse_availability take no value argument.
+const VALUELESS_ACTIONS = new Set<ParseRuleAction>([
+  "discard",
+  "parse_time_range",
+  "parse_availability",
+]);
 
 // ─── Row state ────────────────────────────────────────────────────────────────
 
@@ -68,6 +79,11 @@ export interface RichMappingRow extends MappingRow {
   openOnMount?:   boolean;
   /** Increments when new validation results arrive — opens accordion if this row has rule-level issues. */
   validationGeneration?: number;
+  /** Form answer options — present when the backend matched a form question with choices. */
+  options?: FormQuestionOption[];
+  /** Whether the alias editor (true) or rules editor (false) is shown. Stored in parent state
+   *  so it survives remounts caused by rule changes. Defaults to true when options present. */
+  showAliasEditor?: boolean;
 }
 
 const ROW_COLORS: Record<RowState, { bg: string; border: string } | null> = {
@@ -93,6 +109,285 @@ const inputStyle: React.CSSProperties = {
   color: "var(--color-text-primary)", background: "var(--color-bg)",
   outline: "none", cursor: "text",
 };
+
+// ─── Alias helpers ────────────────────────────────────────────────────────────
+
+function aliasesToRules(options: FormQuestionOption[]): ParseRule[] {
+  return options
+    .filter((o) => o.alias.trim() !== o.raw.trim())
+    .map((o): ParseRule => ({
+      condition:      "contains",
+      match:          o.raw,
+      case_sensitive: false,
+      action:         "replace",
+      value:          o.alias,
+    }));
+}
+
+function rulesAndOptionsToAliases(
+  rules: ParseRule[],
+  options: FormQuestionOption[],
+): FormQuestionOption[] {
+  return options.map((opt) => {
+    const rule = rules.find(
+      (r) => r.condition === "contains" && r.match === opt.raw && r.action === "replace"
+    );
+    return rule ? { ...opt, alias: rule.value ?? opt.alias } : opt;
+  });
+}
+
+// ─── Alias Editor ─────────────────────────────────────────────────────────────
+
+function isAliasRule(rule: ParseRule, options: FormQuestionOption[]): boolean {
+  return (
+    rule.condition === "contains" &&
+    rule.action    === "replace"  &&
+    options.some((o) => o.raw === rule.match)
+  );
+}
+
+const AliasEditor = memo(function AliasEditor({
+  options,
+  currentRules,
+  onChangeRules,
+  isRemoved,
+  showAliasEditor,
+  onToggleView,
+  validConditions,
+  validActions,
+  rowErrors,
+  rowWarnings,
+}: {
+  options:         FormQuestionOption[];
+  currentRules:    ParseRule[];
+  onChangeRules:   (rules: ParseRule[]) => void;
+  isRemoved:       boolean;
+  showAliasEditor: boolean;
+  onToggleView:    () => void;
+  validConditions: string[];
+  validActions:    string[];
+  rowErrors:       ValidationIssue[];
+  rowWarnings:     ValidationIssue[];
+}) {
+  const internalChangeRef = useRef(false);
+
+  const [aliases, setAliases] = useState<FormQuestionOption[]>(() =>
+    rulesAndOptionsToAliases(currentRules, options)
+  );
+
+  useEffect(() => {
+    if (internalChangeRef.current) {
+      internalChangeRef.current = false;
+      return;
+    }
+    setAliases(rulesAndOptionsToAliases(currentRules, options));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentRules]);
+
+  const extraRules = currentRules.filter((r) => !isAliasRule(r, options));
+
+  function handleAliasChange(idx: number, value: string) {
+    const next = aliases.map((a, i) => i === idx ? { ...a, alias: value } : a);
+    setAliases(next);
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(next), ...extraRules]);
+  }
+
+  function handleExtraRuleChange(idx: number, patch: Partial<ParseRule>) {
+    const next = extraRules.map((r, i) => i === idx ? { ...r, ...patch } : r);
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
+
+  function handleExtraRuleMove(idx: number, dir: -1 | 1) {
+    const next = [...extraRules];
+    const swap = idx + dir;
+    if (swap < 0 || swap >= next.length) return;
+    [next[idx], next[swap]] = [next[swap], next[idx]];
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
+
+  function handleAddExtraRule() {
+    const newRule: ParseRule = { condition: "always", case_sensitive: false, action: "set", value: "" };
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...extraRules, newRule]);
+  }
+
+  function handleRemoveExtraRule(idx: number) {
+    const next = extraRules.filter((_, i) => i !== idx);
+    internalChangeRef.current = true;
+    onChangeRules([...aliasesToRules(aliases), ...next]);
+  }
+
+  return (
+    <div style={{ background: "var(--color-bg)", padding: "12px 14px 14px 28px" }}>
+
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "10px" }}>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)" }}>
+          {showAliasEditor ? "Answer options" : "Parse rules"}
+        </span>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          {showAliasEditor && options.length > 0 && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
+              Stored as
+            </span>
+          )}
+          <button
+            onClick={onToggleView}
+            title={showAliasEditor ? "Switch to rules editor" : "Switch to options editor"}
+            style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", padding: "3px 7px", cursor: "pointer", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "11px" }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-accent)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)"; e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+          >
+            <IconSwitch size={12} />
+            {showAliasEditor ? "Rules" : "Options"}
+          </button>
+        </div>
+      </div>
+
+      {showAliasEditor && (
+        <>
+          {options.length === 0 ? (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
+              No options found for this question.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+              {aliases.map((opt, idx) => {
+                const unchanged = opt.alias.trim() === opt.raw.trim();
+                return (
+                  <div
+                    key={idx}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto 1fr",
+                      alignItems: "center",
+                      gap: "10px",
+                      padding: "7px 10px",
+                      background: "var(--color-surface)",
+                      border: "1px solid var(--color-border)",
+                      borderLeft: unchanged ? "1px solid var(--color-border)" : "3px solid #FDBA74",
+                      borderRadius: "var(--radius-sm)",
+                      opacity: isRemoved ? 0.5 : 1,
+                    }}
+                  >
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={opt.raw}>
+                      {opt.raw}
+                    </span>
+                    <span style={{ color: "var(--color-text-tertiary)", fontSize: "12px", flexShrink: 0 }}>→</span>
+                    <input
+                      value={opt.alias}
+                      disabled={isRemoved}
+                      onChange={(e) => handleAliasChange(idx, e.target.value)}
+                      style={{
+                        ...inputStyle,
+                        height: "28px",
+                        fontSize: "12px",
+                        width: "100%",
+                        fontFamily: "var(--font-mono)",
+                      }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", margin: "10px 0 0" }}>
+            Options that differ from the form text are transformed automatically on sync.
+          </p>
+
+          {extraRules.length > 0 && (
+            <div style={{ marginTop: "14px", paddingTop: "12px", borderTop: "1px solid var(--color-border)" }}>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", display: "block", marginBottom: "8px" }}>
+                Additional rules
+              </span>
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "8px" }}>
+                {extraRules.map((rule, idx) => {
+                  const globalIdx = currentRules.indexOf(rule);
+                  const ruleError   = rowErrors.find((e) => e.rule_index === globalIdx)?.message;
+                  const ruleWarning = rowWarnings.find((w) => w.rule_index === globalIdx)?.message;
+                  return (
+                    <RuleRow
+                      key={idx} rule={rule} index={idx} total={extraRules.length}
+                      validConditions={validConditions} validActions={validActions}
+                      onChange={(patch) => handleExtraRuleChange(idx, patch)}
+                      onMove={(dir) => handleExtraRuleMove(idx, dir)}
+                      onRemove={() => handleRemoveExtraRule(idx)}
+                      error={ruleError} warning={ruleWarning} isRemoved={isRemoved}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {!isRemoved && (
+            <button
+              onClick={handleAddExtraRule}
+              style={{ display: "flex", alignItems: "center", gap: "5px", background: "none", border: "none", padding: "8px 0 0", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+            >
+              + Add rule
+            </button>
+          )}
+        </>
+      )}
+
+      {!showAliasEditor && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+          {currentRules.length === 0 && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
+              No rules — raw value passes through
+            </span>
+          )}
+          {currentRules.length > 0 && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "8px" }}>
+              {currentRules.map((rule, idx) => {
+                const ruleError   = rowErrors.find((e) => e.rule_index === idx)?.message;
+                const ruleWarning = rowWarnings.find((w) => w.rule_index === idx)?.message;
+                return (
+                  <RuleRow
+                    key={idx} rule={rule} index={idx} total={currentRules.length}
+                    validConditions={validConditions} validActions={validActions}
+                    onChange={(patch) => onChangeRules(currentRules.map((r, i) => i === idx ? { ...r, ...patch } : r))}
+                    onMove={(dir) => {
+                      const next = [...currentRules];
+                      const swap = idx + dir;
+                      if (swap < 0 || swap >= next.length) return;
+                      [next[idx], next[swap]] = [next[swap], next[idx]];
+                      onChangeRules(next);
+                    }}
+                    onRemove={() => onChangeRules(currentRules.filter((_, i) => i !== idx))}
+                    error={ruleError} warning={ruleWarning} isRemoved={isRemoved}
+                  />
+                );
+              })}
+            </div>
+          )}
+          {rowErrors.filter((e) => e.rule_index == null).map((e, i) => (
+            <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", margin: "0 0 4px" }}>{e.message}</p>
+          ))}
+          {rowWarnings.filter((w) => w.rule_index == null).map((w, i) => (
+            <p key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "#92400E", margin: "0 0 4px" }}>{w.message}</p>
+          ))}
+          {!isRemoved && (
+            <button
+              onClick={() => onChangeRules([...currentRules, { condition: "always", case_sensitive: false, action: "set", value: "" }])}
+              style={{ display: "flex", alignItems: "center", gap: "5px", background: "none", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-sm)", padding: "5px 10px", cursor: "pointer", width: "100%", justifyContent: "center", fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--color-accent)"; e.currentTarget.style.color = "var(--color-accent)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--color-border)";  e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
+            >
+              + Add rule
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+});
 
 // ─── Diff tooltip ─────────────────────────────────────────────────────────────
 
@@ -174,7 +469,6 @@ function TooltipRuleDiff({ diff }: { diff: RuleLineDiff }) {
     );
   }
 
-  // changed — single box, number centered, red/green flush with divider
   return (
     <div style={{ display: "flex", alignItems: "stretch", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "0 8px", background: "var(--color-bg)", borderRight: "1px solid var(--color-border)", flexShrink: 0 }}>
@@ -299,12 +593,9 @@ const RuleRow = memo(function RuleRow({
   const showMatch = rule.condition !== "always";
   const showValue = !VALUELESS_ACTIONS.has(rule.action as ParseRuleAction);
 
-  // Local state for text inputs — keeps keystrokes purely local,
-  // flushes to parent only on blur so the whole table doesn't re-render per keystroke.
   const [localMatch, setLocalMatch] = useState(rule.match ?? "");
   const [localValue, setLocalValue] = useState(rule.value ?? "");
 
-  // Sync local state when the rule prop changes from outside (e.g. import, reorder)
   useEffect(() => { setLocalMatch(rule.match ?? ""); }, [rule.match]);
   useEffect(() => { setLocalValue(rule.value ?? ""); }, [rule.value]);
 
@@ -493,46 +784,47 @@ const MappingRowComponent = memo(function MappingRowComponent({
 }: {
   row: RichMappingRow; knownFields: string[]; validTypes: string[];
   validConditions: string[]; validActions: string[];
-  onChange?: (patch: Partial<MappingRow>) => void;
+  onChange?: (patch: Partial<RichMappingRow>) => void;
   isFirst: boolean; viewOnly: boolean; baselineLabel: string;
   errors: ValidationIssue[]; warnings: ValidationIssue[];
   validationGeneration?: number;
 }) {
-  const hasRules  = row.rules.length > 0;
-  const isRemoved = row.state === "removed";
-  const isIgnored = row.type === "ignore" || row.field === "__ignore__";
+  const hasRules      = row.rules.length > 0;
+  const isRemoved     = row.state === "removed";
+  const isIgnored     = row.type === "ignore" || row.field === "__ignore__";
 
-  // Accordion open by default when the row already has rules, or forced open by parent
-  const [open,    setOpen]    = useState(hasRules || (row.openOnMount ?? false));
-  const [mounted, setMounted] = useState(hasRules || (row.openOnMount ?? false));
+  const hasAliasEditor = !!(
+    row.options &&
+    row.options.length > 0 &&
+    !viewOnly
+  );
 
-  // When opening: mount immediately, then set open on next tick so the
-  // browser has a frame to register the 0fr starting state before animating.
+  const showAliasEditor = row.showAliasEditor ?? true;
+
+  const defaultOpen = hasRules || (row.openOnMount ?? false) || hasAliasEditor;
+  const [open,    setOpen]    = useState(defaultOpen);
+  const [mounted, setMounted] = useState(defaultOpen);
+
   function openAccordion() {
     setMounted(true);
     requestAnimationFrame(() => setOpen(true));
   }
 
-  // When closing: set open false (starts animation), unmount after it finishes.
   function closeAccordion() {
     setOpen(false);
     setTimeout(() => setMounted(false), 220);
   }
 
-  // Auto-close when all rules are removed
   useEffect(() => {
-    if (!hasRules) closeAccordion();
+    if (!hasRules && !hasAliasEditor) closeAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasRules]);
+  }, [hasRules, hasAliasEditor]);
 
-  // Open accordion when openOnMount is set (e.g. after import adds/changes rules).
-  // This handles already-mounted rows — useState only fires at initial mount.
   useEffect(() => {
     if (row.openOnMount) openAccordion();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [row.openOnMount]);
 
-  // Open accordion when new validation results arrive with rule-level issues for this row
   const hasRuleLevelIssues = errors.some((e) => e.rule_index != null) || warnings.some((w) => w.rule_index != null);
   useEffect(() => {
     if (validationGeneration > 0 && hasRuleLevelIssues) openAccordion();
@@ -556,12 +848,23 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const hasWarnings     = !hasErrors && warnings.length > 0;
   const hasRuleErrors   = errors.some((e) => e.rule_index != null);
   const hasRuleWarnings = !hasRuleErrors && warnings.some((w) => w.rule_index != null);
-  const rulesLabel      = hasRules ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}` : null;
 
-  // Background + left border: error/warning > row state > ignored > default
-  const ignoredBg = "var(--color-bg)";
+  const extraRuleCount = hasAliasEditor
+    ? row.rules.filter((r) => !isAliasRule(r, row.options ?? [])).length
+    : 0;
+
+  const accordionLabel = hasAliasEditor
+    ? `${row.options!.length} option${row.options!.length !== 1 ? "s" : ""}`
+    : hasRules
+    ? `${row.rules.length} rule${row.rules.length !== 1 ? "s" : ""}`
+    : null;
+
+  const extraRulesLabel = hasAliasEditor && extraRuleCount > 0
+    ? `${extraRuleCount} rule${extraRuleCount !== 1 ? "s" : ""}`
+    : null;
+
   const rowBg = isIgnored && !isRemoved
-    ? ignoredBg
+    ? "var(--color-bg)"
     : hasErrors
     ? "#FFF5F5"
     : hasWarnings
@@ -578,22 +881,16 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ? `3px solid ${colors.border}`
     : "3px solid transparent";
 
-  // Icon in rightmost column:
-  // - removed/ignored → nothing
-  // - has rules → chevron (toggles accordion)
-  // - no rules, not ignored → plus (adds first rule)
-  const showChevron = !isRemoved && !isIgnored && hasRules && !viewOnly;
-  const showPlus    = !isRemoved && !isIgnored && !hasRules && !viewOnly;
+  const showChevron = !isRemoved && !isIgnored && (hasRules || hasAliasEditor) && !viewOnly;
+  const showPlus    = !isRemoved && !isIgnored && !hasRules && !hasAliasEditor && !viewOnly;
 
   function handleRowClick(e: React.MouseEvent<HTMLDivElement>) {
     if (viewOnly || isRemoved || isIgnored) return;
-    // Only toggle accordion when there are rules and the click wasn't on an interactive element
-    if (!hasRules) return;
+    if (!hasRules && !hasAliasEditor) return;
     const target = e.target as HTMLElement;
     const tag = target.tagName;
     if (["SELECT", "INPUT", "BUTTON", "LABEL"].includes(tag)) return;
     if (target.closest("label")) return;
-    // Guard against clicks inside the custom Select dropdown panel (fixed-positioned divs)
     if (target.closest("[data-select-panel]") || target.closest("[data-select-trigger]")) return;
     if (open) { closeAccordion(); } else { openAccordion(); }
   }
@@ -631,7 +928,6 @@ const MappingRowComponent = memo(function MappingRowComponent({
     let type = row.type;
     if (field === "__ignore__")                                           type = "ignore";
     else if (field === "availability")                                    type = "matrix_row";
-    else if (field === "role_preference" || field === "event_preference") type = "multi_select";
     else if (type === "ignore")                                           type = "string";
     onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
@@ -669,8 +965,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
           background: rowBg,
           borderTop: isFirst ? "none" : "2px solid var(--color-border)",
           borderLeft,
-          // Only show pointer cursor when there are rules to toggle
-          cursor: (!viewOnly && !isRemoved && !isIgnored && hasRules) ? "pointer" : "default",
+          cursor: (!viewOnly && !isRemoved && !isIgnored && (hasRules || hasAliasEditor)) ? "pointer" : "default",
         }}
       >
         {/* Col 1: header + badges */}
@@ -683,9 +978,14 @@ const MappingRowComponent = memo(function MappingRowComponent({
               {badge.label}
             </span>
           )}
-          {rulesLabel && !viewOnly && (
+          {accordionLabel && !viewOnly && (
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
-              {rulesLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
+              {accordionLabel}{hasRuleErrors && " ⚠"}{hasRuleWarnings && " !"}
+            </span>
+          )}
+          {extraRulesLabel && !viewOnly && (
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, color: hasRuleErrors ? "var(--color-danger)" : hasRuleWarnings ? "#92400E" : "var(--color-accent)", background: hasRuleErrors ? "#FEE2E2" : hasRuleWarnings ? "#FEF9C3" : "var(--color-accent-subtle, #EEF2FF)", padding: "1px 5px", borderRadius: "3px", flexShrink: 0 }}>
+              {extraRulesLabel}
             </span>
           )}
         </div>
@@ -707,9 +1007,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
           />
         )}
 
-        {/* Col 3: type */}
+        {/* Col 3: type — always editable (google_type lock removed) */}
         {viewOnly ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>{TYPE_LABELS[row.type] ?? row.type}</span>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {TYPE_LABELS[row.type] ?? row.type}
+          </span>
         ) : (
           <Select
             value={row.type}
@@ -746,7 +1048,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         </div>
       </div>
 
-      {/* Rules accordion (edit mode) — animated via grid-template-rows */}
+      {/* Accordion (edit mode) — alias editor or rules panel */}
       {!viewOnly && !isIgnored && !isRemoved && mounted && (
         <div
           style={{
@@ -757,12 +1059,27 @@ const MappingRowComponent = memo(function MappingRowComponent({
           }}
         >
           <div style={{ minHeight: 0 }}>
-            <RulesPanel
-              row={row} validConditions={validConditions} validActions={validActions}
-              onChangeRules={(rules) => onChange?.({ rules })}
-              onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
-              rowErrors={errors} rowWarnings={warnings}
-            />
+            {hasAliasEditor ? (
+              <AliasEditor
+                options={row.options!}
+                currentRules={row.rules}
+                onChangeRules={(rules) => onChange?.({ rules })}
+                isRemoved={isRemoved}
+                showAliasEditor={showAliasEditor}
+                onToggleView={() => onChange?.({ showAliasEditor: !showAliasEditor })}
+                validConditions={validConditions}
+                validActions={validActions}
+                rowErrors={errors}
+                rowWarnings={warnings}
+              />
+            ) : (
+              <RulesPanel
+                row={row} validConditions={validConditions} validActions={validActions}
+                onChangeRules={(rules) => onChange?.({ rules })}
+                onChangeDelimiter={(delimiter) => onChange?.({ delimiter })}
+                rowErrors={errors} rowWarnings={warnings}
+              />
+            )}
           </div>
         </div>
       )}
@@ -867,10 +1184,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
 export interface SheetConfigMappingTableProps {
   rows: RichMappingRow[]; knownFields: string[]; validTypes: string[];
   validConditions?: string[]; validActions?: string[];
-  onChangeRow?: (idx: number, patch: Partial<MappingRow>) => void;
+  onChangeRow?: (idx: number, patch: Partial<RichMappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
   validationErrors?: ValidationIssue[]; validationWarnings?: ValidationIssue[];
-  /** Increment each time new validation results arrive — triggers accordion open for rows with rule-level issues. */
   validationGeneration?: number;
 }
 
@@ -882,27 +1198,6 @@ export function SheetConfigMappingTable({
   validationGeneration = 0,
 }: SheetConfigMappingTableProps) {
   const isViewOnly = viewOnly || !onChangeRow;
-
-  // Keep a stable ref to onChangeRow so per-row callbacks don't change identity
-  // on every render, which would defeat memo on MappingRowComponent.
-  const onChangeRowRef = useRef(onChangeRow);
-  useEffect(() => { onChangeRowRef.current = onChangeRow; }, [onChangeRow]);
-
-  // One stable callback per row header. We key by header string (stable across
-  // renders) so memo sees the same function reference unless the row is new.
-  const stableCallbacks = useRef<Map<string, (patch: Partial<MappingRow>) => void>>(new Map());
-  rows.forEach((row, idx) => {
-    if (!stableCallbacks.current.has(row.header)) {
-      stableCallbacks.current.set(row.header, (patch) => {
-        onChangeRowRef.current?.(idx, patch);
-      });
-    }
-  });
-  // Clean up headers that no longer exist
-  const currentHeaders = new Set(rows.map((r) => r.header));
-  stableCallbacks.current.forEach((_, key) => {
-    if (!currentHeaders.has(key)) stableCallbacks.current.delete(key);
-  });
 
   if (rows.length === 0) {
     return <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>No columns mapped yet.</p>;
@@ -917,20 +1212,24 @@ export function SheetConfigMappingTable({
       </div>
       <div style={{ borderRadius: "0 0 var(--radius-md) var(--radius-md)", overflow: "visible" }}>
         {rows.map((row, idx) => {
-          // header is list[str] | string | null — normalise to array for consistent matching.
+          const matchesColumnIndex = (ci: number[] | number | null | undefined) => {
+            if (ci == null) return false;
+            if (Array.isArray(ci)) return ci.includes(row.column_index);
+            return ci === row.column_index;
+          };
           const matchesHeader = (h: string[] | string | null | undefined) => {
             if (!h) return false;
             if (Array.isArray(h)) return h.includes(row.header);
             return h === row.header;
           };
-          const rowErrors   = validationErrors.filter((e)   => matchesHeader(e.header));
-          const rowWarnings = validationWarnings.filter((w) => matchesHeader(w.header));
+          const rowErrors   = validationErrors.filter((e)   => matchesColumnIndex(e.column_index) || matchesHeader(e.header));
+          const rowWarnings = validationWarnings.filter((w) => matchesColumnIndex(w.column_index) || matchesHeader(w.header));
           return (
             <MappingRowComponent
-              key={row.header} row={row}
+              key={`${row.column_index}:${row.header}`} row={row}
               knownFields={knownFields} validTypes={validTypes}
               validConditions={validConditions} validActions={validActions}
-              onChange={isViewOnly ? undefined : stableCallbacks.current.get(row.header)}
+              onChange={isViewOnly ? undefined : ((patch) => onChangeRow?.(idx, patch))}
               isFirst={idx === 0} viewOnly={isViewOnly}
               baselineLabel={baselineLabel} errors={rowErrors} warnings={rowWarnings}
               validationGeneration={validationGeneration}
@@ -948,8 +1247,10 @@ export function makeRichRow(
   values: MappingRow, baseline: MappingRow,
   forcedState?: "new" | "removed", importedValue?: MappingRow,
   openOnMount?: boolean,
+  options?: FormQuestionOption[],
 ): RichMappingRow {
   let state: RowState = forcedState ?? "same";
   if (!forcedState) state = mappingRowsEqual(values, baseline) ? "same" : "changed";
-  return { ...values, state, baseline, importedValue, openOnMount };
+  const showAliasEditor = (values as Partial<RichMappingRow>).showAliasEditor;
+  return { ...values, state, baseline, importedValue, openOnMount, options, showAliasEditor };
 }
