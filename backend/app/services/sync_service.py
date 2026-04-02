@@ -421,8 +421,16 @@ def _process_cell(
             # Option-aware splitting: greedily match known options so commas
             # inside option text (e.g. "Life, Personal & Social Science") are
             # not treated as delimiters.
+            # options is list[str] (raw); derive aliases from is_alias rules so
+            # post-rules transformed values are matched correctly.
+            rules_list = mapping.get("rules") or []
+            alias_map = {
+                r["match"]: r["value"]
+                for r in rules_list
+                if r.get("is_alias") and r.get("match") and r.get("value")
+            }
             alias_options = sorted(
-                [o["alias"] if isinstance(o, dict) else o.alias for o in options],
+                [alias_map.get(o, o) for o in options],
                 key=len,
                 reverse=True,
             )
