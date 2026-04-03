@@ -943,9 +943,11 @@ const MappingRowComponent = memo(function MappingRowComponent({
 
     const labelStyle: React.CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--color-text-tertiary)", marginBottom: "2px" };
 
+    const both = needsRowKey && needsExtra;
+
     const rowKeyEl = needsRowKey ? (
-      <div>
-        {(needsRowKey && needsExtra) && <div style={labelStyle}>Row Key</div>}
+      <div style={both ? { flex: 1, minWidth: 0 } : {}}>
+        {both && <div style={labelStyle}>Row Key</div>}
         {viewOnly
           ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>
           : <input style={keyInputStyle} placeholder="e.g. protein" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />
@@ -954,8 +956,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ) : null;
 
     const extraKeyEl = needsExtra ? (
-      <div>
-        {(needsRowKey && needsExtra) && <div style={labelStyle}>Extra Key</div>}
+      <div style={both ? { flex: 1, minWidth: 0 } : {}}>
+        {both && <div style={labelStyle}>Extra Key</div>}
         {viewOnly
           ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.extra_key || "—"}</span>
           : <input style={keyInputStyle} placeholder="extra_key name" value={row.extra_key} onChange={(e) => onChange?.({ extra_key: e.target.value })} />
@@ -963,8 +965,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
       </div>
     ) : null;
 
-    if (needsRowKey && needsExtra) {
-      return <div style={{ display: "flex", flexDirection: "row", gap: "6px" }}>{rowKeyEl}{extraKeyEl}</div>;
+    if (both) {
+      return <div style={{ display: "flex", flexDirection: "row", gap: "6px", width: "100%" }}>{rowKeyEl}{extraKeyEl}</div>;
     }
     return rowKeyEl ?? extraKeyEl;
   }
