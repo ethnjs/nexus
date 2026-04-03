@@ -936,15 +936,37 @@ const MappingRowComponent = memo(function MappingRowComponent({
 
   function renderKeyCell() {
     if (isRemoved) return <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>excluded from save</span>;
-    if (needsRowKey) {
-      if (viewOnly) return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>;
-      return <input style={keyInputStyle} placeholder="e.g. 8:00 AM - 10:00 AM" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />;
+
+    if (!needsRowKey && !needsExtra) {
+      return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>;
     }
-    if (needsExtra) {
-      if (viewOnly) return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.extra_key || "—"}</span>;
-      return <input style={keyInputStyle} placeholder="extra_key name" value={row.extra_key} onChange={(e) => onChange?.({ extra_key: e.target.value })} />;
+
+    const labelStyle: React.CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--color-text-tertiary)", marginBottom: "2px" };
+
+    const rowKeyEl = needsRowKey ? (
+      <div>
+        {(needsRowKey && needsExtra) && <div style={labelStyle}>Row Key</div>}
+        {viewOnly
+          ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>
+          : <input style={keyInputStyle} placeholder="e.g. protein" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />
+        }
+      </div>
+    ) : null;
+
+    const extraKeyEl = needsExtra ? (
+      <div>
+        {(needsRowKey && needsExtra) && <div style={labelStyle}>Extra Key</div>}
+        {viewOnly
+          ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.extra_key || "—"}</span>
+          : <input style={keyInputStyle} placeholder="extra_key name" value={row.extra_key} onChange={(e) => onChange?.({ extra_key: e.target.value })} />
+        }
+      </div>
+    ) : null;
+
+    if (needsRowKey && needsExtra) {
+      return <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>{rowKeyEl}{extraKeyEl}</div>;
     }
-    return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>;
+    return rowKeyEl ?? extraKeyEl;
   }
 
   return (
