@@ -964,7 +964,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ) : null;
 
     if (needsRowKey && needsExtra) {
-      return <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>{rowKeyEl}{extraKeyEl}</div>;
+      return <div style={{ display: "flex", flexDirection: "row", gap: "6px" }}>{rowKeyEl}{extraKeyEl}</div>;
     }
     return rowKeyEl ?? extraKeyEl;
   }
