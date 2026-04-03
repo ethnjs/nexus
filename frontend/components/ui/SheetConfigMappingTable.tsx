@@ -950,7 +950,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         {both && <div style={labelStyle}>Row Key</div>}
         {viewOnly
           ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>
-          : <input style={keyInputStyle} placeholder="e.g. protein" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />
+          : <input style={keyInputStyle} placeholder="row_key name" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />
         }
       </div>
     ) : null;
