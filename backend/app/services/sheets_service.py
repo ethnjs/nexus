@@ -263,6 +263,7 @@ def _alias_rules(options: list) -> list[ParseRule]:
                 case_sensitive=False,
                 action="replace",
                 value=alias,
+                is_alias=True,
             ))
     return rules
 

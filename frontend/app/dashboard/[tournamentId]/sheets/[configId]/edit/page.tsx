@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetType, MappedHeader, FormQuestionOption } from "@/lib/api";
+import { sheetsApi, ColumnMapping, ColumnMappingEntry, SheetConfig, SheetType, MappedHeader } from "@/lib/api";
 import {
   MappingRow,
   MappingsExport,
@@ -65,8 +65,9 @@ function emptyMappingRow(header: string, s?: Partial<ColumnMappingEntry>): Mappi
 function resolveOptions(
   liveMapping?: MappedHeader,
   savedMapping?: ColumnMapping,
-): FormQuestionOption[] | undefined {
-  return liveMapping?.options ?? savedMapping?.options ?? undefined;
+): string[] | undefined {
+  if (liveMapping?.options) return liveMapping.options.map((o) => o.raw);
+  return savedMapping?.options ?? undefined;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ export default function EditSheetPage() {
   const [headersError,    setHeadersError]    = useState("");
 
   // Track options per column index for buildColumnMappings persistence
-  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Load state
   const [loading,   setLoading]   = useState(true);
@@ -179,7 +180,7 @@ export default function EditSheetPage() {
       );
       const liveIndices  = new Set(result.mappings.map((m: MappedHeader) => m.column_index));
       const rows: RichMappingRow[] = [];
-      const optionsMap = new Map<number, { options?: FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       for (const m of result.mappings) {
         const saved = savedByIndex.get(m.column_index);
@@ -297,6 +298,25 @@ export default function EditSheetPage() {
       const { updatedRows, summary } = applyImport(activeRows, parsed);
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
 
+      // Carry options from the imported file into headerOptions state so the
+      // alias editor displays correctly and options are persisted on save.
+      const importedOptionsMap = new Map<number, string[]>();
+      for (const m of parsed.column_mappings) {
+        if (m.options && m.options.length > 0) {
+          importedOptionsMap.set(m.column_index, m.options as string[]);
+        }
+      }
+      if (importedOptionsMap.size > 0) {
+        setHeaderOptions((prev) => {
+          const next = new Map(prev);
+          for (const [idx, options] of importedOptionsMap) {
+            const existing = next.get(idx) ?? {};
+            next.set(idx, { ...existing, options });
+          }
+          return next;
+        });
+      }
+
       setMappingRows((prev) =>
         prev.map((r) => {
           if (r.state === "removed") return r;
@@ -306,9 +326,10 @@ export default function EditSheetPage() {
           const hadRuleChanges = updatedList.some(
             (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
+          const options = importedOptionsMap.get(r.column_index) ?? r.options;
           const base = r.state === "new"
-            ? { ...r, ...updated, importedValue }
-            : makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.options);
+            ? { ...r, ...updated, importedValue, options }
+            : makeRichRow(updated, r.baseline, undefined, importedValue, undefined, options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );

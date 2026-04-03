@@ -171,7 +171,7 @@ export default function NewSheetPage() {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   // Track options per column index so duplicate headers stay distinct
-  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
+  const [headerOptions, setHeaderOptions] = useState<Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>>(new Map());
 
   // Validation
   const {
@@ -248,14 +248,15 @@ export default function NewSheetPage() {
       setHeadersResult(result);
 
       // Track options per header for buildColumnMappings persistence
-      const optionsMap = new Map<number, { options?: import("@/lib/api").FormQuestionOption[]; grid_rows?: string[]; grid_columns?: string[] }>();
+      const optionsMap = new Map<number, { options?: string[]; grid_rows?: string[]; grid_columns?: string[] }>();
 
       const rows: RichMappingRow[] = result.mappings.map((m: MappedHeader) => {
         const base = emptyMappingRow(m.header, m);
-        if (m.options || m.grid_rows || m.grid_columns) {
-          optionsMap.set(m.column_index, { options: m.options, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
+        const rawOptions = m.options?.map((o) => o.raw);
+        if (rawOptions || m.grid_rows || m.grid_columns) {
+          optionsMap.set(m.column_index, { options: rawOptions, grid_rows: m.grid_rows, grid_columns: m.grid_columns });
         }
-        return makeRichRow(base, base, undefined, undefined, undefined, m.options ?? undefined);
+        return makeRichRow(base, base, undefined, undefined, undefined, rawOptions);
       });
 
       setHeaderOptions(optionsMap);
@@ -324,6 +325,25 @@ export default function NewSheetPage() {
       const { updatedRows, summary } = applyImport(plainRows, parsed);
       const { updated: updatedList, unchanged, notInSheet, notInFile } = summary;
 
+      // Carry options from the imported file into headerOptions state so the
+      // alias editor displays correctly and options are persisted on save.
+      const importedOptionsMap = new Map<number, string[]>();
+      for (const m of parsed.column_mappings) {
+        if (m.options && m.options.length > 0) {
+          importedOptionsMap.set(m.column_index, m.options as string[]);
+        }
+      }
+      if (importedOptionsMap.size > 0) {
+        setHeaderOptions((prev) => {
+          const next = new Map(prev);
+          for (const [idx, options] of importedOptionsMap) {
+            const existing = next.get(idx) ?? {};
+            next.set(idx, { ...existing, options });
+          }
+          return next;
+        });
+      }
+
       setMappingRows((prev) =>
         prev.map((r) => {
           const updated = updatedRows.find((u) => u.column_index === r.column_index);
@@ -332,7 +352,8 @@ export default function NewSheetPage() {
           const hadRuleChanges = updatedList.some(
             (entry) => entry.column_index === r.column_index && entry.ruleDiffs.some((d) => d.status !== "unchanged")
           );
-          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, r.options);
+          const options = importedOptionsMap.get(r.column_index) ?? r.options;
+          const base = makeRichRow(updated, r.baseline, undefined, importedValue, undefined, options);
           return { ...base, openOnMount: hadRuleChanges || undefined };
         })
       );

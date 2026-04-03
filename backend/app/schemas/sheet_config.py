@@ -140,10 +140,14 @@ class ParseRule(BaseModel):
     case_sensitive: bool = False
     action: str
     value: str | None = None
+    is_alias: bool = False  # True = generated from a form option alias
 
     def model_dump(self, **kwargs):
         kwargs.setdefault("exclude_none", True)
-        return super().model_dump(**kwargs)
+        result = super().model_dump(**kwargs)
+        if not result.get("is_alias", False):
+            result.pop("is_alias", None)
+        return result
 
     @field_validator("condition")
     @classmethod
@@ -201,7 +205,8 @@ class ColumnMapping(BaseModel):
     delimiter: str | None = None
 
     # Form question enrichment — persisted so edit page + exports retain alias editor context
-    options:      list[FormQuestionOption] | None = None
+    # options is a flat list of raw option strings; aliases are encoded in rules (is_alias=True)
+    options:      list[str] | None = None
     grid_rows:    list[str] | None = None
     grid_columns: list[str] | None = None
 
