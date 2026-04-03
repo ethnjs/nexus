@@ -30,6 +30,8 @@ from app.schemas.sheet_config import (
 from app.services.volunteer_hints import (
     AVAILABILITY_BRACKET_PATTERN,
     FieldHint,
+    LUNCH_HEADER_KEYWORDS,
+    LUNCH_ROW_KEY_KEYWORDS,
     match_volunteer_hint,
 )
 
@@ -139,14 +141,32 @@ class SheetsService:
 
         q_index = _build_question_index(form_questions or [])
 
+        # Pre-scan: find all lunch-like header positions.  Two or more lunch
+        # columns → promote all of them to matrix_row before dedup runs, so
+        # they are never suppressed as duplicates.
+        lunch_indices: set[int] = {
+            i for i, h in enumerate(headers) if _is_lunch_header(h.lower())
+        }
+        multi_lunch = len(lunch_indices) >= 2
+
         claimed_fields: set[str] = set()
         claimed_extra_keys: set[str] = set()
 
         mappings: list[MappedHeader] = []
         for column_index, header in enumerate(headers):
-            mapped = _map_header(
-                header, column_index, q_index, claimed_fields, claimed_extra_keys
-            )
+            if multi_lunch and column_index in lunch_indices:
+                row_key = _infer_lunch_row_key(header)
+                mapped = MappedHeader(
+                    column_index=column_index,
+                    header=header,
+                    field="lunch_order",
+                    type="matrix_row",
+                    row_key=row_key or None,
+                )
+            else:
+                mapped = _map_header(
+                    header, column_index, q_index, claimed_fields, claimed_extra_keys
+                )
             mappings.append(mapped)
 
         known_fields = KNOWN_FIELDS_BY_TYPE.get(sheet_type, VOLUNTEER_KNOWN_FIELDS)
@@ -274,6 +294,30 @@ def _slugify(text: str, max_len: int = 50) -> str:
     return slug[:max_len]
 
 
+def _is_lunch_header(lower: str) -> bool:
+    """Return True if the lowercased header string contains a lunch keyword."""
+    return any(kw in lower for kw in LUNCH_HEADER_KEYWORDS)
+
+
+def _infer_lunch_row_key(header: str) -> str:
+    """
+    Infer a short row_key from a lunch-related column header.
+
+    Returns the first matching keyword slug, or "" if none found
+    (user must fill in the key manually).
+
+    Examples:
+        "Which protein do you want?" → "protein"
+        "What would you like to drink?" → "drink"
+        "Entrée selection" → "entree"
+    """
+    lower = header.lower()
+    for keyword, key in LUNCH_ROW_KEY_KEYWORDS:
+        if keyword in lower:
+            return key
+    return ""
+
+
 def _infer_grid_field(
     title: str,
     grid_rows: list[str] | None,
@@ -352,8 +396,8 @@ def _dedup(
     if field in claimed_fields:
         return "__ignore__", "ignore", None
 
-    # availability and event_preference allow multiple entries (grid rows)
-    if field not in ("availability", "event_preference"):
+    # matrix_row fields aggregate across multiple headers — never claim them
+    if mapping_type != "matrix_row":
         claimed_fields.add(field)
 
     return field, mapping_type, extra_key

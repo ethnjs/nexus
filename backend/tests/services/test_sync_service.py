@@ -412,3 +412,34 @@ def test_process_cell_phone_formats_us_number():
     mapping = {"field": "phone", "type": "string"}
     assert _process_cell("9495551234", mapping, t) == "(949) 555-1234"
     assert _process_cell("+1 (949) 555-1234", mapping, t) == "(949) 555-1234"
+
+
+# ---------------------------------------------------------------------------
+# Generic matrix_row aggregation in sync_sheet
+# ---------------------------------------------------------------------------
+# These tests exercise the dispatch logic directly via _process_cell and verify
+# that matrix_row fields (other than availability/event_preference) produce the
+# right processed value, which sync_sheet then accumulates into a dict.
+
+def test_process_cell_matrix_row_returns_string_value():
+    """matrix_row without a parse rule returns the raw string — sync_sheet builds the dict."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"}
+    result = _process_cell("Carnitas", mapping, t)
+    assert result == "Carnitas"
+
+
+def test_process_cell_matrix_row_blank_returns_none():
+    """Blank matrix_row cell returns None; sync_sheet stores '' for that key."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"}
+    result = _process_cell("", mapping, t)
+    assert result is None
+
+
+def test_process_cell_lunch_order_string_returns_value():
+    """lunch_order with type=string (single-header legacy config) returns the raw string."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "string"}
+    result = _process_cell("Carnitas bowl", mapping, t)
+    assert result == "Carnitas bowl"

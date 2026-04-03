@@ -488,7 +488,6 @@ def sync_sheet(
             membership_fields: dict[str, Any] = {}
             availability_slots: list[dict] = []
             extra_data: dict[str, Any] = {}
-            lunch_parts: dict[str, Any] = {}
             event_pref_ranked: dict[str, str] = {}  # row_key → cell value for grid ranking
 
             for mapping in mappings:
@@ -535,12 +534,15 @@ def sync_sheet(
                             processed if isinstance(processed, list) else [processed]
                         )
 
-                elif field == "lunch_order":
-                    # Accumulate lunch parts into a dict
-                    if processed is not None:
-                        # Use a slugified version of the header as the key
-                        lunch_key = _lunch_key_from_header(header)
-                        lunch_parts[lunch_key] = processed
+                elif field_type == "matrix_row" and field not in ("availability", "event_preference"):
+                    # Generic matrix aggregation: build a dict keyed by row_key.
+                    # Blank cells store "" so all keys are always present.
+                    row_key = (mapping.get("row_key") or "").strip()
+                    if not row_key:
+                        row_key = _slug(header)
+                    if field not in membership_fields:
+                        membership_fields[field] = {}
+                    membership_fields[field][row_key] = processed if processed is not None else ""
 
                 elif field == "extra_data":
                     extra_key = mapping.get("extra_key")
@@ -562,15 +564,6 @@ def sync_sheet(
                 ranked_list = _resolve_ranked_preferences(event_pref_ranked)
                 existing = membership_fields.get("event_preference", [])
                 membership_fields["event_preference"] = ranked_list + existing
-
-            # Store lunch_parts as the lunch_order value
-            if lunch_parts:
-                if len(lunch_parts) == 1:
-                    # Single lunch field — store the value directly
-                    membership_fields["lunch_order"] = next(iter(lunch_parts.values()))
-                else:
-                    # Multiple lunch fields — store as dict
-                    membership_fields["lunch_order"] = lunch_parts
 
             email = user_fields.get("email")
             if not email:
@@ -656,23 +649,9 @@ def sync_sheet(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _lunch_key_from_header(header: str) -> str:
-    """
-    Derive a short key from a lunch-related column header.
-
-    Examples:
-        "Which protein do you want in your Chipotle burrito?" → "protein"
-        "What would you like to drink?"                       → "drink"
-        "Lunch Order"                                         → "lunch_order"
-    """
-    lower = header.lower()
-    if "protein" in lower or "burrito" in lower:
-        return "protein"
-    if "drink" in lower:
-        return "drink"
-    if "side" in lower:
-        return "side"
-    return "lunch_order"
+def _slug(text: str) -> str:
+    """Slugify a header string for use as a fallback row_key."""
+    return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:50]
 
 
 # Ranked-preference column ordering
