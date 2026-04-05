@@ -30,8 +30,7 @@ from app.schemas.sheet_config import (
 from app.services.volunteer_hints import (
     AVAILABILITY_BRACKET_PATTERN,
     FieldHint,
-    LUNCH_HEADER_KEYWORDS,
-    LUNCH_ROW_KEY_KEYWORDS,
+    MATRIX_ROW_KEY_KEYWORDS,
     match_volunteer_hint,
 )
 
@@ -121,75 +120,32 @@ class SheetsService:
         Deduplication ensures no two headers suggest the same field or extra_key.
         availability matrix_row mappings always get a parse_time_range rule.
         """
-        spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
-        range_notation = f"'{sheet_name}'!1:1"
-
-        try:
-            result = (
-                self._client.spreadsheets()
-                .values()
-                .get(spreadsheetId=spreadsheet_id, range=range_notation)
-                .execute()
-            )
-        except HttpError as e:
-            if e.resp.status == 403:
-                raise PermissionError("Service account cannot read this sheet.")
-            raise
-
-        rows = result.get("values", [])
-        headers: list[str] = rows[0] if rows else []
-
+        headers = self._fetch_header_row(sheet_url, sheet_name)
         q_index = _build_question_index(form_questions or [])
-
-        # Pre-scan: find all lunch-like header positions.  Two or more lunch
-        # columns → promote all of them to matrix_row before dedup runs, so
-        # they are never suppressed as duplicates.
-        lunch_indices: set[int] = {
-            i for i, h in enumerate(headers) if _is_lunch_header(h.lower())
-        }
-        multi_lunch = len(lunch_indices) >= 2
-
-        claimed_fields: set[str] = set()
-        claimed_extra_keys: set[str] = set()
-
-        mappings: list[MappedHeader] = []
-        for column_index, header in enumerate(headers):
-            if multi_lunch and column_index in lunch_indices:
-                row_key = _infer_lunch_row_key(header)
-                q = _match_question(header.lower(), q_index)
-                lunch_options = None
-                if q is not None:
-                    raw_opts = q.get("options")
-                    if raw_opts:
-                        lunch_options = [
-                            FormQuestionOption(
-                                raw=o.raw if hasattr(o, "raw") else o["raw"],
-                                alias=o.alias if hasattr(o, "alias") else o["alias"],
-                            )
-                            for o in raw_opts
-                        ]
-                mapped = MappedHeader(
-                    column_index=column_index,
-                    header=header,
-                    field="lunch_order",
-                    type="matrix_row",
-                    row_key=row_key or None,
-                    options=lunch_options,
-                )
-            else:
-                mapped = _map_header(
-                    header, column_index, q_index, claimed_fields, claimed_extra_keys
-                )
-            mappings.append(mapped)
-
+        mappings = _build_mappings(headers, q_index)
         known_fields = KNOWN_FIELDS_BY_TYPE.get(sheet_type, VOLUNTEER_KNOWN_FIELDS)
-
         return SheetHeadersResponse(
             sheet_name=sheet_name,
             sheet_type=sheet_type,
             mappings=mappings,
             known_fields=known_fields,
         )
+
+    def _fetch_header_row(self, sheet_url: str, sheet_name: str) -> list[str]:
+        spreadsheet_id = self.extract_spreadsheet_id(sheet_url)
+        try:
+            result = (
+                self._client.spreadsheets()
+                .values()
+                .get(spreadsheetId=spreadsheet_id, range=f"'{sheet_name}'!1:1")
+                .execute()
+            )
+        except HttpError as e:
+            if e.resp.status == 403:
+                raise PermissionError("Service account cannot read this sheet.")
+            raise
+        rows = result.get("values", [])
+        return rows[0] if rows else []
 
     def get_rows(
         self, spreadsheet_id: str, sheet_name: str, skip_header: bool = True
@@ -307,28 +263,117 @@ def _slugify(text: str, max_len: int = 50) -> str:
     return slug[:max_len]
 
 
-def _is_lunch_header(lower: str) -> bool:
-    """Return True if the lowercased header string contains a lunch keyword."""
-    return any(kw in lower for kw in LUNCH_HEADER_KEYWORDS)
-
-
-def _infer_lunch_row_key(header: str) -> str:
+def _raw_field(header: str, q_index: dict) -> str | None:
     """
-    Infer a short row_key from a lunch-related column header.
-
-    Returns the first matching keyword slug, or "" if none found
-    (user must fill in the key manually).
-
-    Examples:
-        "Which protein do you want?" → "protein"
-        "What would you like to drink?" → "drink"
-        "Entrée selection" → "entree"
+    Return the hint-matched field for a header without running dedup.
+    Grid questions (nexus_type == "matrix_row") return None — they are already
+    matrix_row and don't need the multi-header upgrade path.
     """
     lower = header.lower()
-    for keyword, key in LUNCH_ROW_KEY_KEYWORDS:
+    q = _match_question(lower, q_index)
+    if q is not None:
+        if q["nexus_type"] == "matrix_row":
+            return None
+        field = _hint_field(q["title"]).field
+    else:
+        hint = match_volunteer_hint(lower)
+        field = hint.field if hint is not None else None
+    return None if field in (None, "__ignore__") else field
+
+
+def _find_multi_matrix_columns(headers: list[str], q_index: dict) -> dict[int, str]:
+    """
+    Pre-scan all headers and return {column_index: field} for every column that
+    belongs to a multi-header group opting in to matrix_row aggregation.
+
+    A group qualifies when its field is listed in MATRIX_ROW_KEY_KEYWORDS and
+    two or more headers hint to that same field.
+    """
+    field_to_indices: dict[str, list[int]] = {}
+    for i, header in enumerate(headers):
+        field = _raw_field(header, q_index)
+        if field and field in MATRIX_ROW_KEY_KEYWORDS:
+            field_to_indices.setdefault(field, []).append(i)
+
+    return {
+        idx: field
+        for field, indices in field_to_indices.items()
+        if len(indices) >= 2
+        for idx in indices
+    }
+
+
+def _infer_row_key(header: str, field: str) -> str:
+    """
+    Infer a short row_key from a column header using the per-field keyword table.
+
+    Returns "" if no keyword matches — the user must fill in the key manually.
+    """
+    lower = header.lower()
+    for keyword, key in MATRIX_ROW_KEY_KEYWORDS.get(field, []):
         if keyword in lower:
             return key
     return ""
+
+
+def _extract_options(q: dict) -> list[FormQuestionOption] | None:
+    """Build a FormQuestionOption list from a form question dict, or None if no options."""
+    raw_opts = q.get("options")
+    if not raw_opts:
+        return None
+    return [
+        FormQuestionOption(
+            raw=o.raw if hasattr(o, "raw") else o["raw"],
+            alias=o.alias if hasattr(o, "alias") else o["alias"],
+        )
+        for o in raw_opts
+    ]
+
+
+def _mapped_as_multi_matrix_row(
+    column_index: int,
+    header: str,
+    field: str,
+    q_index: dict,
+) -> MappedHeader:
+    """Build a MappedHeader for a column belonging to a multi-header matrix_row group."""
+    q = _match_question(header.lower(), q_index)
+    return MappedHeader(
+        column_index=column_index,
+        header=header,
+        field=field,
+        type="matrix_row",
+        row_key=_infer_row_key(header, field) or None,
+        options=_extract_options(q) if q is not None else None,
+    )
+
+
+def _build_mappings(headers: list[str], q_index: dict) -> list[MappedHeader]:
+    """
+    Build the full MappedHeader list for a set of sheet headers.
+
+    Columns in a multi-header matrix_row group are promoted via
+    _mapped_as_multi_matrix_row; all others go through the normal
+    _map_header path with dedup.
+    """
+    multi_matrix = _find_multi_matrix_columns(headers, q_index)
+
+    claimed_fields: set[str] = set()
+    claimed_extra_keys: set[str] = set()
+    mappings: list[MappedHeader] = []
+
+    for column_index, header in enumerate(headers):
+        if column_index in multi_matrix:
+            mapped = _mapped_as_multi_matrix_row(
+                column_index, header, multi_matrix[column_index], q_index
+            )
+        else:
+            mapped = _map_header(
+                header, column_index, q_index, claimed_fields, claimed_extra_keys
+            )
+        mappings.append(mapped)
+
+    return mappings
 
 
 def _infer_grid_field(
@@ -499,16 +544,7 @@ def _mapped_from_question(
         field, mapping_type, extra_key, claimed_fields, claimed_extra_keys
     )
 
-    # Convert raw option dicts to FormQuestionOption for output
-    fq_options: list[FormQuestionOption] | None = None
-    if options:
-        fq_options = [
-            FormQuestionOption(
-                raw=o.raw if hasattr(o, "raw") else o["raw"],
-                alias=o.alias if hasattr(o, "alias") else o["alias"],
-            )
-            for o in options
-        ]
+    fq_options = _extract_options(q)
 
     return MappedHeader(
         column_index=column_index,

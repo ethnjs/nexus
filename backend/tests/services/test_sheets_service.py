@@ -11,8 +11,9 @@ from app.services.sheets_service import (
     _alias_rules,
     _slugify,
     _dedup,
-    _is_lunch_header,
-    _infer_lunch_row_key,
+    _infer_row_key,
+    _find_multi_matrix_columns,
+    _extract_options,
     _mapped_from_hint,
 )
 from app.services.volunteer_hints import (
@@ -717,35 +718,46 @@ def test_dedup_any_matrix_row_field_never_claimed():
 
 
 # ---------------------------------------------------------------------------
-# _is_lunch_header / _infer_lunch_row_key
+# _infer_row_key / _find_multi_matrix_columns / _extract_options
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("header,expected", [
-    ("Which protein do you want?",           True),
-    ("What would you like to drink?",        True),
-    ("Lunch Order",                          True),
-    ("Meal preference",                      True),
-    ("Entrée selection",                     True),
-    ("Dessert choice",                       True),
-    ("Email Address",                        False),
-    ("First Name",                           False),
-    ("Availability [8:00 AM - 10:00 AM]",   False),
+@pytest.mark.parametrize("header,field,expected", [
+    ("Which protein do you want?",    "lunch_order", "protein"),
+    ("What would you like to drink?", "lunch_order", "drink"),
+    ("Entrée selection",              "lunch_order", "entree"),
+    ("Entree selection",              "lunch_order", "entree"),
+    ("Choose a dessert",              "lunch_order", "dessert"),
+    ("Some unrecognized column",      "lunch_order", ""),
 ])
-def test_is_lunch_header(header, expected):
-    assert _is_lunch_header(header.lower()) is expected
+def test_infer_row_key(header, field, expected):
+    assert _infer_row_key(header, field) == expected
 
 
-@pytest.mark.parametrize("header,expected_key", [
-    ("Which protein do you want?",           "protein"),
-    ("What would you like to drink?",        "drink"),
-    ("Entrée selection",                     "entree"),
-    ("Dessert choice",                       "dessert"),
-    ("Meal preference",                      "meal"),
-    ("Lunch Order",                          "lunch"),
-    ("Some random lunch thing",              "lunch"),
-])
-def test_infer_lunch_row_key(header, expected_key):
-    assert _infer_lunch_row_key(header) == expected_key
+def test_find_multi_matrix_columns_two_lunch_headers():
+    headers = ["Which protein do you want?", "What would you like to drink?"]
+    result = _find_multi_matrix_columns(headers, {})
+    assert result == {0: "lunch_order", 1: "lunch_order"}
+
+
+def test_find_multi_matrix_columns_single_lunch_not_promoted():
+    headers = ["Lunch Order", "Email Address"]
+    result = _find_multi_matrix_columns(headers, {})
+    assert result == {}
+
+
+def test_extract_options_builds_list():
+    q = _make_radio_q("q1", "Which protein?", [
+        FormQuestionOption(raw="Chicken", alias="Chicken"),
+        FormQuestionOption(raw="Steak", alias="Steak"),
+    ])
+    opts = _extract_options(q)
+    assert opts is not None
+    assert [o.raw for o in opts] == ["Chicken", "Steak"]
+
+
+def test_extract_options_returns_none_when_no_options():
+    q = _make_text_q("q1", "First Name")
+    assert _extract_options(q) is None
 
 
 # ---------------------------------------------------------------------------

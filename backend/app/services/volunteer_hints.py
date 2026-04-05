@@ -146,25 +146,23 @@ VOLUNTEER_HINTS: list[tuple[str, FieldHint]] = [
 # Also handles: "Availability from 5/21 to 5/23 [8:00 AM - 10:00 AM]"
 AVAILABILITY_BRACKET_PATTERN = re.compile(r"availability.+\[(.+)\]", re.IGNORECASE)
 
-# Keywords that identify a lunch-order header for multi-header detection.
-LUNCH_HEADER_KEYWORDS = frozenset({
-    "lunch", "meal", "protein", "drink", "entrée", "entree",
-    "dish", "dessert", "burrito",
-})
-
-# Ordered pairs (keyword, row_key) for inferring a row_key from a lunch header.
-# More specific / distinctive terms come first.
-LUNCH_ROW_KEY_KEYWORDS: list[tuple[str, str]] = [
-    ("protein",  "protein"),
-    ("burrito",  "burrito"),
-    ("drink",    "drink"),
-    ("entrée",   "entree"),
-    ("entree",   "entree"),
-    ("dessert",  "dessert"),
-    ("dish",     "dish"),
-    ("meal",     "meal"),
-    ("lunch",    "lunch"),
-]
+# Per-field ordered (keyword, row_key) tables for multi-header matrix_row upgrade.
+# A field listed here opts in to automatic aggregation: when 2+ headers hint to
+# the same field, they are promoted to type="matrix_row" with inferred row_keys.
+# To support a new aggregatable field, add an entry here.
+MATRIX_ROW_KEY_KEYWORDS: dict[str, list[tuple[str, str]]] = {
+    "lunch_order": [
+        ("protein",  "protein"),
+        ("burrito",  "burrito"),
+        ("drink",    "drink"),
+        ("entrée",   "entree"),
+        ("entree",   "entree"),
+        ("dessert",  "dessert"),
+        ("dish",     "dish"),
+        ("meal",     "meal"),
+        ("lunch",    "lunch"),
+    ],
+}
 
 
 def match_volunteer_hint(header_lower: str) -> FieldHint | None:
