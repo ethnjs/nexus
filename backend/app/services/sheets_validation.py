@@ -138,11 +138,13 @@ def validate_column_mappings(
                 message="The 'email' field must use type 'string'.",
             ))
 
-    # Duplicate extra_key values across all mappings
+    # Duplicate extra_key values across non-matrix_row extra_data mappings.
+    # matrix_row entries aggregate into a JSON structure keyed by row_key, so
+    # sharing an extra_key does not cause overwrites — skip them here.
     extra_key_headers: dict[str, list[str]] = {}
     extra_key_indices: dict[str, list[int]] = {}
     for entry in entries:
-        if entry.get("field") == "extra_data":
+        if entry.get("field") == "extra_data" and entry.get("type") != "matrix_row":
             ek = entry.get("extra_key")
             if ek:
                 header = entry.get("header")
@@ -157,6 +159,33 @@ def validate_column_mappings(
                 column_index=extra_key_indices.get(ek),
                 message=(
                     f"Duplicate extra_key '{ek}' across multiple columns. "
+                    "Later columns will overwrite earlier ones during sync."
+                ),
+            ))
+
+    # Duplicate row_key within the same field for matrix_row mappings.
+    # Two matrix_row columns with the same field AND row_key DO overwrite each other.
+    # Key: (field, row_key) → list of headers / indices
+    matrix_row_key_headers: dict[tuple[str, str], list[str]] = {}
+    matrix_row_key_indices: dict[tuple[str, str], list[int]] = {}
+    for entry in entries:
+        if entry.get("type") == "matrix_row":
+            field_name = entry.get("field") or ""
+            rk = entry.get("row_key") or ""
+            if field_name and rk:
+                key = (field_name, rk)
+                header = entry.get("header")
+                if header is not None:
+                    matrix_row_key_headers.setdefault(key, []).append(header)
+                matrix_row_key_indices.setdefault(key, []).append(int(entry.get("column_index", -1)))
+
+    for (field_name, rk), headers in matrix_row_key_headers.items():
+        if len(headers) > 1:
+            result.errors.append(ValidationIssue(
+                header=headers,
+                column_index=matrix_row_key_indices.get((field_name, rk)),
+                message=(
+                    f"Duplicate row_key '{rk}' for field '{field_name}' across multiple columns. "
                     "Later columns will overwrite earlier ones during sync."
                 ),
             ))
