@@ -534,6 +534,19 @@ def sync_sheet(
                             processed if isinstance(processed, list) else [processed]
                         )
 
+                elif field == "extra_data" and field_type == "matrix_row":
+                    # matrix_row aggregation into extra_data.
+                    # When extra_key is set, nest under extra_data[extra_key][row_key].
+                    # Without extra_key, store flat at extra_data[row_key].
+                    row_key = (mapping.get("row_key") or "").strip() or _slug(header)
+                    extra_key = (mapping.get("extra_key") or "").strip()
+                    if extra_key:
+                        if not isinstance(extra_data.get(extra_key), dict):
+                            extra_data[extra_key] = {}
+                        extra_data[extra_key][row_key] = processed if processed is not None else ""
+                    else:
+                        extra_data[row_key] = processed if processed is not None else ""
+
                 elif field_type == "matrix_row" and field not in ("availability", "event_preference"):
                     # Generic matrix aggregation: build a dict keyed by row_key.
                     # Blank cells store "" so all keys are always present.
