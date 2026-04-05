@@ -228,6 +228,30 @@ def test_multi_lunch_upgrades_to_matrix_row(svc: SheetsService):
     assert second.row_key == "drink"
 
 
+def test_multi_lunch_includes_options_from_form_questions(svc: SheetsService):
+    """Multi-lunch matrix_row headers include options when form questions are provided."""
+    protein_header = "Which protein do you want in your Chipotle burrito?"
+    drink_header = "What would you like to drink?"
+    questions = [
+        _make_radio_q("q1", protein_header, [
+            FormQuestionOption(raw="Chicken", alias="Chicken"),
+            FormQuestionOption(raw="Steak", alias="Steak"),
+        ]),
+        _make_radio_q("q2", drink_header, [
+            FormQuestionOption(raw="Water", alias="Water"),
+            FormQuestionOption(raw="Lemonade", alias="Lemonade"),
+        ]),
+    ]
+    _mock_headers(svc, [protein_header, drink_header])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    protein = _by_header(result, protein_header)
+    drink = _by_header(result, drink_header)
+    assert protein.options is not None
+    assert [o.raw for o in protein.options] == ["Chicken", "Steak"]
+    assert drink.options is not None
+    assert [o.raw for o in drink.options] == ["Water", "Lemonade"]
+
+
 def test_single_lunch_stays_string(svc: SheetsService):
     """A single lunch header stays as string — no upgrade."""
     _mock_headers(svc, ["Lunch Order"])

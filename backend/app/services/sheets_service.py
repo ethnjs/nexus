@@ -156,12 +156,25 @@ class SheetsService:
         for column_index, header in enumerate(headers):
             if multi_lunch and column_index in lunch_indices:
                 row_key = _infer_lunch_row_key(header)
+                q = _match_question(header.lower(), q_index)
+                lunch_options = None
+                if q is not None:
+                    raw_opts = q.get("options")
+                    if raw_opts:
+                        lunch_options = [
+                            FormQuestionOption(
+                                raw=o.raw if hasattr(o, "raw") else o["raw"],
+                                alias=o.alias if hasattr(o, "alias") else o["alias"],
+                            )
+                            for o in raw_opts
+                        ]
                 mapped = MappedHeader(
                     column_index=column_index,
                     header=header,
                     field="lunch_order",
                     type="matrix_row",
                     row_key=row_key or None,
+                    options=lunch_options,
                 )
             else:
                 mapped = _map_header(
