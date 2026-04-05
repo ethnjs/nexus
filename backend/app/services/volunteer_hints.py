@@ -96,6 +96,11 @@ VOLUNTEER_HINTS: list[tuple[str, FieldHint]] = [
     ("would you like to drink", FieldHint(field="lunch_order")),
     ("lunch",               FieldHint(field="lunch_order")),
     ("meal",                FieldHint(field="lunch_order")),
+    ("entrée",              FieldHint(field="lunch_order")),
+    ("entree",              FieldHint(field="lunch_order")),
+    ("dish",                FieldHint(field="lunch_order")),
+    ("dessert",             FieldHint(field="lunch_order")),
+    ("drink",               FieldHint(field="lunch_order")),
 
     # ── Science Olympiad experience ───────────────────────────────────────
     ("competed in the past",    FieldHint(field="competition_exp")),
@@ -140,6 +145,24 @@ VOLUNTEER_HINTS: list[tuple[str, FieldHint]] = [
 # Pattern for availability grid columns: "Availability [8:00 AM - 10:00 AM]"
 # Also handles: "Availability from 5/21 to 5/23 [8:00 AM - 10:00 AM]"
 AVAILABILITY_BRACKET_PATTERN = re.compile(r"availability.+\[(.+)\]", re.IGNORECASE)
+
+# Per-field ordered (keyword, row_key) tables for multi-header matrix_row upgrade.
+# A field listed here opts in to automatic aggregation: when 2+ headers hint to
+# the same field, they are promoted to type="matrix_row" with inferred row_keys.
+# To support a new aggregatable field, add an entry here.
+MATRIX_ROW_KEY_KEYWORDS: dict[str, list[tuple[str, str]]] = {
+    "lunch_order": [
+        ("protein",  "protein"),
+        ("burrito",  "burrito"),
+        ("drink",    "drink"),
+        ("entrée",   "entree"),
+        ("entree",   "entree"),
+        ("dessert",  "dessert"),
+        ("dish",     "dish"),
+        ("meal",     "meal"),
+        ("lunch",    "lunch"),
+    ],
+}
 
 
 def match_volunteer_hint(header_lower: str) -> FieldHint | None:

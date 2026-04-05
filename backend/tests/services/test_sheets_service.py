@@ -11,6 +11,9 @@ from app.services.sheets_service import (
     _alias_rules,
     _slugify,
     _dedup,
+    _infer_row_key,
+    _find_multi_matrix_columns,
+    _extract_options,
     _mapped_from_hint,
 )
 from app.services.volunteer_hints import (
@@ -209,8 +212,8 @@ def test_dedup_availability_allows_multiple_matrix_rows(svc: SheetsService):
         assert m.type == "matrix_row"
 
 
-def test_dedup_second_lunch_becomes_ignore(svc: SheetsService):
-    """Two lunch-related columns — second one falls back to ignore (without form data)."""
+def test_multi_lunch_upgrades_to_matrix_row(svc: SheetsService):
+    """Two lunch-related columns are upgraded to matrix_row with inferred row_keys."""
     _mock_headers(svc, [
         "Which protein do you want?",
         "What would you like to drink?",
@@ -219,8 +222,45 @@ def test_dedup_second_lunch_becomes_ignore(svc: SheetsService):
     first = result.mappings[0]
     second = result.mappings[1]
     assert first.field == "lunch_order"
-    # Without form data, lunch_order is claimed by first match, second becomes ignore
-    assert second.field == "__ignore__"
+    assert first.type == "matrix_row"
+    assert first.row_key == "protein"
+    assert second.field == "lunch_order"
+    assert second.type == "matrix_row"
+    assert second.row_key == "drink"
+
+
+def test_multi_lunch_includes_options_from_form_questions(svc: SheetsService):
+    """Multi-lunch matrix_row headers include options when form questions are provided."""
+    protein_header = "Which protein do you want in your Chipotle burrito?"
+    drink_header = "What would you like to drink?"
+    questions = [
+        _make_radio_q("q1", protein_header, [
+            FormQuestionOption(raw="Chicken", alias="Chicken"),
+            FormQuestionOption(raw="Steak", alias="Steak"),
+        ]),
+        _make_radio_q("q2", drink_header, [
+            FormQuestionOption(raw="Water", alias="Water"),
+            FormQuestionOption(raw="Lemonade", alias="Lemonade"),
+        ]),
+    ]
+    _mock_headers(svc, [protein_header, drink_header])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
+    protein = _by_header(result, protein_header)
+    drink = _by_header(result, drink_header)
+    assert protein.options is not None
+    assert [o.raw for o in protein.options] == ["Chicken", "Steak"]
+    assert drink.options is not None
+    assert [o.raw for o in drink.options] == ["Water", "Lemonade"]
+
+
+def test_single_lunch_stays_string(svc: SheetsService):
+    """A single lunch header stays as string — no upgrade."""
+    _mock_headers(svc, ["Lunch Order"])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    m = result.mappings[0]
+    assert m.field == "lunch_order"
+    assert m.type == "string"
+    assert m.row_key is None
 
 
 def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
@@ -664,6 +704,60 @@ def test_dedup_extra_key_collision():
     assert f1 == "extra_data"
     assert f2 == "__ignore__"
     assert t2 == "ignore"
+
+
+def test_dedup_any_matrix_row_field_never_claimed():
+    """Any field with type=matrix_row is exempt from claiming — not just availability/event_preference."""
+    claimed_fields: set = set()
+    claimed_keys: set = set()
+    f1, _, _ = _dedup("lunch_order", "matrix_row", None, claimed_fields, claimed_keys)
+    f2, _, _ = _dedup("lunch_order", "matrix_row", None, claimed_fields, claimed_keys)
+    assert f1 == "lunch_order"
+    assert f2 == "lunch_order"
+    assert "lunch_order" not in claimed_fields
+
+
+# ---------------------------------------------------------------------------
+# _infer_row_key / _find_multi_matrix_columns / _extract_options
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("header,field,expected", [
+    ("Which protein do you want?",    "lunch_order", "protein"),
+    ("What would you like to drink?", "lunch_order", "drink"),
+    ("Entrée selection",              "lunch_order", "entree"),
+    ("Entree selection",              "lunch_order", "entree"),
+    ("Choose a dessert",              "lunch_order", "dessert"),
+    ("Some unrecognized column",      "lunch_order", ""),
+])
+def test_infer_row_key(header, field, expected):
+    assert _infer_row_key(header, field) == expected
+
+
+def test_find_multi_matrix_columns_two_lunch_headers():
+    headers = ["Which protein do you want?", "What would you like to drink?"]
+    result = _find_multi_matrix_columns(headers, {})
+    assert result == {0: "lunch_order", 1: "lunch_order"}
+
+
+def test_find_multi_matrix_columns_single_lunch_not_promoted():
+    headers = ["Lunch Order", "Email Address"]
+    result = _find_multi_matrix_columns(headers, {})
+    assert result == {}
+
+
+def test_extract_options_builds_list():
+    q = _make_radio_q("q1", "Which protein?", [
+        FormQuestionOption(raw="Chicken", alias="Chicken"),
+        FormQuestionOption(raw="Steak", alias="Steak"),
+    ])
+    opts = _extract_options(q)
+    assert opts is not None
+    assert [o.raw for o in opts] == ["Chicken", "Steak"]
+
+
+def test_extract_options_returns_none_when_no_options():
+    q = _make_text_q("q1", "First Name")
+    assert _extract_options(q) is None
 
 
 # ---------------------------------------------------------------------------
