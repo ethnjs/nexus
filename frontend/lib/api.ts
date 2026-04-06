@@ -231,6 +231,16 @@ export interface Membership {
   created_at:        string
   updated_at:        string
   user?:             User
+
+  // TODO(temp): profile fields synced to membership until user self-management
+  shirt_size?:          string | null
+  dietary_restriction?: string | null
+  university?:          string | null
+  major?:               string | null
+  employer?:            string | null
+  student_status?:      string | null
+  competition_exp?:     string | null
+  volunteering_exp?:    string | null
 }
 
 export const membershipsApi = {
