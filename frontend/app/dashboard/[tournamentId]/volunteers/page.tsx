@@ -321,12 +321,12 @@ export default function VolunteersPage() {
                   </td>
 
                   {/* User fields */}
-                  <td style={tdSec}>{m.user?.phone               ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.university           ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.major                ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.employer             ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.shirt_size           ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.dietary_restriction  ?? "—"}</td>
+                  <td style={tdSec}>{m.user?.phone           ?? "—"}</td>
+                  <td style={tdSec}>{m.university            ?? "—"}</td>
+                  <td style={tdSec}>{m.major                 ?? "—"}</td>
+                  <td style={tdSec}>{m.employer              ?? "—"}</td>
+                  <td style={tdSec}>{m.shirt_size            ?? "—"}</td>
+                  <td style={tdSec}>{m.dietary_restriction   ?? "—"}</td>
 
                   {/* Event pref — tags */}
                   <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "200px" }}>
