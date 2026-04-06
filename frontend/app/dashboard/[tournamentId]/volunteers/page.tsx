@@ -277,6 +277,8 @@ export default function VolunteersPage() {
                 <th style={thPlain}>Employer</th>
                 <th style={thPlain}>Shirt Size</th>
                 <th style={thPlain}>Dietary</th>
+                <th style={{ ...thPlain, minWidth: "200px" }}>Competition Exp</th>
+                <th style={{ ...thPlain, minWidth: "200px" }}>Volunteering Exp</th>
 
                 {/* Membership fields */}
                 <th style={thPlain}>Event Pref</th>
@@ -326,6 +328,8 @@ export default function VolunteersPage() {
                   <td style={tdSec}>{m.employer              ?? "—"}</td>
                   <td style={tdSec}>{m.shirt_size            ?? "—"}</td>
                   <td style={tdSec}>{m.dietary_restriction   ?? "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", minWidth: "200px", maxWidth: "300px" }}>{m.competition_exp   ?? "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", minWidth: "200px", maxWidth: "300px" }}>{m.volunteering_exp  ?? "—"}</td>
 
                   {/* Event pref — tags */}
                   <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "200px" }}>
