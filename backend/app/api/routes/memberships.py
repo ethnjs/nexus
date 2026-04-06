@@ -11,7 +11,7 @@ from app.core.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import Event, Membership, Tournament, User
-from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadWithUser
+from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])
@@ -88,14 +88,14 @@ def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) 
 # GET /tournaments/{tournament_id}/memberships/ — view_volunteers+
 # Returns MembershipReadWithUser: user name/email embedded via JOIN (1 query).
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[MembershipReadWithUser])
+@router.get("/", response_model=list[MembershipReadFlat])
 def list_memberships(
     tournament_id: int,
     status_filter: str | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """List all memberships for a tournament, with user info embedded inline.
+    """List all memberships for a tournament, with user identity fields flattened inline.
 
     Uses joinedload so SQLAlchemy fetches users in a single JOIN rather than
     issuing a separate SELECT per membership (fixes O(n) query issue #4).
@@ -115,11 +115,18 @@ def list_memberships(
     if status_filter:
         query = query.filter(Membership.status == status_filter)
 
-    # Return ORM objects directly — Pydantic serializes via from_attributes=True,
-    # which correctly handles the nested user relationship. _serialize() returns a
-    # plain dict which breaks nested ORM object serialization (FastAPI cannot apply
-    # from_attributes inside a dict), so the list endpoint bypasses it entirely.
-    return query.order_by(Membership.id).all()
+    results = []
+    for m in query.order_by(Membership.id).all():
+        data = _serialize(m)
+        # TODO(temp): these fields are sourced from User — when the user profile
+        # page is built, the full user profile (beyond identity) should continue
+        # to come from User, not Membership.
+        data["first_name"] = m.user.first_name if m.user else None
+        data["last_name"] = m.user.last_name if m.user else None
+        data["email"] = m.user.email if m.user else None
+        data["phone"] = m.user.phone if m.user else None
+        results.append(data)
+    return results
 
 
 # ---------------------------------------------------------------------------

@@ -2,7 +2,6 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 from pydantic import BaseModel, field_validator
-from app.schemas.user import UserRead
 
 VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
 LunchOrderValue = str | dict[str, Any]
@@ -106,6 +105,17 @@ class MembershipRead(MembershipBase):
     model_config = {"from_attributes": True}
 
 
-class MembershipReadWithUser(MembershipRead):
-    """Extended read that includes user details — used in volunteer list views."""
-    user: UserRead | None = None
+class MembershipReadFlat(MembershipRead):
+    """List-view read: user identity fields flattened onto the membership dict.
+
+    Avoids a nested user object in list responses. The four fields below are
+    sourced from the User table via a JOIN and promoted to the top level.
+
+    # TODO(temp): these fields are sourced from User — when the user profile
+    # page is built, the full user profile (beyond identity) should continue
+    # to come from User, not Membership.
+    """
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
