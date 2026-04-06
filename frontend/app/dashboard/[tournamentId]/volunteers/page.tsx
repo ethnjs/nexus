@@ -272,8 +272,10 @@ export default function VolunteersPage() {
                 {/* User fields */}
                 <th style={thPlain}>Phone</th>
                 <th style={thPlain}>University</th>
+                <th style={thPlain}>Student Status</th>
                 <th style={thPlain}>Major</th>
                 <th style={thPlain}>Employer</th>
+                <th style={thPlain}>Student Status</th>
                 <th style={thPlain}>Shirt Size</th>
                 <th style={thPlain}>Dietary</th>
 
@@ -320,6 +322,7 @@ export default function VolunteersPage() {
                   {/* User fields */}
                   <td style={tdSec}>{m.phone           ?? "—"}</td>
                   <td style={tdSec}>{m.university            ?? "—"}</td>
+                  <td style={tdSec}>{m.student_status        ?? "—"}</td>
                   <td style={tdSec}>{m.major                 ?? "—"}</td>
                   <td style={tdSec}>{m.employer              ?? "—"}</td>
                   <td style={tdSec}>{m.shirt_size            ?? "—"}</td>
