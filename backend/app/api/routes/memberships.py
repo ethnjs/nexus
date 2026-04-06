@@ -39,6 +39,15 @@ def _serialize(m: Membership, include_user: bool = False) -> dict:
         "extra_data": m.extra_data,
         "created_at": m.created_at,
         "updated_at": m.updated_at,
+        # TODO(temp): remove when user account self-management is implemented
+        "shirt_size": m.shirt_size,
+        "dietary_restriction": m.dietary_restriction,
+        "university": m.university,
+        "major": m.major,
+        "employer": m.employer,
+        "student_status": m.student_status,
+        "competition_exp": m.competition_exp,
+        "volunteering_exp": m.volunteering_exp,
     }
 
     if include_user:
