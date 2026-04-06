@@ -24,6 +24,7 @@ VOLUNTEER_KNOWN_FIELDS: list[str] = [
     "last_name",
     "email",
     "phone",
+    # TODO(temp): volunteer profile fields (-> Membership table until user self management)
     "shirt_size",
     "dietary_restriction",
     "university",
