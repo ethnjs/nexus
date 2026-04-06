@@ -275,7 +275,6 @@ export default function VolunteersPage() {
                 <th style={thPlain}>Student Status</th>
                 <th style={thPlain}>Major</th>
                 <th style={thPlain}>Employer</th>
-                <th style={thPlain}>Student Status</th>
                 <th style={thPlain}>Shirt Size</th>
                 <th style={thPlain}>Dietary</th>
 
