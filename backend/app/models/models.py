@@ -198,6 +198,16 @@ class Membership(Base):
         UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
     )
 
+    # TODO(temp): remove when user account self-management is implemented
+    shirt_size           = Column(String(16),  nullable=True)
+    dietary_restriction  = Column(String(255), nullable=True)
+    university           = Column(String(255), nullable=True)
+    major                = Column(String(255), nullable=True)
+    employer             = Column(String(255), nullable=True)
+    student_status       = Column(String(100), nullable=True)
+    competition_exp      = Column(Text,        nullable=True)
+    volunteering_exp     = Column(Text,        nullable=True)
+
 
 # ---------------------------------------------------------------------------
 # [ACTIVE] SheetConfig
