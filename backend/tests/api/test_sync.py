@@ -104,12 +104,12 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     assert user is not None
     assert user.first_name == "Alice"
     assert user.phone == "(949) 555-1234"
-    assert user.shirt_size == "M"
 
     memberships = _list_memberships(client, t["id"])
     alice = [m for m in memberships if m["user_id"] == user.id]
     assert len(alice) == 1
     m = alice[0]
+    assert m["shirt_size"] == "M"
     assert m["role_preference"] == ["Event Volunteer"]
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
     assert m["extra_data"]["transportation"] == "Driving"
@@ -157,10 +157,14 @@ def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):
     assert response.json()["created"] == 0
     assert response.json()["updated"] == 1
 
-    from app.models.models import User as UserModel
+    from app.models.models import User as UserModel, Membership as MembershipModel
     db.expire_all()
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
-    assert user.shirt_size == "L"
+    membership = db.query(MembershipModel).filter(
+        MembershipModel.user_id == user.id,
+        MembershipModel.tournament_id == t["id"],
+    ).first()
+    assert membership.shirt_size == "L"
 
 
 def test_sync_skips_row_missing_email(client, td_user, mock_sheets_service):
