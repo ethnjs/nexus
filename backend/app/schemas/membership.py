@@ -55,6 +55,16 @@ class MembershipBase(BaseModel):
     # Keys match custom_field.key in the tournament's volunteer_schema.
     extra_data: dict | None = None
 
+    # TODO(temp): remove when user account self-management is implemented
+    shirt_size: str | None = None
+    dietary_restriction: str | None = None
+    university: str | None = None
+    major: str | None = None
+    employer: str | None = None
+    student_status: str | None = None
+    competition_exp: str | None = None
+    volunteering_exp: str | None = None
+
     @field_validator("status")
     @classmethod
     def validate_status(cls, v: str) -> str:
