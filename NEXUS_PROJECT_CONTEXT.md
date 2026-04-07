@@ -1,6 +1,6 @@
 # NEXUS — Science Olympiad Tournament Manager
 ## Project Context Document
-*Last updated: GitHub Actions pytest CI workflow*
+*Last updated: fix/sync-parse-time-range — _apply_rules handles parse_time_range + parse_availability, sync route arg order fix, test suite alignment*
 
 > **Stylization:** Always **NEXUS** (all caps) in UI/docs. Lowercase `nexus` only in code/URLs.
 > **API version:** `0.2.0`
@@ -21,7 +21,7 @@ Full-stack dashboard for Science Olympiad tournament directors to manage volunte
 ## Tech Stack
 - **Backend:** Python 3.13, FastAPI, SQLAlchemy 2.0.36 (classic `Column()` style — NOT `Mapped[]`), SQLite (dev) / PostgreSQL (prod), Pytest
 - **Frontend:** Next.js 15, React, TypeScript, TailwindCSS, Vercel
-- **Google Sheets API:** service account credentials — file in dev (`credentials.json`), env var in prod (`GOOGLE_SERVICE_ACCOUNT_JSON`)
+- **Google Sheets + Forms API:** service account credentials — file in dev (`credentials.json`), env var in prod (`GOOGLE_SERVICE_ACCOUNT_JSON`)
 - **Hosting:** Railway (backend + PostgreSQL), Vercel (frontend) — may migrate to Render after Railway trial
 
 ---
@@ -54,31 +54,36 @@ nexus/
 │   │   │   ├── event.py
 │   │   │   ├── user.py
 │   │   │   ├── membership.py          # Membership + AvailabilitySlot + ScheduleSlot
-│   │   │   ├── sheet_config.py        # SheetConfig + ColumnMapping + ParseRule + KNOWN_FIELDS
+│   │   │   ├── sheet_config.py        # SheetConfig + ColumnMapping + ParseRule + MappedHeader
+│   │   │   │                          # SheetHeadersResponse (flat mappings list)
 │   │   │   │                          # ValidateMappingsRequest/Response
 │   │   │   │                          # SheetConfigReadWithWarnings
 │   │   │   └── auth.py
 │   │   ├── services/
-│   │   │   ├── sheets_service.py      # Google Sheets API logic + header auto-detection
+│   │   │   ├── sheets_service.py      # Google Sheets API + flat get_headers() with dedup
+│   │   │   ├── forms_service.py       # Google Forms API — get_form_questions() → list[dict]
 │   │   │   ├── sync_service.py        # Sync logic: upsert users/memberships, parse rules engine
 │   │   │   └── sheets_validation.py   # validate_column_mappings() — ValidationIssue, ValidationResult
-│   │   │                              # (renamed from validation.py — update all imports)
 │   │   └── api/routes/
 │   │       ├── auth.py                # Login, logout, me, register
 │   │       ├── tournaments.py
 │   │       ├── events.py              # Nested under /tournaments/{id}/events/
 │   │       ├── users.py               # Admin-only global + tournament-scoped
 │   │       ├── memberships.py         # Nested under /tournaments/{id}/memberships/
-│   │       └── sheets.py              # Sheet config CRUD + validate-mappings endpoint
+│   │       └── sheets.py              # Sheet config CRUD + validate-mappings + headers endpoint
+│   │                                  # get_forms_service() dependency added
 │   │                                  # CREATE/PATCH return SheetConfigReadWithWarnings
 │   ├── tests/
-│   │   ├── conftest.py                # In-memory SQLite, fixtures: admin_user, td_user, td_tournament, client
+│   │   ├── conftest.py                # In-memory SQLite, fixtures: admin_user, td_user, td_tournament,
+│   │   │                              # client, mock_sheets_service, mock_forms_service
 │   │   ├── api/
 │   │   │   ├── test_auth.py, test_tournaments.py, test_events.py
 │   │   │   ├── test_users.py, test_memberships.py, test_sheets.py, test_sync.py
 │   │   └── services/
-│   │       ├── test_sheets_service.py, test_sync_service.py
-│   │       └── test_sheets_validation.py  # (renamed from test_validation.py)
+│   │       ├── test_sheets_service.py  # Updated for flat MappedHeader API
+│   │       ├── test_forms_service.py   # Updated for plain dict return shape
+│   │       ├── test_sync_service.py
+│   │       └── test_sheets_validation.py
 │   ├── alembic/                       # Migrations
 │   ├── conftest.py, alembic.ini, Procfile, pytest.ini, requirements.txt
 └── frontend/
@@ -118,19 +123,9 @@ nexus/
     │   ├── Sidebar.tsx                # 52px collapsed / 192px expanded, in normal flow
     │   └── Topbar.tsx                 # showWordmark | showDropdown | showAvatar props
     ├── lib/
-    │   ├── api.ts                     # All API types + fetch wrapper
-    │   │                              # ApiError (detail: unknown for structured 422s)
-    │   │                              # ParseRule, ParseRuleCondition, ParseRuleAction
-    │   │                              # ValidationIssue (header: string[] | string | null)
-    │   │                              # SheetConfig, SheetConfigWithWarnings
-    │   │                              # ValidateMappingsResult, SheetHeadersResponse
-    │   │                              # sheetsApi.validateMappings — new endpoint
-    │   │                              # membershipsApi.deleteMembershipsByEmails — TEMP
-    │   │                              # sheetsApi.getEmailsForNuclearDelete — TEMP
-    │   ├── importMappings.ts          # MappingRow (header, field, type, row_key, extra_key,
-    │   │                              # delimiter, rules), MappingsExport, ImportSummary types
+    │   ├── api.ts                     # All API types + fetch wrapper — NEEDS UPDATE (see below)
+    │   ├── importMappings.ts          # MappingRow, MappingsExport, ImportSummary types
     │   │                              # parseMappingsJson, applyImport, mappingRowsEqual, describeRule
-    │   │                              # NO parseMappingsCsv — CSV removed
     │   ├── useSheetValidation.tsx     # Shared validation hook — new + edit sheet pages
     │   ├── useAuth.tsx, useTournament.tsx
     ├── middleware.ts                  # Protect /dashboard/*, redirect if logged in on /
@@ -226,11 +221,11 @@ owner_id (FK→users), created_at, updated_at
 ### SheetConfig
 ```python
 id, tournament_id (FK→tournaments CASCADE)
-label, sheet_type (interest|confirmation|events)
+label, sheet_type ("volunteers"|"events")   # interest/confirmation coerced → volunteers on read
 sheet_url, spreadsheet_id, sheet_name
 column_mappings: JSON   # {header: {field, type, row_key?, extra_key?, delimiter?, rules?}}
 is_active (bool), last_synced_at, created_at, updated_at
-UNIQUE: (tournament_id, sheet_type)   # ← tracked for removal, see Known Issues
+# UNIQUE(tournament_id, sheet_type) constraint has been REMOVED
 ```
 
 ### Event
@@ -290,7 +285,7 @@ Exports: `validationErrors`, `validationWarnings`, `validationGeneration`, `clea
 `list[str] | str | null` in Python. Backend always serialises as `list[str] | null`. Duplicate `extra_key` errors pass the full list — no comma-joining (headers can contain commas). Frontend uses `matchesHeader()` with `Array.isArray`.
 
 ### ParseRule validation
-`ParseRule.model_validator` removed from Pydantic schema. All business logic (regex compiles, match required, value required, parse_availability condition) lives exclusively in `sheets_validation.py`. Pydantic only validates `condition`/`action` against allowed sets. This prevents Pydantic from rejecting requests before our structured validator runs.
+`ParseRule.model_validator` removed from Pydantic schema. All business logic (regex compiles, match required, value required, parse_time_range condition) lives exclusively in `sheets_validation.py`. Pydantic only validates `condition`/`action` against allowed sets. This prevents Pydantic from rejecting requests before our structured validator runs.
 
 ### SheetConfigMappingTable
 Shared by new/view/edit pages. Import from `@/components/ui/SheetConfigMappingTable`.
@@ -316,6 +311,10 @@ Shared by new/view/edit pages. Import from `@/components/ui/SheetConfigMappingTa
 **`makeRichRow(values, baseline, forcedState?, importedValue?, openOnMount?)`** — helper to build `RichMappingRow`.
 
 **Rule editor:** `Select size="sm"` for condition/action. `match`/`value` inputs 300px mono, local state flushed on blur (no per-keystroke re-renders). `RuleRow`, `RulesPanel`, `MappingRowComponent` wrapped in `React.memo`. Stable per-row `onChange` via ref map.
+
+**`RichMappingRow` fields (current):** `header`, `field`, `type`, `row_key`, `extra_key`, `rules`, `delimiter`, `showAliasEditor`, `formQuestion`, `state`, `openOnMount`
+
+**NEEDS UPDATE — `RichMappingRow` will gain `googleType?: string`** once the frontend is updated for the new backend response. When `googleType` is present, the Type dropdown in the table must be rendered as **read-only text** (hard lock — no Select). See Frontend Work section below.
 
 ### Sheet config export/import
 - **Export:** JSON only. Index (3-dot menu) and view page.
@@ -375,53 +374,204 @@ Set `"delimiter": ";"`. Rule 1 replaces `)` separator with `;`. Rule 2 strips pa
 | `boolean` | "Yes"/"No" → true/false |
 | `integer` | Parse to int |
 | `multi_select` | Split on `delimiter` (default `,`) → JSON array. Rules run before splitting. |
-| `matrix_row` | One row of availability grid → merged into availability JSON. Requires `row_key`. Must have `parse_availability` rule. |
+| `matrix_row` | One row of availability grid → merged into availability JSON. Requires `row_key`. Use `parse_time_range` rule (or legacy `parse_availability`). |
 
 **ParseRule fields:**
 - `condition`: `always` | `contains` | `equals` | `starts_with` | `ends_with` | `regex`
 - `match`: required unless `always`; `case_sensitive`: bool (default false)
-- `action`: `set` | `replace` | `prepend` | `append` | `discard` | `parse_availability`
+- `action`: `set` | `replace` | `prepend` | `append` | `discard` | `parse_time_range` | `parse_availability` (legacy alias)
 - `value`: required for `set`/`replace`/`prepend`/`append`
 
-All matching rules fire sequentially (not first-match). `parse_availability` is explicit — must be added as a rule, not implicit on `matrix_row`. `replace` + `regex` → `re.sub`; other conditions → case-insensitive literal replace.
+All matching rules fire sequentially (not first-match). `parse_time_range` (canonical) / `parse_availability` (accepted as legacy alias) must be added as a rule on `matrix_row` fields — not implicit. `replace` + `regex` → `re.sub`; other conditions → case-insensitive literal replace.
 
 **Validation runs on validate-mappings + CREATE + PATCH** → 422 with `{ errors: [], warnings: [] }` on hard errors.
 
-**KNOWN_FIELDS:** `__ignore__`, `first_name`, `last_name`, `email`, `phone`, `shirt_size`, `dietary_restriction`, `university`, `major`, `employer`, `role_preference`, `event_preference`, `availability`, `lunch_order`, `notes`, `extra_data`
+**VOLUNTEER_KNOWN_FIELDS:** `__ignore__`, `first_name`, `last_name`, `email`, `phone`, `shirt_size`, `dietary_restriction`, `university`, `major`, `employer`, `role_preference`, `event_preference`, `availability`, `lunch_order`, `notes`, `extra_data`
+
+**EVENT_KNOWN_FIELDS:** `__ignore__`, `extra_data` (stub — fields TBD when events import is implemented)
 
 ---
 
-## Frontend Design System
+## SheetHeadersResponse — New Flat Shape
 
-### Fonts
-- `--font-serif` → Georgia — h1, h2, page titles, wordmarks
-- `--font-sans` → Geist — UI labels, buttons, nav, badges
-- `--font-mono` → Geist Mono — body text, inputs, data values
+**BREAKING CHANGE** from the previous `headers + suggestions + form_questions` triple.
 
-### Colors
-- `--color-bg`: `#F7F7F5` | `--color-surface`: `#FFFFFF`
-- `--color-accent`: `#0A0A0A` | `--color-accent-subtle`: `#F0F0EC`
-- `--color-danger`: `#E53E3E` | `--color-success`: `#22C55E` | `--color-warning`: `#EAB308`
-- `--color-border`: `#E2E2DE` | `--color-border-strong`: `#C8C8C2`
-- `--color-text-primary`: `#0A0A0A` | `--color-text-secondary`: `#6B6B65` | `--color-text-tertiary`: `#9B9B93`
-- Row state colors: changed `#FFF7ED`/`#FDBA74` (orange-amber), warning `#FFFBEB`/`#FDE047` (yellow), error `#FFF5F5`/`#FCA5A5`, new `#F0FDF4`/`#86EFAC`
+The `/headers/` endpoint now returns:
+```typescript
+interface SheetHeadersResponse {
+  sheet_name:            string
+  sheet_type:            string           // "volunteers" | "events"
+  mappings:              MappedHeader[]   // one per sheet column, ordered
+  known_fields:          string[]         // scoped to sheet_type
+  valid_types:           string[]
+  valid_rule_conditions: string[]
+  valid_rule_actions:    string[]
+}
 
-### Component conventions
-- **Always use `Button`** — never raw `<button>`
-- **Always use `Select`** — never raw `<select>`. `size="sm"` for table rows and rule editor.
-- **Always use `Input`** — `font` prop: `"sans"` (default) | `"mono"` | `"serif"`. Surface background.
-- **Always use `Banner`** for inline feedback
-- **Always use `PageHeader`** for page title + subtitle + action
-- **Always use `EmptyState`** for empty list states
-- **All SVG icons in `Icons.tsx`** — never define inline
-- **`SheetMappingValidationModals`** — one file, two exports. Use for all sheet save validation feedback.
-- **`useSheetValidation`** — use on any page that saves sheet configs.
+interface MappedHeader {
+  header:       string                    // raw column header from sheet
+  field:        string                    // suggested target field
+  type:         string                    // suggested mapping type
+  row_key?:     string
+  extra_key?:   string
+  rules?:       ParseRule[]
+  delimiter?:   string
+  // Form enrichment — null when no form URL or no question matched
+  google_type?:  string                   // raw Forms API type e.g. "CHECKBOX", "GRID", "TEXT"
+  options?:      FormQuestionOption[]     // for CHECKBOX / MULTIPLE_CHOICE / DROP_DOWN
+  grid_rows?:    string[]                 // for GRID questions — row labels
+  grid_columns?: string[] 　             // for GRID questions — column labels
+}
 
-### Dashboard layout
-- **`/dashboard`** — tournament card grid, `Topbar showWordmark showAvatar`
-- **`/dashboard/[id]/*`** — sidebar + `Topbar showDropdown showAvatar`
-- Sidebar: 52px collapsed / 192px expanded, in normal flow (pushes content)
-- All pages use `width: 100%`
+interface FormQuestionOption {
+  raw:   string   // exact string from the form
+  alias: string   // auto-suggested short version
+}
+```
+
+**Request body** also changed — `sheet_type` is now required, `form_url` is optional:
+```typescript
+interface SheetHeadersRequest {
+  sheet_url:  string
+  sheet_name: string
+  sheet_type: "volunteers" | "events"     // REQUIRED — was missing before
+  form_url?:  string                      // optional — triggers FormsService call
+}
+```
+
+**Deduplication:** The backend ensures no two headers map to the same `field` or `(extra_data, extra_key)` pair. Collisions fall back to `{ field: "__ignore__", type: "ignore" }`. `availability` is exempt (multiple `matrix_row` rows share it). `__ignore__` is never claimed.
+
+**Type lock:** When `google_type` is present on a `MappedHeader`, the Type dropdown in the mapping table must be rendered as **read-only text** — the form told us the type, TDs cannot override it.
+
+**Auto-attached rule:** All `matrix_row` mappings to `availability` always come with a `parse_time_range` rule pre-attached, regardless of whether form data is present.
+
+---
+
+## Frontend Work Required (feature/frontend-headers-refactor)
+
+The backend `SheetHeadersResponse` shape changed. The frontend still uses the old `headers + suggestions + form_questions` shape. All of the following files need updating.
+
+### `frontend/lib/api.ts`
+
+**Add/update types:**
+```typescript
+export type SheetType = 'volunteers' | 'events'   // was 'interest' | 'confirmation' | 'events'
+
+export type ParseRuleAction = 'set' | 'replace' | 'prepend' | 'append' | 'discard'
+  | 'parse_time_range'      // canonical — add this
+  | 'parse_availability'    // legacy alias — keep for backwards compat
+
+export interface FormQuestionOption {
+  raw:   string
+  alias: string
+}
+
+export interface MappedHeader {
+  header:       string
+  field:        string
+  type:         string
+  row_key?:     string
+  extra_key?:   string
+  rules?:       ParseRule[]
+  delimiter?:   string
+  google_type?: string
+  options?:     FormQuestionOption[]
+  grid_rows?:   string[]
+  grid_columns?: string[]
+}
+
+export interface SheetHeadersResponse {
+  sheet_name:            string
+  sheet_type:            string
+  mappings:              MappedHeader[]   // replaces headers + suggestions + form_questions
+  known_fields:          string[]
+  valid_types:           string[]
+  valid_rule_conditions: string[]
+  valid_rule_actions:    string[]
+}
+```
+
+**Remove:** `FormQuestion` interface, `SheetHeadersResponse.headers`, `SheetHeadersResponse.suggestions`, `SheetHeadersResponse.form_questions`
+
+**Update `sheetsApi.headers()`** to pass `sheet_type` (required) and optional `form_url`:
+```typescript
+headers: (tournamentId: number, sheet_url: string, sheet_name: string,
+          sheet_type: SheetType, form_url?: string) =>
+  api.post<SheetHeadersResponse>(
+    `/tournaments/${tournamentId}/sheets/headers/`,
+    { sheet_url, sheet_name, sheet_type, form_url }
+  ),
+```
+
+### `frontend/components/ui/SheetConfigMappingTable.tsx`
+
+**`RichMappingRow` gains `googleType?: string`:**
+```typescript
+interface RichMappingRow {
+  // ... existing fields ...
+  googleType?: string    // from MappedHeader.google_type
+}
+```
+
+**Type column hard lock:** When `row.googleType` is set, render the Type cell as read-only text instead of a `<Select>`. Example:
+```tsx
+{row.googleType ? (
+  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--color-text-secondary)' }}>
+    {TYPE_LABELS[row.type] ?? row.type}
+  </span>
+) : (
+  <Select ... />  // existing type dropdown
+)}
+```
+
+**`makeRichRow`** must pass `googleType` through from the source `MappedHeader`.
+
+### `frontend/app/dashboard/[tournamentId]/sheets/new/page.tsx`
+
+**Step 2 — Sheet type:** Update options from `interest / confirmation / events` to `volunteers / events`.
+
+**Step 3 — Form URL step:** Already exists (from the forms API feature). Ensure `fetchHeaders` passes `sheet_type` and `form_url` to `sheetsApi.headers()`.
+
+**`handleFetchHeaders` simplification** — no more client-side cross-referencing. Map `result.mappings` directly to `RichMappingRow[]`:
+
+```typescript
+const rows = result.mappings.map((m) =>
+  makeRichRow(
+    {
+      field:     m.field,
+      type:      m.type,
+      row_key:   m.row_key,
+      extra_key: m.extra_key,
+      rules:     m.rules ?? [],
+      delimiter: m.delimiter,
+    },
+    "suggestion",    // baseline
+    undefined,       // forcedState
+    undefined,       // importedValue
+    undefined,       // openOnMount
+    m.options        // formQuestion options (for alias editor)
+      ? { options: m.options, grid_rows: m.grid_rows, grid_columns: m.grid_columns }
+      : undefined,
+    m.google_type,   // googleType — for hard lock
+  )
+)
+```
+
+Remove the old `handleFetchHeaders` logic that merged `result.headers`, `result.suggestions`, and `result.form_questions` separately.
+
+**`fetchHeaders` call site** must pass `sheet_type` and `form_url`:
+```typescript
+const result = await sheetsApi.headers(
+  tournamentId, sheetUrl, sheetName, sheetType, formUrl || undefined
+)
+```
+
+### `frontend/app/dashboard/[tournamentId]/sheets/[configId]/edit/page.tsx`
+
+Same changes as `new/page.tsx`:
+- `fetchHeaders` passes `sheet_type` and `form_url`
+- Map `result.mappings` directly, no client merging
+- Pass `googleType` through `makeRichRow`
 
 ---
 
@@ -458,7 +608,8 @@ GET    /tournaments/{id}/users/{user_id}/                   # manage_volunteers+
 
 # Sheets
 POST   /tournaments/{id}/sheets/validate/
-POST   /tournaments/{id}/sheets/headers/                   # returns valid_rule_conditions + valid_rule_actions
+POST   /tournaments/{id}/sheets/headers/                   # body: {sheet_url, sheet_name, sheet_type, form_url?}
+                                                           # returns SheetHeadersResponse with flat mappings list
 POST   /tournaments/{id}/sheets/configs/validate-mappings/ # 200 {ok, errors, warnings} — no DB write
 GET    /tournaments/{id}/sheets/configs/
 POST   /tournaments/{id}/sheets/configs/                   # → SheetConfigReadWithWarnings
@@ -476,7 +627,10 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/
 
 ## Test Infrastructure
 
-**conftest.py fixtures:** `db` (in-memory SQLite, FK ON, rollback per test), `mock_sheets_service`, `client`, `admin_user`, `td_user`, `other_user`, `td_tournament`, `other_tournament`, `login(client, email, password)`
+**conftest.py fixtures:** `db` (in-memory SQLite, FK ON, rollback per test), `mock_sheets_service`, `mock_forms_service`, `client`, `admin_user`, `td_user`, `other_user`, `td_tournament`, `other_tournament`, `login(client, email, password)`
+
+- `mock_sheets_service.get_headers` returns `SheetHeadersResponse` with flat `mappings: list[MappedHeader]`
+- `mock_forms_service.get_form_questions` returns plain `list[dict]` with `google_type` + `nexus_type` keys (not Pydantic models)
 
 **CI:** GitHub Actions runs `pytest` on every push. Workflow sets `APP_ENV=test` and leaves `DATABASE_URL` and `API_KEY` blank — `session.py` skips engine init when `DATABASE_URL` is empty, and `security.py` bypasses API key checks when `APP_ENV` is `"development"` or `"test"` and `API_KEY` is blank.
 
@@ -494,6 +648,10 @@ GET    /tournaments/{id}/sheets/configs/{config_id}/rows/
 - [x] **feat/volunteers-display** — Tags, availability rows, extra_data widths
 - [x] **Validation UX overhaul** — validate-first save flow, useSheetValidation hook, SheetMappingValidationModals, ValidationIssue.header as list, ParseRule model_validator removed
 - [x] **GitHub Actions CI** — pytest workflow on every push
+- [x] **feature/backend-forms-api-mapping** — FormsService, FormQuestion models, sheet_type volunteers/events, form_url wizard step, alias editor backend
+- [x] **feature/backend-headers-refactor** — flat MappedHeader response, google_type lock, dedup, parse_time_range canonical action
+- [x] **fix/sync-parse-time-range** — `_apply_rules` now checks `action in PARSE_TIME_RANGE_ACTIONS` (was `== "parse_availability"` only, silently skipping `parse_time_range`); sync route arg order fixed (`config, db, svc`); `is_active` guard added to sync endpoint; full test suite alignment
+- [ ] **feature/frontend-headers-refactor** — Update frontend for new SheetHeadersResponse shape (see Frontend Work section above)
 - [ ] **Phase 7f** — Events + volunteers tables (proper, not temp)
 - [ ] **Phase 7g** — Assignment dashboard
 
@@ -511,7 +669,6 @@ When a backend bug is found during frontend work: document here + open GitHub is
 ---
 
 ## Known Issues / Future Work
-- **[GitHub issue] Remove `UNIQUE(tournament_id, sheet_type)` constraint** — triggers 500 on duplicate sheet type. Fix: Alembic migration + remove `UniqueConstraint` from `models.py`.
 - **[GitHub issue] `DateTime` without timezone** — datetimes display as local time. Temp: `fmtDateTime` appends `Z`. Fix: `DateTime(timezone=True)` + migration + remove frontend normalization.
 - **[GitHub issue] Bulk membership delete + raw sheet row endpoints** — temp implementations in `api.ts` need real routes.
 - **[GitHub issue] Add `sheet_config_ids` to Membership** — provenance tracking.
@@ -568,5 +725,39 @@ When a backend bug is found during frontend work: document here + open GitHub is
 - `Volunteering Role Preference` → `multi_select`, two `contains` + `replace` rules stripping description suffixes
 - `If interested in event volunteering...` → `multi_select`, `delimiter: ";"`, two regex rules: replace `\) ?, ?` with `;` then strip ` \([^)]+\)`
 - `If you are interested in general volunteer...` → `multi_select`, `contains` + `replace` per option
-- All 6 availability rows → `matrix_row` + `parse_availability` rule (condition: `always`)
-- `Have you competed...` + `If you have competed...` → both map to `extra_data` with same key `scioly_competed` — one must be renamed or ignored to avoid duplicate `extra_key` validation error
+- All 6 availability rows → `matrix_row` + `parse_time_range` rule (condition: `always`)
+- `Have you competed...` + `If you have competed...` → both map to `extra_data` — backend dedup now ensures the second one falls back to `ignore` automatically
+
+---
+
+## Frontend Design System
+
+### Fonts
+- `--font-serif` → Georgia — h1, h2, page titles, wordmarks
+- `--font-sans` → Geist — UI labels, buttons, nav, badges
+- `--font-mono` → Geist Mono — body text, inputs, data values
+
+### Colors
+- `--color-bg`: `#F7F7F5` | `--color-surface`: `#FFFFFF`
+- `--color-accent`: `#0A0A0A` | `--color-accent-subtle`: `#F0F0EC`
+- `--color-danger`: `#E53E3E` | `--color-success`: `#22C55E` | `--color-warning`: `#EAB308`
+- `--color-border`: `#E2E2DE` | `--color-border-strong`: `#C8C8C2`
+- `--color-text-primary`: `#0A0A0A` | `--color-text-secondary`: `#6B6B65` | `--color-text-tertiary`: `#9B9B93`
+- Row state colors: changed `#FFF7ED`/`#FDBA74` (orange-amber), warning `#FFFBEB`/`#FDE047` (yellow), error `#FFF5F5`/`#FCA5A5`, new `#F0FDF4`/`#86EFAC`
+
+### Component conventions
+- **Always use `Button`** — never raw `<button>`
+- **Always use `Select`** — never raw `<select>`. `size="sm"` for table rows and rule editor.
+- **Always use `Input`** — `font` prop: `"sans"` (default) | `"mono"` | `"serif"`. Surface background.
+- **Always use `Banner`** for inline feedback
+- **Always use `PageHeader`** for page title + subtitle + action
+- **Always use `EmptyState`** for empty list states
+- **All SVG icons in `Icons.tsx`** — never define inline
+- **`SheetMappingValidationModals`** — one file, two exports. Use for all sheet save validation feedback.
+- **`useSheetValidation`** — use on any page that saves sheet configs.
+
+### Dashboard layout
+- **`/dashboard`** — tournament card grid, `Topbar showWordmark showAvatar`
+- **`/dashboard/[id]/*`** — sidebar + `Topbar showDropdown showAvatar`
+- Sidebar: 52px collapsed / 192px expanded, in normal flow (pushes content)
+- All pages use `width: 100%`

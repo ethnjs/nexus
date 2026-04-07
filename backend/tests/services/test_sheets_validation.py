@@ -143,6 +143,32 @@ def test_different_extra_keys_ok():
     }))
     assert result.ok
 
+def test_matrix_row_with_same_extra_key_not_duplicate_error():
+    """matrix_row columns sharing an extra_key do not overwrite — no duplicate extra_key error."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Which protein?": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
+        "Drink choice":   {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"},
+    }))
+    assert not any("Duplicate extra_key" in e.message for e in result.errors)
+
+def test_duplicate_row_key_same_field_is_error():
+    """Two matrix_row columns with the same field and row_key DO overwrite — error."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Lunch col 1": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
+        "Lunch col 2": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
+    }))
+    assert not result.ok
+    assert any("Duplicate row_key" in e.message and "protein" in e.message for e in result.errors)
+
+def test_duplicate_row_key_different_fields_ok():
+    """Same row_key across different fields is fine — they write to separate buckets."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Avail morning":    {"field": "availability",  "type": "matrix_row", "row_key": "morning",
+                             "rules": [{"condition": "always", "action": "parse_time_range"}]},
+        "Pref morning":     {"field": "event_preference", "type": "matrix_row", "row_key": "morning"},
+    }))
+    assert not any("Duplicate row_key" in e.message for e in result.errors)
+
 
 # ---------------------------------------------------------------------------
 # Per-mapping — matrix_row
@@ -208,7 +234,7 @@ def test_availability_matrix_row_no_rule_is_warning():
         },
     }))
     assert result.ok  # warning only, not an error
-    assert any("parse_availability" in w.message for w in result.warnings)
+    assert any("parse_time_range" in w.message for w in result.warnings)
 
 def test_availability_matrix_row_with_rule_no_warning():
     result = validate_column_mappings(_base_mappings(**{
@@ -234,7 +260,7 @@ def test_unparseable_row_key_is_warning():
         },
     }))
     assert result.ok
-    assert any("time range" in w.message for w in result.warnings)
+    assert not any("time range" in w.message for w in result.warnings)
 
 def test_valid_row_key_no_warning():
     result = validate_column_mappings(_base_mappings(**{
@@ -248,21 +274,20 @@ def test_valid_row_key_no_warning():
 
 
 # ---------------------------------------------------------------------------
-# Per-rule — parse_availability on non-matrix_row
+# Per-rule — parse_availability / parse_time_range
 # ---------------------------------------------------------------------------
 
-def test_parse_availability_on_non_matrix_row_is_error():
+def test_parse_availability_on_non_matrix_row_is_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Notes": {
             "field": "notes", "type": "string",
             "rules": [{"condition": "always", "action": "parse_availability"}],
         },
     }))
-    assert not result.ok
-    assert any("parse_availability" in e.message for e in result.errors)
-    assert _error_rule_indices(result)[0] == 0
+    assert result.ok
+    assert result.errors == []
 
-def test_parse_availability_wrong_condition_is_error():
+def test_parse_availability_non_always_condition_is_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
             "field": "availability", "type": "matrix_row",
@@ -270,8 +295,8 @@ def test_parse_availability_wrong_condition_is_error():
             "rules": [{"condition": "contains", "match": "Thu", "action": "parse_availability"}],
         },
     }))
-    assert not result.ok
-    assert any("always" in e.message for e in result.errors)
+    assert result.ok
+    assert not any("always" in e.message for e in result.errors)
 
 
 # ---------------------------------------------------------------------------

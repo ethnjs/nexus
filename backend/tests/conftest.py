@@ -2,7 +2,7 @@
 Shared pytest fixtures.
 
 Uses an in-memory SQLite DB for all tests — fast, isolated, no cleanup needed.
-The Google Sheets service is mocked so tests never hit the real API.
+The Google Sheets and Forms services are mocked so tests never hit the real API.
 
 Fixture hierarchy:
   admin_user       — role="admin", bypasses all permission checks
@@ -25,17 +25,26 @@ from unittest.mock import MagicMock
 
 from app.db.session import Base, get_db
 from app.models import models  # noqa: F401
-from app.api.routes.sheets import get_sheets_service
+from app.api.routes.sheets import get_sheets_service, get_forms_service
 from app.services.sheets_service import SheetsService
+from app.services.forms_service import FormsService
 from app.core.auth import hash_password
 from app.core.permissions import DEFAULT_POSITIONS
 from app.models.models import Membership, Tournament, User
+from app.schemas.sheet_config import (
+    FormQuestionOption,
+    MappedHeader,
+    ParseRule,
+    SheetHeadersResponse,
+    SheetValidateResponse,
+)
 
 test_engine = create_engine(
     "sqlite:///:memory:",
     connect_args={"check_same_thread": False},
     echo=False,
 )
+
 
 @event.listens_for(test_engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
@@ -158,7 +167,7 @@ def other_tournament(db, other_user):
 
 
 # ---------------------------------------------------------------------------
-# Sheets mock
+# Service mocks
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
@@ -166,12 +175,17 @@ def mock_sheets_service() -> MagicMock:
     return _make_mock_sheets_service()
 
 
+@pytest.fixture(scope="function")
+def mock_forms_service() -> MagicMock:
+    return _make_mock_forms_service()
+
+
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="function")
-def client(db, mock_sheets_service):
+def client(db, mock_sheets_service, mock_forms_service):
     from app.main import app
 
     def override_get_db():
@@ -180,11 +194,9 @@ def client(db, mock_sheets_service):
         finally:
             pass
 
-    def override_get_sheets_service():
-        return mock_sheets_service
-
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_sheets_service] = override_get_sheets_service
+    app.dependency_overrides[get_sheets_service] = lambda: mock_sheets_service
+    app.dependency_overrides[get_forms_service] = lambda: mock_forms_service
 
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
@@ -208,14 +220,81 @@ def login(client: TestClient, email: str, password: str):
 def _make_mock_sheets_service() -> MagicMock:
     mock = MagicMock(spec=SheetsService)
     mock.extract_spreadsheet_id.return_value = "fake_spreadsheet_id"
-    mock.validate_sheet_url.return_value = {
-        "spreadsheet_id": "fake_spreadsheet_id",
-        "title": "Fake Sheet",
-        "tabs": ["Form Responses 1"],
-    }
-    mock.get_headers.return_value = {
-        "headers": ["Email Address", "First Name", "Last Name"],
-        "suggested_mappings": {},
-    }
+
+    mock.validate_sheet_url.return_value = SheetValidateResponse(
+        spreadsheet_id="fake_spreadsheet_id",
+        spreadsheet_title="2025 Volunteer Interest Form (Responses)",
+        sheet_names=["Form Responses 1", "Sheet2"],
+    )
+
+    mock.get_headers.return_value = SheetHeadersResponse(
+        sheet_name="Form Responses 1",
+        sheet_type="volunteers",
+        mappings=[
+            MappedHeader(header="Timestamp",     field="__ignore__", type="ignore"),
+            MappedHeader(header="Email Address", field="email",      type="string"),
+            MappedHeader(header="First Name",    field="first_name", type="string"),
+            MappedHeader(header="Last Name",     field="last_name",  type="string"),
+            MappedHeader(header="Phone Number",  field="phone",      type="string"),
+            MappedHeader(header="T-Shirt Size",  field="shirt_size", type="string"),
+            MappedHeader(
+                header="Availability [8:00 AM - 10:00 AM]",
+                field="availability",
+                type="matrix_row",
+                row_key="8:00 AM - 10:00 AM",
+                rules=[ParseRule(condition="always", action="parse_time_range")],
+            ),
+        ],
+    )
+
     mock.get_rows.return_value = []
+    return mock
+
+
+# ---------------------------------------------------------------------------
+# Forms mock factory
+# Returns plain dicts matching the real FormsService.get_form_questions shape.
+# ---------------------------------------------------------------------------
+
+def _make_mock_forms_service() -> MagicMock:
+    mock = MagicMock(spec=FormsService)
+    mock.extract_form_id.return_value = "fake_form_id_abc123"
+    mock.get_form_questions.return_value = [
+        {
+            "question_id": "q001",
+            "title": "Email Address",
+            "google_type": "TEXT",
+            "nexus_type": "string",
+            "options": None,
+            "grid_rows": None,
+            "grid_columns": None,
+        },
+        {
+            "question_id": "q002",
+            "title": "Which events are you interested in supervising?",
+            "google_type": "CHECKBOX",
+            "nexus_type": "multi_select",
+            "options": [
+                FormQuestionOption(
+                    raw="Anatomy and Physiology - Study the human body",
+                    alias="Anatomy and Physiology",
+                ),
+                FormQuestionOption(
+                    raw="Chemistry Lab - Hands-on laboratory skills",
+                    alias="Chemistry Lab",
+                ),
+            ],
+            "grid_rows": None,
+            "grid_columns": None,
+        },
+        {
+            "question_id": "q003",
+            "title": "Availability",
+            "google_type": "GRID",
+            "nexus_type": "matrix_row",
+            "options": None,
+            "grid_rows": ["8:00 AM - 10:00 AM", "10:00 AM - 12:00 PM"],
+            "grid_columns": ["Available", "Maybe"],
+        },
+    ]
     return mock

@@ -9,13 +9,15 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
 class ValidationIssue:
-    header: list[str] | str | None  # one or more column headers that triggered this issue
-    message: str                    # human-readable description
-    rule_index: int | None = None   # set if the issue is on a specific rule
+    header: list[str] | str | None                  # one or more column headers that triggered this issue
+    message: str                                     # human-readable description
+    column_index: list[int] | int | None = None     # stable column identity for duplicate-header sheets
+    rule_index: int | None = None                   # set if the issue is on a specific rule
 
 
 @dataclass
@@ -28,93 +30,162 @@ class ValidationResult:
         """True if there are no hard errors (warnings are fine)."""
         return len(self.errors) == 0
 
-    def to_response_dict(self) -> dict:
-        """Serialise to a dict suitable for an HTTP error response body."""
-        def _normalise_header(h: list[str] | str | None) -> list[str] | None:
-            """Always return header as list[str] or None for consistent API shape."""
-            if h is None:
-                return None
-            if isinstance(h, list):
-                return h
-            return [h]
+    @staticmethod
+    def _normalise_header(h: list[str] | str | None) -> list[str] | None:
+        """Always return header as list[str] or None for consistent API shape."""
+        if h is None:
+            return None
+        if isinstance(h, list):
+            return h
+        return [h]
 
+    def _serialise_issues(self, issues: list[ValidationIssue]) -> list[dict]:
+        return [
+            {
+                "header": self._normalise_header(i.header),
+                "column_index": i.column_index,
+                "rule_index": i.rule_index,
+                "message": i.message,
+            }
+            for i in issues
+        ]
+
+    def to_response_dict(self) -> dict:
+        """
+        Serialise for HTTP 422 error response bodies (raised when validation
+        blocks a CREATE or PATCH). Shape: { ok, errors, warnings }.
+        """
         return {
-            "detail": "column_mappings validation failed",
-            "errors": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.errors
-            ],
-            "warnings": [
-                {
-                    "header": _normalise_header(i.header),
-                    "rule_index": i.rule_index,
-                    "message": i.message,
-                }
-                for i in self.warnings
-            ],
+            "ok": self.ok,
+            "errors": self._serialise_issues(self.errors),
+            "warnings": self._serialise_issues(self.warnings),
         }
 
 
+# Both the canonical action and its legacy alias are valid for parse_time_range.
+# sync_service._apply_rules() accepts both.
+PARSE_TIME_RANGE_ACTIONS = {"parse_time_range", "parse_availability"}
+
+
+def _normalise_mapping_entries(
+    mappings: list[dict[str, Any]] | dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if isinstance(mappings, dict):
+        out: list[dict[str, Any]] = []
+        for idx, (header, mapping) in enumerate(mappings.items()):
+            out.append({
+                "column_index": idx,
+                "header": header,
+                **dict(mapping),
+            })
+        return out
+
+    out: list[dict[str, Any]] = []
+    for idx, entry in enumerate(mappings):
+        d = dict(entry)
+        out.append({
+            "column_index": d.get("column_index", idx),
+            "header": d.get("header"),
+            **{k: v for k, v in d.items() if k not in ("column_index", "header")},
+        })
+    return out
+
+
 def validate_column_mappings(
-    mappings: dict[str, dict],
+    mappings: list[dict[str, Any]] | dict[str, dict[str, Any]],
 ) -> ValidationResult:
     """
-    Validate a dict of {header: ColumnMapping-as-dict} entries.
+    Validate column mappings in either legacy-dict or canonical list-entry shape.
 
     Checks are grouped into:
       - Config-level checks (across all mappings together)
       - Per-mapping checks
       - Per-rule checks (within each mapping's rules list)
-
-    Returns a ValidationResult. Caller should check result.ok before saving.
     """
     result = ValidationResult()
+    entries = _normalise_mapping_entries(mappings)
 
     # ------------------------------------------------------------------
     # Config-level checks
     # ------------------------------------------------------------------
 
-    # Email must be mapped
+    # Email must be mapped exactly once
     email_mappings = [
-        h for h, m in mappings.items()
-        if m.get("field") == "email" and m.get("type") != "ignore"
+        (e.get("header"), int(e.get("column_index", -1)))
+        for e in entries
+        if e.get("field") == "email" and e.get("type") != "ignore"
     ]
     if not email_mappings:
         result.errors.append(ValidationIssue(
             header=None,
+            column_index=None,
             message="No column is mapped to 'email'. Email is required as the upsert key.",
         ))
     elif len(email_mappings) > 1:
+        labels = [f"{h} [#{i}]" for h, i in email_mappings]
         result.errors.append(ValidationIssue(
-            header=None,
-            message=f"Multiple columns mapped to 'email': {email_mappings}. Only one is allowed.",
+            header=[h for h, _ in email_mappings],
+            column_index=[i for _, i in email_mappings],
+            message=f"Multiple columns mapped to 'email': {labels}. Only one is allowed.",
         ))
 
     # email field must be string type
-    for header, mapping in mappings.items():
-        if mapping.get("field") == "email" and mapping.get("type") not in ("string", "ignore"):
+    for entry in entries:
+        if entry.get("field") == "email" and entry.get("type") not in ("string", "ignore"):
             result.errors.append(ValidationIssue(
-                header=header,
+                header=entry.get("header"),
+                column_index=entry.get("column_index"),
                 message="The 'email' field must use type 'string'.",
             ))
 
-    # Duplicate extra_key values across all mappings — pass list directly
+    # Duplicate extra_key values across non-matrix_row extra_data mappings.
+    # matrix_row entries aggregate into a JSON structure keyed by row_key, so
+    # sharing an extra_key does not cause overwrites — skip them here.
     extra_key_headers: dict[str, list[str]] = {}
-    for header, mapping in mappings.items():
-        if mapping.get("field") == "extra_data":
-            ek = mapping.get("extra_key")
+    extra_key_indices: dict[str, list[int]] = {}
+    for entry in entries:
+        if entry.get("field") == "extra_data" and entry.get("type") != "matrix_row":
+            ek = entry.get("extra_key")
             if ek:
-                extra_key_headers.setdefault(ek, []).append(header)
+                header = entry.get("header")
+                if header is not None:
+                    extra_key_headers.setdefault(ek, []).append(header)
+                extra_key_indices.setdefault(ek, []).append(int(entry.get("column_index", -1)))
+
     for ek, headers in extra_key_headers.items():
         if len(headers) > 1:
             result.errors.append(ValidationIssue(
-                header=headers,  # list[str] — frontend receives a proper array
+                header=headers,
+                column_index=extra_key_indices.get(ek),
                 message=(
                     f"Duplicate extra_key '{ek}' across multiple columns. "
+                    "Later columns will overwrite earlier ones during sync."
+                ),
+            ))
+
+    # Duplicate row_key within the same field for matrix_row mappings.
+    # Two matrix_row columns with the same field AND row_key DO overwrite each other.
+    # Key: (field, row_key) → list of headers / indices
+    matrix_row_key_headers: dict[tuple[str, str], list[str]] = {}
+    matrix_row_key_indices: dict[tuple[str, str], list[int]] = {}
+    for entry in entries:
+        if entry.get("type") == "matrix_row":
+            field_name = entry.get("field") or ""
+            rk = entry.get("row_key") or ""
+            if field_name and rk:
+                key = (field_name, rk)
+                header = entry.get("header")
+                if header is not None:
+                    matrix_row_key_headers.setdefault(key, []).append(header)
+                matrix_row_key_indices.setdefault(key, []).append(int(entry.get("column_index", -1)))
+
+    for (field_name, rk), headers in matrix_row_key_headers.items():
+        if len(headers) > 1:
+            result.errors.append(ValidationIssue(
+                header=headers,
+                column_index=matrix_row_key_indices.get((field_name, rk)),
+                message=(
+                    f"Duplicate row_key '{rk}' for field '{field_name}' across multiple columns. "
                     "Later columns will overwrite earlier ones during sync."
                 ),
             ))
@@ -122,71 +193,66 @@ def validate_column_mappings(
     # ------------------------------------------------------------------
     # Per-mapping checks
     # ------------------------------------------------------------------
-    for header, mapping in mappings.items():
-        field_name = mapping.get("field")
-        field_type = mapping.get("type")
-        rules: list[dict] = mapping.get("rules") or []
+    for entry in entries:
+        header = entry.get("header")
+        col_idx = entry.get("column_index")
+        field_name = entry.get("field")
+        field_type = entry.get("type")
+        rules: list[dict] = entry.get("rules") or []
 
         # matrix_row requires row_key
-        if field_type == "matrix_row" and not mapping.get("row_key"):
+        if field_type == "matrix_row" and not entry.get("row_key"):
             result.errors.append(ValidationIssue(
                 header=header,
+                column_index=col_idx,
                 message="matrix_row type requires a row_key.",
             ))
 
-        # extra_data requires extra_key
-        if field_name == "extra_data" and not mapping.get("extra_key"):
+        # ignore type must map to __ignore__
+        if field_type == "ignore" and field_name != "__ignore__":
             result.errors.append(ValidationIssue(
                 header=header,
+                column_index=col_idx,
+                message="type 'ignore' requires field '__ignore__'.",
+            ))
+
+        # extra_data requires extra_key
+        if field_name == "extra_data" and not entry.get("extra_key"):
+            result.errors.append(ValidationIssue(
+                header=header,
+                column_index=col_idx,
                 message="Field 'extra_data' requires an extra_key.",
             ))
 
         # delimiter only valid on multi_select
-        if mapping.get("delimiter") is not None and field_type != "multi_select":
+        if entry.get("delimiter") is not None and field_type != "multi_select":
             result.errors.append(ValidationIssue(
                 header=header,
+                column_index=col_idx,
                 message="'delimiter' is only valid for multi_select type.",
             ))
 
-        # matrix_row mapped to availability with no parse_availability rule
-        if field_type == "matrix_row" and field_name == "availability":
-            has_parse_avail = any(
-                r.get("action") == "parse_availability" for r in rules
-            )
-            if not has_parse_avail:
+        # availability mappings should include parse_time_range rule (warning only)
+        if field_name == "availability":
+            has_parse_time_range = any(r.get("action") in PARSE_TIME_RANGE_ACTIONS for r in rules)
+            if not has_parse_time_range:
                 result.warnings.append(ValidationIssue(
                     header=header,
+                    column_index=col_idx,
                     message=(
-                        "This matrix_row is mapped to 'availability' but has no "
-                        "'parse_availability' rule. Availability data will not be parsed during sync."
+                        "This column is mapped to 'availability' but has no "
+                        "'parse_time_range' rule. Availability data will not be parsed during sync."
                     ),
                 ))
 
         # ------------------------------------------------------------------
         # Per-rule checks
         # ------------------------------------------------------------------
-        set_fired_at: int | None = None  # track index of last set action
-
+        set_fired_at: int | None = None
         for i, rule in enumerate(rules):
             condition = rule.get("condition", "")
             match_str = rule.get("match")
             action = rule.get("action", "")
-
-            # parse_availability only on matrix_row
-            if action == "parse_availability" and field_type != "matrix_row":
-                result.errors.append(ValidationIssue(
-                    header=header,
-                    rule_index=i,
-                    message="'parse_availability' action is only valid on matrix_row fields.",
-                ))
-
-            # parse_availability must use condition "always"
-            if action == "parse_availability" and condition != "always":
-                result.errors.append(ValidationIssue(
-                    header=header,
-                    rule_index=i,
-                    message="'parse_availability' action requires condition 'always'.",
-                ))
 
             # regex must compile
             if condition == "regex" and match_str:
@@ -195,6 +261,7 @@ def validate_column_mappings(
                 except re.error as e:
                     result.errors.append(ValidationIssue(
                         header=header,
+                        column_index=col_idx,
                         rule_index=i,
                         message=f"Invalid regex pattern '{match_str}': {e}",
                     ))
@@ -203,6 +270,7 @@ def validate_column_mappings(
             if condition != "always" and not match_str:
                 result.errors.append(ValidationIssue(
                     header=header,
+                    column_index=col_idx,
                     rule_index=i,
                     message=f"Rule condition '{condition}' requires a match value.",
                 ))
@@ -211,6 +279,7 @@ def validate_column_mappings(
             if action in ("set", "replace", "prepend", "append") and rule.get("value") is None:
                 result.errors.append(ValidationIssue(
                     header=header,
+                    column_index=col_idx,
                     rule_index=i,
                     message=f"Rule action '{action}' requires a value.",
                 ))
@@ -219,6 +288,7 @@ def validate_column_mappings(
             if set_fired_at is not None:
                 result.warnings.append(ValidationIssue(
                     header=header,
+                    column_index=col_idx,
                     rule_index=i,
                     message=(
                         f"Rule {i} follows a 'set' action at rule {set_fired_at}. "
@@ -227,18 +297,18 @@ def validate_column_mappings(
                     ),
                 ))
 
-            # Track set actions for the warning above
             if action == "set":
                 set_fired_at = i
 
-        # row_key time range parseable (warning only)
-        if field_type == "matrix_row" and mapping.get("row_key"):
-            row_key = mapping["row_key"]
+        # availability row_key should be parseable as a time range (warning only)
+        if field_name == "availability" and entry.get("row_key"):
+            row_key = entry["row_key"]
             normalized = re.sub(r"\s+", " ", row_key.strip())
             parts = normalized.split(" - ", 1)
             if len(parts) != 2:
                 result.warnings.append(ValidationIssue(
                     header=header,
+                    column_index=col_idx,
                     message=(
                         f"row_key '{row_key}' does not appear to be a valid time range "
                         "(expected format: 'H:MM AM - H:MM PM'). "

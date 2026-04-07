@@ -1,9 +1,10 @@
 from __future__ import annotations
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, field_validator
-from app.schemas.user import UserRead
 
 VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
+LunchOrderValue = str | dict[str, Any]
 
 
 class AvailabilitySlot(BaseModel):
@@ -44,7 +45,7 @@ class MembershipBase(BaseModel):
     # Normalized availability — [{date, start, end}, ...]
     availability: list[AvailabilitySlot] | None = None
 
-    lunch_order: str | None = None
+    lunch_order: LunchOrderValue | None = None
     notes: str | None = None
 
     # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
@@ -52,6 +53,16 @@ class MembershipBase(BaseModel):
     # e.g. transportation, carpool_seats, general_volunteer_interest, etc.
     # Keys match custom_field.key in the tournament's volunteer_schema.
     extra_data: dict | None = None
+
+    # TODO(temp): remove when user account self-management is implemented
+    shirt_size: str | None = None
+    dietary_restriction: str | None = None
+    university: str | None = None
+    major: str | None = None
+    employer: str | None = None
+    student_status: str | None = None
+    competition_exp: str | None = None
+    volunteering_exp: str | None = None
 
     @field_validator("status")
     @classmethod
@@ -74,7 +85,7 @@ class MembershipUpdate(BaseModel):
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None
     availability: list[AvailabilitySlot] | None = None
-    lunch_order: str | None = None
+    lunch_order: LunchOrderValue | None = None
     notes: str | None = None
     extra_data: dict | None = None
 
@@ -94,6 +105,17 @@ class MembershipRead(MembershipBase):
     model_config = {"from_attributes": True}
 
 
-class MembershipReadWithUser(MembershipRead):
-    """Extended read that includes user details — used in volunteer list views."""
-    user: UserRead | None = None
+class MembershipReadFlat(MembershipRead):
+    """List-view read: user identity fields flattened onto the membership dict.
+
+    Avoids a nested user object in list responses. The four fields below are
+    sourced from the User table via a JOIN and promoted to the top level.
+
+    # TODO(temp): these fields are sourced from User — when the user profile
+    # page is built, the full user profile (beyond identity) should continue
+    # to come from User, not Membership.
+    """
+    first_name: str | None = None
+    last_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
