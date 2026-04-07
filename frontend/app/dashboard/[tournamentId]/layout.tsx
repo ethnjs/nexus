@@ -3,7 +3,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { use } from "react";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
-import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { Sidebar, COLLAPSED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { tournamentsApi } from "@/lib/api";
 
@@ -28,7 +28,7 @@ function TournamentShell({
         onToggle={() => setSidebarExpanded((v) => !v)}
         tournamentId={tournamentId}
       />
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden", marginLeft: COLLAPSED_W }}>
         <Topbar showDropdown tournamentId={tournamentId} showAvatar />
         <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
           {children}

@@ -38,10 +38,10 @@ export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
   return (
     <aside style={{
       width,
-      flexShrink: 0,
       height: "100vh",
-      position: "sticky",
+      position: "fixed",
       top: 0,
+      left: 0,
       background: "var(--color-surface)",
       borderRight: "1px solid var(--color-border)",
       display: "flex",
