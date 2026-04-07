@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -9,7 +10,6 @@ import {
   IconVolunteers,
   IconSheets,
   IconSettings,
-  IconChevronRight,
 } from "@/components/ui/Icons";
 
 export const COLLAPSED_W = 52;
@@ -25,32 +25,45 @@ const NAV_ITEMS = [
 ];
 
 interface SidebarProps {
-  expanded: boolean;
-  onToggle: () => void;
+  onExpandedChange?: (expanded: boolean) => void;
   tournamentId: string | number;
 }
 
-export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
+export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
+  const [expanded, setExpanded] = useState(false);
   const pathname = usePathname();
   const width = expanded ? EXPANDED_W : COLLAPSED_W;
   const base = `/dashboard/${tournamentId}`;
 
+  function handleMouseEnter() {
+    setExpanded(true);
+    onExpandedChange?.(true);
+  }
+
+  function handleMouseLeave() {
+    setExpanded(false);
+    onExpandedChange?.(false);
+  }
+
   return (
-    <aside style={{
-      width,
-      flexShrink: 0,
-      height: "100vh",
-      position: "sticky",
-      top: 0,
-      background: "var(--color-surface)",
-      borderRight: "1px solid var(--color-border)",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: expanded ? "stretch" : "center",
-      transition: "width 0.2s ease",
-      overflow: "hidden",
-      zIndex: 50,
-    }}>
+    <aside
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      style={{
+        width,
+        height: "100vh",
+        position: "fixed",
+        top: 0,
+        left: 0,
+        background: "var(--color-surface)",
+        borderRight: "1px solid var(--color-border)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: expanded ? "stretch" : "center",
+        transition: "width 0.2s ease",
+        overflow: "hidden",
+        zIndex: 50,
+      }}>
       {/* Header */}
       <div style={{
         height: "52px",
@@ -136,38 +149,6 @@ export function Sidebar({ expanded, onToggle, tournamentId }: SidebarProps) {
           );
         })}
       </nav>
-
-      {/* Toggle — pinned to bottom */}
-      <div style={{
-        padding: "10px 6px",
-        borderTop: "1px solid var(--color-border)",
-        display: "flex", alignItems: "center",
-        justifyContent: expanded ? "flex-end" : "center",
-        paddingRight: expanded ? "10px" : "6px",
-      }}>
-        <button
-          onClick={onToggle}
-          title={expanded ? "Collapse sidebar" : "Expand sidebar"}
-          style={{
-            width: "38px", height: "38px",
-            borderRadius: "var(--radius-md)",
-            border: "none", background: "transparent",
-            color: "var(--color-text-tertiary)", cursor: "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: "background var(--transition-fast), color var(--transition-fast)",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = "var(--color-accent-subtle)";
-            e.currentTarget.style.color = "var(--color-text-primary)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = "transparent";
-            e.currentTarget.style.color = "var(--color-text-tertiary)";
-          }}
-        >
-          <IconChevronRight expanded={expanded} />
-        </button>
-      </div>
     </aside>
   );
 }
