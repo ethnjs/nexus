@@ -24,8 +24,7 @@ function TournamentShell({
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
       <Sidebar
-        expanded={sidebarExpanded}
-        onToggle={() => setSidebarExpanded((v) => !v)}
+        onExpandedChange={setSidebarExpanded}
         tournamentId={tournamentId}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden", marginLeft: COLLAPSED_W }}>
