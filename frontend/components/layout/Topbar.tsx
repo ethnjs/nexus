@@ -6,12 +6,14 @@ import { useTournament, Tournament } from "@/lib/useTournament";
 import { NewTournamentModal } from "@/components/ui/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
+import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 
 interface TopbarProps {
   showWordmark?: boolean;
   showDropdown?: boolean;
   showAvatar?: boolean;
   tournamentId?: string | number;
+  sidebarExpanded?: boolean;
 }
 
 // ─── Tournament Dropdown ──────────────────────────────────────────────────────
@@ -137,14 +139,18 @@ export function Topbar({
   showDropdown = false,
   showAvatar = true,
   tournamentId,
+  sidebarExpanded = false,
 }: TopbarProps) {
+  const leftPad = (sidebarExpanded ? EXPANDED_W - COLLAPSED_W : 0) + 16;
+
   return (
     <header style={{
       height: "52px",
       background: "var(--color-surface)",
       borderBottom: "1px solid var(--color-border)",
       display: "flex", alignItems: "center",
-      paddingLeft: "16px", paddingRight: "20px",
+      paddingLeft: leftPad, paddingRight: "20px",
+      transition: "padding-left 0.2s ease",
       gap: "12px",
       position: "sticky",
       top: 0,

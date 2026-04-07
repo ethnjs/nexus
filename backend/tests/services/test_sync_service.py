@@ -1,5 +1,6 @@
 """Unit tests for sync_service helpers — no DB, no Google API."""
 import pytest
+from datetime import datetime
 from app.services.sync_service import (
     _parse_time,
     _parse_time_range,
@@ -89,13 +90,16 @@ def test_parse_day_string_saturday():
     assert _parse_day_string("Saturday 5/23", t) == "2026-05-23"
 
 def test_parse_day_string_no_match_fallback():
-    from datetime import datetime
     t = _make_tournament([], start_date=datetime(2026, 5, 21))
     assert _parse_day_string("Sunday 5/24", t) == "2026-05-24"
 
 def test_parse_day_string_no_date_pattern():
     t = _make_tournament(NATS_BLOCKS)
     assert _parse_day_string("Thursday", t) is None
+
+def test_parse_day_string_month_name():
+    t = _make_tournament([], start_date=datetime(2026, 5, 21))
+    assert _parse_day_string("February 14", t) == "2026-02-14"
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +333,16 @@ def test_apply_rules_parse_availability_short_circuits():
     assert isinstance(result, list)
     assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
 
+def test_apply_rules_parse_availability_without_row_key_extracts_from_value():
+    rules = [{"condition": "always", "action": "parse_time_range"}]
+    result = _apply_rules(
+        "February 14 7:00AM - 5:00PM",
+        rules,
+        {},
+        _make_tournament(start_date=datetime(2026, 5, 21)),
+    )
+    assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
+
 def test_apply_rules_empty_rules_unchanged():
     assert _apply_rules("hello", [], {}, _t()) == "hello"
 
@@ -381,3 +395,51 @@ def test_process_cell_matrix_row_no_rule_returns_string():
     mapping = {"field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM"}
     result = _process_cell("Thursday 5/21", mapping, t)
     assert result == "Thursday 5/21"
+
+def test_process_cell_string_parse_time_range_rule():
+    t = _make_tournament(start_date=datetime(2026, 5, 21))
+    mapping = {
+        "field": "availability",
+        "type": "string",
+        "rules": [{"condition": "always", "action": "parse_time_range"}],
+    }
+    result = _process_cell("February 14 7:00AM - 5:00PM", mapping, t)
+    assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
+
+
+def test_process_cell_phone_formats_us_number():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "phone", "type": "string"}
+    assert _process_cell("9495551234", mapping, t) == "(949) 555-1234"
+    assert _process_cell("+1 (949) 555-1234", mapping, t) == "(949) 555-1234"
+
+
+# ---------------------------------------------------------------------------
+# Generic matrix_row aggregation in sync_sheet
+# ---------------------------------------------------------------------------
+# These tests exercise the dispatch logic directly via _process_cell and verify
+# that matrix_row fields (other than availability/event_preference) produce the
+# right processed value, which sync_sheet then accumulates into a dict.
+
+def test_process_cell_matrix_row_returns_string_value():
+    """matrix_row without a parse rule returns the raw string — sync_sheet builds the dict."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"}
+    result = _process_cell("Carnitas", mapping, t)
+    assert result == "Carnitas"
+
+
+def test_process_cell_matrix_row_blank_returns_none():
+    """Blank matrix_row cell returns None; sync_sheet stores '' for that key."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"}
+    result = _process_cell("", mapping, t)
+    assert result is None
+
+
+def test_process_cell_lunch_order_string_returns_value():
+    """lunch_order with type=string (single-header legacy config) returns the raw string."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "type": "string"}
+    result = _process_cell("Carnitas bowl", mapping, t)
+    assert result == "Carnitas bowl"

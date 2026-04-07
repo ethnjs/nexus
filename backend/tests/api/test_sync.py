@@ -18,16 +18,17 @@ COLUMN_MAPPINGS = {
     "Email Address":   {"field": "email",            "type": "string"},
     "First Name":      {"field": "first_name",       "type": "string"},
     "Last Name":       {"field": "last_name",        "type": "string"},
+    "Phone Number":    {"field": "phone",            "type": "string"},
     "T-Shirt Size":    {"field": "shirt_size",       "type": "string"},
     "Role Preference": {"field": "role_preference",  "type": "multi_select"},
     "Which events?":   {"field": "event_preference", "type": "string"},
     "Availability [8:00 AM - 10:00 AM]": {
         "field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM",
-        "rules": [{"condition": "always", "action": "parse_availability"}],
+        "rules": [{"condition": "always", "action": "parse_time_range"}],
     },
     "Availability [10:00 AM - NOON]": {
         "field": "availability", "type": "matrix_row", "row_key": "10:00 AM - NOON",
-        "rules": [{"condition": "always", "action": "parse_availability"}],
+        "rules": [{"condition": "always", "action": "parse_time_range"}],
     },
     "Transportation": {
         "field": "extra_data", "type": "string", "extra_key": "transportation",
@@ -46,20 +47,20 @@ def _make_tournament(client):
 
 
 def _make_config(client, tournament_id):
-    return client.post(f"/tournaments/{tournament_id}/sheets/configs/", json={
+    r = client.post(f"/tournaments/{tournament_id}/sheets/configs/", json={
         "tournament_id": tournament_id,
         "label": "Interest Form",
-        "sheet_type": "interest",
+        "sheet_type": "volunteers",
         "sheet_url": FAKE_URL,
         "sheet_name": "Form Responses 1",
         "column_mappings": COLUMN_MAPPINGS,
-    }).json()
+    })
+    assert r.status_code == 201, f"_make_config failed {r.status_code}: {r.text}"
+    return r.json()
 
 
 def _sync(client, tournament_id, config_id):
-    return client.post(
-        f"/tournaments/{tournament_id}/sheets/configs/{config_id}/sync/"
-    )
+    return client.post(f"/tournaments/{tournament_id}/sheets/configs/{config_id}/sync/")
 
 
 def _list_memberships(client, tournament_id):
@@ -80,6 +81,7 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
         "Email Address": "alice@example.com",
         "First Name": "Alice",
         "Last Name": "Smith",
+        "Phone Number": "9495551234",
         "T-Shirt Size": "M",
         "Role Preference": "Event Volunteer",
         "Which events?": "Technology & Engineering (Boomilever)",
@@ -101,20 +103,19 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
     assert user is not None
     assert user.first_name == "Alice"
-    assert user.shirt_size == "M"
+    assert user.phone == "(949) 555-1234"
 
     memberships = _list_memberships(client, t["id"])
     alice = [m for m in memberships if m["user_id"] == user.id]
     assert len(alice) == 1
     m = alice[0]
+    assert m["shirt_size"] == "M"
     assert m["role_preference"] == ["Event Volunteer"]
-    # event_preference stored as string type — sync wraps it in a list to satisfy
-    # the list[str] schema; TD can add parse rules to normalize further
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
     assert m["extra_data"]["transportation"] == "Driving"
 
 
-def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_service):
+def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_service, db):
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
     cfg = _make_config(client, t["id"])
@@ -128,9 +129,13 @@ def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_servic
     }]
 
     _sync(client, t["id"], cfg["id"])
+
+    from app.models.models import User as UserModel
+    user = db.query(UserModel).filter(UserModel.email == "bob@example.com").first()
+    assert user is not None
+
     memberships = _list_memberships(client, t["id"])
-    bob = [m for m in memberships if m["availability"] and len(m["availability"]) > 0
-           and m["availability"][0]["start"] == "08:00"]
+    bob = [m for m in memberships if m["user_id"] == user.id]
     assert len(bob) == 1
     avail = bob[0]["availability"]
     assert len(avail) == 1
@@ -152,10 +157,14 @@ def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):
     assert response.json()["created"] == 0
     assert response.json()["updated"] == 1
 
-    from app.models.models import User as UserModel
+    from app.models.models import User as UserModel, Membership as MembershipModel
     db.expire_all()
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
-    assert user.shirt_size == "L"
+    membership = db.query(MembershipModel).filter(
+        MembershipModel.user_id == user.id,
+        MembershipModel.tournament_id == t["id"],
+    ).first()
+    assert membership.shirt_size == "L"
 
 
 def test_sync_skips_row_missing_email(client, td_user, mock_sheets_service):
@@ -196,9 +205,7 @@ def test_sync_last_synced_at_updated(client, td_user, mock_sheets_service):
     mock_sheets_service.get_rows.return_value = []
     _sync(client, t["id"], cfg["id"])
 
-    updated = client.get(
-        f"/tournaments/{t['id']}/sheets/configs/{cfg['id']}/"
-    ).json()
+    updated = client.get(f"/tournaments/{t['id']}/sheets/configs/{cfg['id']}/").json()
     assert updated["last_synced_at"] is not None
 
 
@@ -225,16 +232,10 @@ def test_sync_inactive_config(client, td_user, mock_sheets_service):
 # ---------------------------------------------------------------------------
 
 def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_service, db):
-    """
-    A saved config with type 'availability_row' (old name) should sync
-    correctly after being coerced to 'matrix_row' on read.
-    """
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
 
-    # Bypass schema validation by injecting the legacy type directly into the DB
     from app.models.models import SheetConfig
-    import json
     legacy_mappings = {
         "Email Address":   {"field": "email",        "type": "string"},
         "First Name":      {"field": "first_name",   "type": "string"},
@@ -247,7 +248,7 @@ def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_
     cfg_obj = SheetConfig(
         tournament_id=t["id"],
         label="Legacy Config",
-        sheet_type="interest",
+        sheet_type="volunteers",
         sheet_url=FAKE_URL,
         sheet_name="Form Responses 1",
         spreadsheet_id="fake123",
@@ -272,10 +273,6 @@ def test_sync_coerces_legacy_availability_row_type(client, td_user, mock_sheets_
 
 
 def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_service, db):
-    """
-    A saved config with type 'category_events' (removed type) should sync
-    without crashing — the column is coerced to 'string' and stored as-is.
-    """
     login(client, "td@test.com", "tdpass")
     t = _make_tournament(client)
 
@@ -289,7 +286,7 @@ def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_s
     cfg_obj = SheetConfig(
         tournament_id=t["id"],
         label="Legacy Config",
-        sheet_type="interest",
+        sheet_type="volunteers",
         sheet_url=FAKE_URL,
         sheet_name="Form Responses 1",
         spreadsheet_id="fake123",
@@ -316,5 +313,105 @@ def test_sync_coerces_legacy_category_events_type(client, td_user, mock_sheets_s
     from app.models.models import User as UserModel
     user = db.query(UserModel).filter(UserModel.email == "legacy2@example.com").first()
     m = [m for m in memberships if m["user_id"] == user.id][0]
-    # Stored as single-element list after category_events → string coercion + list wrap
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
+
+
+# ---------------------------------------------------------------------------
+# matrix_row + extra_data + extra_key nesting
+# ---------------------------------------------------------------------------
+
+def test_sync_matrix_row_extra_data_nested_under_extra_key(client, td_user, mock_sheets_service, db):
+    """
+    field=extra_data + type=matrix_row + extra_key nests row values under
+    extra_data[extra_key][row_key], not flat at extra_data[row_key].
+    """
+    login(client, "td@test.com", "tdpass")
+    t = _make_tournament(client)
+
+    lunch_mappings = {
+        "Email Address": {"field": "email",       "type": "string"},
+        "First Name":    {"field": "first_name",  "type": "string"},
+        "Last Name":     {"field": "last_name",   "type": "string"},
+        "Which protein?": {
+            "field": "extra_data", "type": "matrix_row",
+            "row_key": "protein", "extra_key": "lunch",
+        },
+        "Which drink?": {
+            "field": "extra_data", "type": "matrix_row",
+            "row_key": "drink", "extra_key": "lunch",
+        },
+        "Transportation": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+    }
+    r = client.post(f"/tournaments/{t['id']}/sheets/configs/", json={
+        "tournament_id": t["id"], "label": "Lunch Test", "sheet_type": "volunteers",
+        "sheet_url": FAKE_URL, "sheet_name": "Sheet1", "column_mappings": lunch_mappings,
+    })
+    assert r.status_code == 201
+    cfg = r.json()
+
+    mock_sheets_service.get_rows.return_value = [{
+        "Email Address": "alice@example.com",
+        "First Name": "Alice", "Last Name": "Smith",
+        "Which protein?": "Beef Barbacoa",
+        "Which drink?": "Dr. Pepper",
+        "Transportation": "Driving",
+    }]
+
+    response = _sync(client, t["id"], cfg["id"])
+    assert response.status_code == 200
+    assert response.json()["created"] == 1
+
+    memberships = _list_memberships(client, t["id"])
+    from app.models.models import User as UserModel
+    user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
+    m = [m for m in memberships if m["user_id"] == user.id][0]
+
+    # Values must be nested under "lunch", not at the top level of extra_data
+    assert "protein" not in m["extra_data"]
+    assert "drink" not in m["extra_data"]
+    assert m["extra_data"]["lunch"] == {"protein": "Beef Barbacoa", "drink": "Dr. Pepper"}
+    assert m["extra_data"]["transportation"] == "Driving"
+
+
+def test_sync_matrix_row_extra_data_resync_replaces_nested_dict(client, td_user, mock_sheets_service, db):
+    """Re-syncing replaces the entire nested extra_key dict with the new values."""
+    login(client, "td@test.com", "tdpass")
+    t = _make_tournament(client)
+
+    lunch_mappings = {
+        "Email Address": {"field": "email",       "type": "string"},
+        "First Name":    {"field": "first_name",  "type": "string"},
+        "Last Name":     {"field": "last_name",   "type": "string"},
+        "Which protein?": {
+            "field": "extra_data", "type": "matrix_row",
+            "row_key": "protein", "extra_key": "lunch",
+        },
+        "Which drink?": {
+            "field": "extra_data", "type": "matrix_row",
+            "row_key": "drink", "extra_key": "lunch",
+        },
+    }
+    r = client.post(f"/tournaments/{t['id']}/sheets/configs/", json={
+        "tournament_id": t["id"], "label": "Lunch Resync", "sheet_type": "volunteers",
+        "sheet_url": FAKE_URL, "sheet_name": "Sheet1", "column_mappings": lunch_mappings,
+    })
+    cfg = r.json()
+
+    mock_sheets_service.get_rows.return_value = [{
+        "Email Address": "bob@example.com", "First Name": "Bob", "Last Name": "Jones",
+        "Which protein?": "Chicken", "Which drink?": "Water",
+    }]
+    _sync(client, t["id"], cfg["id"])
+
+    mock_sheets_service.get_rows.return_value = [{
+        "Email Address": "bob@example.com", "First Name": "Bob", "Last Name": "Jones",
+        "Which protein?": "Steak", "Which drink?": "Coke",
+    }]
+    _sync(client, t["id"], cfg["id"])
+
+    memberships = _list_memberships(client, t["id"])
+    from app.models.models import User as UserModel
+    db.expire_all()
+    user = db.query(UserModel).filter(UserModel.email == "bob@example.com").first()
+    m = [m for m in memberships if m["user_id"] == user.id][0]
+    assert m["extra_data"]["lunch"] == {"protein": "Steak", "drink": "Coke"}

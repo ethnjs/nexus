@@ -53,6 +53,11 @@ interface SelectProps {
   id?:          string
 }
 
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PANEL_MAX_HEIGHT = 260
+const PANEL_GAP        = 4   // px between trigger edge and panel
+
 // ─── Chevron icon ─────────────────────────────────────────────────────────────
 
 function ChevronDown({ open }: { open: boolean }) {
@@ -65,6 +70,12 @@ function ChevronDown({ open }: { open: boolean }) {
     </svg>
   )
 }
+
+// ─── Panel position type ──────────────────────────────────────────────────────
+
+type PanelPos =
+  | { above: false; top: number;    left: number; width: number }
+  | { above: true;  bottom: number; left: number; width: number }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -86,36 +97,44 @@ export function Select({
   const [open, setOpen]           = useState(false)
   const [focused, setFocused]     = useState(false)
   const [activeIdx, setActiveIdx] = useState<number>(-1)
-  // Panel position for fixed positioning (avoids z-index / overflow clipping issues)
-  const [panelRect, setPanelRect] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [panelPos, setPanelPos]   = useState<PanelPos | null>(null)
   const containerRef              = useRef<HTMLDivElement>(null)
   const triggerRef                = useRef<HTMLButtonElement>(null)
   const listRef                   = useRef<HTMLDivElement>(null)
 
-  const height      = size === 'sm' ? 30 : 44
-  const fontSize    = size === 'sm' ? '11px' : '14px'
-  const triggerBg   = background ?? 'var(--color-surface)'
+  const height    = size === 'sm' ? 30 : 44
+  const fontSize  = size === 'sm' ? '11px' : '14px'
+  const triggerBg = background ?? 'var(--color-surface)'
 
   const flat         = flatOptions(options)
   const selected     = flat.find((o) => o.value === value)
   const displayLabel = selected?.label ?? placeholder
 
-  // ── Update panel position whenever it opens or on scroll/resize ──────────
+  // ── Update panel position — flip upward when not enough space below ───────
 
-  function updatePanelRect() {
+  function updatePanelPos() {
     if (!triggerRef.current) return
-    const r = triggerRef.current.getBoundingClientRect()
-    setPanelRect({ top: r.bottom + 4, left: r.left, width: r.width })
+    const r          = triggerRef.current.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - r.bottom - PANEL_GAP
+    const spaceAbove = r.top - PANEL_GAP
+
+    if (spaceBelow >= PANEL_MAX_HEIGHT || spaceBelow >= spaceAbove) {
+      // Enough room below, or more room below than above — open downward
+      setPanelPos({ above: false, top: r.bottom + PANEL_GAP, left: r.left, width: r.width })
+    } else {
+      // More room above — flip upward, anchor bottom of panel to top of trigger
+      setPanelPos({ above: true, bottom: window.innerHeight - r.top + PANEL_GAP, left: r.left, width: r.width })
+    }
   }
 
   useEffect(() => {
-    if (!open) { setPanelRect(null); return }
-    updatePanelRect()
-    window.addEventListener('scroll', updatePanelRect, true)
-    window.addEventListener('resize', updatePanelRect)
+    if (!open) { setPanelPos(null); return }
+    updatePanelPos()
+    window.addEventListener('scroll', updatePanelPos, true)
+    window.addEventListener('resize', updatePanelPos)
     return () => {
-      window.removeEventListener('scroll', updatePanelRect, true)
-      window.removeEventListener('resize', updatePanelRect)
+      window.removeEventListener('scroll', updatePanelPos, true)
+      window.removeEventListener('resize', updatePanelPos)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -255,8 +274,8 @@ export function Select({
           <ChevronDown open={open} />
         </button>
 
-        {/* Dropdown panel — fixed positioned to escape overflow/z-index constraints */}
-        {open && panelRect && (
+        {/* Dropdown panel — fixed positioned, flips upward when near bottom of viewport */}
+        {open && panelPos && (
           <div
             ref={listRef}
             role="listbox"
@@ -265,16 +284,19 @@ export function Select({
             onMouseDown={(e) => e.stopPropagation()}
             style={{
               position:     'fixed',
-              top:          panelRect.top,
-              left:         panelRect.left,
-              minWidth:     panelRect.width,
+              left:         panelPos.left,
+              minWidth:     panelPos.width,
+              ...(panelPos.above
+                ? { bottom: panelPos.bottom }
+                : { top:    panelPos.top }
+              ),
               zIndex:       9999,
               background:   'var(--color-surface)',
               border:       '1px solid var(--color-border)',
               borderRadius: 'var(--radius-md)',
               boxShadow:    'var(--shadow-lg)',
               padding:      '4px',
-              maxHeight:    '260px',
+              maxHeight:    `${PANEL_MAX_HEIGHT}px`,
               overflowY:    'auto',
             }}
           >

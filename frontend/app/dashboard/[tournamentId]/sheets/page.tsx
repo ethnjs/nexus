@@ -9,14 +9,15 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
+  volunteers: "Volunteers",
+  events:     "Events",
+  // legacy — kept for configs saved before the migration
   interest:     "Interest Form",
   confirmation: "Confirmation Form",
-  events:       "Events",
 };
 
 function fmtDateTime(iso: string) {
-  const normalized = iso.endsWith('Z') || iso.includes('+') ? iso : iso + 'Z'
-  return new Date(normalized).toLocaleString("en-US", {
+  return new Date(iso).toLocaleString("en-US", {
     month: "short", day: "numeric", year: "numeric",
     hour: "numeric", minute: "2-digit", timeZoneName: "short",
   })
@@ -360,9 +361,7 @@ function ConfigCard({
     }
   }
 
-  const mappingCount = Object.keys(cfg.column_mappings).filter(
-    (k) => cfg.column_mappings[k].type !== "ignore"
-  ).length;
+  const mappingCount = cfg.column_mappings.filter((m) => m.type !== "ignore").length;
 
   return (
     <>

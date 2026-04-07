@@ -114,6 +114,14 @@ def test_update_user_admin(client, admin_user):
     assert response.json()["phone"] == "555-1234"
 
 
+def test_update_user_admin_normalizes_us_phone(client, admin_user):
+    login(client, "admin@test.com", "adminpass")
+    created = _make_user(client)
+    response = client.patch(f"/users/{created['id']}/", json={"phone": "9495551234"})
+    assert response.status_code == 200
+    assert response.json()["phone"] == "(949) 555-1234"
+
+
 def test_update_user_non_admin_forbidden(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.patch("/users/1/", json={"phone": "555-0000"}).status_code == 403

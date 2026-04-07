@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode } from 'react'
+import { IconErrorCircle, IconWarningBanner, IconCheckCircle } from '@/components/ui/Icons'
 
 type BannerVariant = 'success' | 'error' | 'warning' | 'info'
 
@@ -14,31 +15,32 @@ interface BannerProps {
 }
 
 const variantTokens: Record<BannerVariant, {
-  bg: string; border: string; iconColor: string; icon: string
+  bg: string; border: string; iconColor: string; icon: ReactNode
 }> = {
   success: {
     bg:        'var(--color-surface)',
     border:    'var(--color-success)',
     iconColor: 'var(--color-success)',
-    icon:      '✓',
+    icon:      <IconCheckCircle size={15} />,
   },
   error: {
     bg:        'var(--color-danger-subtle)',
     border:    'var(--color-danger)',
     iconColor: 'var(--color-danger)',
-    icon:      '✕',
+    icon:      <IconErrorCircle size={15} />,
   },
   warning: {
     bg:        'var(--color-warning-subtle)',
     border:    'var(--color-warning)',
     iconColor: 'var(--color-warning)',
-    icon:      '⚠',
+    icon:      <IconWarningBanner size={17} />,
   },
   info: {
     bg:        'var(--color-surface)',
     border:    'var(--color-border-strong)',
     iconColor: 'var(--color-text-secondary)',
-    icon:      'ℹ',
+    // info keeps a simple character since it's rarely used
+    icon:      <span style={{ fontSize: '13px', fontWeight: 700, lineHeight: 1 }}>ℹ</span>,
   },
 }
 
@@ -57,13 +59,7 @@ export function Banner({ variant, message, action, onDismiss }: BannerProps) {
       boxShadow:    'var(--shadow-sm)',
     }}>
       {/* Icon */}
-      <span style={{
-        fontFamily: 'var(--font-sans)',
-        fontSize:   '13px',
-        fontWeight: 700,
-        color:      t.iconColor,
-        flexShrink: 0,
-      }}>
+      <span style={{ color: t.iconColor, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
         {t.icon}
       </span>
 

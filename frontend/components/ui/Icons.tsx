@@ -86,16 +86,11 @@ export function IconPlus({ size = 16, ...props }: IconProps) {
 }
 
 export function IconSync({ size = 14, ...props }: IconProps) {
-  // Circle made of two opposing arrows
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
-      {/* Top arc — left to right */}
       <path d="M2.5 8a5.5 5.5 0 0 1 9.5-3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      {/* Arrowhead pointing right on top arc */}
       <path d="M10.5 2.5l1.5 1.7-2 .3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      {/* Bottom arc — right to left */}
       <path d="M13.5 8a5.5 5.5 0 0 1-9.5 3.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      {/* Arrowhead pointing left on bottom arc */}
       <path d="M5.5 13.5l-1.5-1.7 2-.3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -160,6 +155,15 @@ export function IconExport({ size = 14, ...props }: IconProps) {
   );
 }
 
+export function IconSwitch({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <path d="M2 5h10M9 2l3 3-3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14 11H4M7 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // ─── Directional ─────────────────────────────────────────────────────────────
 
 export function IconChevronDown({ size = 14, ...props }: IconProps) {
@@ -197,6 +201,41 @@ export function IconCheckCircle({ size = 16, ...props }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
       <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
       <path d="M5 8l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/**
+ * Circle with an X inside — X has breathing room from the circle edge.
+ * Used for error states in banners and feedback UI.
+ */
+export function IconErrorCircle({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      {/* Outer circle — slightly thinner so it doesn't visually merge with the X */}
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeWidth="1.4" />
+      {/* X — inset from the circle so there's clear space between them */}
+      <path d="M5.5 5.5l5 5M10.5 5.5l-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/**
+ * Warning triangle — slightly larger exclamation mark for better legibility.
+ * Used for warning states in banners and feedback UI.
+ */
+export function IconWarningBanner({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 18 18" fill="none" style={props.style} className={props.className}>
+      <path
+        d="M8.13 2.4a1.05 1.05 0 0 1 1.74 0l6.3 10.5A1.05 1.05 0 0 1 15.3 14.5H2.7a1.05 1.05 0 0 1-.87-1.6L8.13 2.4z"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinejoin="round"
+      />
+      {/* Taller stem for better legibility */}
+      <path d="M9 7v3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="9" cy="12.25" r="0.85" fill="currentColor" />
     </svg>
   );
 }
