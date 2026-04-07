@@ -230,7 +230,23 @@ export interface Membership {
   extra_data:        Record<string, unknown> | null
   created_at:        string
   updated_at:        string
-  user?:             User
+
+  // TODO(temp): identity fields sourced from User table — when user profile
+  // page is built, these and any additional profile fields should come from User
+  first_name?: string | null
+  last_name?:  string | null
+  email?:      string | null
+  phone?:      string | null
+
+  // TODO(temp): profile fields synced to membership until user self-management
+  shirt_size?:          string | null
+  dietary_restriction?: string | null
+  university?:          string | null
+  major?:               string | null
+  employer?:            string | null
+  student_status?:      string | null
+  competition_exp?:     string | null
+  volunteering_exp?:    string | null
 }
 
 export const membershipsApi = {
@@ -250,7 +266,7 @@ export const membershipsApi = {
     const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
     const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
     const toDelete = memberships.filter(
-      (m) => m.user?.email && emailSet.has(m.user.email.toLowerCase().trim())
+      (m) => m.email && emailSet.has(m.email.toLowerCase().trim())
     )
     await Promise.all(
       toDelete.map((m) => api.delete<void>(`/tournaments/${tournamentId}/memberships/${m.id}/`))

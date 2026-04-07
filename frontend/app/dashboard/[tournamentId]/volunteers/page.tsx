@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { membershipsApi, Membership, User } from "@/lib/api";
+import { membershipsApi, Membership } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-type MembershipWithUser = Membership & { user?: User };
 
 type SortKey = "name" | "email" | "status" | "role_preference";
 
@@ -20,10 +18,9 @@ interface AvailabilitySlot {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function displayName(user?: User) {
-  if (!user) return "—";
-  const full = [user.first_name, user.last_name].filter(Boolean).join(" ");
-  return full || user.email;
+function displayName(m: Pick<Membership, "first_name" | "last_name" | "email">) {
+  const full = [m.first_name, m.last_name].filter(Boolean).join(" ");
+  return full || m.email || "—";
 }
 
 function fmtVal(v: unknown): string {
@@ -121,7 +118,7 @@ export default function VolunteersPage() {
   const params = useParams();
   const tournamentId = Number(params.tournamentId);
 
-  const [memberships, setMemberships] = useState<MembershipWithUser[]>([]);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState("");
   const [search, setSearch]           = useState("");
@@ -135,7 +132,7 @@ export default function VolunteersPage() {
       setError("");
       try {
         const ms = await membershipsApi.listByTournament(tournamentId);
-        setMemberships(ms as MembershipWithUser[]);
+        setMemberships(ms);
       } catch {
         setError("Failed to load volunteers.");
       } finally {
@@ -152,15 +149,15 @@ export default function VolunteersPage() {
   const filtered = memberships.filter((m) => {
     if (statusFilter !== "all" && m.status !== statusFilter) return false;
     if (!q) return true;
-    const name  = displayName(m.user).toLowerCase();
-    const email = (m.user?.email ?? "").toLowerCase();
+    const name  = displayName(m).toLowerCase();
+    const email = (m.email ?? "").toLowerCase();
     return name.includes(q) || email.includes(q);
   });
 
   const sorted = [...filtered].sort((a, b) => {
     let av = "", bv = "";
-    if (sortKey === "name")                 { av = displayName(a.user);              bv = displayName(b.user); }
-    else if (sortKey === "email")           { av = a.user?.email ?? "";              bv = b.user?.email ?? ""; }
+    if (sortKey === "name")                 { av = displayName(a);              bv = displayName(b); }
+    else if (sortKey === "email")           { av = a.email ?? "";              bv = b.email ?? ""; }
     else if (sortKey === "status")          { av = a.status;                         bv = b.status; }
     else if (sortKey === "role_preference") { av = (a.role_preference ?? []).join(); bv = (b.role_preference ?? []).join(); }
     return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
@@ -275,10 +272,13 @@ export default function VolunteersPage() {
                 {/* User fields */}
                 <th style={thPlain}>Phone</th>
                 <th style={thPlain}>University</th>
+                <th style={thPlain}>Student Status</th>
                 <th style={thPlain}>Major</th>
                 <th style={thPlain}>Employer</th>
                 <th style={thPlain}>Shirt Size</th>
                 <th style={thPlain}>Dietary</th>
+                <th style={{ ...thPlain, minWidth: "200px" }}>Competition Exp</th>
+                <th style={{ ...thPlain, minWidth: "200px" }}>Volunteering Exp</th>
 
                 {/* Membership fields */}
                 <th style={thPlain}>Event Pref</th>
@@ -304,11 +304,11 @@ export default function VolunteersPage() {
                 >
                   {/* Name */}
                   <td style={{ ...tdStyle, fontFamily: "var(--font-sans)", fontWeight: 500 }}>
-                    {displayName(m.user)}
+                    {displayName(m)}
                   </td>
 
                   {/* Email */}
-                  <td style={tdSec}>{m.user?.email ?? "—"}</td>
+                  <td style={tdSec}>{m.email ?? "—"}</td>
 
                   {/* Status */}
                   <td style={tdStyle}>
@@ -321,12 +321,15 @@ export default function VolunteersPage() {
                   </td>
 
                   {/* User fields */}
-                  <td style={tdSec}>{m.user?.phone               ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.university           ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.major                ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.employer             ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.shirt_size           ?? "—"}</td>
-                  <td style={tdSec}>{m.user?.dietary_restriction  ?? "—"}</td>
+                  <td style={tdSec}>{m.phone           ?? "—"}</td>
+                  <td style={tdSec}>{m.university            ?? "—"}</td>
+                  <td style={tdSec}>{m.student_status        ?? "—"}</td>
+                  <td style={tdSec}>{m.major                 ?? "—"}</td>
+                  <td style={tdSec}>{m.employer              ?? "—"}</td>
+                  <td style={tdSec}>{m.shirt_size            ?? "—"}</td>
+                  <td style={tdSec}>{m.dietary_restriction   ?? "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", minWidth: "200px", maxWidth: "300px" }}>{m.competition_exp   ?? "—"}</td>
+                  <td style={{ ...tdSec, whiteSpace: "normal", minWidth: "200px", maxWidth: "300px" }}>{m.volunteering_exp  ?? "—"}</td>
 
                   {/* Event pref — tags */}
                   <td style={{ ...tdStyle, whiteSpace: "normal", minWidth: "200px" }}>
