@@ -29,7 +29,7 @@ function TournamentShell({
         tournamentId={tournamentId}
       />
       <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden", marginLeft: COLLAPSED_W }}>
-        <Topbar showDropdown tournamentId={tournamentId} showAvatar />
+        <Topbar showDropdown tournamentId={tournamentId} showAvatar sidebarExpanded={sidebarExpanded} />
         <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
           {children}
         </main>
