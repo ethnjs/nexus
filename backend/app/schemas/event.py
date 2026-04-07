@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, field_validator
+from app.schemas.time_block import TimeBlockRead
 
 VALID_DIVISIONS = {"B", "C"}
 VALID_EVENT_TYPES = {"standard", "trial"}
@@ -8,21 +9,18 @@ VALID_EVENT_TYPES = {"standard", "trial"}
 
 class EventBase(BaseModel):
     name: str
-    division: str
+    division: str | None = None
     event_type: str = "standard"
-    category: str | None = None
+    category_id: int | None = None
     building: str | None = None
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int = 2
-    # Block numbers this event runs e.g. [1,2,3,4,5,6]
-    # Empty list means the TD hasn't configured blocks yet
-    blocks: list[int] = []
 
     @field_validator("division")
     @classmethod
-    def validate_division(cls, v: str) -> str:
-        if v not in VALID_DIVISIONS:
+    def validate_division(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_DIVISIONS:
             raise ValueError(f"division must be one of: {VALID_DIVISIONS}")
         return v
 
@@ -40,18 +38,10 @@ class EventBase(BaseModel):
             raise ValueError("volunteers_needed must be at least 1")
         return v
 
-    @field_validator("blocks")
-    @classmethod
-    def validate_blocks(cls, v: list[int]) -> list[int]:
-        if len(v) != len(set(v)):
-            raise ValueError("Block numbers must be unique")
-        if any(b < 1 for b in v):
-            raise ValueError("Block numbers must be positive integers")
-        return sorted(v)
-
 
 class EventCreate(EventBase):
     tournament_id: int
+    time_block_ids: list[int] = []
 
 
 class EventUpdate(BaseModel):
@@ -59,17 +49,18 @@ class EventUpdate(BaseModel):
     name: str | None = None
     division: str | None = None
     event_type: str | None = None
-    category: str | None = None
+    category_id: int | None = None
     building: str | None = None
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int | None = None
-    blocks: list[int] | None = None
+    time_block_ids: list[int] | None = None
 
 
 class EventRead(EventBase):
     id: int
     tournament_id: int
+    time_blocks: list[TimeBlockRead]
     created_at: datetime
     updated_at: datetime
 

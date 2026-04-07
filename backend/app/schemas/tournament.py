@@ -152,6 +152,8 @@ class TournamentUpdate(BaseModel):
 class TournamentRead(TournamentBase):
     id: int
     owner_id: int
+    time_blocks: list[TimeBlockRead]
+    categories: list[TournamentCategoryRead]
     created_at: datetime
     updated_at: datetime
 

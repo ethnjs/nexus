@@ -4,38 +4,17 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user, require_admin
 from app.core.permissions import (
     DEFAULT_POSITIONS,
+    DEFAULT_CATEGORIES,
     MANAGE_TOURNAMENT,
     require_membership,
     require_permission,
     has_any_membership,
 )
 from app.db.session import get_db
-from app.models.models import Membership, Tournament, User
+from app.models.models import Membership, Tournament, User, TournamentCategory
 from app.schemas.tournament import TournamentCreate, TournamentRead, TournamentUpdate
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
-
-
-def _serialize(tournament: Tournament) -> dict:
-    """
-    Convert JSON columns (blocks, volunteer_schema) from their stored dict/list
-    form into the nested Pydantic-compatible structure for TournamentRead.
-    """
-    return {
-        "id": tournament.id,
-        "name": tournament.name,
-        "start_date": tournament.start_date,
-        "end_date": tournament.end_date,
-        "location": tournament.location,
-        "blocks": tournament.blocks or [],
-        "volunteer_schema": tournament.volunteer_schema or {
-            "custom_fields": [],
-            "positions": [],
-        },
-        "owner_id": tournament.owner_id,
-        "created_at": tournament.created_at,
-        "updated_at": tournament.updated_at,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -51,7 +30,7 @@ def list_all_tournaments(
     Regular users should use GET /tournaments/me instead.
     """
     tournaments = db.query(Tournament).order_by(Tournament.created_at.desc()).all()
-    return [_serialize(t) for t in tournaments]
+    return tournaments
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +55,7 @@ def list_my_tournaments(
             .order_by(Tournament.created_at.desc())
             .all()
         )
-    return [_serialize(t) for t in tournaments]
+    return tournaments
 
 
 # ---------------------------------------------------------------------------
@@ -90,11 +69,8 @@ def create_tournament(
     current_user: User = Depends(get_current_user),
 ):
     data = payload.model_dump()
-    data["blocks"] = [b.model_dump() for b in payload.blocks]
 
     # Build volunteer_schema — merge the submitted schema with DEFAULT_POSITIONS.
-    # If the TD supplied positions in the payload we respect them; otherwise
-    # we auto-populate the defaults.
     submitted_schema = payload.volunteer_schema.model_dump()
     if not submitted_schema.get("positions"):
         submitted_schema["positions"] = DEFAULT_POSITIONS
@@ -102,7 +78,15 @@ def create_tournament(
 
     tournament = Tournament(**data, owner_id=current_user.id)
     db.add(tournament)
-    db.flush()  # get tournament.id before creating membership
+    db.flush()  # get tournament.id before creating membership and categories
+
+    # Seed DEFAULT_CATEGORIES
+    for cat_name in DEFAULT_CATEGORIES:
+        db.add(TournamentCategory(
+            tournament_id=tournament.id,
+            name=cat_name,
+            is_custom=False
+        ))
 
     # Auto-create a tournament_director membership for the creator.
     membership = Membership(
@@ -114,7 +98,7 @@ def create_tournament(
     db.add(membership)
     db.commit()
     db.refresh(tournament)
-    return _serialize(tournament)
+    return tournament
 
 
 # ---------------------------------------------------------------------------
@@ -133,7 +117,7 @@ def get_tournament(
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-    return _serialize(tournament)
+    return tournament
 
 
 # ---------------------------------------------------------------------------
@@ -152,8 +136,6 @@ def update_tournament(
 
     update_data = payload.model_dump(exclude_none=True)
 
-    if "blocks" in update_data:
-        update_data["blocks"] = [b.model_dump() for b in payload.blocks]
     if "volunteer_schema" in update_data:
         update_data["volunteer_schema"] = payload.volunteer_schema.model_dump()
 
@@ -162,7 +144,7 @@ def update_tournament(
 
     db.commit()
     db.refresh(tournament)
-    return _serialize(tournament)
+    return tournament
 
 
 # ---------------------------------------------------------------------------

@@ -145,6 +145,20 @@ DEFAULT_POSITIONS: list[dict] = [
 
 
 # ---------------------------------------------------------------------------
+# Default category definitions
+# Auto-populated into tournament_categories when a tournament is created.
+# ---------------------------------------------------------------------------
+
+DEFAULT_CATEGORIES: list[str] = [
+    "Life, Personal & Social Science",
+    "Earth and Space Science",
+    "Physical Science & Chemistry",
+    "Technology & Engineering",
+    "Inquiry & Nature of Science",
+]
+
+
+# ---------------------------------------------------------------------------
 # Runtime permission helpers
 # ---------------------------------------------------------------------------
 
