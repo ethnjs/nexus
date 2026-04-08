@@ -2,12 +2,12 @@
 Google Sheets API wrapper + header mapping logic.
 
 SheetsService handles all Google Sheets API calls.
-Pure functions handle header → field/type mapping with this priority:
-  1. Form question match → field from hints, type from form's nexus_type
-  2. Hint-based detection → field from hints, type defaults to "string"
+Pure functions handle header → field/field_type/value_type mapping with this priority:
+  1. Form question match → field from hints, field_type/value_type from form's nexus_type
+  2. Hint-based detection → field from hints, field_type defaults to "single"/value_type "text"
   3. Fall back to __ignore__/ignore
 
-Exception: availability bracket pattern always → matrix_row regardless of form data.
+Exception: availability bracket pattern always → group/time_range regardless of form data.
 """
 from __future__ import annotations
 import json
@@ -39,10 +39,15 @@ SCOPES = [
     "https://www.googleapis.com/auth/forms.body.readonly",
 ]
 
-# The parse_time_range rule — auto-attached to availability matrix_row mappings
-_PARSE_TIME_RANGE_RULE = ParseRule(
-    condition="always", case_sensitive=False, action="parse_time_range"
-)
+# Internal translation: nexus_type (old form-service values) → (field_type, value_type)
+_NEXUS_TYPE_TO_FIELD_VALUE: dict[str, tuple[str, str | None]] = {
+    "string":       ("single", "text"),
+    "boolean":      ("single", "boolean"),
+    "integer":      ("single", "number"),
+    "multi_select": ("list",   "text"),
+    "matrix_row":   ("group",  "text"),
+    "ignore":       ("ignore", None),
+}
 
 
 class SheetsService:
@@ -118,7 +123,7 @@ class SheetsService:
         already cross-referenced — no client-side merging needed.
 
         Deduplication ensures no two headers suggest the same field or extra_key.
-        availability matrix_row mappings always get a parse_time_range rule.
+        Availability group mappings get value_type="time_range" automatically.
         """
         headers = self._fetch_header_row(sheet_url, sheet_name)
         q_index = _build_question_index(form_questions or [])
@@ -267,7 +272,7 @@ def _raw_field(header: str, q_index: dict) -> str | None:
     """
     Return the hint-matched field for a header without running dedup.
     Grid questions (nexus_type == "matrix_row") return None — they are already
-    matrix_row and don't need the multi-header upgrade path.
+    group type and don't need the multi-header upgrade path.
     """
     lower = header.lower()
     q = _match_question(lower, q_index)
@@ -284,7 +289,7 @@ def _raw_field(header: str, q_index: dict) -> str | None:
 def _find_multi_matrix_columns(headers: list[str], q_index: dict) -> dict[int, str]:
     """
     Pre-scan all headers and return {column_index: field} for every column that
-    belongs to a multi-header group opting in to matrix_row aggregation.
+    belongs to a multi-header group opting in to group aggregation.
 
     A group qualifies when its field is listed in MATRIX_ROW_KEY_KEYWORDS and
     two or more headers hint to that same field.
@@ -305,7 +310,7 @@ def _find_multi_matrix_columns(headers: list[str], q_index: dict) -> dict[int, s
 
 def _infer_row_key(header: str, field: str) -> str:
     """
-    Infer a short row_key from a column header using the per-field keyword table.
+    Infer a short group_key from a column header using the per-field keyword table.
 
     Returns "" if no keyword matches — the user must fill in the key manually.
     """
@@ -330,20 +335,21 @@ def _extract_options(q: dict) -> list[FormQuestionOption] | None:
     ]
 
 
-def _mapped_as_multi_matrix_row(
+def _mapped_as_multi_group_row(
     column_index: int,
     header: str,
     field: str,
     q_index: dict,
 ) -> MappedHeader:
-    """Build a MappedHeader for a column belonging to a multi-header matrix_row group."""
+    """Build a MappedHeader for a column belonging to a multi-header group aggregation."""
     q = _match_question(header.lower(), q_index)
     return MappedHeader(
         column_index=column_index,
         header=header,
         field=field,
-        type="matrix_row",
-        row_key=_infer_row_key(header, field) or None,
+        field_type="group",
+        value_type="text",
+        group_key=_infer_row_key(header, field) or None,
         options=_extract_options(q) if q is not None else None,
     )
 
@@ -352,9 +358,8 @@ def _build_mappings(headers: list[str], q_index: dict) -> list[MappedHeader]:
     """
     Build the full MappedHeader list for a set of sheet headers.
 
-    Columns in a multi-header matrix_row group are promoted via
-    _mapped_as_multi_matrix_row; all others go through the normal
-    _map_header path with dedup.
+    Columns in a multi-header group are promoted via _mapped_as_multi_group_row;
+    all others go through the normal _map_header path with dedup.
     """
     multi_matrix = _find_multi_matrix_columns(headers, q_index)
 
@@ -364,7 +369,7 @@ def _build_mappings(headers: list[str], q_index: dict) -> list[MappedHeader]:
 
     for column_index, header in enumerate(headers):
         if column_index in multi_matrix:
-            mapped = _mapped_as_multi_matrix_row(
+            mapped = _mapped_as_multi_group_row(
                 column_index, header, multi_matrix[column_index], q_index
             )
         else:
@@ -382,7 +387,7 @@ def _infer_grid_field(
     grid_columns: list[str] | None,
 ) -> str:
     """
-    Infer matrix_row field with grid-aware heuristics.
+    Infer group field with grid-aware heuristics.
 
     Matrix questions should map to either availability or event_preference.
     Generic hints like "major" in long question text should not override this.
@@ -427,7 +432,7 @@ def _infer_grid_field(
 
 def _dedup(
     field: str,
-    mapping_type: str,
+    field_type: str,
     extra_key: str | None,
     claimed_fields: set[str],
     claimed_extra_keys: set[str],
@@ -437,28 +442,28 @@ def _dedup(
 
     - __ignore__ is never claimed.
     - extra_data: if extra_key already taken → fall back to ignore.
-    - availability: never claimed (multiple matrix_row rows share it).
+    - availability: never claimed (multiple group rows share it).
     - event_preference: never claimed (multiple grid rows can share it).
     - All other fields: if already claimed → fall back to ignore.
     """
     if field == "__ignore__":
-        return field, mapping_type, extra_key
+        return field, field_type, extra_key
 
     if field == "extra_data":
         if extra_key and extra_key in claimed_extra_keys:
             return "__ignore__", "ignore", None
         if extra_key:
             claimed_extra_keys.add(extra_key)
-        return field, mapping_type, extra_key
+        return field, field_type, extra_key
 
     if field in claimed_fields:
         return "__ignore__", "ignore", None
 
-    # matrix_row fields aggregate across multiple headers — never claim them
-    if mapping_type != "matrix_row":
+    # group fields aggregate across multiple headers — never claim them
+    if field_type != "group":
         claimed_fields.add(field)
 
-    return field, mapping_type, extra_key
+    return field, field_type, extra_key
 
 
 def _map_header(
@@ -473,7 +478,7 @@ def _map_header(
 
     Priority order:
     1. Form question match (if q_index populated)
-    2. Hint-based detection (field only, type defaults to "string")
+    2. Hint-based detection (field only, field_type defaults to "single"/"text")
     3. Fall back to __ignore__/ignore
     """
     lower = header.lower()
@@ -496,7 +501,7 @@ def _mapped_from_question(
     Build a MappedHeader from a matched form question dict.
 
     Field comes from hints (semantic meaning of the question title).
-    Type comes from the form question's nexus_type (google question type).
+    field_type/value_type come from the form question's nexus_type.
     """
     nexus_type: str = q["nexus_type"]
     title: str = q["title"]
@@ -504,44 +509,41 @@ def _mapped_from_question(
     grid_rows: list[str] | None = q.get("grid_rows")
     grid_columns: list[str] | None = q.get("grid_columns")
 
-    # Grid questions → matrix_row, always get parse_time_range rule
+    # Grid questions → group field_type
     if nexus_type == "matrix_row":
-        # Determine field with grid-aware inference so generic keywords like
-        # "major" inside long event question text do not misclassify.
         grid_field = _infer_grid_field(title, grid_rows, grid_columns)
+        group_key = _extract_row_key(header)
 
-        row_key = _extract_row_key(header)
-
-        rules: list[ParseRule] | None = None
-        if grid_field == "availability":
-            rules = [_PARSE_TIME_RANGE_RULE]
+        # Availability groups use time_range value_type; others use text
+        value_type = "time_range" if grid_field == "availability" else "text"
 
         return MappedHeader(
             column_index=column_index,
             header=header,
             field=grid_field,
-            type="matrix_row",
-            row_key=row_key,
-            rules=rules,
+            field_type="group",
+            value_type=value_type,
+            group_key=group_key,
             grid_rows=grid_rows,
             grid_columns=grid_columns,
         )
 
-    # Non-grid questions — field from hint, type from form
+    # Non-grid questions — field from hint, field_type/value_type from nexus_type
     hint = _hint_field(title)
     field = hint.field
-    mapping_type = nexus_type  # form type takes priority
+
+    field_type, value_type = _NEXUS_TYPE_TO_FIELD_VALUE.get(nexus_type, ("single", "text"))
 
     rules = None
-    if options and mapping_type == "multi_select":
+    if options and field_type == "list":
         rules = _alias_rules(options) or None
 
     extra_key: str | None = hint.extra_key
     if field == "extra_data" and not extra_key:
         extra_key = _slugify(title)
 
-    field, mapping_type, extra_key = _dedup(
-        field, mapping_type, extra_key, claimed_fields, claimed_extra_keys
+    field, field_type, extra_key = _dedup(
+        field, field_type, extra_key, claimed_fields, claimed_extra_keys
     )
 
     fq_options = _extract_options(q)
@@ -550,7 +552,8 @@ def _mapped_from_question(
         column_index=column_index,
         header=header,
         field=field,
-        type=mapping_type,
+        field_type=field_type,
+        value_type=value_type,
         extra_key=extra_key,
         rules=rules,
         options=fq_options,
@@ -567,23 +570,23 @@ def _mapped_from_hint(
     """
     Build a MappedHeader using hint-based detection (no form data available).
 
-    Field comes from hints. Type always defaults to "string" except for
-    the availability bracket pattern which forces "matrix_row".
+    Field comes from hints. field_type always defaults to "single"/"text" except for
+    the availability bracket pattern which forces "group"/"time_range".
     """
     # Availability grid pattern: "Availability [8:00 AM - 10:00 AM]"
     avail_match = AVAILABILITY_BRACKET_PATTERN.search(header)
     if avail_match:
-        row_key = avail_match.group(1).strip()
+        group_key = avail_match.group(1).strip()
         return MappedHeader(
             column_index=column_index,
             header=header,
             field="availability",
-            type="matrix_row",
-            row_key=row_key,
-            rules=[_PARSE_TIME_RANGE_RULE],
+            field_type="group",
+            value_type="time_range",
+            group_key=group_key,
         )
 
-    # Try volunteer hints — field only, type defaults to "string"
+    # Try volunteer hints — field only, field_type defaults to "single"/"text"
     hint = match_volunteer_hint(lower)
     if hint is not None:
         field = hint.field
@@ -591,22 +594,31 @@ def _mapped_from_hint(
 
         # __ignore__ → ignore type
         if field == "__ignore__":
-            return MappedHeader(column_index=column_index, header=header, field="__ignore__", type="ignore")
+            return MappedHeader(
+                column_index=column_index,
+                header=header,
+                field="__ignore__",
+                field_type="ignore",
+            )
 
         # extra_data without a pre-defined extra_key → slugify the header
         if field == "extra_data" and not extra_key:
             extra_key = _slugify(header)
 
-        mapping_type = "string"
-        field, mapping_type, extra_key = _dedup(
-            field, mapping_type, extra_key, claimed_fields, claimed_extra_keys
+        field_type = "single"
+        value_type: str | None = "text"
+        field, field_type, extra_key = _dedup(
+            field, field_type, extra_key, claimed_fields, claimed_extra_keys
         )
+        if field_type == "ignore":
+            value_type = None
 
         return MappedHeader(
             column_index=column_index,
             header=header,
             field=field,
-            type=mapping_type,
+            field_type=field_type,
+            value_type=value_type,
             extra_key=extra_key or None,
         )
 
@@ -615,5 +627,5 @@ def _mapped_from_hint(
         column_index=column_index,
         header=header,
         field="__ignore__",
-        type="ignore",
+        field_type="ignore",
     )
