@@ -458,7 +458,14 @@ class SheetConfigReadWithWarnings(SheetConfigRead):
 
 
 class ValidateMappingsRequest(BaseModel):
-    column_mappings: list[ColumnMappingEntry] = []
+    """
+    Accepts raw mapping dicts without running ColumnMappingEntry validators.
+
+    Validation is intentionally deferred to validate_column_mappings() so that
+    all errors are returned as structured ValidationIssue objects rather than
+    raw Pydantic 422 responses that the frontend cannot parse.
+    """
+    column_mappings: list[dict[str, Any]] = []
 
     @field_validator("column_mappings", mode="before")
     @classmethod
