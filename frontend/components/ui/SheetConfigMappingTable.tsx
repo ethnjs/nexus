@@ -1050,10 +1050,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
           <Select
             value={row.field_type}
             onChange={handleFieldTypeChange}
-            options={[
-              ...validFieldTypes.filter((t) => t !== "ignore").map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] ?? t })),
-              ...(isIgnored ? [{ value: "ignore", label: "Ignore" }] : []),
-            ]}
+            options={validFieldTypes.filter((t) => t !== "ignore").map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] ?? t }))}
             disabled={isRemoved || isIgnored}
             size="sm"
             background="var(--color-bg)"
