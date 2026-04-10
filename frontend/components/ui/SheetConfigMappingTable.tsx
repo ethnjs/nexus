@@ -1027,7 +1027,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         {/* Col 2: field */}
         {viewOnly ? (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: isIgnored ? "var(--color-text-tertiary)" : "var(--color-text-primary)" }}>
-            {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[row.field] ?? row.field)}
+            {isIgnored ? "Ignore" : (KNOWN_FIELDS_LABELS[row.field] ?? row.field)}
           </span>
         ) : (
           <Select
@@ -1044,7 +1044,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         {/* Col 3: field type */}
         {viewOnly ? (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-            {FIELD_TYPE_LABELS[row.field_type] ?? row.field_type}
+            {isIgnored ? "—" : (FIELD_TYPE_LABELS[row.field_type] ?? row.field_type)}
           </span>
         ) : (
           <Select
