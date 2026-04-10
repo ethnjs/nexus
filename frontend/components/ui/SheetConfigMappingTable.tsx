@@ -1041,34 +1041,37 @@ const MappingRowComponent = memo(function MappingRowComponent({
           />
         )}
 
-        {/* Col 3: field type — locked (shows —) when field is ignored */}
-        {viewOnly || isIgnored ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", opacity: isIgnored ? 0.4 : 1 }}>
-            {isIgnored ? "—" : (FIELD_TYPE_LABELS[row.field_type] ?? row.field_type)}
+        {/* Col 3: field type */}
+        {viewOnly ? (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {FIELD_TYPE_LABELS[row.field_type] ?? row.field_type}
           </span>
         ) : (
           <Select
             value={row.field_type}
             onChange={handleFieldTypeChange}
-            options={validFieldTypes.filter((t) => t !== "ignore").map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] ?? t }))}
-            disabled={isRemoved}
+            options={[
+              ...validFieldTypes.filter((t) => t !== "ignore").map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] ?? t })),
+              ...(isIgnored ? [{ value: "ignore", label: "Ignore" }] : []),
+            ]}
+            disabled={isRemoved || isIgnored}
             size="sm"
             background="var(--color-bg)"
             fullWidth
           />
         )}
 
-        {/* Col 4: value type — locked (shows —) when field is ignored */}
-        {viewOnly || isIgnored ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", opacity: isIgnored ? 0.4 : 1 }}>
-            {isIgnored ? "—" : (row.value_type ? (VALUE_TYPE_LABELS[row.value_type] ?? row.value_type) : "—")}
+        {/* Col 4: value type — disabled when ignored */}
+        {viewOnly ? (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {row.value_type ? (VALUE_TYPE_LABELS[row.value_type] ?? row.value_type) : "—"}
           </span>
         ) : (
           <Select
             value={row.value_type ?? ""}
             onChange={handleValueTypeChange}
             options={validValueTypes.map((t) => ({ value: t, label: VALUE_TYPE_LABELS[t] ?? t }))}
-            disabled={isRemoved}
+            disabled={isRemoved || isIgnored}
             size="sm"
             background="var(--color-bg)"
             fullWidth
