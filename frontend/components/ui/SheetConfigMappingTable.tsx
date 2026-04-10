@@ -32,13 +32,19 @@ export const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "extra_data":          "Extra Data",
 };
 
-export const TYPE_LABELS: Record<string, string> = {
-  string:       "Text",
-  ignore:       "Ignore",
-  boolean:      "Yes/No",
-  integer:      "Number",
-  multi_select: "Multi-select",
-  matrix_row:   "Matrix Row",
+export const FIELD_TYPE_LABELS: Record<string, string> = {
+  single: "Single",
+  list:   "List",
+  group:  "Group",
+  ignore: "Ignore",
+};
+
+export const VALUE_TYPE_LABELS: Record<string, string> = {
+  text:       "Text",
+  number:     "Number",
+  boolean:    "Yes / No",
+  date:       "Date",
+  time_range: "Time Range",
 };
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -51,21 +57,14 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  set:               "Set to",
-  replace:           "Replace with",
-  prepend:           "Prepend",
-  append:            "Append",
-  discard:           "Discard",
-  parse_time_range:  "Parse time range",   // canonical
-  parse_availability:"Parse availability", // legacy alias
+  set:     "Set to",
+  replace: "Replace with",
+  prepend: "Prepend",
+  append:  "Append",
+  discard: "Discard",
 };
 
-// Both parse_time_range and parse_availability take no value argument.
-const VALUELESS_ACTIONS = new Set<ParseRuleAction>([
-  "discard",
-  "parse_time_range",
-  "parse_availability",
-]);
+const VALUELESS_ACTIONS = new Set<ParseRuleAction>(["discard"]);
 
 // ─── Row state ────────────────────────────────────────────────────────────────
 
@@ -393,10 +392,11 @@ interface DiffLine {
 }
 
 const FIELD_DEFS: { label: string; key: keyof MappingRow; fmt?: (v: string) => string }[] = [
-  { label: "Field",     key: "field",     fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v },
-  { label: "Type",      key: "type",      fmt: (v) => TYPE_LABELS[v] ?? v },
-  { label: "Row Key",   key: "row_key" },
-  { label: "Extra Key", key: "extra_key" },
+  { label: "Field",      key: "field",      fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v },
+  { label: "Field Type", key: "field_type", fmt: (v) => FIELD_TYPE_LABELS[v] ?? v },
+  { label: "Value Type", key: "value_type", fmt: (v) => VALUE_TYPE_LABELS[v] ?? v },
+  { label: "Group Key",  key: "group_key" },
+  { label: "Extra Key",  key: "extra_key" },
   { label: "Delimiter", key: "delimiter" },
 ];
 
@@ -690,8 +690,8 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
   onChangeDelimiter: (delimiter: string) => void;
   rowErrors: ValidationIssue[]; rowWarnings: ValidationIssue[];
 }) {
-  const isRemoved = row.state === "removed";
-  const isMulti   = row.type  === "multi_select";
+  const isRemoved = row.state      === "removed";
+  const isMulti   = row.field_type === "list";
   const defaultRule = (): ParseRule => ({ condition: "always", case_sensitive: false, action: "set", value: "" });
 
   function handleRuleChange(idx: number, patch: Partial<ParseRule>) {
@@ -774,10 +774,10 @@ const RulesPanel = memo(function RulesPanel({ row, validConditions, validActions
 // ─── Single mapping row ───────────────────────────────────────────────────────
 
 const MappingRowComponent = memo(function MappingRowComponent({
-  row, knownFields, validTypes, validConditions, validActions,
+  row, knownFields, validFieldTypes, validValueTypes, validConditions, validActions,
   onChange, isFirst, viewOnly, baselineLabel, errors, warnings, validationGeneration = 0,
 }: {
-  row: RichMappingRow; knownFields: string[]; validTypes: string[];
+  row: RichMappingRow; knownFields: string[]; validFieldTypes: string[]; validValueTypes: string[];
   validConditions: string[]; validActions: string[];
   onChange?: (patch: Partial<RichMappingRow>) => void;
   isFirst: boolean; viewOnly: boolean; baselineLabel: string;
@@ -785,8 +785,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
   validationGeneration?: number;
 }) {
   const hasRules      = row.rules.length > 0;
-  const isRemoved     = row.state === "removed";
-  const isIgnored     = row.type === "ignore" || row.field === "__ignore__";
+  const isRemoved     = row.state      === "removed";
+  const isIgnored     = row.field_type === "ignore" || row.field === "__ignore__";
 
   const hasAliasEditor = !!(
     row.options &&
@@ -833,8 +833,8 @@ const MappingRowComponent = memo(function MappingRowComponent({
   const overRow     = useRef(false);
   const overTooltip = useRef(false);
 
-  const needsRowKey = row.type === "matrix_row";
-  const needsExtra  = row.field === "extra_data";
+  const needsGroupKey = row.field_type === "group";
+  const needsExtra    = row.field      === "extra_data";
   const colors      = ROW_COLORS[row.state];
   const badge       = BADGE_STYLES[row.state];
   const showDiff    = row.state === "changed";
@@ -920,16 +920,36 @@ const MappingRowComponent = memo(function MappingRowComponent({
 
   function handleFieldChange(field: string) {
     if (!onChange) return;
-    let type = row.type;
-    if (field === "__ignore__")                                           type = "ignore";
-    else if (field === "availability")                                    type = "matrix_row";
-    else if (type === "ignore")                                           type = "string";
-    onChange({ field, type, extra_key: field === "extra_data" ? row.extra_key : "" });
+    let field_type = row.field_type;
+    let value_type = row.value_type;
+    if (field === "__ignore__") {
+      field_type = "ignore";
+      value_type = "";
+    } else if (field === "availability" && field_type !== "group") {
+      field_type = "group";
+      value_type = "time_range";
+    } else if (field_type === "ignore") {
+      field_type = "single";
+      value_type = "text";
+    }
+    onChange({ field, field_type, value_type, extra_key: field === "extra_data" ? row.extra_key : "" });
   }
 
-  function handleTypeChange(type: string) {
+  function handleFieldTypeChange(field_type: string) {
     if (!onChange) return;
-    onChange({ type, ...(type === "ignore" ? { field: "__ignore__" } : {}) });
+    const patch: Partial<RichMappingRow> = { field_type };
+    if (field_type === "ignore") {
+      patch.field      = "__ignore__";
+      patch.value_type = "";
+    } else if (!row.value_type) {
+      patch.value_type = "text";
+    }
+    onChange(patch);
+  }
+
+  function handleValueTypeChange(value_type: string) {
+    if (!onChange) return;
+    onChange({ value_type });
   }
 
   const keyInputStyle: React.CSSProperties = { ...inputStyle, width: "100%", fontFamily: "var(--font-mono)", fontSize: "11px", opacity: isIgnored ? 0.5 : 1 };
@@ -937,20 +957,20 @@ const MappingRowComponent = memo(function MappingRowComponent({
   function renderKeyCell() {
     if (isRemoved) return <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>excluded from save</span>;
 
-    if (!needsRowKey && !needsExtra) {
+    if (!needsGroupKey && !needsExtra) {
       return <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>—</span>;
     }
 
     const labelStyle: React.CSSProperties = { fontFamily: "var(--font-sans)", fontSize: "9px", fontWeight: 600, textTransform: "uppercase" as const, letterSpacing: "0.06em", color: "var(--color-text-tertiary)", marginBottom: "2px" };
 
-    const both = needsRowKey && needsExtra;
+    const both = needsGroupKey && needsExtra;
 
-    const rowKeyEl = needsRowKey ? (
+    const groupKeyEl = needsGroupKey ? (
       <div style={both ? { flex: 1, minWidth: 0 } : {}}>
-        {both && <div style={labelStyle}>Row Key</div>}
+        {both && <div style={labelStyle}>Group Key</div>}
         {viewOnly
-          ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.row_key || "—"}</span>
-          : <input style={keyInputStyle} placeholder="row_key name" value={row.row_key} onChange={(e) => onChange?.({ row_key: e.target.value })} />
+          ? <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>{row.group_key || "—"}</span>
+          : <input style={keyInputStyle} placeholder="group_key name" value={row.group_key} onChange={(e) => onChange?.({ group_key: e.target.value })} />
         }
       </div>
     ) : null;
@@ -966,9 +986,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
     ) : null;
 
     if (both) {
-      return <div style={{ display: "flex", flexDirection: "row", gap: "6px", width: "100%" }}>{rowKeyEl}{extraKeyEl}</div>;
+      return <div style={{ display: "flex", flexDirection: "row", gap: "6px", width: "100%" }}>{groupKeyEl}{extraKeyEl}</div>;
     }
-    return rowKeyEl ?? extraKeyEl;
+    return groupKeyEl ?? extraKeyEl;
   }
 
   return (
@@ -979,7 +999,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
         onMouseEnter={handleRowMouseEnter}
         onMouseLeave={handleRowMouseLeave}
         style={{
-          display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr auto",
+          display: "grid", gridTemplateColumns: "1fr 160px 110px 110px 1fr auto",
           padding: "10px 14px", alignItems: "center", gap: "8px",
           background: rowBg,
           borderTop: isFirst ? "none" : "2px solid var(--color-border)",
@@ -1026,16 +1046,33 @@ const MappingRowComponent = memo(function MappingRowComponent({
           />
         )}
 
-        {/* Col 3: type — always editable (google_type lock removed) */}
+        {/* Col 3: field type */}
         {viewOnly ? (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-            {TYPE_LABELS[row.type] ?? row.type}
+            {FIELD_TYPE_LABELS[row.field_type] ?? row.field_type}
           </span>
         ) : (
           <Select
-            value={row.type}
-            onChange={handleTypeChange}
-            options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
+            value={row.field_type}
+            onChange={handleFieldTypeChange}
+            options={validFieldTypes.map((t) => ({ value: t, label: FIELD_TYPE_LABELS[t] ?? t }))}
+            disabled={isRemoved}
+            size="sm"
+            background="var(--color-bg)"
+            fullWidth
+          />
+        )}
+
+        {/* Col 4: value type */}
+        {viewOnly ? (
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {row.value_type ? (VALUE_TYPE_LABELS[row.value_type] ?? row.value_type) : "—"}
+          </span>
+        ) : (
+          <Select
+            value={row.value_type ?? ""}
+            onChange={handleValueTypeChange}
+            options={validValueTypes.map((t) => ({ value: t, label: VALUE_TYPE_LABELS[t] ?? t }))}
             disabled={isRemoved || isIgnored}
             size="sm"
             background="var(--color-bg)"
@@ -1201,7 +1238,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
 // ─── Table wrapper ────────────────────────────────────────────────────────────
 
 export interface SheetConfigMappingTableProps {
-  rows: RichMappingRow[]; knownFields: string[]; validTypes: string[];
+  rows: RichMappingRow[]; knownFields: string[]; validFieldTypes: string[]; validValueTypes: string[];
   validConditions?: string[]; validActions?: string[];
   onChangeRow?: (idx: number, patch: Partial<RichMappingRow>) => void;
   viewOnly?: boolean; baselineLabel?: string;
@@ -1210,7 +1247,7 @@ export interface SheetConfigMappingTableProps {
 }
 
 export function SheetConfigMappingTable({
-  rows, knownFields, validTypes,
+  rows, knownFields, validFieldTypes, validValueTypes,
   validConditions = [], validActions = [],
   onChangeRow, viewOnly = false, baselineLabel = "suggestion",
   validationErrors = [], validationWarnings = [],
@@ -1224,8 +1261,8 @@ export function SheetConfigMappingTable({
 
   return (
     <div style={{ position: "relative", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "visible" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 140px 1fr auto", alignItems: "start", padding: "8px 14px", background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)", borderRadius: "var(--radius-md) var(--radius-md) 0 0", overflow: "hidden" }}>
-        {["Sheet Column", "Field", "Type", "Extra Key / Row Key", ""].map((h, i) => (
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 110px 1fr auto", alignItems: "start", padding: "8px 14px", background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)", borderRadius: "var(--radius-md) var(--radius-md) 0 0", overflow: "hidden" }}>
+        {["Sheet Column", "Field", "Field Type", "Value Type", "Group Key / Extra Key", ""].map((h, i) => (
           <span key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", whiteSpace: "normal", wordBreak: "break-word" }}>{h}</span>
         ))}
       </div>
@@ -1246,7 +1283,7 @@ export function SheetConfigMappingTable({
           return (
             <MappingRowComponent
               key={`${row.column_index}:${row.header}`} row={row}
-              knownFields={knownFields} validTypes={validTypes}
+              knownFields={knownFields} validFieldTypes={validFieldTypes} validValueTypes={validValueTypes}
               validConditions={validConditions} validActions={validActions}
               onChange={isViewOnly ? undefined : ((patch) => onChangeRow?.(idx, patch))}
               isFirst={idx === 0} viewOnly={isViewOnly}

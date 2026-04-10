@@ -290,11 +290,11 @@ export interface FormQuestionOption {
   alias: string   // auto-suggested short version for DB storage
 }
 
+export type FieldType = 'single' | 'list' | 'group' | 'ignore'
+export type ValueType = 'text' | 'number' | 'boolean' | 'date' | 'time_range'
+
 export type ParseRuleCondition = 'always' | 'contains' | 'equals' | 'starts_with' | 'ends_with' | 'regex'
-export type ParseRuleAction    =
-  | 'set' | 'replace' | 'prepend' | 'append' | 'discard'
-  | 'parse_time_range'    // canonical action (backend refactor)
-  | 'parse_availability'  // legacy alias — kept for backwards compat
+export type ParseRuleAction    = 'set' | 'replace' | 'prepend' | 'append' | 'discard'
 
 export interface ParseRule {
   condition:      ParseRuleCondition
@@ -307,8 +307,9 @@ export interface ParseRule {
 
 export interface ColumnMapping {
   field:         string
-  type:          'string' | 'ignore' | 'boolean' | 'integer' | 'multi_select' | 'matrix_row'
-  row_key?:      string
+  field_type:    FieldType
+  value_type:    ValueType | null
+  group_key?:    string
   extra_key?:    string
   rules?:        ParseRule[]
   delimiter?:    string
@@ -336,8 +337,9 @@ export interface MappedHeader {
   column_index:  number
   header:        string             // raw column header from the sheet
   field:         string             // suggested target field
-  type:          string             // suggested mapping type
-  row_key?:      string
+  field_type:    FieldType         // suggested field type
+  value_type:    ValueType | null  // suggested value type
+  group_key?:    string
   extra_key?:    string
   rules?:        ParseRule[]
   delimiter?:    string
@@ -393,7 +395,8 @@ export interface SheetHeadersResponse {
   sheet_type:            string
   mappings:              MappedHeader[]
   known_fields:          string[]
-  valid_types:           string[]
+  valid_field_types:     string[]
+  valid_value_types:     string[]
   valid_rule_conditions: string[]
   valid_rule_actions:    string[]
 }

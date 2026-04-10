@@ -4,13 +4,14 @@ import type { ColumnMappingEntry, ParseRule } from "@/lib/api";
 
 export interface MappingRow {
   column_index: number;
-  header:    string;
-  field:     string;
-  type:      string;
-  row_key:   string;
-  extra_key: string;
-  delimiter: string;           // only used when type === 'multi_select'; defaults to ''
-  rules:     ParseRule[];      // ordered list; empty array = no rules
+  header:     string;
+  field:      string;
+  field_type: string;
+  value_type: string;   // empty string when field_type === 'ignore'
+  group_key:  string;
+  extra_key:  string;
+  delimiter:  string;   // only used when field_type === 'list'; defaults to ''
+  rules:      ParseRule[];   // ordered list; empty array = no rules
 }
 
 export interface MappingsExport {
@@ -78,13 +79,19 @@ const KNOWN_FIELDS_LABELS: Record<string, string> = {
   "extra_data":          "Extra Data",
 };
 
-const TYPE_LABELS: Record<string, string> = {
-  string:       "Text",
-  ignore:       "Ignore",
-  boolean:      "Yes/No",
-  integer:      "Number",
-  multi_select: "Multi-select",
-  matrix_row:   "Matrix Row",
+const FIELD_TYPE_LABELS: Record<string, string> = {
+  single: "Single",
+  list:   "List",
+  group:  "Group",
+  ignore: "Ignore",
+};
+
+const VALUE_TYPE_LABELS: Record<string, string> = {
+  text:       "Text",
+  number:     "Number",
+  boolean:    "Yes / No",
+  date:       "Date",
+  time_range: "Time Range",
 };
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -97,13 +104,11 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 const ACTION_LABELS: Record<string, string> = {
-  set:               "Set to",
-  replace:           "Replace with",
-  prepend:           "Prepend",
-  append:            "Append",
-  discard:           "Discard",
-  parse_time_range:  "Parse time range",
-  parse_availability:"Parse availability",
+  set:     "Set to",
+  replace: "Replace with",
+  prepend: "Prepend",
+  append:  "Append",
+  discard: "Discard",
 };
 
 // ─── Rule description ─────────────────────────────────────────────────────────
@@ -134,11 +139,12 @@ export function describeRule(rule: ParseRule): string {
 export function mappingRowsEqual(a: MappingRow, b: MappingRow): boolean {
   if (
     a.column_index !== b.column_index ||
-    a.field     !== b.field     ||
-    a.type      !== b.type      ||
-    a.row_key   !== b.row_key   ||
-    a.extra_key !== b.extra_key ||
-    a.delimiter !== b.delimiter
+    a.field      !== b.field      ||
+    a.field_type !== b.field_type ||
+    a.value_type !== b.value_type ||
+    a.group_key  !== b.group_key  ||
+    a.extra_key  !== b.extra_key  ||
+    a.delimiter  !== b.delimiter
   ) return false;
 
   if (a.rules.length !== b.rules.length) return false;
@@ -163,11 +169,12 @@ function computeFieldDiffs(from: MappingRow, to: MappingRow): FieldDiff[] {
     toVal:   string;
     fmt?:    (v: string) => string;
   }> = [
-    { label: "Field",     fromVal: from.field,     toVal: to.field,     fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v },
-    { label: "Type",      fromVal: from.type,      toVal: to.type,      fmt: (v) => TYPE_LABELS[v] ?? v },
-    { label: "Row Key",   fromVal: from.row_key,   toVal: to.row_key },
-    { label: "Extra Key", fromVal: from.extra_key, toVal: to.extra_key },
-    { label: "Delimiter", fromVal: from.delimiter, toVal: to.delimiter },
+    { label: "Field",      fromVal: from.field,      toVal: to.field,      fmt: (v) => KNOWN_FIELDS_LABELS[v] ?? v },
+    { label: "Field Type", fromVal: from.field_type, toVal: to.field_type, fmt: (v) => FIELD_TYPE_LABELS[v] ?? v },
+    { label: "Value Type", fromVal: from.value_type, toVal: to.value_type, fmt: (v) => VALUE_TYPE_LABELS[v] ?? v },
+    { label: "Group Key",  fromVal: from.group_key,  toVal: to.group_key },
+    { label: "Extra Key",  fromVal: from.extra_key,  toVal: to.extra_key },
+    { label: "Delimiter",  fromVal: from.delimiter,  toVal: to.delimiter },
   ];
 
   const diffs: FieldDiff[] = [];
@@ -255,13 +262,14 @@ export function applyImport(
 
     const next: MappingRow = {
       column_index: row.column_index,
-      header:    row.header,
-      field:     m.field     ?? row.field,
-      type:      m.type      ?? row.type,
-      row_key:   m.row_key   ?? "",
-      extra_key: m.extra_key ?? "",
-      rules:     m.rules     ?? row.rules,
-      delimiter: m.delimiter ?? row.delimiter,
+      header:     row.header,
+      field:      m.field      ?? row.field,
+      field_type: m.field_type ?? row.field_type,
+      value_type: m.value_type ?? row.value_type,
+      group_key:  m.group_key  ?? "",
+      extra_key:  m.extra_key  ?? "",
+      rules:      m.rules      ?? row.rules,
+      delimiter:  m.delimiter  ?? row.delimiter,
     };
 
     if (!mappingRowsEqual(next, row)) {
