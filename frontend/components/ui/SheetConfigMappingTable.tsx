@@ -1259,7 +1259,7 @@ export function SheetConfigMappingTable({
 
   return (
     <div style={{ position: "relative", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "visible" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 110px 1fr auto", alignItems: "start", padding: "8px 14px", background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)", borderRadius: "var(--radius-md) var(--radius-md) 0 0", overflow: "hidden" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 160px 110px 110px 1fr auto", gap: "8px", alignItems: "start", padding: "8px 14px", background: "var(--color-bg)", borderBottom: "1px solid var(--color-border)", borderRadius: "var(--radius-md) var(--radius-md) 0 0", overflow: "hidden" }}>
         {["Sheet Column", "Field", "Field Type", "Value Type", "Group Key / Extra Key", ""].map((h, i) => (
           <span key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.07em", color: "var(--color-text-tertiary)", whiteSpace: "normal", wordBreak: "break-word" }}>{h}</span>
         ))}
