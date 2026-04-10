@@ -11,7 +11,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.schemas.sheet_config import coerce_legacy_mapping
+from app.schemas.sheet_config import coerce_legacy_mapping, VALID_RULE_ACTIONS, VALID_RULE_CONDITIONS
 
 
 @dataclass
@@ -280,6 +280,21 @@ def validate_column_mappings(
                         f"Rule action '{action}' is no longer valid. "
                         "Use value_type='time_range' on the mapping instead."
                     ),
+                ))
+            elif action not in VALID_RULE_ACTIONS:
+                result.errors.append(ValidationIssue(
+                    header=header,
+                    column_index=col_idx,
+                    rule_index=i,
+                    message=f"Unknown rule action '{action}'. Must be one of: {sorted(VALID_RULE_ACTIONS)}.",
+                ))
+
+            if condition not in VALID_RULE_CONDITIONS:
+                result.errors.append(ValidationIssue(
+                    header=header,
+                    column_index=col_idx,
+                    rule_index=i,
+                    message=f"Unknown rule condition '{condition}'. Must be one of: {sorted(VALID_RULE_CONDITIONS)}.",
                 ))
 
             # regex must compile
