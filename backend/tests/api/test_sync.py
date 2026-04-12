@@ -14,24 +14,25 @@ NATS_BLOCKS = [
 ]
 
 COLUMN_MAPPINGS = {
-    "Timestamp":       {"field": "__ignore__",      "type": "ignore"},
-    "Email Address":   {"field": "email",            "type": "string"},
-    "First Name":      {"field": "first_name",       "type": "string"},
-    "Last Name":       {"field": "last_name",        "type": "string"},
-    "Phone Number":    {"field": "phone",            "type": "string"},
-    "T-Shirt Size":    {"field": "shirt_size",       "type": "string"},
-    "Role Preference": {"field": "role_preference",  "type": "multi_select"},
-    "Which events?":   {"field": "event_preference", "type": "string"},
+    "Timestamp":       {"field": "__ignore__",      "field_type": "ignore"},
+    "Email Address":   {"field": "email",            "field_type": "single", "value_type": "text"},
+    "First Name":      {"field": "first_name",       "field_type": "single", "value_type": "text"},
+    "Last Name":       {"field": "last_name",        "field_type": "single", "value_type": "text"},
+    "Phone Number":    {"field": "phone",            "field_type": "single", "value_type": "text"},
+    "T-Shirt Size":    {"field": "shirt_size",       "field_type": "single", "value_type": "text"},
+    "Role Preference": {"field": "role_preference",  "field_type": "list",   "value_type": "text"},
+    "Which events?":   {"field": "event_preference", "field_type": "single", "value_type": "text"},
     "Availability [8:00 AM - 10:00 AM]": {
-        "field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM",
-        "rules": [{"condition": "always", "action": "parse_time_range"}],
+        "field": "availability", "field_type": "group", "value_type": "time_range",
+        "group_key": "8:00 AM - 10:00 AM",
     },
     "Availability [10:00 AM - NOON]": {
-        "field": "availability", "type": "matrix_row", "row_key": "10:00 AM - NOON",
-        "rules": [{"condition": "always", "action": "parse_time_range"}],
+        "field": "availability", "field_type": "group", "value_type": "time_range",
+        "group_key": "10:00 AM - NOON",
     },
     "Transportation": {
-        "field": "extra_data", "type": "string", "extra_key": "transportation",
+        "field": "extra_data", "field_type": "single", "value_type": "text",
+        "extra_key": "transportation",
     },
 }
 

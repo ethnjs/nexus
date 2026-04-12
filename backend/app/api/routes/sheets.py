@@ -114,7 +114,7 @@ def validate_mappings(
     payload: ValidateMappingsRequest,
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    result = validate_column_mappings([m.model_dump() for m in payload.column_mappings])
+    result = validate_column_mappings(payload.column_mappings)
     return result.to_response_dict()
 
 

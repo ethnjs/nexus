@@ -194,13 +194,14 @@ export default function ViewSheetConfigPage() {
         const rows: RichMappingRow[] = cfg.column_mappings.map((mapping) => {
           const base = {
             column_index: mapping.column_index,
-            header: mapping.header,
-            field:     mapping.field     ?? "__ignore__",
-            type:      mapping.type      ?? "ignore",
-            row_key:   mapping.row_key   ?? "",
-            extra_key: mapping.extra_key ?? "",
-            delimiter: mapping.delimiter ?? "",
-            rules:     mapping.rules     ?? [],
+            header:     mapping.header,
+            field:      mapping.field      ?? "__ignore__",
+            field_type: mapping.field_type ?? "ignore",
+            value_type: mapping.value_type ?? "",
+            group_key:  mapping.group_key  ?? "",
+            extra_key:  mapping.extra_key  ?? "",
+            delimiter:  mapping.delimiter  ?? "",
+            rules:      mapping.rules      ?? [],
           };
           return makeRichRow(base, base);
         });
@@ -267,8 +268,8 @@ export default function ViewSheetConfigPage() {
   }
 
   const mappingEntries = config.column_mappings;
-  const mappedCount    = mappingEntries.filter((m) => m.type !== "ignore").length;
-  const ignoredCount   = mappingEntries.filter((m) => m.type === "ignore").length;
+  const mappedCount    = mappingEntries.filter((m) => m.field_type !== "ignore").length;
+  const ignoredCount   = mappingEntries.filter((m) => m.field_type === "ignore").length;
 
   return (
     <div style={{ width: "100%" }}>
@@ -342,7 +343,8 @@ export default function ViewSheetConfigPage() {
           <SheetConfigMappingTable
             rows={viewRows}
             knownFields={[]}
-            validTypes={[]}
+            validFieldTypes={[]}
+            validValueTypes={[]}
             viewOnly
           />
         </div>

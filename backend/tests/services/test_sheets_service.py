@@ -24,7 +24,6 @@ from app.services.volunteer_hints import (
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
-    PARSE_TIME_RANGE_ACTIONS,
 )
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/abc123/edit"
@@ -68,63 +67,64 @@ def test_extract_spreadsheet_id_invalid(svc: SheetsService):
 # ---------------------------------------------------------------------------
 # get_headers — flat mappings list, no form questions
 #
-# Without form data, hints predict field only; type always defaults to "string"
-# except for availability bracket pattern → "matrix_row".
+# Without form data, hints predict field only; field_type always defaults to
+# "single"/"text" except for availability bracket pattern → "group"/"time_range".
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("header,expected_field,expected_type,expected_row_key", [
+@pytest.mark.parametrize("header,expected_field,expected_field_type,expected_value_type,expected_group_key", [
     # Identity
-    ("Email Address",        "email",               "string",       None),
-    ("email",                "email",               "string",       None),
-    ("First Name",           "first_name",          "string",       None),
-    ("Last Name",            "last_name",           "string",       None),
-    ("First & Last Name",    "full_name",           "string",       None),
-    ("Phone Number",         "phone",               "string",       None),
-    ("T-Shirt Size",         "shirt_size",          "string",       None),
-    ("Dietary Restrictions", "dietary_restriction",  "string",       None),
+    ("Email Address",        "email",               "single", "text",       None),
+    ("email",                "email",               "single", "text",       None),
+    ("First Name",           "first_name",          "single", "text",       None),
+    ("Last Name",            "last_name",            "single", "text",       None),
+    ("First & Last Name",    "full_name",            "single", "text",       None),
+    ("Phone Number",         "phone",               "single", "text",       None),
+    ("T-Shirt Size",         "shirt_size",          "single", "text",       None),
+    ("Dietary Restrictions", "dietary_restriction",  "single", "text",       None),
     # New user fields
     ("If you are a college student, what year are you in?",
-                             "student_status",       "string",       None),
-    ("I am a ...",           "student_status",       "string",       None),
+                             "student_status",       "single", "text",       None),
+    ("I am a ...",           "student_status",       "single", "text",       None),
     ("Have you competed in Science Olympiad in the past?",
-                             "competition_exp",      "string",       None),
+                             "competition_exp",      "single", "text",       None),
     ("Have you volunteered for past Science Olympiad competitions?",
-                             "volunteering_exp",     "string",       None),
-    # Role & preference — type defaults to "string" without form data
-    ("Volunteering Role Preference", "role_preference",  "string", None),
-    ("Event Preference",             "event_preference", "string", None),
+                             "volunteering_exp",     "single", "text",       None),
+    # Role & preference — field_type defaults to "single"/"text" without form data
+    ("Volunteering Role Preference", "role_preference",  "single", "text", None),
+    ("Event Preference",             "event_preference", "single", "text", None),
     # Lunch
     ("Which protein do you want in your Chipotle burrito?",
-                             "lunch_order",          "string",       None),
+                             "lunch_order",          "single", "text",       None),
     ("What would you like to drink?",
-                             "lunch_order",          "string",       None),
-    ("Lunch Order",          "lunch_order",          "string",       None),
+                             "lunch_order",          "single", "text",       None),
+    ("Lunch Order",          "lunch_order",          "single", "text",       None),
     # Notes
-    ("Additional Notes",     "notes",               "string",       None),
+    ("Additional Notes",     "notes",               "single", "text",       None),
     # Extra data with keys
-    ("Where are you coming from?",  "extra_data",   "string",       None),
+    ("Where are you coming from?",  "extra_data",   "single", "text",       None),
     ("Do you have any potential conflict of interests?",
-                             "extra_data",           "string",       None),
+                             "extra_data",           "single", "text",       None),
     # Ignore
-    ("Timestamp",            "__ignore__",          "ignore",       None),
-    ("How did you hear about us?", "__ignore__",    "ignore",       None),
-    ("Some Random Column",   "__ignore__",          "ignore",       None),
-    # Availability matrix rows — bracket pattern forces matrix_row
+    ("Timestamp",            "__ignore__",          "ignore", None,          None),
+    ("How did you hear about us?", "__ignore__",    "ignore", None,          None),
+    ("Some Random Column",   "__ignore__",          "ignore", None,          None),
+    # Availability matrix rows — bracket pattern forces group/time_range
     ("Availability [8:00 AM - 10:00 AM]",
-        "availability", "matrix_row", "8:00 AM - 10:00 AM"),
+        "availability", "group", "time_range", "8:00 AM - 10:00 AM"),
     ("Availability from 5/21 to 5/23 [8:00 AM  - 10:00 AM]",
-        "availability", "matrix_row", "8:00 AM  - 10:00 AM"),
+        "availability", "group", "time_range", "8:00 AM  - 10:00 AM"),
     ("Availability from 5/21 to 5/23 [10:00 AM  -  NOON]",
-        "availability", "matrix_row", "10:00 AM  -  NOON"),
+        "availability", "group", "time_range", "10:00 AM  -  NOON"),
 ])
-def test_hint_detection(svc, header, expected_field, expected_type, expected_row_key):
+def test_hint_detection(svc, header, expected_field, expected_field_type, expected_value_type, expected_group_key):
     """Hint-based detection via get_headers with no form questions."""
     _mock_headers(svc, [header])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
     m = _by_header(result, header)
     assert m.field == expected_field
-    assert m.type == expected_type
-    assert m.row_key == expected_row_key
+    assert m.field_type == expected_field_type
+    assert m.value_type == expected_value_type
+    assert m.group_key == expected_group_key
 
 
 def test_get_headers_returns_mappings_list(svc: SheetsService):
@@ -136,7 +136,7 @@ def test_get_headers_returns_mappings_list(svc: SheetsService):
     assert all(isinstance(m, MappedHeader) for m in result.mappings)
     assert _by_header(result, "Email Address").field == "email"
     assert _by_header(result, "First Name").field == "first_name"
-    assert _by_header(result, "Timestamp").type == "ignore"
+    assert _by_header(result, "Timestamp").field_type == "ignore"
 
 
 def test_get_headers_preserves_column_order(svc: SheetsService):
@@ -151,6 +151,17 @@ def test_get_headers_events_sheet_scopes_known_fields(svc: SheetsService):
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="events")
     assert result.sheet_type == "events"
     assert "email" not in result.known_fields
+
+
+def test_get_headers_response_includes_valid_field_types(svc: SheetsService):
+    """Response includes valid_field_types and valid_value_types (not old valid_types)."""
+    _mock_headers(svc, ["Email Address"])
+    result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
+    assert hasattr(result, "valid_field_types")
+    assert hasattr(result, "valid_value_types")
+    assert "single" in result.valid_field_types
+    assert "group" in result.valid_field_types
+    assert "time_range" in result.valid_value_types
 
 
 # ---------------------------------------------------------------------------
@@ -196,10 +207,10 @@ def test_dedup_second_email_becomes_ignore(svc: SheetsService):
     second = _by_header(result, "email")
     assert first.field == "email"
     assert second.field == "__ignore__"
-    assert second.type == "ignore"
+    assert second.field_type == "ignore"
 
 
-def test_dedup_availability_allows_multiple_matrix_rows(svc: SheetsService):
+def test_dedup_availability_allows_multiple_group_rows(svc: SheetsService):
     """Multiple availability columns are all allowed — availability is exempt from dedup."""
     _mock_headers(svc, [
         "Availability [8:00 AM - 10:00 AM]",
@@ -209,11 +220,12 @@ def test_dedup_availability_allows_multiple_matrix_rows(svc: SheetsService):
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
     for m in result.mappings:
         assert m.field == "availability"
-        assert m.type == "matrix_row"
+        assert m.field_type == "group"
+        assert m.value_type == "time_range"
 
 
-def test_multi_lunch_upgrades_to_matrix_row(svc: SheetsService):
-    """Two lunch-related columns are upgraded to matrix_row with inferred row_keys."""
+def test_multi_lunch_upgrades_to_group(svc: SheetsService):
+    """Two lunch-related columns are upgraded to group with inferred group_keys."""
     _mock_headers(svc, [
         "Which protein do you want?",
         "What would you like to drink?",
@@ -222,15 +234,16 @@ def test_multi_lunch_upgrades_to_matrix_row(svc: SheetsService):
     first = result.mappings[0]
     second = result.mappings[1]
     assert first.field == "lunch_order"
-    assert first.type == "matrix_row"
-    assert first.row_key == "protein"
+    assert first.field_type == "group"
+    assert first.value_type == "text"
+    assert first.group_key == "protein"
     assert second.field == "lunch_order"
-    assert second.type == "matrix_row"
-    assert second.row_key == "drink"
+    assert second.field_type == "group"
+    assert second.group_key == "drink"
 
 
 def test_multi_lunch_includes_options_from_form_questions(svc: SheetsService):
-    """Multi-lunch matrix_row headers include options when form questions are provided."""
+    """Multi-lunch group headers include options when form questions are provided."""
     protein_header = "Which protein do you want in your Chipotle burrito?"
     drink_header = "What would you like to drink?"
     questions = [
@@ -253,14 +266,15 @@ def test_multi_lunch_includes_options_from_form_questions(svc: SheetsService):
     assert [o.raw for o in drink.options] == ["Water", "Lemonade"]
 
 
-def test_single_lunch_stays_string(svc: SheetsService):
-    """A single lunch header stays as string — no upgrade."""
+def test_single_lunch_stays_single(svc: SheetsService):
+    """A single lunch header stays as single — no upgrade."""
     _mock_headers(svc, ["Lunch Order"])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
     m = result.mappings[0]
     assert m.field == "lunch_order"
-    assert m.type == "string"
-    assert m.row_key is None
+    assert m.field_type == "single"
+    assert m.value_type == "text"
+    assert m.group_key is None
 
 
 def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
@@ -275,16 +289,19 @@ def test_dedup_extra_key_collision_becomes_ignore(svc: SheetsService):
 
 
 # ---------------------------------------------------------------------------
-# get_headers — parse_time_range auto-attachment
+# get_headers — availability group auto-configuration (no parse_time_range rule)
 # ---------------------------------------------------------------------------
 
-def test_hint_availability_gets_parse_time_range(svc: SheetsService):
-    """Hint-matched availability rows get parse_time_range rule auto-attached."""
+def test_hint_availability_gets_time_range_value_type(svc: SheetsService):
+    """Hint-matched availability rows get value_type='time_range' (no rule needed)."""
     _mock_headers(svc, ["Availability [8:00 AM - 10:00 AM]"])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers")
     m = _by_header(result, "Availability [8:00 AM - 10:00 AM]")
-    assert m.rules is not None
-    assert any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
+    assert m.field_type == "group"
+    assert m.value_type == "time_range"
+    assert m.group_key == "8:00 AM - 10:00 AM"
+    # No parse_time_range rule — time_range is now expressed via value_type
+    assert m.rules is None
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +334,8 @@ def _make_dropdown_q(qid: str, title: str, options: list[FormQuestionOption]) ->
 
 
 def test_form_question_type_takes_priority(svc: SheetsService):
-    """Form question nexus_type overrides default string type.
-    Checkbox → multi_select even though hint alone would give string.
+    """Form question nexus_type overrides default single/text.
+    Checkbox → list/text even though hint alone would give single/text.
     """
     header = "If interested in event volunteering, which event(s) would you prefer helping with?"
     questions = [_make_checkbox_q(
@@ -332,15 +349,16 @@ def test_form_question_type_takes_priority(svc: SheetsService):
     _mock_headers(svc, [header])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     m = _by_header(result, header)
-    assert m.type == "multi_select"
+    assert m.field_type == "list"
+    assert m.value_type == "text"
     assert m.field == "event_preference"
     assert m.rules is not None
     assert any(r.action == "replace" and r.match == "Anatomy - Study body" for r in m.rules)
     assert not any(r.match == "Chemistry Lab" for r in m.rules)
 
 
-def test_form_radio_maps_to_string(svc: SheetsService):
-    """RADIO / MULTIPLE_CHOICE form type → string (single selection)."""
+def test_form_radio_maps_to_single(svc: SheetsService):
+    """RADIO / MULTIPLE_CHOICE form type → single/text (single selection)."""
     header = "I am a ..."
     questions = [_make_radio_q("q1", "I am a ...", [
         FormQuestionOption(raw="UCI Undergraduate student", alias="UCI Undergraduate student"),
@@ -349,12 +367,13 @@ def test_form_radio_maps_to_string(svc: SheetsService):
     _mock_headers(svc, [header])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     m = _by_header(result, header)
-    assert m.type == "string"
+    assert m.field_type == "single"
+    assert m.value_type == "text"
     assert m.field == "student_status"
 
 
-def test_form_dropdown_maps_to_string(svc: SheetsService):
-    """DROP_DOWN form type → string."""
+def test_form_dropdown_maps_to_single(svc: SheetsService):
+    """DROP_DOWN form type → single/text."""
     header = "Current employer or university:"
     questions = [_make_dropdown_q("q1", "Current employer or university:", [
         FormQuestionOption(raw="USC", alias="USC"),
@@ -363,12 +382,13 @@ def test_form_dropdown_maps_to_string(svc: SheetsService):
     _mock_headers(svc, [header])
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     m = _by_header(result, header)
-    assert m.type == "string"
+    assert m.field_type == "single"
+    assert m.value_type == "text"
     assert m.field == "employer"
 
 
-def test_form_availability_grid_gets_parse_time_range(svc: SheetsService):
-    """Availability grid question columns get matrix_row type, row_key, and parse_time_range rule."""
+def test_form_availability_grid_gets_time_range(svc: SheetsService):
+    """Availability grid question columns get group/time_range and group_key (no rule)."""
     _mock_headers(svc, [
         "Availability [8:00 AM - 10:00 AM]",
         "Availability [10:00 AM - 12:00 PM]",
@@ -384,15 +404,16 @@ def test_form_availability_grid_gets_parse_time_range(svc: SheetsService):
         ("Availability [10:00 AM - 12:00 PM]", "10:00 AM - 12:00 PM"),
     ]:
         m = _by_header(result, header)
-        assert m.type == "matrix_row"
+        assert m.field_type == "group"
+        assert m.value_type == "time_range"
         assert m.field == "availability"
-        assert m.row_key == expected_key
-        assert m.rules is not None
-        assert any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
+        assert m.group_key == expected_key
+        # No parse_time_range rule — handled by value_type
+        assert m.rules is None
 
 
-def test_form_event_preference_grid_no_parse_time_range(svc: SheetsService):
-    """Event preference grid columns get matrix_row type but NO parse_time_range rule."""
+def test_form_event_preference_grid_no_time_range(svc: SheetsService):
+    """Event preference grid columns get group/text type (not time_range)."""
     _mock_headers(svc, [
         "Please select the top 3 events [Anatomy and Physiology (B/C)]",
         "Please select the top 3 events [Forensics (C)]",
@@ -404,11 +425,9 @@ def test_form_event_preference_grid_no_parse_time_range(svc: SheetsService):
     )]
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     for m in result.mappings:
-        assert m.type == "matrix_row"
+        assert m.field_type == "group"
+        assert m.value_type == "text"
         assert m.field == "event_preference"
-        # Should NOT have parse_time_range rule
-        if m.rules:
-            assert not any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
 
 
 def test_form_event_preference_grid_with_major_keyword_still_maps_event_preference(svc: SheetsService):
@@ -432,10 +451,8 @@ def test_form_event_preference_grid_with_major_keyword_still_maps_event_preferen
 
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     for m in result.mappings:
-        assert m.type == "matrix_row"
+        assert m.field_type == "group"
         assert m.field == "event_preference"
-        if m.rules:
-            assert not any(r.action in PARSE_TIME_RANGE_ACTIONS for r in m.rules)
 
 
 def test_form_no_google_type_on_mapped_header(svc: SheetsService):
@@ -453,7 +470,7 @@ def test_unmatched_column_falls_back_to_hint(svc: SheetsService):
     questions = [_make_text_q("q1", "Email Address")]
     result = svc.get_headers(FAKE_URL, "Sheet1", sheet_type="volunteers", form_questions=questions)
     assert _by_header(result, "Email Address").field == "email"
-    assert _by_header(result, "Some Unknown Column").type == "ignore"
+    assert _by_header(result, "Some Unknown Column").field_type == "ignore"
 
 
 def test_form_dedup_second_email_becomes_ignore(svc: SheetsService):
@@ -657,7 +674,7 @@ def test_slugify(title, expected):
 def test_dedup_claims_field_on_first_use():
     claimed_fields: set = set()
     claimed_keys: set = set()
-    f, t, k = _dedup("email", "string", None, claimed_fields, claimed_keys)
+    f, ft, k = _dedup("email", "single", None, claimed_fields, claimed_keys)
     assert f == "email"
     assert "email" in claimed_fields
 
@@ -665,9 +682,9 @@ def test_dedup_claims_field_on_first_use():
 def test_dedup_second_use_falls_back():
     claimed_fields = {"email"}
     claimed_keys: set = set()
-    f, t, k = _dedup("email", "string", None, claimed_fields, claimed_keys)
+    f, ft, k = _dedup("email", "single", None, claimed_fields, claimed_keys)
     assert f == "__ignore__"
-    assert t == "ignore"
+    assert ft == "ignore"
 
 
 def test_dedup_ignore_never_claimed():
@@ -681,8 +698,8 @@ def test_dedup_ignore_never_claimed():
 def test_dedup_availability_never_claimed():
     claimed_fields: set = set()
     claimed_keys: set = set()
-    _dedup("availability", "matrix_row", None, claimed_fields, claimed_keys)
-    _dedup("availability", "matrix_row", None, claimed_fields, claimed_keys)
+    _dedup("availability", "group", None, claimed_fields, claimed_keys)
+    _dedup("availability", "group", None, claimed_fields, claimed_keys)
     assert "availability" not in claimed_fields
 
 
@@ -690,8 +707,8 @@ def test_dedup_event_preference_never_claimed():
     """event_preference allows multiple entries (grid rows)."""
     claimed_fields: set = set()
     claimed_keys: set = set()
-    _dedup("event_preference", "matrix_row", None, claimed_fields, claimed_keys)
-    f, t, _ = _dedup("event_preference", "matrix_row", None, claimed_fields, claimed_keys)
+    _dedup("event_preference", "group", None, claimed_fields, claimed_keys)
+    f, ft, _ = _dedup("event_preference", "group", None, claimed_fields, claimed_keys)
     assert f == "event_preference"
     assert "event_preference" not in claimed_fields
 
@@ -699,19 +716,19 @@ def test_dedup_event_preference_never_claimed():
 def test_dedup_extra_key_collision():
     claimed_fields: set = set()
     claimed_keys: set = set()
-    f1, _, _ = _dedup("extra_data", "string", "my_key", claimed_fields, claimed_keys)
-    f2, t2, _ = _dedup("extra_data", "string", "my_key", claimed_fields, claimed_keys)
+    f1, _, _ = _dedup("extra_data", "single", "my_key", claimed_fields, claimed_keys)
+    f2, ft2, _ = _dedup("extra_data", "single", "my_key", claimed_fields, claimed_keys)
     assert f1 == "extra_data"
     assert f2 == "__ignore__"
-    assert t2 == "ignore"
+    assert ft2 == "ignore"
 
 
-def test_dedup_any_matrix_row_field_never_claimed():
-    """Any field with type=matrix_row is exempt from claiming — not just availability/event_preference."""
+def test_dedup_any_group_field_never_claimed():
+    """Any field with field_type=group is exempt from claiming."""
     claimed_fields: set = set()
     claimed_keys: set = set()
-    f1, _, _ = _dedup("lunch_order", "matrix_row", None, claimed_fields, claimed_keys)
-    f2, _, _ = _dedup("lunch_order", "matrix_row", None, claimed_fields, claimed_keys)
+    f1, _, _ = _dedup("lunch_order", "group", None, claimed_fields, claimed_keys)
+    f2, _, _ = _dedup("lunch_order", "group", None, claimed_fields, claimed_keys)
     assert f1 == "lunch_order"
     assert f2 == "lunch_order"
     assert "lunch_order" not in claimed_fields

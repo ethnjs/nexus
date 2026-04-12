@@ -34,7 +34,6 @@ from app.models.models import Membership, Tournament, User
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
-    ParseRule,
     SheetHeadersResponse,
     SheetValidateResponse,
 )
@@ -231,18 +230,18 @@ def _make_mock_sheets_service() -> MagicMock:
         sheet_name="Form Responses 1",
         sheet_type="volunteers",
         mappings=[
-            MappedHeader(header="Timestamp",     field="__ignore__", type="ignore"),
-            MappedHeader(header="Email Address", field="email",      type="string"),
-            MappedHeader(header="First Name",    field="first_name", type="string"),
-            MappedHeader(header="Last Name",     field="last_name",  type="string"),
-            MappedHeader(header="Phone Number",  field="phone",      type="string"),
-            MappedHeader(header="T-Shirt Size",  field="shirt_size", type="string"),
+            MappedHeader(header="Timestamp",     field="__ignore__", field_type="ignore"),
+            MappedHeader(header="Email Address", field="email",      field_type="single", value_type="text"),
+            MappedHeader(header="First Name",    field="first_name", field_type="single", value_type="text"),
+            MappedHeader(header="Last Name",     field="last_name",  field_type="single", value_type="text"),
+            MappedHeader(header="Phone Number",  field="phone",      field_type="single", value_type="text"),
+            MappedHeader(header="T-Shirt Size",  field="shirt_size", field_type="single", value_type="text"),
             MappedHeader(
                 header="Availability [8:00 AM - 10:00 AM]",
                 field="availability",
-                type="matrix_row",
-                row_key="8:00 AM - 10:00 AM",
-                rules=[ParseRule(condition="always", action="parse_time_range")],
+                field_type="group",
+                value_type="time_range",
+                group_key="8:00 AM - 10:00 AM",
             ),
         ],
     )
