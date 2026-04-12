@@ -3,7 +3,7 @@ Sync service — reads rows from a Google Sheet and upserts Users + Memberships.
 
 Flow per row:
   1. Apply parse rules to raw cell value (string transforms, in order)
-  2. Type-coerce the result
+  2. Type-coerce the result via value_type dispatch
   3. Upsert User by email
   4. Upsert Membership by (user_id, tournament_id)
   5. Return SyncResult summary
@@ -19,10 +19,9 @@ from sqlalchemy.orm import Session
 from app.models.models import Event, Membership, SheetConfig, Tournament, User
 from app.core.phone import format_phone_us
 from app.schemas.sheet_config import (
-    PARSE_TIME_RANGE_ACTIONS,
     SyncError,
     SyncResult,
-    coerce_legacy_type,
+    coerce_legacy_mapping,
     normalize_column_mappings_input,
 )
 from app.services.sheets_service import SheetsService
@@ -35,14 +34,14 @@ from app.services.sheets_service import SheetsService
 _USER_IDENTITY_FIELDS = frozenset({
     "first_name", "last_name", "email", "phone",
 })
- 
+
 # TODO(temp): written to Membership until user self-management is implemented
 _MEMBERSHIP_PROFILE_FIELDS = frozenset({
     "shirt_size", "dietary_restriction",
     "university", "major", "employer",
     "student_status", "competition_exp", "volunteering_exp",
 })
- 
+
 # Union — all fields that come from VOLUNTEER_KNOWN_FIELDS user-side hints
 _USER_FIELDS = _USER_IDENTITY_FIELDS | _MEMBERSHIP_PROFILE_FIELDS
 
@@ -97,11 +96,11 @@ def _parse_time(raw: str) -> str:
     return f"{h:02d}:{m:02d}"
 
 
-def _parse_time_range(row_key: str) -> tuple[str, str]:
-    normalized = re.sub(r"\s+", " ", row_key.strip())
+def _parse_time_range(group_key: str) -> tuple[str, str]:
+    normalized = re.sub(r"\s+", " ", group_key.strip())
     parts = normalized.split(" - ", 1)
     if len(parts) != 2:
-        raise ValueError(f"Cannot parse time range: '{row_key}'")
+        raise ValueError(f"Cannot parse time range: '{group_key}'")
     return _parse_time(parts[0]), _parse_time(parts[1])
 
 
@@ -164,13 +163,13 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
 
 def _parse_availability(
     cell_value: str,
-    row_key: str,
+    group_key: str,
     tournament: Tournament,
 ) -> list[dict]:
     if not cell_value or cell_value.strip().lower() == "none":
         return []
 
-    start_time, end_time = _parse_time_range(row_key)
+    start_time, end_time = _parse_time_range(group_key)
     slots = []
 
     for day_str in cell_value.split(","):
@@ -188,7 +187,7 @@ _TIME_RANGE_RE = re.compile(
 )
 
 
-def _extract_row_key_and_day_text(value: str) -> tuple[str, str]:
+def _extract_group_key_and_day_text(value: str) -> tuple[str, str]:
     """
     Extract "start - end" and the remaining day text from a value string.
 
@@ -201,9 +200,9 @@ def _extract_row_key_and_day_text(value: str) -> tuple[str, str]:
 
     start = m.group("start")
     end = m.group("end")
-    row_key = f"{start} - {end}"
+    group_key = f"{start} - {end}"
     day_text = (value[:m.start()] + value[m.end():]).strip(" ,;-")
-    return row_key, day_text
+    return group_key, day_text
 
 
 def _merge_availability(existing: list[dict], new_slots: list[dict]) -> list[dict]:
@@ -267,14 +266,13 @@ def _apply_rules(
     rules: list[dict],
     mapping: dict,
     tournament: Tournament,
-) -> str | list[dict] | None:
+) -> str | None:
     """
     Apply an ordered list of parse rules to a raw cell string.
 
     Returns:
-    - list[dict] — parse_time_range / parse_availability fired; skip type coercion
-    - None       — discard fired
-    - str        — transformed string; type coercion runs next
+    - None — discard fired
+    - str  — transformed string; value_type coercion runs next
     """
     current: str = value
 
@@ -290,18 +288,6 @@ def _apply_rules(
 
         if action == "discard":
             return None
-
-        # Both canonical (parse_time_range) and legacy alias (parse_availability)
-        if action in PARSE_TIME_RANGE_ACTIONS:
-            row_key = (mapping.get("row_key") or "").strip()
-            day_value = current
-
-            # Allow parse_time_range on non-matrix mappings by extracting
-            # the time range from the current value when row_key is absent.
-            if not row_key:
-                row_key, day_value = _extract_row_key_and_day_text(current)
-
-            return _parse_availability(day_value, row_key, tournament)
 
         if action == "set":
             current = rule_value
@@ -325,6 +311,45 @@ def _apply_rules(
             current = current + rule_value
 
     return current
+
+
+# ---------------------------------------------------------------------------
+# Value type coercion
+# ---------------------------------------------------------------------------
+
+def _coerce_value(value: str, value_type: str | None, field: str | None) -> Any:
+    """Coerce a post-rules string to the target value_type."""
+    if value_type == "text" or value_type is None:
+        parsed = value.strip() if value else None
+        if parsed is None:
+            return None
+        if field == "phone":
+            return format_phone_us(parsed)
+        return parsed
+
+    if value_type == "boolean":
+        v = value.strip().lower()
+        if v in ("yes", "true", "1"):
+            return True
+        if v in ("no", "false", "0"):
+            return False
+        return None
+
+    if value_type == "number":
+        try:
+            stripped = value.strip()
+            if "." in stripped:
+                return float(stripped)
+            return int(stripped)
+        except (ValueError, AttributeError):
+            return None
+
+    if value_type == "date":
+        stripped = value.strip() if value else None
+        return stripped or None
+
+    # time_range is handled at _process_cell level (needs group_key + tournament)
+    return value.strip() if value else None
 
 
 # ---------------------------------------------------------------------------
@@ -380,7 +405,11 @@ def _process_cell(
     mapping: dict,
     tournament: Tournament,
 ) -> Any:
-    field_type = coerce_legacy_type(mapping.get("type", "string"))
+    # Coerce legacy type/row_key fields so old in-memory mappings still work
+    mapping = coerce_legacy_mapping(mapping)
+
+    field_type = mapping.get("field_type", "single")
+    value_type = mapping.get("value_type")
 
     if field_type == "ignore":
         return None
@@ -389,47 +418,29 @@ def _process_cell(
     if rules:
         result = _apply_rules(value, rules, mapping, tournament)
 
-        if isinstance(result, list):
-            return result
-
         if result is None:
             return None
 
         value = result
 
-    if field_type == "string":
-        parsed = value.strip() if value else None
-        if parsed is None:
-            return None
-        if mapping.get("field") == "phone":
-            return format_phone_us(parsed)
-        return parsed
+    # value_type dispatch
+    if value_type == "time_range":
+        # Availability-style parsing: group_key is the time range string
+        group_key = (mapping.get("group_key") or "").strip()
+        day_value = value
 
-    if field_type == "boolean":
-        v = value.strip().lower()
-        if v in ("yes", "true", "1"):
-            return True
-        if v in ("no", "false", "0"):
-            return False
-        return None
+        if not group_key:
+            # Extract time range from the value itself when group_key absent
+            group_key, day_value = _extract_group_key_and_day_text(value)
 
-    if field_type == "integer":
-        try:
-            return int(value.strip())
-        except (ValueError, AttributeError):
-            return None
+        return _parse_availability(day_value, group_key, tournament)
 
-    if field_type == "multi_select":
+    if field_type == "list":
         if not value or not value.strip():
             return []
         delimiter = mapping.get("delimiter") or ","
         options = mapping.get("options")
         if options:
-            # Option-aware splitting: greedily match known options so commas
-            # inside option text (e.g. "Life, Personal & Social Science") are
-            # not treated as delimiters.
-            # options is list[str] (raw); derive aliases from is_alias rules so
-            # post-rules transformed values are matched correctly.
             rules_list = mapping.get("rules") or []
             alias_map = {
                 r["match"]: r["value"]
@@ -441,13 +452,20 @@ def _process_cell(
                 key=len,
                 reverse=True,
             )
-            return _split_multi_select_options(value, alias_options, delimiter)
-        return [v.strip() for v in value.split(delimiter) if v.strip()]
+            parts = _split_multi_select_options(value, alias_options, delimiter)
+        else:
+            parts = [v.strip() for v in value.split(delimiter) if v.strip()]
 
-    if field_type == "matrix_row":
-        return value.strip() if value else None
+        if value_type and value_type != "text":
+            return [_coerce_value(p, value_type, mapping.get("field")) for p in parts]
+        return parts
 
-    return value.strip() if value else None
+    if field_type == "group":
+        # Returns the coerced scalar; caller aggregates into a dict keyed by group_key
+        return _coerce_value(value, value_type, mapping.get("field"))
+
+    # field_type == "single"
+    return _coerce_value(value, value_type, mapping.get("field"))
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +513,7 @@ def sync_sheet(
             membership_fields: dict[str, Any] = {}
             availability_slots: list[dict] = []
             extra_data: dict[str, Any] = {}
-            event_pref_ranked: dict[str, str] = {}  # row_key → cell value for grid ranking
+            event_pref_ranked: dict[str, str] = {}  # group_key → cell value for grid ranking
 
             for mapping in mappings:
                 header = str(mapping.get("header", ""))
@@ -506,7 +524,10 @@ def sync_sheet(
                 raw_value = row[col_idx] if col_idx < len(row) else ""
 
                 field = mapping.get("field")
-                field_type = coerce_legacy_type(mapping.get("type", "string"))
+
+                # Coerce legacy type/row_key before dispatch
+                m = coerce_legacy_mapping(mapping)
+                field_type = m.get("field_type", "single")
 
                 if field_type == "ignore" or field == "__ignore__":
                     continue
@@ -527,12 +548,12 @@ def sync_sheet(
                         availability_slots.extend(processed)
 
                 elif field == "event_preference":
-                    if field_type == "matrix_row":
-                        # Grid-ranked event preference: row_key is the event name,
+                    if field_type == "group":
+                        # Grid-ranked event preference: group_key is the event name,
                         # cell value is the rank (e.g. "1st choice", "2nd choice")
-                        row_key = mapping.get("row_key", "")
-                        if processed and row_key:
-                            event_pref_ranked[row_key] = str(processed)
+                        group_key = m.get("group_key", "")
+                        if processed and group_key:
+                            event_pref_ranked[group_key] = str(processed)
                     elif processed is not None:
                         if isinstance(processed, str):
                             processed = [processed]
@@ -541,38 +562,38 @@ def sync_sheet(
                             processed if isinstance(processed, list) else [processed]
                         )
 
-                elif field == "extra_data" and field_type == "matrix_row":
-                    # matrix_row aggregation into extra_data.
-                    # When extra_key is set, nest under extra_data[extra_key][row_key].
-                    # Without extra_key, store flat at extra_data[row_key].
-                    row_key = (mapping.get("row_key") or "").strip() or _slug(header)
-                    extra_key = (mapping.get("extra_key") or "").strip()
+                elif field == "extra_data" and field_type == "group":
+                    # group aggregation into extra_data.
+                    # When extra_key is set, nest under extra_data[extra_key][group_key].
+                    # Without extra_key, store flat at extra_data[group_key].
+                    group_key = (m.get("group_key") or "").strip() or _slug(header)
+                    extra_key = (m.get("extra_key") or "").strip()
                     if extra_key:
                         if not isinstance(extra_data.get(extra_key), dict):
                             extra_data[extra_key] = {}
-                        extra_data[extra_key][row_key] = processed if processed is not None else ""
+                        extra_data[extra_key][group_key] = processed if processed is not None else ""
                     else:
-                        extra_data[row_key] = processed if processed is not None else ""
+                        extra_data[group_key] = processed if processed is not None else ""
 
-                elif field_type == "matrix_row" and field not in ("availability", "event_preference"):
-                    # Generic matrix aggregation: build a dict keyed by row_key.
+                elif field_type == "group" and field not in ("availability", "event_preference"):
+                    # Generic group aggregation: build a dict keyed by group_key.
                     # Blank cells store "" so all keys are always present.
-                    row_key = (mapping.get("row_key") or "").strip()
-                    if not row_key:
-                        row_key = _slug(header)
+                    group_key = (m.get("group_key") or "").strip()
+                    if not group_key:
+                        group_key = _slug(header)
                     if field not in membership_fields:
                         membership_fields[field] = {}
-                    membership_fields[field][row_key] = processed if processed is not None else ""
+                    membership_fields[field][group_key] = processed if processed is not None else ""
 
                 elif field == "extra_data":
-                    extra_key = mapping.get("extra_key")
+                    extra_key = m.get("extra_key")
                     if extra_key and processed is not None:
                         extra_data[extra_key] = processed
 
                 elif field in _USER_IDENTITY_FIELDS:
                     if processed is not None:
                         user_fields[field] = processed
-                
+
                 # TODO(temp): sync profile fields to membership instead of user
                 elif field in _MEMBERSHIP_PROFILE_FIELDS:
                     if processed is not None:
@@ -675,7 +696,7 @@ def sync_sheet(
 # ---------------------------------------------------------------------------
 
 def _slug(text: str) -> str:
-    """Slugify a header string for use as a fallback row_key."""
+    """Slugify a header string for use as a fallback group_key."""
     return re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")[:50]
 
 

@@ -49,12 +49,13 @@ function emptyMappingRow(header: string, s?: Partial<ColumnMappingEntry>): Mappi
   return {
     column_index: s?.column_index ?? -1,
     header,
-    field:     s?.field     ?? "__ignore__",
-    type:      s?.type      ?? "ignore",
-    row_key:   s?.row_key   ?? "",
-    extra_key: s?.extra_key ?? "",
-    delimiter: s?.delimiter ?? "",
-    rules:     s?.rules     ?? [],
+    field:      s?.field      ?? "__ignore__",
+    field_type: s?.field_type ?? "ignore",
+    value_type: s?.value_type ?? "",
+    group_key:  s?.group_key  ?? "",
+    extra_key:  s?.extra_key  ?? "",
+    delimiter:  s?.delimiter  ?? "",
+    rules:      s?.rules      ?? [],
   };
 }
 
@@ -88,9 +89,10 @@ export default function EditSheetPage() {
 
   // Headers + mapping
   const [mappingRows,     setMappingRows]     = useState<RichMappingRow[]>([]);
-  const [knownFields,     setKnownFields]     = useState<string[]>([]);
-  const [validTypes,      setValidTypes]      = useState<string[]>([]);
-  const [validConditions, setValidConditions] = useState<string[]>([]);
+  const [knownFields,      setKnownFields]      = useState<string[]>([]);
+  const [validFieldTypes,  setValidFieldTypes]  = useState<string[]>([]);
+  const [validValueTypes,  setValidValueTypes]  = useState<string[]>([]);
+  const [validConditions,  setValidConditions]  = useState<string[]>([]);
   const [validActions,    setValidActions]    = useState<string[]>([]);
   const [headersLoading,  setHeadersLoading]  = useState(false);
   const [headersError,    setHeadersError]    = useState("");
@@ -171,7 +173,8 @@ export default function EditSheetPage() {
       if (controller.signal.aborted) return;
 
       setKnownFields(result.known_fields);
-      setValidTypes(result.valid_types);
+      setValidFieldTypes(result.valid_field_types);
+      setValidValueTypes(result.valid_value_types);
       setValidConditions(result.valid_rule_conditions);
       setValidActions(result.valid_rule_actions);
 
@@ -201,12 +204,13 @@ export default function EditSheetPage() {
           rows.push(makeRichRow(base, base, undefined, undefined, (saved.rules?.length ?? 0) > 0, options));
         } else {
           const base = emptyMappingRow(m.header, {
-            field:     m.field,
-            type:      m.type as ColumnMapping["type"],
-            row_key:   m.row_key,
-            extra_key: m.extra_key,
-            rules:     m.rules,
-            delimiter: m.delimiter,
+            field:      m.field,
+            field_type: m.field_type,
+            value_type: m.value_type,
+            group_key:  m.group_key,
+            extra_key:  m.extra_key,
+            rules:      m.rules,
+            delimiter:  m.delimiter,
           });
           base.column_index = m.column_index;
           rows.push(makeRichRow(base, base, "new", undefined, undefined, options));
@@ -289,9 +293,10 @@ export default function EditSheetPage() {
       const activeRows: MappingRow[] = mappingRows
         .filter((r) => r.state !== "removed")
         .map((r) => ({
-        column_index: r.column_index,
-        header: r.header, field: r.field, type: r.type,
-          row_key: r.row_key, extra_key: r.extra_key,
+          column_index: r.column_index,
+          header: r.header, field: r.field,
+          field_type: r.field_type, value_type: r.value_type,
+          group_key: r.group_key, extra_key: r.extra_key,
           delimiter: r.delimiter, rules: r.rules,
         }));
 
@@ -350,10 +355,14 @@ export default function EditSheetPage() {
     const result: ColumnMappingEntry[] = [];
     for (const row of mappingRows) {
       if (row.state === "removed") continue;
-      const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
-      if (row.type === "matrix_row"   && row.row_key)    mapping.row_key   = row.row_key;
-      if (row.field === "extra_data"  && row.extra_key)  mapping.extra_key = row.extra_key;
-      if (row.type === "multi_select" && row.delimiter)  mapping.delimiter = row.delimiter;
+      const mapping: ColumnMapping = {
+        field:      row.field,
+        field_type: row.field_type as ColumnMapping["field_type"],
+        value_type: (row.value_type || null) as ColumnMapping["value_type"],
+      };
+      if (row.field_type === "group"   && row.group_key)  mapping.group_key = row.group_key;
+      if (row.field === "extra_data"   && row.extra_key)  mapping.extra_key = row.extra_key;
+      if (row.field_type === "list"    && row.delimiter)  mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       // Persist form enrichment so alias editor works on next edit + in exports
       const enrichment = headerOptions.get(row.column_index);
@@ -539,7 +548,8 @@ export default function EditSheetPage() {
             <SheetConfigMappingTable
               rows={mappingRows}
               knownFields={knownFields}
-              validTypes={validTypes}
+              validFieldTypes={validFieldTypes}
+              validValueTypes={validValueTypes}
               validConditions={validConditions}
               validActions={validActions}
               onChangeRow={updateRow}

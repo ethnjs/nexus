@@ -76,12 +76,13 @@ function emptyMappingRow(header: string, m: MappedHeader): MappingRow {
   return {
     column_index: m.column_index,
     header,
-    field:     m.field     ?? "__ignore__",
-    type:      m.type      ?? "ignore",
-    row_key:   m.row_key   ?? "",
-    extra_key: m.extra_key ?? "",
-    delimiter: m.delimiter ?? "",
-    rules:     m.rules     ?? [],
+    field:      m.field      ?? "__ignore__",
+    field_type: m.field_type ?? "ignore",
+    value_type: m.value_type ?? "",
+    group_key:  m.group_key  ?? "",
+    extra_key:  m.extra_key  ?? "",
+    delimiter:  m.delimiter  ?? "",
+    rules:      m.rules      ?? [],
   };
 }
 
@@ -317,8 +318,9 @@ export default function NewSheetPage() {
 
       const plainRows: MappingRow[] = mappingRows.map((r) => ({
         column_index: r.column_index,
-        header: r.header, field: r.field, type: r.type,
-        row_key: r.row_key, extra_key: r.extra_key,
+        header: r.header, field: r.field,
+        field_type: r.field_type, value_type: r.value_type,
+        group_key: r.group_key, extra_key: r.extra_key,
         delimiter: r.delimiter, rules: r.rules,
       }));
 
@@ -373,10 +375,14 @@ export default function NewSheetPage() {
   const buildColumnMappings = useCallback((): ColumnMappingEntry[] => {
     const result: ColumnMappingEntry[] = [];
     for (const row of mappingRows) {
-      const mapping: ColumnMapping = { field: row.field, type: row.type as ColumnMapping["type"] };
-      if (row.type === "matrix_row"   && row.row_key)   mapping.row_key   = row.row_key;
-      if (row.field === "extra_data"  && row.extra_key) mapping.extra_key = row.extra_key;
-      if (row.type === "multi_select" && row.delimiter) mapping.delimiter = row.delimiter;
+      const mapping: ColumnMapping = {
+        field:      row.field,
+        field_type: row.field_type as ColumnMapping["field_type"],
+        value_type: (row.value_type || null) as ColumnMapping["value_type"],
+      };
+      if (row.field_type === "group"    && row.group_key)  mapping.group_key = row.group_key;
+      if (row.field === "extra_data"    && row.extra_key)  mapping.extra_key = row.extra_key;
+      if (row.field_type === "list"     && row.delimiter)  mapping.delimiter = row.delimiter;
       if (row.rules.length > 0) mapping.rules = row.rules;
       // Persist form enrichment so edit page + exports retain alias editor context
       const enrichment = headerOptions.get(row.column_index);
@@ -595,7 +601,8 @@ export default function NewSheetPage() {
           <SheetConfigMappingTable
             rows={mappingRows}
             knownFields={headersResult.known_fields}
-            validTypes={headersResult.valid_types}
+            validFieldTypes={headersResult.valid_field_types}
+            validValueTypes={headersResult.valid_value_types}
             validConditions={headersResult.valid_rule_conditions}
             validActions={headersResult.valid_rule_actions}
             onChangeRow={updateRow}

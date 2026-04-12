@@ -11,7 +11,7 @@ from app.services.sync_service import (
     _apply_rules,
     _process_cell,
 )
-from app.schemas.sheet_config import coerce_legacy_type
+from app.schemas.sheet_config import coerce_legacy_mapping
 from unittest.mock import MagicMock
 
 
@@ -184,49 +184,61 @@ def test_merge_availability_with_existing():
 
 
 # ---------------------------------------------------------------------------
-# coerce_legacy_type
+# coerce_legacy_mapping
 # ---------------------------------------------------------------------------
 
-def test_coerce_legacy_availability_row():
-    assert coerce_legacy_type("availability_row") == "matrix_row"
+def test_coerce_legacy_mapping_string():
+    result = coerce_legacy_mapping({"field": "email", "type": "string"})
+    assert result["field_type"] == "single"
+    assert result["value_type"] == "text"
+    assert "type" not in result
 
-def test_coerce_legacy_category_events():
-    assert coerce_legacy_type("category_events") == "string"
+def test_coerce_legacy_mapping_boolean():
+    result = coerce_legacy_mapping({"field": "extra_data", "type": "boolean"})
+    assert result["field_type"] == "single"
+    assert result["value_type"] == "boolean"
 
-def test_coerce_current_type_unchanged():
-    for t in ("string", "ignore", "boolean", "integer", "multi_select", "matrix_row"):
-        assert coerce_legacy_type(t) == t
+def test_coerce_legacy_mapping_integer():
+    result = coerce_legacy_mapping({"field": "extra_data", "type": "integer"})
+    assert result["field_type"] == "single"
+    assert result["value_type"] == "number"
 
+def test_coerce_legacy_mapping_multi_select():
+    result = coerce_legacy_mapping({"field": "role_preference", "type": "multi_select"})
+    assert result["field_type"] == "list"
+    assert result["value_type"] == "text"
 
-# ---------------------------------------------------------------------------
-# _process_cell — legacy type coercion
-# ---------------------------------------------------------------------------
+def test_coerce_legacy_mapping_matrix_row():
+    result = coerce_legacy_mapping({"field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM"})
+    assert result["field_type"] == "group"
+    assert result["value_type"] == "text"
+    assert result["group_key"] == "8:00 AM - 10:00 AM"
+    assert "row_key" not in result
 
-def test_process_cell_legacy_availability_row_coerced(caplog):
-    """availability_row is coerced to matrix_row. Without a parse_availability
-    rule, matrix_row returns the raw string — the TD must add the rule."""
+def test_coerce_legacy_mapping_ignore():
+    result = coerce_legacy_mapping({"field": "__ignore__", "type": "ignore"})
+    assert result["field_type"] == "ignore"
+    assert "value_type" not in result
+
+def test_coerce_legacy_mapping_availability_row_alias(caplog):
     import logging
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {
-        "field": "availability",
-        "type": "availability_row",
-        "row_key": "8:00 AM - 10:00 AM",
-    }
     with caplog.at_level(logging.WARNING):
-        result = _process_cell("Thursday 5/21", mapping, t)
-    assert result == "Thursday 5/21"
+        result = coerce_legacy_mapping({"field": "availability", "type": "availability_row", "row_key": "8:00 AM - 10:00 AM"})
+    assert result["field_type"] == "group"
+    assert result["value_type"] == "text"
     assert "availability_row" in caplog.text
 
+def test_coerce_legacy_mapping_already_new_schema():
+    """Mappings already using field_type/value_type are left untouched."""
+    result = coerce_legacy_mapping({"field": "email", "field_type": "single", "value_type": "text"})
+    assert result["field_type"] == "single"
+    assert result["value_type"] == "text"
+    assert "type" not in result
 
-def test_process_cell_legacy_category_events_coerced(caplog):
-    """category_events is coerced to string and returns raw value."""
-    import logging
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "event_preference", "type": "category_events"}
-    with caplog.at_level(logging.WARNING):
-        result = _process_cell("Technology & Engineering (Boomilever)", mapping, t)
-    assert result == "Technology & Engineering (Boomilever)"
-    assert "category_events" in caplog.text
+def test_coerce_legacy_mapping_row_key_renamed():
+    result = coerce_legacy_mapping({"field": "availability", "field_type": "group", "value_type": "time_range", "row_key": "8:00 AM - 10:00 AM"})
+    assert result["group_key"] == "8:00 AM - 10:00 AM"
+    assert "row_key" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -321,30 +333,104 @@ def test_apply_rules_sequential_all_fire():
     result = _apply_rules("General Volunteer, Event Supervisor", rules, {}, _t())
     assert result == "GV, ES"
 
-def test_apply_rules_parse_availability_short_circuits():
-    """parse_availability returns a list and stops rule processing."""
-    mapping = {"row_key": "8:00 AM - 10:00 AM"}
-    rules = [
-        {"condition": "always", "action": "parse_availability"},
-        # this rule would fire on a string but should never run
-        {"condition": "always", "action": "set", "value": "SHOULD NOT APPEAR"},
-    ]
-    result = _apply_rules("Thursday 5/21", rules, mapping, _make_tournament(NATS_BLOCKS))
-    assert isinstance(result, list)
-    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
-
-def test_apply_rules_parse_availability_without_row_key_extracts_from_value():
-    rules = [{"condition": "always", "action": "parse_time_range"}]
-    result = _apply_rules(
-        "February 14 7:00AM - 5:00PM",
-        rules,
-        {},
-        _make_tournament(start_date=datetime(2026, 5, 21)),
-    )
-    assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
-
 def test_apply_rules_empty_rules_unchanged():
     assert _apply_rules("hello", [], {}, _t()) == "hello"
+
+
+# ---------------------------------------------------------------------------
+# _process_cell — value_type dispatch
+# ---------------------------------------------------------------------------
+
+def test_process_cell_single_text():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "notes", "field_type": "single", "value_type": "text"}
+    assert _process_cell("Hello", mapping, t) == "Hello"
+
+def test_process_cell_single_boolean_yes():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "single", "value_type": "boolean", "extra_key": "competed"}
+    assert _process_cell("Yes", mapping, t) is True
+
+def test_process_cell_single_boolean_no():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "single", "value_type": "boolean", "extra_key": "competed"}
+    assert _process_cell("No", mapping, t) is False
+
+def test_process_cell_single_number_int():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "single", "value_type": "number", "extra_key": "seats"}
+    assert _process_cell("3", mapping, t) == 3
+
+def test_process_cell_single_number_float():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "single", "value_type": "number", "extra_key": "gpa"}
+    assert _process_cell("3.8", mapping, t) == 3.8
+
+def test_process_cell_single_number_invalid():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "single", "value_type": "number", "extra_key": "seats"}
+    assert _process_cell("abc", mapping, t) is None
+
+def test_process_cell_ignore():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "__ignore__", "field_type": "ignore"}
+    assert _process_cell("anything", mapping, t) is None
+
+def test_process_cell_list_text():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "role_preference", "field_type": "list", "value_type": "text"}
+    result = _process_cell("Event Supervisor,General Volunteer,Floater", mapping, t)
+    assert result == ["Event Supervisor", "General Volunteer", "Floater"]
+
+def test_process_cell_list_custom_delimiter():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "role_preference", "field_type": "list", "value_type": "text", "delimiter": ";"}
+    result = _process_cell("Event Supervisor;General Volunteer;Floater", mapping, t)
+    assert result == ["Event Supervisor", "General Volunteer", "Floater"]
+
+def test_process_cell_list_number():
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "extra_data", "field_type": "list", "value_type": "number", "extra_key": "scores"}
+    result = _process_cell("1,2,3", mapping, t)
+    assert result == [1, 2, 3]
+
+def test_process_cell_group_text():
+    """group field_type with text value returns the coerced scalar."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "protein"}
+    result = _process_cell("Carnitas", mapping, t)
+    assert result == "Carnitas"
+
+def test_process_cell_group_text_blank():
+    """Blank group cell returns None; sync_sheet stores '' for that key."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "drink"}
+    result = _process_cell("", mapping, t)
+    assert result is None
+
+def test_process_cell_group_time_range_returns_slots():
+    """group + time_range produces availability slots list."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "availability",
+        "field_type": "group",
+        "value_type": "time_range",
+        "group_key": "8:00 AM - 10:00 AM",
+    }
+    result = _process_cell("Thursday 5/21", mapping, t)
+    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
+
+def test_process_cell_group_time_range_without_group_key_extracts_from_value():
+    """time_range with no group_key extracts the time range from the value itself."""
+    t = _make_tournament(start_date=datetime(2026, 5, 21))
+    mapping = {
+        "field": "availability",
+        "field_type": "group",
+        "value_type": "time_range",
+        "group_key": "",
+    }
+    result = _process_cell("February 14 7:00AM - 5:00PM", mapping, t)
+    assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
 
 
 # ---------------------------------------------------------------------------
@@ -356,7 +442,8 @@ def test_process_cell_rules_run_before_type_coercion():
     t = _make_tournament(NATS_BLOCKS)
     mapping = {
         "field": "extra_data",
-        "type": "boolean",
+        "field_type": "single",
+        "value_type": "boolean",
         "extra_key": "competed",
         "rules": [{"condition": "contains", "match": "yes i have", "action": "set", "value": "yes"}],
     }
@@ -366,80 +453,76 @@ def test_process_cell_rules_discard_returns_none():
     t = _make_tournament(NATS_BLOCKS)
     mapping = {
         "field": "notes",
-        "type": "string",
+        "field_type": "single",
+        "value_type": "text",
         "rules": [{"condition": "equals", "match": "n/a", "action": "discard"}],
     }
     assert _process_cell("N/A", mapping, t) is None
 
-def test_process_cell_multi_select_custom_delimiter():
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "role_preference", "type": "multi_select", "delimiter": ";"}
-    result = _process_cell("Event Supervisor;General Volunteer;Floater", mapping, t)
-    assert result == ["Event Supervisor", "General Volunteer", "Floater"]
-
-def test_process_cell_parse_availability_via_rule():
-    """matrix_row + parse_availability rule produces slots list."""
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {
-        "field": "availability",
-        "type": "matrix_row",
-        "row_key": "8:00 AM - 10:00 AM",
-        "rules": [{"condition": "always", "action": "parse_availability"}],
-    }
-    result = _process_cell("Thursday 5/21", mapping, t)
-    assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
-
-def test_process_cell_matrix_row_no_rule_returns_string():
-    """matrix_row without a parse_availability rule stores raw string."""
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM"}
-    result = _process_cell("Thursday 5/21", mapping, t)
-    assert result == "Thursday 5/21"
-
-def test_process_cell_string_parse_time_range_rule():
-    t = _make_tournament(start_date=datetime(2026, 5, 21))
-    mapping = {
-        "field": "availability",
-        "type": "string",
-        "rules": [{"condition": "always", "action": "parse_time_range"}],
-    }
-    result = _process_cell("February 14 7:00AM - 5:00PM", mapping, t)
-    assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
-
 
 def test_process_cell_phone_formats_us_number():
     t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "phone", "type": "string"}
+    mapping = {"field": "phone", "field_type": "single", "value_type": "text"}
     assert _process_cell("9495551234", mapping, t) == "(949) 555-1234"
     assert _process_cell("+1 (949) 555-1234", mapping, t) == "(949) 555-1234"
 
 
 # ---------------------------------------------------------------------------
-# Generic matrix_row aggregation in sync_sheet
+# _process_cell — legacy type coercion (backward compat via coerce_legacy_mapping)
 # ---------------------------------------------------------------------------
-# These tests exercise the dispatch logic directly via _process_cell and verify
-# that matrix_row fields (other than availability/event_preference) produce the
-# right processed value, which sync_sheet then accumulates into a dict.
 
-def test_process_cell_matrix_row_returns_string_value():
-    """matrix_row without a parse rule returns the raw string — sync_sheet builds the dict."""
+def test_process_cell_legacy_matrix_row_coerced(caplog):
+    """Legacy matrix_row type is coerced to group/text via coerce_legacy_mapping."""
+    import logging
     t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"}
+    mapping = {
+        "field": "lunch_order",
+        "type": "matrix_row",
+        "row_key": "protein",
+    }
+    result = _process_cell("Carnitas", mapping, t)
+    assert result == "Carnitas"
+
+def test_process_cell_legacy_availability_row_coerced(caplog):
+    """availability_row alias is coerced through to group/text, no rules → raw string."""
+    import logging
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {
+        "field": "availability",
+        "type": "availability_row",
+        "row_key": "8:00 AM - 10:00 AM",
+    }
+    with caplog.at_level(logging.WARNING):
+        result = _process_cell("Thursday 5/21", mapping, t)
+    assert result == "Thursday 5/21"
+    assert "availability_row" in caplog.text
+
+def test_process_cell_legacy_category_events_coerced(caplog):
+    """category_events is coerced to single/text and returns raw value."""
+    import logging
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "event_preference", "type": "category_events"}
+    with caplog.at_level(logging.WARNING):
+        result = _process_cell("Technology & Engineering (Boomilever)", mapping, t)
+    assert result == "Technology & Engineering (Boomilever)"
+    assert "category_events" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Generic group aggregation in sync_sheet
+# ---------------------------------------------------------------------------
+
+def test_process_cell_group_returns_string_value():
+    """group without time_range returns the raw string — sync_sheet builds the dict."""
+    t = _make_tournament(NATS_BLOCKS)
+    mapping = {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "protein"}
     result = _process_cell("Carnitas", mapping, t)
     assert result == "Carnitas"
 
 
-def test_process_cell_matrix_row_blank_returns_none():
-    """Blank matrix_row cell returns None; sync_sheet stores '' for that key."""
-    t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"}
-    result = _process_cell("", mapping, t)
-    assert result is None
-
-
 def test_process_cell_lunch_order_string_returns_value():
-    """lunch_order with type=string (single-header legacy config) returns the raw string."""
+    """lunch_order with field_type=single (single-header config) returns the raw string."""
     t = _make_tournament(NATS_BLOCKS)
-    mapping = {"field": "lunch_order", "type": "string"}
+    mapping = {"field": "lunch_order", "field_type": "single", "value_type": "text"}
     result = _process_cell("Carnitas bowl", mapping, t)
     assert result == "Carnitas bowl"

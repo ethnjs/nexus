@@ -99,21 +99,20 @@ def test_validate_mappings_returns_200_with_structured_errors(
     assert any("extra_key" in e["message"] for e in data["errors"])
 
 
-def test_validate_mappings_allows_parse_time_range_on_string_availability(
+def test_validate_mappings_availability_single_value_type_text(
     client, td_user, td_tournament
 ):
+    """Availability mapped as single/text (no time_range coercion) is valid but warns."""
     login(client, "td@test.com", "tdpass")
     response = client.post(
         f"/tournaments/{td_tournament.id}/sheets/configs/validate-mappings/",
         json={
             "column_mappings": {
-                "Email Address": {"field": "email", "type": "string"},
+                "Email Address": {"field": "email", "field_type": "single", "value_type": "text"},
                 "Will you be available for the full day?": {
                     "field": "availability",
-                    "type": "string",
-                    "rules": [
-                        {"condition": "always", "action": "parse_time_range"},
-                    ],
+                    "field_type": "single",
+                    "value_type": "text",
                 },
             }
         },

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 # ---------------------------------------------------------------------------
@@ -63,22 +63,41 @@ KNOWN_FIELDS_BY_TYPE: dict[str, list[str]] = {
 }
 
 # ---------------------------------------------------------------------------
-# Valid column mapping types
+# Field type — the shape/structure of the output value.
+# Value type — the coercion applied to each individual value.
 # ---------------------------------------------------------------------------
-VALID_MAPPING_TYPES: set[str] = {
-    "string",        # store value as-is
-    "ignore",        # skip this column entirely
-    "boolean",       # "Yes"/"No" → True/False
-    "integer",       # parse to int
-    "multi_select",  # split on delimiter → JSON array; rules run before splitting
-    "matrix_row",    # one row of a grid question → merged into availability JSON
-                     # requires row_key; use parse_time_range rule to parse time slots
+VALID_FIELD_TYPES: set[str] = {
+    "single",   # One value → scalar
+    "list",     # Multiple values → array
+    "group",    # Keyed values → dict (requires group_key)
+    "ignore",   # No output
+}
+
+VALID_VALUE_TYPES: set[str] = {
+    "text",        # String, no coercion
+    "number",      # Int or float
+    "boolean",     # "Yes"/"No", "True"/"False" → bool
+    "date",        # Date or datetime string → parsed date
+    "time_range",  # "8:00 AM - 10:00 AM" style → slot object
 }
 
 VALID_SHEET_TYPES = {"volunteers", "events"}
 
 # ---------------------------------------------------------------------------
-# Backwards compatibility
+# Legacy type → (field_type, value_type) coercion map.
+# Applied on read before validation so old saved configs still load.
+# ---------------------------------------------------------------------------
+_LEGACY_FIELD_VALUE_MAP: dict[str, tuple[str, str | None]] = {
+    "string":       ("single", "text"),
+    "boolean":      ("single", "boolean"),
+    "integer":      ("single", "number"),
+    "multi_select": ("list",   "text"),
+    "matrix_row":   ("group",  "text"),
+    "ignore":       ("ignore", None),
+}
+
+# ---------------------------------------------------------------------------
+# Backwards compatibility — legacy mapping type aliases
 # ---------------------------------------------------------------------------
 _LEGACY_TYPE_MAP: dict[str, str] = {
     "availability_row": "matrix_row",
@@ -92,6 +111,7 @@ LEGACY_SHEET_TYPE_MAP: dict[str, str] = {
 
 
 def coerce_legacy_type(type_value: str) -> str:
+    """Coerce old type aliases (availability_row, category_events) to their canonical old types."""
     if type_value in _LEGACY_TYPE_MAP:
         import logging
         new_type = _LEGACY_TYPE_MAP[type_value]
@@ -102,6 +122,31 @@ def coerce_legacy_type(type_value: str) -> str:
         )
         return new_type
     return type_value
+
+
+def coerce_legacy_mapping(data: dict) -> dict:
+    """
+    Translate old type/row_key fields to field_type/value_type/group_key on read.
+
+    This runs on ColumnMapping model_validator(mode='before') so old DB data
+    loaded before the migration still parses correctly. After the migration,
+    all stored data already uses field_type/value_type/group_key.
+    """
+    data = dict(data)
+
+    # Translate old flat `type` field → field_type + value_type
+    if "type" in data and "field_type" not in data:
+        old_type = coerce_legacy_type(str(data.pop("type")))
+        field_type, value_type = _LEGACY_FIELD_VALUE_MAP.get(old_type, ("single", "text"))
+        data["field_type"] = field_type
+        if value_type is not None:
+            data.setdefault("value_type", value_type)
+
+    # Rename row_key → group_key
+    if "row_key" in data and "group_key" not in data:
+        data["group_key"] = data.pop("row_key")
+
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -122,15 +167,10 @@ VALID_RULE_ACTIONS: set[str] = {
     "prepend",
     "append",
     "discard",
-    "parse_time_range",    # canonical — parses time block on matrix_row cells
-    "parse_availability",  # legacy alias — accepted on read, treated identically
 }
 
 # Actions that require a `value` field
 _ACTIONS_REQUIRING_VALUE: set[str] = {"set", "replace", "prepend", "append"}
-
-# Actions that perform time-range parsing (canonical + legacy alias)
-PARSE_TIME_RANGE_ACTIONS: set[str] = {"parse_time_range", "parse_availability"}
 
 
 class ParseRule(BaseModel):
@@ -199,8 +239,9 @@ class ColumnMapping(BaseModel):
     model_config = {"populate_by_name": True}
 
     field: str
-    type: str
-    row_key: str | None = None
+    field_type: str
+    value_type: str | None = None
+    group_key: str | None = None
     extra_key: str | None = None
     rules: list[ParseRule] | None = None
     delimiter: str | None = None
@@ -215,10 +256,12 @@ class ColumnMapping(BaseModel):
         kwargs.setdefault("exclude_none", True)
         return super().model_dump(**kwargs)
 
-    @field_validator("type", mode="before")
+    @model_validator(mode="before")
     @classmethod
-    def coerce_type(cls, v: str) -> str:
-        return coerce_legacy_type(v)
+    def coerce_legacy_fields(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            return coerce_legacy_mapping(data)
+        return data
 
     @field_validator("field")
     @classmethod
@@ -227,12 +270,33 @@ class ColumnMapping(BaseModel):
             raise ValueError(f"Unknown field '{v}'. Must be one of: {ALL_KNOWN_FIELDS}")
         return v
 
-    @field_validator("type")
+    @field_validator("field_type")
     @classmethod
-    def validate_type(cls, v: str) -> str:
-        if v not in VALID_MAPPING_TYPES:
-            raise ValueError(f"type must be one of: {VALID_MAPPING_TYPES}")
+    def validate_field_type(cls, v: str) -> str:
+        if v not in VALID_FIELD_TYPES:
+            raise ValueError(f"field_type must be one of: {VALID_FIELD_TYPES}")
         return v
+
+    @field_validator("value_type")
+    @classmethod
+    def validate_value_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_VALUE_TYPES:
+            raise ValueError(f"value_type must be one of: {VALID_VALUE_TYPES}")
+        return v
+
+    @model_validator(mode="after")
+    def validate_field_value_combo(self) -> "ColumnMapping":
+        if self.field_type == "ignore":
+            if self.value_type is not None:
+                raise ValueError("value_type must be null when field_type is 'ignore'")
+        else:
+            if self.value_type is None:
+                raise ValueError(
+                    f"value_type is required when field_type is '{self.field_type}'"
+                )
+        if self.field_type == "group" and not self.group_key:
+            raise ValueError("group_key is required when field_type is 'group'")
+        return self
 
 
 class ColumnMappingEntry(ColumnMapping):
@@ -240,7 +304,7 @@ class ColumnMappingEntry(ColumnMapping):
     A single mapped sheet column with stable identity by index.
 
     This is the canonical shape for persisted/read mapping data:
-      {column_index, header, field, type, ...}
+      {column_index, header, field, field_type, value_type, ...}
     """
     column_index: int
     header: str
@@ -263,7 +327,7 @@ def normalize_column_mappings_input(
       {"Header": {field, type, ...}, ...}
 
     Canonical list shape:
-      [{"column_index": 0, "header": "Header", field, type, ...}, ...]
+      [{"column_index": 0, "header": "Header", field, field_type, ...}, ...]
     """
     if value is None:
         return []
@@ -300,9 +364,6 @@ def normalize_column_mappings_input(
 # One entry per sheet column, with suggested mapping and form enrichment
 # already cross-referenced by the service layer. The frontend maps these
 # directly to RichMappingRow objects — no client-side cross-referencing needed.
-#
-# google_type has been removed — the backend resolves the mapping type fully.
-# The frontend Type dropdown is always editable by the TD.
 # ---------------------------------------------------------------------------
 class MappedHeader(BaseModel):
     """
@@ -311,8 +372,9 @@ class MappedHeader(BaseModel):
     column_index: int = 0
     header:      str
     field:       str
-    type:        str
-    row_key:     str | None = None
+    field_type:  str
+    value_type:  str | None = None
+    group_key:   str | None = None
     extra_key:   str | None = None
     rules:       list[ParseRule] | None = None
     delimiter:   str | None = None
@@ -396,7 +458,14 @@ class SheetConfigReadWithWarnings(SheetConfigRead):
 
 
 class ValidateMappingsRequest(BaseModel):
-    column_mappings: list[ColumnMappingEntry] = []
+    """
+    Accepts raw mapping dicts without running ColumnMappingEntry validators.
+
+    Validation is intentionally deferred to validate_column_mappings() so that
+    all errors are returned as structured ValidationIssue objects rather than
+    raw Pydantic 422 responses that the frontend cannot parse.
+    """
+    column_mappings: list[dict[str, Any]] = []
 
     @field_validator("column_mappings", mode="before")
     @classmethod
@@ -455,10 +524,11 @@ class SheetHeadersResponse(BaseModel):
     sheet_name: str
     sheet_type: str
     mappings:   list[MappedHeader]
-    known_fields:          list[str] = VOLUNTEER_KNOWN_FIELDS
-    valid_types:           list[str] = list(VALID_MAPPING_TYPES)
-    valid_rule_conditions: list[str] = list(VALID_RULE_CONDITIONS)
-    valid_rule_actions:    list[str] = list(VALID_RULE_ACTIONS)
+    known_fields:           list[str] = VOLUNTEER_KNOWN_FIELDS
+    valid_field_types:      list[str] = list(VALID_FIELD_TYPES)
+    valid_value_types:      list[str] = list(VALID_VALUE_TYPES)
+    valid_rule_conditions:  list[str] = list(VALID_RULE_CONDITIONS)
+    valid_rule_actions:     list[str] = list(VALID_RULE_ACTIONS)
 
 
 # ---------------------------------------------------------------------------

@@ -10,9 +10,9 @@ from app.services.sheets_validation import validate_column_mappings
 def _base_mappings(**overrides):
     """Minimal valid mappings — email mapped, no other required fields."""
     m = {
-        "Email Address": {"field": "email", "type": "string"},
-        "First Name":    {"field": "first_name", "type": "string"},
-        "Last Name":     {"field": "last_name",  "type": "string"},
+        "Email Address": {"field": "email", "field_type": "single", "value_type": "text"},
+        "First Name":    {"field": "first_name", "field_type": "single", "value_type": "text"},
+        "Last Name":     {"field": "last_name",  "field_type": "single", "value_type": "text"},
     }
     m.update(overrides)
     return m
@@ -49,7 +49,7 @@ def test_valid_mappings_no_errors():
 
 def test_missing_email_is_error():
     result = validate_column_mappings({
-        "First Name": {"field": "first_name", "type": "string"},
+        "First Name": {"field": "first_name", "field_type": "single", "value_type": "text"},
     })
     assert not result.ok
     assert any("email" in e.message.lower() for e in result.errors)
@@ -57,34 +57,49 @@ def test_missing_email_is_error():
 def test_missing_email_header_is_none():
     """Config-level errors that don't belong to a specific header use None."""
     result = validate_column_mappings({
-        "First Name": {"field": "first_name", "type": "string"},
+        "First Name": {"field": "first_name", "field_type": "single", "value_type": "text"},
     })
     email_error = next(e for e in result.errors if "email" in e.message.lower() and "No column" in e.message)
     assert email_error.header is None
 
-def test_email_wrong_type_is_error():
+def test_email_wrong_field_type_is_error():
     result = validate_column_mappings(_base_mappings(**{
-        "Email Address": {"field": "email", "type": "boolean"},
+        "Email Address": {"field": "email", "field_type": "list", "value_type": "text"},
     }))
     assert not result.ok
-    assert any("email" in e.message.lower() and "string" in e.message.lower()
-               for e in result.errors)
+    assert any("email" in e.message.lower() for e in result.errors)
+
+def test_email_wrong_value_type_is_error():
+    result = validate_column_mappings(_base_mappings(**{
+        "Email Address": {"field": "email", "field_type": "single", "value_type": "boolean"},
+    }))
+    assert not result.ok
+    assert any("email" in e.message.lower() for e in result.errors)
 
 def test_multiple_email_mappings_is_error():
     result = validate_column_mappings({
-        "Email Address": {"field": "email", "type": "string"},
-        "Email (2)":     {"field": "email", "type": "string"},
+        "Email Address": {"field": "email", "field_type": "single", "value_type": "text"},
+        "Email (2)":     {"field": "email", "field_type": "single", "value_type": "text"},
     })
     assert not result.ok
     assert any("multiple" in e.message.lower() for e in result.errors)
 
 def test_ignored_email_column_not_counted():
-    """An email column typed as ignore doesn't satisfy the email requirement."""
+    """An email column with field_type=ignore doesn't satisfy the email requirement."""
     result = validate_column_mappings({
-        "Email Address": {"field": "__ignore__", "type": "ignore"},
+        "Email Address": {"field": "__ignore__", "field_type": "ignore"},
     })
     assert not result.ok
     assert any("email" in e.message.lower() for e in result.errors)
+
+def test_legacy_type_coerced_in_validation():
+    """Mappings using old `type` field are coerced before validation."""
+    result = validate_column_mappings({
+        "Email Address": {"field": "email", "type": "string"},
+        "First Name":    {"field": "first_name", "type": "string"},
+        "Last Name":     {"field": "last_name",  "type": "string"},
+    })
+    assert result.ok
 
 
 # ---------------------------------------------------------------------------
@@ -93,8 +108,8 @@ def test_ignored_email_column_not_counted():
 
 def test_duplicate_extra_key_is_error():
     result = validate_column_mappings(_base_mappings(**{
-        "Transport Q1": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
-        "Transport Q2": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+        "Transport Q1": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
+        "Transport Q2": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
     }))
     assert not result.ok
     assert any("transportation" in e.message for e in result.errors)
@@ -102,8 +117,8 @@ def test_duplicate_extra_key_is_error():
 def test_duplicate_extra_key_header_is_list():
     """Duplicate extra_key errors must carry header as list[str], not a joined string."""
     result = validate_column_mappings(_base_mappings(**{
-        "Transport Q1": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
-        "Transport Q2": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+        "Transport Q1": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
+        "Transport Q2": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
     }))
     dup_error = next(e for e in result.errors if "transportation" in e.message)
     assert isinstance(dup_error.header, list), (
@@ -115,8 +130,8 @@ def test_duplicate_extra_key_header_is_list():
 def test_duplicate_extra_key_header_list_serialised_in_response():
     """to_response_dict must serialise list headers as lists (not joined strings)."""
     result = validate_column_mappings(_base_mappings(**{
-        "Transport Q1": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
-        "Transport Q2": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
+        "Transport Q1": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
+        "Transport Q2": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
     }))
     response = result.to_response_dict()
     dup_error = next(e for e in response["errors"] if "transportation" in e["message"])
@@ -128,8 +143,8 @@ def test_duplicate_extra_key_header_with_commas_in_name():
     h1 = "Have you competed in Science Olympiad in the past?"
     h2 = "If you have competed, please list events"  # contains a comma
     result = validate_column_mappings(_base_mappings(**{
-        h1: {"field": "extra_data", "type": "string", "extra_key": "scioly_competed"},
-        h2: {"field": "extra_data", "type": "string", "extra_key": "scioly_competed"},
+        h1: {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "scioly_competed"},
+        h2: {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "scioly_competed"},
     }))
     dup_error = next(e for e in result.errors if "scioly_competed" in e.message)
     assert isinstance(dup_error.header, list)
@@ -138,55 +153,55 @@ def test_duplicate_extra_key_header_with_commas_in_name():
 
 def test_different_extra_keys_ok():
     result = validate_column_mappings(_base_mappings(**{
-        "Transport": {"field": "extra_data", "type": "string", "extra_key": "transportation"},
-        "Carpool":   {"field": "extra_data", "type": "integer", "extra_key": "carpool_seats"},
+        "Transport": {"field": "extra_data", "field_type": "single", "value_type": "text", "extra_key": "transportation"},
+        "Carpool":   {"field": "extra_data", "field_type": "single", "value_type": "number", "extra_key": "carpool_seats"},
     }))
     assert result.ok
 
-def test_matrix_row_with_same_extra_key_not_duplicate_error():
-    """matrix_row columns sharing an extra_key do not overwrite — no duplicate extra_key error."""
+def test_group_with_same_extra_key_not_duplicate_error():
+    """group columns sharing an extra_key do not overwrite — no duplicate extra_key error."""
     result = validate_column_mappings(_base_mappings(**{
-        "Which protein?": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
-        "Drink choice":   {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"},
+        "Which protein?": {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "protein"},
+        "Drink choice":   {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "drink"},
     }))
     assert not any("Duplicate extra_key" in e.message for e in result.errors)
 
-def test_duplicate_row_key_same_field_is_error():
-    """Two matrix_row columns with the same field and row_key DO overwrite — error."""
+def test_duplicate_group_key_same_field_is_error():
+    """Two group columns with the same field and group_key DO overwrite — error."""
     result = validate_column_mappings(_base_mappings(**{
-        "Lunch col 1": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
-        "Lunch col 2": {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"},
+        "Lunch col 1": {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "protein"},
+        "Lunch col 2": {"field": "lunch_order", "field_type": "group", "value_type": "text", "group_key": "protein"},
     }))
     assert not result.ok
-    assert any("Duplicate row_key" in e.message and "protein" in e.message for e in result.errors)
+    assert any("Duplicate group_key" in e.message and "protein" in e.message for e in result.errors)
 
-def test_duplicate_row_key_different_fields_ok():
-    """Same row_key across different fields is fine — they write to separate buckets."""
+def test_duplicate_group_key_different_fields_ok():
+    """Same group_key across different fields is fine — they write to separate buckets."""
     result = validate_column_mappings(_base_mappings(**{
-        "Avail morning":    {"field": "availability",  "type": "matrix_row", "row_key": "morning",
-                             "rules": [{"condition": "always", "action": "parse_time_range"}]},
-        "Pref morning":     {"field": "event_preference", "type": "matrix_row", "row_key": "morning"},
+        "Avail morning":    {"field": "availability",  "field_type": "group", "value_type": "time_range",
+                             "group_key": "8:00 AM - 10:00 AM"},
+        "Pref morning":     {"field": "event_preference", "field_type": "group", "value_type": "text",
+                             "group_key": "morning"},
     }))
-    assert not any("Duplicate row_key" in e.message for e in result.errors)
+    assert not any("Duplicate group_key" in e.message for e in result.errors)
 
 
 # ---------------------------------------------------------------------------
-# Per-mapping — matrix_row
+# Per-mapping — group requires group_key
 # ---------------------------------------------------------------------------
 
-def test_matrix_row_missing_row_key_is_error():
+def test_group_missing_group_key_is_error():
     result = validate_column_mappings(_base_mappings(**{
-        "Availability [8AM]": {"field": "availability", "type": "matrix_row"},
+        "Availability [8AM]": {"field": "availability", "field_type": "group", "value_type": "time_range"},
     }))
     assert not result.ok
-    assert any("row_key" in e.message for e in result.errors)
+    assert any("group_key" in e.message for e in result.errors)
 
-def test_matrix_row_with_row_key_ok():
+def test_group_with_group_key_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability", "type": "matrix_row",
-            "row_key": "8:00 AM - 10:00 AM",
-            "rules": [{"condition": "always", "action": "parse_availability"}],
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "8:00 AM - 10:00 AM",
         },
     }))
     assert result.ok
@@ -198,105 +213,115 @@ def test_matrix_row_with_row_key_ok():
 
 def test_extra_data_missing_extra_key_is_error():
     result = validate_column_mappings(_base_mappings(**{
-        "Transport": {"field": "extra_data", "type": "string"},
+        "Transport": {"field": "extra_data", "field_type": "single", "value_type": "text"},
     }))
     assert not result.ok
     assert any("extra_key" in e.message for e in result.errors)
 
-
-# ---------------------------------------------------------------------------
-# Per-mapping — delimiter on non-multi_select
-# ---------------------------------------------------------------------------
-
-def test_delimiter_on_non_multi_select_is_error():
+def test_extra_data_group_no_extra_key_ok():
+    """group extra_data uses group_key as the key — no extra_key required."""
     result = validate_column_mappings(_base_mappings(**{
-        "Notes": {"field": "notes", "type": "string", "delimiter": ";"},
+        "Which protein?": {"field": "extra_data", "field_type": "group", "value_type": "text", "group_key": "protein"},
+    }))
+    assert not any("extra_key" in e.message for e in result.errors)
+
+
+# ---------------------------------------------------------------------------
+# Per-mapping — delimiter on non-list
+# ---------------------------------------------------------------------------
+
+def test_delimiter_on_non_list_is_error():
+    result = validate_column_mappings(_base_mappings(**{
+        "Notes": {"field": "notes", "field_type": "single", "value_type": "text", "delimiter": ";"},
     }))
     assert not result.ok
     assert any("delimiter" in e.message for e in result.errors)
 
-def test_delimiter_on_multi_select_ok():
+def test_delimiter_on_list_ok():
     result = validate_column_mappings(_base_mappings(**{
-        "Role": {"field": "role_preference", "type": "multi_select", "delimiter": ";"},
+        "Role": {"field": "role_preference", "field_type": "list", "value_type": "text", "delimiter": ";"},
     }))
     assert result.ok
 
 
 # ---------------------------------------------------------------------------
-# Per-mapping — availability without parse_availability rule (warning)
+# Per-mapping — availability group_key time range format (warning)
 # ---------------------------------------------------------------------------
 
-def test_availability_matrix_row_no_rule_is_warning():
+def test_availability_group_non_time_range_value_type_is_warning():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability", "type": "matrix_row",
-            "row_key": "8:00 AM - 10:00 AM",
+            "field": "availability", "field_type": "group",
+            "value_type": "text",   # should be "time_range"
+            "group_key": "8:00 AM - 10:00 AM",
         },
     }))
     assert result.ok  # warning only, not an error
-    assert any("parse_time_range" in w.message for w in result.warnings)
+    assert any("time_range" in w.message for w in result.warnings)
 
-def test_availability_matrix_row_with_rule_no_warning():
+def test_availability_group_time_range_no_warning():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability", "type": "matrix_row",
-            "row_key": "8:00 AM - 10:00 AM",
-            "rules": [{"condition": "always", "action": "parse_availability"}],
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "8:00 AM - 10:00 AM",
         },
     }))
     assert result.ok
-    assert not any("parse_availability" in w.message for w in result.warnings)
+    assert not any("time_range" in w.message for w in result.warnings)
 
 
 # ---------------------------------------------------------------------------
-# Per-mapping — row_key time range format (warning)
+# Per-mapping — group_key time range format (warning)
 # ---------------------------------------------------------------------------
 
-def test_unparseable_row_key_is_warning():
+def test_unparseable_group_key_is_warning():
+    """Unparseable group_key warns only when field is availability."""
     result = validate_column_mappings(_base_mappings(**{
         "Availability [morning]": {
-            "field": "notes", "type": "matrix_row",
-            "row_key": "morning",
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "morning",
         },
     }))
     assert result.ok
-    assert not any("time range" in w.message for w in result.warnings)
+    assert any("time range" in w.message for w in result.warnings)
 
-def test_valid_row_key_no_warning():
+def test_valid_group_key_no_warning():
     result = validate_column_mappings(_base_mappings(**{
         "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability", "type": "matrix_row",
-            "row_key": "8:00 AM - 10:00 AM",
-            "rules": [{"condition": "always", "action": "parse_availability"}],
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "8:00 AM - 10:00 AM",
         },
     }))
     assert not any("time range" in w.message for w in result.warnings)
 
 
 # ---------------------------------------------------------------------------
-# Per-rule — parse_availability / parse_time_range
+# Per-rule — parse_time_range / parse_availability are now rejected
 # ---------------------------------------------------------------------------
 
-def test_parse_availability_on_non_matrix_row_is_ok():
+def test_parse_time_range_action_is_error():
+    """parse_time_range is no longer a valid rule action — must be rejected."""
     result = validate_column_mappings(_base_mappings(**{
-        "Notes": {
-            "field": "notes", "type": "string",
+        "Availability [8:00 AM - 10:00 AM]": {
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "8:00 AM - 10:00 AM",
+            "rules": [{"condition": "always", "action": "parse_time_range"}],
+        },
+    }))
+    assert not result.ok
+    assert any("parse_time_range" in e.message for e in result.errors)
+
+def test_parse_availability_action_is_error():
+    """parse_availability is no longer a valid rule action — must be rejected."""
+    result = validate_column_mappings(_base_mappings(**{
+        "Availability [8:00 AM - 10:00 AM]": {
+            "field": "availability", "field_type": "group", "value_type": "time_range",
+            "group_key": "8:00 AM - 10:00 AM",
             "rules": [{"condition": "always", "action": "parse_availability"}],
         },
     }))
-    assert result.ok
-    assert result.errors == []
-
-def test_parse_availability_non_always_condition_is_ok():
-    result = validate_column_mappings(_base_mappings(**{
-        "Availability [8:00 AM - 10:00 AM]": {
-            "field": "availability", "type": "matrix_row",
-            "row_key": "8:00 AM - 10:00 AM",
-            "rules": [{"condition": "contains", "match": "Thu", "action": "parse_availability"}],
-        },
-    }))
-    assert result.ok
-    assert not any("always" in e.message for e in result.errors)
+    assert not result.ok
+    assert any("parse_availability" in e.message for e in result.errors)
 
 
 # ---------------------------------------------------------------------------
@@ -306,7 +331,7 @@ def test_parse_availability_non_always_condition_is_ok():
 def test_invalid_regex_is_error():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "regex", "match": "[invalid(", "action": "set", "value": "x"}],
         },
     }))
@@ -316,7 +341,7 @@ def test_invalid_regex_is_error():
 def test_valid_regex_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "regex", "match": r"\bGV\b", "action": "set", "value": "GV"}],
         },
     }))
@@ -330,7 +355,7 @@ def test_valid_regex_ok():
 def test_missing_match_on_contains_is_error():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "contains", "action": "set", "value": "GV"}],
         },
     }))
@@ -340,7 +365,7 @@ def test_missing_match_on_contains_is_error():
 def test_always_condition_no_match_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "always", "action": "append", "value": "!"}],
         },
     }))
@@ -354,7 +379,7 @@ def test_always_condition_no_match_ok():
 def test_missing_value_on_set_is_error():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "always", "action": "set"}],
         },
     }))
@@ -364,7 +389,7 @@ def test_missing_value_on_set_is_error():
 def test_discard_no_value_ok():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [{"condition": "contains", "match": "n/a", "action": "discard"}],
         },
     }))
@@ -378,7 +403,7 @@ def test_discard_no_value_ok():
 def test_rule_after_set_is_warning():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [
                 {"condition": "always",   "action": "set",    "value": "GV"},
                 {"condition": "contains", "match": "GV", "action": "append", "value": "!"},
@@ -392,7 +417,7 @@ def test_rule_after_set_is_warning():
 def test_set_as_last_rule_no_warning():
     result = validate_column_mappings(_base_mappings(**{
         "Role": {
-            "field": "role_preference", "type": "string",
+            "field": "role_preference", "field_type": "single", "value_type": "text",
             "rules": [
                 {"condition": "contains", "match": "GV", "action": "append", "value": "!"},
                 {"condition": "always",   "action": "set",    "value": "GV"},
@@ -410,7 +435,7 @@ def test_set_as_last_rule_no_warning():
 def test_single_header_serialised_as_list():
     """Single-header issues must also come out as list[str] in the response."""
     result = validate_column_mappings(_base_mappings(**{
-        "Transport": {"field": "extra_data", "type": "string"},
+        "Transport": {"field": "extra_data", "field_type": "single", "value_type": "text"},
     }))
     response = result.to_response_dict()
     extra_key_error = next(e for e in response["errors"] if "extra_key" in e["message"])
@@ -420,7 +445,7 @@ def test_single_header_serialised_as_list():
 def test_none_header_serialised_as_none():
     """Config-level errors with no header must serialise as null."""
     result = validate_column_mappings({
-        "First Name": {"field": "first_name", "type": "string"},
+        "First Name": {"field": "first_name", "field_type": "single", "value_type": "text"},
     })
     response = result.to_response_dict()
     email_error = next(e for e in response["errors"] if "No column" in e["message"])
@@ -434,11 +459,11 @@ def test_none_header_serialised_as_none():
 def test_multiple_errors_all_returned():
     result = validate_column_mappings({
         # no email
-        "First Name": {"field": "first_name", "type": "string"},
-        # matrix_row missing row_key
-        "Avail": {"field": "availability", "type": "matrix_row"},
+        "First Name": {"field": "first_name", "field_type": "single", "value_type": "text"},
+        # group missing group_key
+        "Avail": {"field": "availability", "field_type": "group", "value_type": "time_range"},
         # extra_data missing extra_key
-        "Transport": {"field": "extra_data", "type": "string"},
+        "Transport": {"field": "extra_data", "field_type": "single", "value_type": "text"},
     })
     assert not result.ok
     assert len(result.errors) >= 3
