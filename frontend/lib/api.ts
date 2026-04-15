@@ -84,16 +84,68 @@ export const authApi = {
 }
 
 // -------------------------------------------------------------------------
-// Tournaments
+// Time Blocks — nested under /tournaments/{id}/blocks/
 // -------------------------------------------------------------------------
-export interface TournamentBlock {
-  number: number
-  label:  string
-  date:   string   // YYYY-MM-DD
-  start:  string   // HH:MM
-  end:    string   // HH:MM
+export interface TimeBlock {
+  id:            number
+  tournament_id: number
+  label:         string
+  date:          string   // YYYY-MM-DD
+  start:         string   // HH:MM 24hr
+  end:           string   // HH:MM 24hr
+  created_at:    string
+  updated_at:    string
 }
 
+export interface TimeBlockCreate {
+  label: string
+  date:  string
+  start: string
+  end:   string
+}
+
+export interface TimeBlockConflict {
+  id:    number
+  label: string
+  date:  string
+  start: string
+  end:   string
+}
+
+export const timeBlocksApi = {
+  listByTournament: (tournamentId: number) =>
+    api.get<TimeBlock[]>(`/tournaments/${tournamentId}/blocks/`),
+  create: (tournamentId: number, body: TimeBlockCreate) =>
+    api.post<TimeBlock>(`/tournaments/${tournamentId}/blocks/`, body),
+  update: (tournamentId: number, id: number, body: Partial<TimeBlockCreate>) =>
+    api.patch<TimeBlock>(`/tournaments/${tournamentId}/blocks/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/blocks/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Tournament Categories — nested under /tournaments/{id}/categories/
+// -------------------------------------------------------------------------
+export interface TournamentCategory {
+  id:            number
+  tournament_id: number
+  name:          string
+  is_custom:     boolean
+  created_at:    string
+}
+
+export const categoriesApi = {
+  listByTournament: (tournamentId: number) =>
+    api.get<TournamentCategory[]>(`/tournaments/${tournamentId}/categories/`),
+  create: (tournamentId: number, name: string) =>
+    api.post<TournamentCategory>(`/tournaments/${tournamentId}/categories/`, { name }),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/categories/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Tournaments
+// -------------------------------------------------------------------------
 export interface CustomField {
   key:   string
   label: string
@@ -117,7 +169,7 @@ export interface Tournament {
   start_date:       string | null
   end_date:         string | null
   location:         string | null
-  blocks:           TournamentBlock[]
+  time_blocks:      TimeBlock[]
   volunteer_schema: VolunteerSchema
   owner_id:         number
   created_at:       string
@@ -140,26 +192,45 @@ export interface Event {
   id:                number
   tournament_id:     number
   name:              string
-  division:          'B' | 'C'
+  division:          'B' | 'C' | null
   event_type:        'standard' | 'trial'
-  category:          string | null
+  category_id:       number | null
   building:          string | null
   room:              string | null
   floor:             string | null
   volunteers_needed: number
-  blocks:            number[]
+  time_block_ids:    number[]
+  time_blocks:       TimeBlock[]
   created_at:        string
   updated_at:        string
 }
 
+export interface EventCreate {
+  name:              string
+  division?:         'B' | 'C' | null
+  event_type?:       'standard' | 'trial'
+  category_id?:      number | null
+  building?:         string | null
+  room?:             string | null
+  floor?:            string | null
+  volunteers_needed?: number
+  time_block_ids?:   number[]
+}
+
 export const eventsApi = {
-  listByTournament: (tournamentId: number) =>
-    api.get<Event[]>(`/tournaments/${tournamentId}/events/`),
+  listByTournament: (tournamentId: number, params?: { category_id?: number; division?: string; type?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(
+      Object.entries(params)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, String(v)])
+    ).toString() : ''
+    return api.get<Event[]>(`/tournaments/${tournamentId}/events/${qs}`)
+  },
   get:    (tournamentId: number, id: number) =>
     api.get<Event>(`/tournaments/${tournamentId}/events/${id}/`),
-  create: (tournamentId: number, body: Partial<Event>) =>
+  create: (tournamentId: number, body: EventCreate) =>
     api.post<Event>(`/tournaments/${tournamentId}/events/`, body),
-  update: (tournamentId: number, id: number, body: Partial<Event>) =>
+  update: (tournamentId: number, id: number, body: Partial<EventCreate>) =>
     api.patch<Event>(`/tournaments/${tournamentId}/events/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
@@ -210,16 +281,16 @@ export interface AvailabilitySlot {
 }
 
 export interface ScheduleSlot {
-  block: number
-  duty:  string
+  time_block_id: number
+  duty:          string
 }
 
 export interface Membership {
-  id:                number
-  user_id:           number
-  tournament_id:     number
-  assigned_event_id: number | null
-  positions:         string[] | null
+  id:            number
+  user_id:       number
+  tournament_id: number
+  event_ids:     number[]
+  positions:     string[] | null
   schedule:          ScheduleSlot[] | null
   status:            MembershipStatus
   role_preference:   string[] | null
