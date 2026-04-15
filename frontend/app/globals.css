@@ -122,6 +122,50 @@
   --color-status-assigned:   #1D4ED8;
   --color-status-removed:    #9B9B93;
 
+  /* Category color ramps (5 rotating slots, assigned by category index)
+     Each has: main border/icon color, subtle background fill, foreground text */
+  --color-cat-1:        #2563EB;   /* blue   — Life, Personal & Social Science */
+  --color-cat-1-subtle: #EFF6FF;
+  --color-cat-1-text:   #1E40AF;
+
+  --color-cat-2:        #16A34A;   /* green  — Earth and Space Science */
+  --color-cat-2-subtle: #F0FDF4;
+  --color-cat-2-text:   #15803D;
+
+  --color-cat-3:        #D97706;   /* amber  — Physical Science & Chemistry */
+  --color-cat-3-subtle: #FFFBEB;
+  --color-cat-3-text:   #B45309;
+
+  --color-cat-4:        #7C3AED;   /* violet — Technology & Engineering */
+  --color-cat-4-subtle: #F5F3FF;
+  --color-cat-4-text:   #6D28D9;
+
+  --color-cat-5:        #0891B2;   /* cyan   — Inquiry & Nature of Science */
+  --color-cat-5-subtle: #ECFEFF;
+  --color-cat-5-text:   #0E7490;
+
+  /* Division chip colors */
+  --color-div-b:        #2563EB;
+  --color-div-b-subtle: #EFF6FF;
+  --color-div-b-text:   #1E40AF;
+
+  --color-div-c:        #16A34A;
+  --color-div-c-subtle: #F0FDF4;
+  --color-div-c-text:   #15803D;
+
+  --color-div-none:        #7C3AED;
+  --color-div-none-subtle: #F5F3FF;
+  --color-div-none-text:   #6D28D9;
+
+  /* Event type chip colors */
+  --color-type-standard:        #0891B2;
+  --color-type-standard-subtle: #ECFEFF;
+  --color-type-standard-text:   #0E7490;
+
+  --color-type-trial:        #D97706;
+  --color-type-trial-subtle: #FFFBEB;
+  --color-type-trial-text:   #B45309;
+
   /* Typography
      --font-mono      → Geist Mono   (body text, inputs, data values, code)
      --font-sans      → Geist Sans   (UI labels, buttons, nav, subheadings)
