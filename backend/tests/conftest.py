@@ -128,7 +128,7 @@ def td_tournament(db, td_user):
     tournament = Tournament(
         name="TD Test Tournament",
         owner_id=td_user.id,
-        blocks=[],
+
         volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
     )
     db.add(tournament)
@@ -149,7 +149,7 @@ def other_tournament(db, other_user):
     tournament = Tournament(
         name="Other Test Tournament",
         owner_id=other_user.id,
-        blocks=[],
+
         volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
     )
     db.add(tournament)
