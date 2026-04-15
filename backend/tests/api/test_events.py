@@ -141,6 +141,7 @@ def test_create_event_non_member_forbidden(client, td_user, other_tournament):
 def test_create_event_volunteer_member_forbidden(
     client, td_user, other_tournament, db
 ):
+    """view_events only — cannot write events."""
     db.add(Membership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
@@ -150,6 +151,22 @@ def test_create_event_volunteer_member_forbidden(
     db.commit()
     login(client, "td@test.com", "tdpass")
     assert _make_event(client, other_tournament.id).status_code == 403
+
+
+def test_create_event_manage_tournament_implies_manage_events(
+    client, td_user, other_tournament, db
+):
+    """manage_tournament implies manage_events via PERMISSION_IMPLICATIONS —
+    a tournament_director on another tournament can manage its events."""
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert _make_event(client, other_tournament.id).status_code == 201
 
 
 def test_create_event_unauthenticated(client, td_tournament):

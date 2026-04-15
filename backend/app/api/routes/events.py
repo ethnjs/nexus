@@ -5,7 +5,6 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.permissions import (
     MANAGE_EVENTS,
-    MANAGE_TOURNAMENT,
     VIEW_EVENTS,
     require_permission,
     has_permission,
@@ -33,11 +32,8 @@ def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> Event:
 
 
 def _require_write_permission(user: User, tournament_id: int, db: Session) -> None:
-    """Raises 403 unless user has manage_events or manage_tournament."""
-    if not (
-        has_permission(user, tournament_id, MANAGE_EVENTS, db)
-        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
-    ):
+    """Raises 403 unless user has manage_events permission."""
+    if not has_permission(user, tournament_id, MANAGE_EVENTS, db):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions",

@@ -74,7 +74,7 @@ DEFAULT_POSITIONS: list[dict] = [
     {
         "key":         "tournament_director",
         "label":       "Tournament Director",
-        "permissions": [MANAGE_TOURNAMENT],
+        "permissions": [MANAGE_TOURNAMENT, MANAGE_EVENTS],
     },
     {
         "key":         "volunteer_coordinator",
