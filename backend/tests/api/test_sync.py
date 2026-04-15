@@ -6,13 +6,6 @@ from tests.conftest import login
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 
-NATS_BLOCKS = [
-    {"number": 1,  "label": "Thu Check-in", "date": "2026-05-21", "start": "08:00", "end": "10:00"},
-    {"number": 2,  "label": "Thu Morning",  "date": "2026-05-21", "start": "10:00", "end": "12:00"},
-    {"number": 3,  "label": "Fri Check-in", "date": "2026-05-22", "start": "08:00", "end": "10:00"},
-    {"number": 14, "label": "Sat Block 1",  "date": "2026-05-23", "start": "08:00", "end": "09:00"},
-]
-
 COLUMN_MAPPINGS = {
     "Timestamp":       {"field": "__ignore__",      "field_type": "ignore"},
     "Email Address":   {"field": "email",            "field_type": "single", "value_type": "text"},
@@ -42,7 +35,6 @@ def _make_tournament(client):
         "name": "2026 Nationals",
         "start_date": "2026-05-21T08:00:00",
         "end_date": "2026-05-23T18:00:00",
-        "blocks": NATS_BLOCKS,
         "volunteer_schema": {"custom_fields": []},
     }).json()
 
