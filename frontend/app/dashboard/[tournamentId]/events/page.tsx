@@ -12,39 +12,6 @@ import {
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-export function fmtTime(hhmm: string): string {
-  const [hStr, mStr] = hhmm.split(":");
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${h12} ${period}` : `${h12}:${mStr} ${period}`;
-}
-
-export function fmtDate(yyyymmdd: string): string {
-  const [, mo, d] = yyyymmdd.split("-").map(Number);
-  return new Date(0, mo - 1, d).toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-export function fmtDateShort(yyyymmdd: string): string {
-  const [, mo, d] = yyyymmdd.split("-").map(Number);
-  return new Date(0, mo - 1, d).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-/** Returns the CSS var index (1–5) for a category by its position in the list. */
-export function catColorIndex(idx: number): number {
-  return (idx % 5) + 1;
-}
-
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
 type Tab = "timeline" | "cards" | "blocks";
