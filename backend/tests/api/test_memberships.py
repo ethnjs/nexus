@@ -15,12 +15,9 @@ def _make_user(db, email="alice@example.com"):
     return {"id": user.id, "email": user.email}
 
 
-def _make_event(client, tournament_id):
-    return client.post(f"/tournaments/{tournament_id}/events/", json={
-        "tournament_id": tournament_id,
-        "name": "Boomilever",
-        "division": "C",
-        "blocks": [1, 2, 3, 4, 5, 6],
+def _make_block(client, tournament_id):
+    return client.post(f"/tournaments/{tournament_id}/blocks/", json={
+        "label": "Block 1", "date": "2025-03-15", "start": "09:00", "end": "11:00",
     }).json()
 
 
@@ -61,29 +58,31 @@ def test_create_membership_with_positions(client, td_user, td_tournament, db):
 def test_create_membership_with_schedule(client, td_user, td_tournament, db):
     u = _make_user(db)
     login(client, "td@test.com", "tdpass")
+    b1 = _make_block(client, td_tournament.id)
+    b2 = _make_block(client, td_tournament.id)
     response = _make_membership(
         client, td_tournament.id, u["id"],
         schedule=[
-            {"block": 1, "duty": "event_supervisor"},
-            {"block": 7, "duty": "scoring"},
+            {"time_block_id": b1["id"], "duty": "event_supervisor"},
+            {"time_block_id": b2["id"], "duty": "scoring"},
         ],
     )
     assert response.status_code == 201
     schedule = response.json()["schedule"]
     assert len(schedule) == 2
-    assert schedule[1] == {"block": 7, "duty": "scoring"}
+    assert schedule[1]["duty"] == "scoring"
+    assert schedule[1]["time_block_id"] == b2["id"]
 
 
 def test_create_membership_full(client, td_user, td_tournament, db):
     u = _make_user(db)
     login(client, "td@test.com", "tdpass")
-    e = _make_event(client, td_tournament.id)
+    block = _make_block(client, td_tournament.id)
     response = _make_membership(
         client, td_tournament.id, u["id"],
-        assigned_event_id=e["id"],
         status="assigned",
         positions=["lead_event_supervisor"],
-        schedule=[{"block": 1, "duty": "event_supervisor"}],
+        schedule=[{"time_block_id": block["id"], "duty": "event_supervisor"}],
         role_preference=["event_volunteer"],
         event_preference=["Boomilever"],
         availability=[{"date": "2026-05-21", "start": "08:00", "end": "10:00"}],
@@ -94,7 +93,6 @@ def test_create_membership_full(client, td_user, td_tournament, db):
     assert response.status_code == 201
     data = response.json()
     assert data["positions"] == ["lead_event_supervisor"]
-    assert data["assigned_event_id"] == e["id"]
     assert data["extra_data"]["transportation"] == "Driving"
     assert data["extra_data"]["general_volunteer_interest"] == ["STEM Expo"]
 
@@ -239,16 +237,19 @@ def test_update_membership_positions(client, td_user, td_tournament, db):
 def test_update_membership_schedule(client, td_user, td_tournament, db):
     u = _make_user(db)
     login(client, "td@test.com", "tdpass")
+    b1 = _make_block(client, td_tournament.id)
+    b2 = _make_block(client, td_tournament.id)
     created = _make_membership(client, td_tournament.id, u["id"]).json()
     response = client.patch(
         f"/tournaments/{td_tournament.id}/memberships/{created['id']}/",
         json={"schedule": [
-            {"block": 1, "duty": "event_supervisor"},
-            {"block": 7, "duty": "scoring"},
+            {"time_block_id": b1["id"], "duty": "event_supervisor"},
+            {"time_block_id": b2["id"], "duty": "scoring"},
         ]},
     )
     assert response.status_code == 200
     assert response.json()["schedule"][1]["duty"] == "scoring"
+    assert response.json()["schedule"][1]["time_block_id"] == b2["id"]
 
 
 def test_update_membership_extra_data_merges(client, td_user, td_tournament, db):
