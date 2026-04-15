@@ -33,9 +33,9 @@ def seed_dev_data(db: Session) -> None:
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import Membership, Tournament, User
+    from app.models.models import Membership, Tournament, TournamentCategory, TimeBlock, User
     from app.core.auth import hash_password
-    from app.core.permissions import DEFAULT_POSITIONS
+    from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
     from datetime import datetime
 
     # Skip if already seeded
@@ -75,23 +75,41 @@ def seed_dev_data(db: Session) -> None:
         end_date=datetime(2026, 5, 23, 18, 0),
         location="University of Southern California",
         owner_id=td.id,
-        blocks=[
-            {"number": 1, "label": "Block 1", "date": "2026-05-23", "start": "08:00", "end": "09:00"},
-            {"number": 2, "label": "Block 2", "date": "2026-05-23", "start": "09:15", "end": "10:15"},
-            {"number": 3, "label": "Block 3", "date": "2026-05-23", "start": "10:30", "end": "11:30"},
-            {"number": 4, "label": "Block 4", "date": "2026-05-23", "start": "12:30", "end": "13:30"},
-            {"number": 5, "label": "Block 5", "date": "2026-05-23", "start": "13:45", "end": "14:45"},
-            {"number": 6, "label": "Block 6", "date": "2026-05-23", "start": "15:00", "end": "16:00"},
-            {"number": 7, "label": "Scoring",  "date": "2026-05-23", "start": "16:15", "end": "17:15"},
-            {"number": 8, "label": "Awards",   "date": "2026-05-23", "start": "17:30", "end": "18:30"},
-        ],
         volunteer_schema={
             "custom_fields": [],
             "positions": DEFAULT_POSITIONS,
         },
     )
     db.add(tournament)
-    db.flush()  # get tournament.id before creating memberships
+    db.flush()  # get tournament.id before creating time_blocks, categories, memberships
+
+    # Seed default categories
+    for cat_name in DEFAULT_CATEGORIES:
+        db.add(TournamentCategory(
+            tournament_id=tournament.id,
+            name=cat_name,
+            is_custom=False,
+        ))
+
+    # Seed sample time blocks
+    sample_blocks = [
+        ("Block 1", "2026-05-23", "08:00", "09:00"),
+        ("Block 2", "2026-05-23", "09:15", "10:15"),
+        ("Block 3", "2026-05-23", "10:30", "11:30"),
+        ("Block 4", "2026-05-23", "12:30", "13:30"),
+        ("Block 5", "2026-05-23", "13:45", "14:45"),
+        ("Block 6", "2026-05-23", "15:00", "16:00"),
+        ("Scoring", "2026-05-23", "16:15", "17:15"),
+        ("Awards",  "2026-05-23", "17:30", "18:30"),
+    ]
+    for label, date, start, end in sample_blocks:
+        db.add(TimeBlock(
+            tournament_id=tournament.id,
+            label=label,
+            date=date,
+            start=start,
+            end=end,
+        ))
 
     # TD membership for the regular user — full manage_tournament access
     td_membership = Membership(
