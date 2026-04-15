@@ -15,9 +15,9 @@ def _make_user(db, email="alice@example.com"):
     return {"id": user.id, "email": user.email}
 
 
-def _make_block(client, tournament_id):
+def _make_block(client, tournament_id, label="Block 1", start="09:00", end="11:00"):
     return client.post(f"/tournaments/{tournament_id}/blocks/", json={
-        "label": "Block 1", "date": "2025-03-15", "start": "09:00", "end": "11:00",
+        "label": label, "date": "2025-03-15", "start": start, "end": end,
     }).json()
 
 
@@ -58,8 +58,8 @@ def test_create_membership_with_positions(client, td_user, td_tournament, db):
 def test_create_membership_with_schedule(client, td_user, td_tournament, db):
     u = _make_user(db)
     login(client, "td@test.com", "tdpass")
-    b1 = _make_block(client, td_tournament.id)
-    b2 = _make_block(client, td_tournament.id)
+    b1 = _make_block(client, td_tournament.id, label="Block 1", start="09:00", end="11:00")
+    b2 = _make_block(client, td_tournament.id, label="Block 2", start="11:00", end="13:00")
     response = _make_membership(
         client, td_tournament.id, u["id"],
         schedule=[
@@ -237,8 +237,8 @@ def test_update_membership_positions(client, td_user, td_tournament, db):
 def test_update_membership_schedule(client, td_user, td_tournament, db):
     u = _make_user(db)
     login(client, "td@test.com", "tdpass")
-    b1 = _make_block(client, td_tournament.id)
-    b2 = _make_block(client, td_tournament.id)
+    b1 = _make_block(client, td_tournament.id, label="Block 1", start="09:00", end="11:00")
+    b2 = _make_block(client, td_tournament.id, label="Block 2", start="11:00", end="13:00")
     created = _make_membership(client, td_tournament.id, u["id"]).json()
     response = client.patch(
         f"/tournaments/{td_tournament.id}/memberships/{created['id']}/",
