@@ -119,15 +119,9 @@ function InlineRow({
 
   return (
     <>
-      <tr
-        style={{
-          background:  "var(--color-warning-subtle)",
-          borderLeft:  "3px solid var(--color-warning)",
-        }}
-        onKeyDown={handleKey}
-      >
+      <tr onKeyDown={handleKey}>
         {/* Label */}
-        <td style={{ ...tdStyle, borderBottom: "none", paddingLeft: "11px" }}>
+        <td style={{ ...tdStyle, borderBottom: "1px solid var(--color-border)" }}>
           <input
             ref={labelRef}
             type="text"
@@ -139,7 +133,7 @@ function InlineRow({
         </td>
 
         {/* Date */}
-        <td style={{ ...tdStyle, borderBottom: "none" }}>
+        <td style={{ ...tdStyle, borderBottom: "1px solid var(--color-border)" }}>
           <input
             type="date"
             value={form.date}
@@ -149,32 +143,32 @@ function InlineRow({
         </td>
 
         {/* Time range — start + end side by side */}
-        <td style={{ ...tdStyle, borderBottom: "none" }}>
+        <td style={{ ...tdStyle, borderBottom: "1px solid var(--color-border)", whiteSpace: "nowrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
             <input
               type="time"
               value={form.start}
               onChange={(e) => set("start", e.target.value)}
-              style={{ ...inputStyle, width: "110px" }}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
             />
             <span style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }}>–</span>
             <input
               type="time"
               value={form.end}
               onChange={(e) => set("end", e.target.value)}
-              style={{ ...inputStyle, width: "110px" }}
+              style={{ ...inputStyle, flex: 1, minWidth: 0 }}
             />
           </div>
         </td>
 
         {/* Events count — empty for new/edit row */}
-        <td style={{ ...tdStyle, borderBottom: "none", textAlign: "center" }}>
+        <td style={{ ...tdStyle, borderBottom: "1px solid var(--color-border)", textAlign: "center" }}>
           <span style={{ color: "var(--color-text-tertiary)", fontSize: "12px" }}>—</span>
         </td>
 
         {/* Actions */}
         {colSpan === 5 && (
-          <td style={{ ...tdStyle, borderBottom: "none", textAlign: "right", whiteSpace: "nowrap" }}>
+          <td style={{ ...tdStyle, borderBottom: "1px solid var(--color-border)", textAlign: "right", whiteSpace: "nowrap" }}>
             <Button
               size="sm"
               onClick={() => valid && onSave(form)}
@@ -366,15 +360,15 @@ export function TimeBlocksTable({
             background:   "var(--color-surface)",
           }}
         >
-          <table style={{ borderCollapse: "collapse", width: "100%" }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", tableLayout: "fixed" }}>
             <thead>
               <tr>
-                <th style={thStyle}>Label</th>
-                <th style={thStyle}>Day</th>
-                <th style={thStyle}>Time range</th>
-                <th style={{ ...thStyle, textAlign: "center" }}>Events</th>
+                <th style={{ ...thStyle, width: "20%" }}>Label</th>
+                <th style={{ ...thStyle, width: "16%" }}>Day</th>
+                <th style={{ ...thStyle, width: "20%" }}>Time range</th>
+                <th style={{ ...thStyle, width: "26%", textAlign: "center" }}>Events</th>
                 {!isReadOnly && (
-                  <th style={{ ...thStyle, textAlign: "right" }}>Actions</th>
+                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Actions</th>
                 )}
               </tr>
             </thead>
