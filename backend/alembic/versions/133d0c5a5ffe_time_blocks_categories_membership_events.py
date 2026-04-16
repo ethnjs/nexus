@@ -26,56 +26,66 @@ branch_labels = None
 depends_on = None
 
 
+def _has_column(conn, table: str, column: str) -> bool:
+    insp = sa.inspect(conn)
+    return any(c['name'] == column for c in insp.get_columns(table))
+
+
 def upgrade():
     conn = op.get_bind()
+    insp = sa.inspect(conn)
 
     # ------------------------------------------------------------------
     # 1. Create time_blocks
     # ------------------------------------------------------------------
-    op.create_table(
-        'time_blocks',
-        sa.Column('id', sa.Integer(), primary_key=True, index=True, nullable=False),
-        sa.Column('tournament_id', sa.Integer(), sa.ForeignKey('tournaments.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('label', sa.String(255), nullable=False),
-        sa.Column('date', sa.String(10), nullable=False),
-        sa.Column('start', sa.String(5), nullable=False),
-        sa.Column('end', sa.String(5), nullable=False),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.Column('updated_at', sa.DateTime(), nullable=True),
-    )
-    op.create_index('ix_time_blocks_id', 'time_blocks', ['id'])
+    if not insp.has_table('time_blocks'):
+        op.create_table(
+            'time_blocks',
+            sa.Column('id', sa.Integer(), primary_key=True, index=True, nullable=False),
+            sa.Column('tournament_id', sa.Integer(), sa.ForeignKey('tournaments.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('label', sa.String(255), nullable=False),
+            sa.Column('date', sa.String(10), nullable=False),
+            sa.Column('start', sa.String(5), nullable=False),
+            sa.Column('end', sa.String(5), nullable=False),
+            sa.Column('created_at', sa.DateTime(), nullable=True),
+            sa.Column('updated_at', sa.DateTime(), nullable=True),
+        )
+        op.create_index('ix_time_blocks_id', 'time_blocks', ['id'])
 
     # ------------------------------------------------------------------
     # 2. Create tournament_categories
     # ------------------------------------------------------------------
-    op.create_table(
-        'tournament_categories',
-        sa.Column('id', sa.Integer(), primary_key=True, index=True, nullable=False),
-        sa.Column('tournament_id', sa.Integer(), sa.ForeignKey('tournaments.id', ondelete='CASCADE'), nullable=False),
-        sa.Column('name', sa.String(255), nullable=False),
-        sa.Column('is_custom', sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.Column('created_at', sa.DateTime(), nullable=True),
-        sa.UniqueConstraint('tournament_id', 'name', name='uq_tournament_category_name'),
-    )
-    op.create_index('ix_tournament_categories_id', 'tournament_categories', ['id'])
+    if not insp.has_table('tournament_categories'):
+        op.create_table(
+            'tournament_categories',
+            sa.Column('id', sa.Integer(), primary_key=True, index=True, nullable=False),
+            sa.Column('tournament_id', sa.Integer(), sa.ForeignKey('tournaments.id', ondelete='CASCADE'), nullable=False),
+            sa.Column('name', sa.String(255), nullable=False),
+            sa.Column('is_custom', sa.Boolean(), nullable=False, server_default=sa.false()),
+            sa.Column('created_at', sa.DateTime(), nullable=True),
+            sa.UniqueConstraint('tournament_id', 'name', name='uq_tournament_category_name'),
+        )
+        op.create_index('ix_tournament_categories_id', 'tournament_categories', ['id'])
 
     # ------------------------------------------------------------------
     # 3. Create event_time_blocks association table
     # ------------------------------------------------------------------
-    op.create_table(
-        'event_time_blocks',
-        sa.Column('event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='CASCADE'), primary_key=True, nullable=False),
-        sa.Column('time_block_id', sa.Integer(), sa.ForeignKey('time_blocks.id', ondelete='CASCADE'), primary_key=True, nullable=False),
-    )
+    if not insp.has_table('event_time_blocks'):
+        op.create_table(
+            'event_time_blocks',
+            sa.Column('event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='CASCADE'), primary_key=True, nullable=False),
+            sa.Column('time_block_id', sa.Integer(), sa.ForeignKey('time_blocks.id', ondelete='CASCADE'), primary_key=True, nullable=False),
+        )
 
     # ------------------------------------------------------------------
     # 4. Create membership_events association table
     # ------------------------------------------------------------------
-    op.create_table(
-        'membership_events',
-        sa.Column('membership_id', sa.Integer(), sa.ForeignKey('memberships.id', ondelete='CASCADE'), primary_key=True, nullable=False),
-        sa.Column('event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='CASCADE'), primary_key=True, nullable=False),
-    )
+    if not insp.has_table('membership_events'):
+        op.create_table(
+            'membership_events',
+            sa.Column('membership_id', sa.Integer(), sa.ForeignKey('memberships.id', ondelete='CASCADE'), primary_key=True, nullable=False),
+            sa.Column('event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='CASCADE'), primary_key=True, nullable=False),
+        )
 
     # ------------------------------------------------------------------
     # 5. Backfill time_blocks from tournaments.blocks JSON
@@ -133,7 +143,8 @@ def upgrade():
     # ------------------------------------------------------------------
     # 7. Add events.category_id and backfill from events.category string
     # ------------------------------------------------------------------
-    op.add_column('events', sa.Column('category_id', sa.Integer(), sa.ForeignKey('tournament_categories.id', ondelete='SET NULL'), nullable=True))
+    if not _has_column(conn, 'events', 'category_id'):
+        op.add_column('events', sa.Column('category_id', sa.Integer(), sa.ForeignKey('tournament_categories.id', ondelete='SET NULL'), nullable=True))
 
     # For each distinct (tournament_id, category) string pair, find-or-create a TournamentCategory row
     rows = conn.execute(text(
@@ -210,14 +221,19 @@ def upgrade():
     # ------------------------------------------------------------------
     # 10. Drop legacy columns
     # ------------------------------------------------------------------
-    op.drop_column('tournaments', 'blocks')
-    op.drop_column('events', 'blocks')
-    op.drop_column('events', 'category')
-    op.drop_column('memberships', 'assigned_event_id')
+    if _has_column(conn, 'tournaments', 'blocks'):
+        op.drop_column('tournaments', 'blocks')
+    if _has_column(conn, 'events', 'blocks'):
+        op.drop_column('events', 'blocks')
+    if _has_column(conn, 'events', 'category'):
+        op.drop_column('events', 'category')
+    if _has_column(conn, 'memberships', 'assigned_event_id'):
+        op.drop_column('memberships', 'assigned_event_id')
 
 
 def downgrade():
     conn = op.get_bind()
+    insp = sa.inspect(conn)
 
     # Re-add legacy columns
     op.add_column('memberships', sa.Column('assigned_event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='SET NULL'), nullable=True))
@@ -234,10 +250,15 @@ def downgrade():
         WHERE e.category_id IS NOT NULL
     """))
 
-    op.drop_column('events', 'category_id')
+    if _has_column(conn, 'events', 'category_id'):
+        op.drop_column('events', 'category_id')
 
     # Drop new tables (cascade handles association tables)
-    op.drop_table('membership_events')
-    op.drop_table('event_time_blocks')
-    op.drop_table('tournament_categories')
-    op.drop_table('time_blocks')
+    if insp.has_table('membership_events'):
+        op.drop_table('membership_events')
+    if insp.has_table('event_time_blocks'):
+        op.drop_table('event_time_blocks')
+    if insp.has_table('tournament_categories'):
+        op.drop_table('tournament_categories')
+    if insp.has_table('time_blocks'):
+        op.drop_table('time_blocks')
