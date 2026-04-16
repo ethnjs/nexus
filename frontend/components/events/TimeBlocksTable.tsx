@@ -270,7 +270,7 @@ export function TimeBlocksTable({
 
   // Count how many events are assigned to each block
   const eventCount = (blockId: number) =>
-    events.filter((e) => e.time_block_ids.includes(blockId)).length;
+    events.filter((e) => e.time_block_ids?.includes(blockId)).length;
 
   // Group blocks by date (pre-sorted by API: date then start)
   const rows: Array<
