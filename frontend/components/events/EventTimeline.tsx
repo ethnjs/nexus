@@ -9,11 +9,14 @@ import { IconPlus } from "@/components/ui/Icons";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ZOOM_LEVELS = [70, 110, 155, 210] as const;
-const LABEL_W     = 160;   // px — sticky left label column
-const ROW_H       = 44;    // px — event row height
-const DATE_ROW_H  = 26;    // px — top header row
-const BLOCK_ROW_H = 32;    // px — bottom header row
+const ZOOM_LEVELS  = [70, 110, 155, 210] as const;
+const LABEL_W      = 160;   // px — sticky left label column
+const ROW_H        = 44;    // px — event row height
+const DATE_ROW_H   = 26;    // px — top header row
+const BLOCK_ROW_H  = 32;    // px — bottom header row
+const CONTROLS_H   = 50;    // px — controls bar height (incl. padding)
+// Total height of the sticky header (controls + 1px border + date row + block row)
+const STICKY_H     = CONTROLS_H + 1 + DATE_ROW_H + BLOCK_ROW_H;
 
 type ColorBy = "category" | "division" | "type";
 type GroupBy = "category" | "building" | "az";
@@ -108,19 +111,25 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   const [groupBy, setGroupBy] = useState<GroupBy>("category");
   const [colorBy, setColorBy] = useState<ColorBy>("category");
 
-  // Scroll sync: header scrolls horizontally with content
-  const headerScrollRef = useRef<HTMLDivElement>(null);
-  const contentScrollRef = useRef<HTMLDivElement>(null);
-  const onContentScroll = () => {
-    if (headerScrollRef.current && contentScrollRef.current) {
-      headerScrollRef.current.scrollLeft = contentScrollRef.current.scrollLeft;
+  // Scroll sync: all overflow-hidden sections track scrollLeft of the active scroller
+  const headerScrollRef       = useRef<HTMLDivElement>(null);
+  const contentScrollRef      = useRef<HTMLDivElement>(null);
+  const unscheduledSubRef     = useRef<HTMLDivElement>(null);
+  const unscheduledContentRef = useRef<HTMLDivElement>(null);
+
+  const syncScroll = (scrollLeft: number) => {
+    for (const ref of [headerScrollRef, contentScrollRef, unscheduledSubRef, unscheduledContentRef]) {
+      if (ref.current && ref.current.scrollLeft !== scrollLeft)
+        ref.current.scrollLeft = scrollLeft;
     }
   };
+  const onContentScroll     = () => syncScroll(contentScrollRef.current?.scrollLeft ?? 0);
+  const onUnscheduledScroll = () => syncScroll(unscheduledContentRef.current?.scrollLeft ?? 0);
 
-  const colW     = ZOOM_LEVELS[zoomIdx];
-  const zoomPct  = Math.round((colW / 70) * 100);
-  const blockW   = timeBlocks.length * colW;
-  const gridW    = LABEL_W + blockW;
+  const colW    = ZOOM_LEVELS[zoomIdx];
+  const zoomPct = Math.round((colW / 70) * 100);
+  const blockW  = timeBlocks.length * colW;
+  const gridW   = LABEL_W + blockW;
 
   const scheduled   = useMemo(() => events.filter((e) => (e.time_block_ids ?? []).length > 0), [events]);
   const unscheduled = useMemo(
@@ -174,10 +183,19 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
     cursor:         disabled ? "not-allowed" : "pointer",
   });
 
-  // ── Controls bar ──────────────────────────────────────────────────────────
+  // ── Controls bar (lives inside the sticky header) ─────────────────────────
 
-  const controls = (
-    <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+  const controlsBar = (
+    <div style={{
+      height:        CONTROLS_H,
+      display:       "flex",
+      alignItems:    "center",
+      gap:           "10px",
+      padding:       "0 12px",
+      borderBottom:  "1px solid var(--color-border)",
+      background:    "var(--color-bg)",
+      flexShrink:    0,
+    }}>
       <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
         <button style={zoomBtnStyle(zoomIdx === 0)} disabled={zoomIdx === 0}
           onClick={() => setZoomIdx((z) => Math.max(0, z - 1))}>−</button>
@@ -214,20 +232,7 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
     </div>
   );
 
-  // ── Empty state ────────────────────────────────────────────────────────────
-
-  if (timeBlocks.length === 0) {
-    return (
-      <div>
-        {controls}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", border: "1px dashed var(--color-border)", borderRadius: "var(--radius-md)", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "13px" }}>
-          Add time blocks to see the timeline.
-        </div>
-      </div>
-    );
-  }
-
-  // ── Header rows (rendered inside scroll-synced div) ───────────────────────
+  // ── Header rows (date + block, rendered inside scroll-synced div) ─────────
 
   const headerRows = (
     <div style={{ width: gridW, display: "flex", flexDirection: "column" }}>
@@ -262,52 +267,72 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
     </div>
   );
 
+  // ── Shared outer container style ───────────────────────────────────────────
+
+  const outerStyle: React.CSSProperties = {
+    border:       "1px solid var(--color-border)",
+    borderRadius: "var(--radius-md)",
+    overflow:     "clip",
+  };
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+
+  if (timeBlocks.length === 0) {
+    return (
+      <div style={outerStyle}>
+        <div style={{ position: "sticky", top: 0, zIndex: 20, background: "var(--color-bg)" }}>
+          {controlsBar}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "220px", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "13px" }}>
+          Add time blocks to see the timeline.
+        </div>
+      </div>
+    );
+  }
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div>
-      {controls}
+    <div style={outerStyle}>
 
-      <div style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", overflow: "clip" }}>
+      {/* ── Sticky header: controls + date/block rows ── */}
+      <div
+        ref={headerScrollRef}
+        style={{ position: "sticky", top: "-22px", zIndex: 20, overflowX: "hidden", background: "var(--color-bg)" }}
+      >
+        {controlsBar}
+        {headerRows}
+      </div>
 
-        {/* ── Sticky header — overflowX hidden, synced by JS ── */}
-        <div
-          ref={headerScrollRef}
-          style={{ position: "sticky", top: 0, zIndex: 10, overflowX: "hidden", borderBottom: "1px solid var(--color-border)" }}
-        >
-          {headerRows}
-        </div>
+      {/* ── Scrollable content: scheduled groups ── */}
+      <div
+        ref={contentScrollRef}
+        onScroll={onContentScroll}
+        style={{ overflowX: "auto" }}
+      >
+        <div style={{ width: gridW, minWidth: "100%" }}>
 
-        {/* ── Scrollable content ── */}
-        <div
-          ref={contentScrollRef}
-          onScroll={onContentScroll}
-          style={{ overflowX: "auto" }}
-        >
-          <div style={{ width: gridW, minWidth: "100%" }}>
-
-            {/* Groups */}
-            {groups.map((group, groupIdx) => {
-              // Category color for label cell
-              let labelBg      = "var(--color-bg)";
-              let labelColor   = "var(--color-text-secondary)";
-              let labelBorderR = "1px solid var(--color-border)";
-              if (groupBy === "category" && group.key !== "null") {
-                const catIdx = categories.findIndex((c) => String(c.id) === group.key);
-                if (catIdx >= 0) {
-                  const cv   = catColorVars(catIdx);
-                  labelBg    = cv.subtle;
-                  labelColor = cv.text;
-                  labelBorderR = `1px solid ${cv.main}`;
-                }
+          {/* Groups */}
+          {groups.map((group, groupIdx) => {
+            let labelBg      = "var(--color-bg)";
+            let labelColor   = "var(--color-text-secondary)";
+            let labelBorderR = "1px solid var(--color-border)";
+            if (groupBy === "category" && group.key !== "null") {
+              const catIdx = categories.findIndex((c) => String(c.id) === group.key);
+              if (catIdx >= 0) {
+                const cv     = catColorVars(catIdx);
+                labelBg      = cv.subtle;
+                labelColor   = cv.text;
+                labelBorderR = `1px solid ${cv.main}`;
               }
-              return (
+            }
+            return (
               <div
                 key={group.key}
                 style={{
-                  display:     "flex",
+                  display:      "flex",
                   borderBottom: "2px solid var(--color-border)",
-                  borderTop:   groupIdx > 0 ? "1px solid var(--color-border)" : undefined,
+                  borderTop:    groupIdx > 0 ? "1px solid var(--color-border)" : undefined,
                 }}
               >
                 {/* Group label — spans all event rows in this group */}
@@ -337,8 +362,8 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
                 {/* Event rows */}
                 <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
                   {group.events.map((event, idx) => {
-                    const runs    = getRuns(event, timeBlocks);
-                    const isLast  = idx === group.events.length - 1;
+                    const runs      = getRuns(event, timeBlocks);
+                    const isLast    = idx === group.events.length - 1;
                     const chipLabel = event.division
                       ? `${event.name} ${event.division}`
                       : event.name;
@@ -375,43 +400,66 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
                   })}
                 </div>
               </div>
-            ); })}
+            );
+          })}
 
-            {/* Empty scheduled state */}
-            {scheduled.length === 0 && (
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "160px", gap: "10px", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "13px" }}>
-                <span>No scheduled events yet.</span>
-                <Button size="sm" onClick={onAddClick}><IconPlus size={12} /> Add event</Button>
-              </div>
-            )}
+          {/* Empty scheduled state */}
+          {scheduled.length === 0 && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "160px", gap: "10px", color: "var(--color-text-tertiary)", fontFamily: "var(--font-sans)", fontSize: "13px" }}>
+              <span>No scheduled events yet.</span>
+              <Button size="sm" onClick={onAddClick}><IconPlus size={12} /> Add event</Button>
+            </div>
+          )}
 
-            {/* Unscheduled strip */}
-            {unscheduled.length > 0 && (
-              <div>
-                <div style={{ display: "flex", height: 28, borderTop: "2px solid var(--color-border)", borderBottom: "1px solid var(--color-border)", background: "var(--color-surface)" }}>
-                  <div style={{ position: "sticky", left: 0, display: "flex", alignItems: "center", gap: "8px", padding: "0 12px", width: gridW, background: "var(--color-surface)" }}>
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-                      Unscheduled ({unscheduled.length})
-                    </span>
-                  </div>
-                </div>
-
-                {unscheduled.map((event) => (
-                  <div key={event.id} style={{ display: "flex", height: ROW_H, borderBottom: "1px solid var(--color-border)" }}>
-                    <div style={{ ...labelCell, cursor: "pointer" }} onClick={() => onEventClick(event)} title={event.name}>
-                      <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {event.name}{event.division ? ` ${event.division}` : ""}
-                      </span>
-                    </div>
-                    <div style={{ flex: 1, minWidth: blockW }} />
-                  </div>
-                ))}
-              </div>
-            )}
-
-          </div>
         </div>
       </div>
+
+      {/* ── Unscheduled section ── */}
+      {unscheduled.length > 0 && (
+        <>
+          {/* Sticky subheader — lifted out of the overflow-x:auto content div so vertical sticky works */}
+          <div
+            ref={unscheduledSubRef}
+            style={{
+              position:     "sticky",
+              top:          STICKY_H,
+              zIndex:       15,
+              overflowX:    "hidden",
+              borderTop:    "2px solid var(--color-border)",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+          >
+            <div style={{ width: gridW, height: 28, background: "var(--color-surface)", display: "flex", alignItems: "center" }}>
+              <div style={{ position: "sticky", left: 0, display: "flex", alignItems: "center", padding: "0 12px", background: "var(--color-surface)" }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 700, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                  Unscheduled ({unscheduled.length})
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Unscheduled rows — own scroll-synced container */}
+          <div
+            ref={unscheduledContentRef}
+            onScroll={onUnscheduledScroll}
+            style={{ overflowX: "auto" }}
+          >
+            <div style={{ width: gridW, minWidth: "100%" }}>
+              {unscheduled.map((event) => (
+                <div key={event.id} style={{ display: "flex", height: ROW_H, borderBottom: "1px solid var(--color-border)" }}>
+                  <div style={{ ...labelCell, cursor: "pointer" }} onClick={() => onEventClick(event)} title={event.name}>
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", fontStyle: "italic", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {event.name}{event.division ? ` ${event.division}` : ""}
+                    </span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: blockW }} />
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+
     </div>
   );
 }
