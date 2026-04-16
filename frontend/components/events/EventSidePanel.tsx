@@ -22,13 +22,14 @@ interface FormState {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  mode:        "add" | "edit";
-  event?:      Event;
-  timeBlocks:  TimeBlock[];
-  categories:  TournamentCategory[];
-  isReadOnly?: boolean;
-  onSave:      (data: EventCreate) => Promise<void>;
-  onClose:     () => void;
+  mode:               "add" | "edit";
+  event?:             Event;
+  timeBlocks:         TimeBlock[];
+  categories:         TournamentCategory[];
+  isReadOnly?:        boolean;
+  onSave:             (data: EventCreate) => Promise<void>;
+  onCreateCategory:   (name: string) => Promise<TournamentCategory>;
+  onClose:            () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -158,6 +159,164 @@ function SegmentedControl({
   );
 }
 
+function CategorySelect({
+  categories,
+  value,
+  onChange,
+  onCreateCategory,
+  disabled,
+}: {
+  categories:         TournamentCategory[];
+  value:              number | null;
+  onChange:           (id: number | null) => void;
+  onCreateCategory:   (name: string) => Promise<TournamentCategory>;
+  disabled?:          boolean;
+}) {
+  const [creating,     setCreating]     = useState(false);
+  const [newName,      setNewName]      = useState("");
+  const [saving,       setSaving]       = useState(false);
+  const [createError,  setCreateError]  = useState<string | null>(null);
+  const createInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (creating) setTimeout(() => createInputRef.current?.focus(), 30);
+  }, [creating]);
+
+  const cancelCreate = () => {
+    setCreating(false);
+    setNewName("");
+    setCreateError(null);
+  };
+
+  const handleCreate = async () => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    setSaving(true);
+    setCreateError(null);
+    try {
+      const cat = await onCreateCategory(trimmed);
+      onChange(cat.id);
+      cancelCreate();
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : "Failed to create");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter")  { e.preventDefault(); handleCreate(); }
+    if (e.key === "Escape") { cancelCreate(); }
+  };
+
+  const rowStyle = (active: boolean): React.CSSProperties => ({
+    display:     "flex",
+    alignItems:  "center",
+    gap:         "8px",
+    width:       "100%",
+    padding:     "6px 10px",
+    fontFamily:  "var(--font-mono)",
+    fontSize:    "13px",
+    color:       active ? "var(--color-accent)" : "var(--color-text-primary)",
+    background:  active ? "var(--color-accent-subtle)" : "transparent",
+    border:      "none",
+    borderBottom: "1px solid var(--color-border)",
+    cursor:      disabled ? "not-allowed" : "pointer",
+    textAlign:   "left",
+    opacity:     disabled ? 0.6 : 1,
+  });
+
+  const dot = (active: boolean) => (
+    <span style={{
+      flexShrink:   0,
+      width:        "10px",
+      height:       "10px",
+      borderRadius: "50%",
+      border:       `2px solid ${active ? "var(--color-accent)" : "var(--color-border)"}`,
+      background:   active ? "var(--color-accent)" : "transparent",
+      display:      "inline-block",
+    }} />
+  );
+
+  const allOptions = [{ id: null as number | null, name: "— None —" }, ...categories.map(c => ({ id: c.id as number | null, name: c.name }))];
+
+  return (
+    <div style={{
+      border:       "1px solid var(--color-border)",
+      borderRadius: "var(--radius-md)",
+      overflow:     "hidden",
+    }}>
+      {allOptions.map((opt) => {
+        const active = opt.id === value;
+        return (
+          <button
+            key={String(opt.id)}
+            type="button"
+            disabled={disabled}
+            onClick={() => !disabled && onChange(opt.id)}
+            style={rowStyle(active)}
+          >
+            {dot(active)}
+            {opt.name}
+          </button>
+        );
+      })}
+
+      {/* Add row */}
+      {!creating && !disabled && (
+        <button
+          type="button"
+          onClick={() => setCreating(true)}
+          style={{
+            display:    "flex",
+            alignItems: "center",
+            gap:        "6px",
+            width:      "100%",
+            padding:    "6px 10px",
+            fontFamily: "var(--font-sans)",
+            fontSize:   "12px",
+            color:      "var(--color-text-tertiary)",
+            background: "transparent",
+            border:     "none",
+            cursor:     "pointer",
+          }}
+        >
+          <span style={{ fontSize: "14px", lineHeight: 1 }}>+</span>
+          New category
+        </button>
+      )}
+
+      {/* Inline create form */}
+      {creating && (
+        <div style={{ padding: "8px 10px", borderTop: "1px solid var(--color-border)" }}>
+          <input
+            ref={createInputRef}
+            type="text"
+            value={newName}
+            placeholder="Category name"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={handleKeyDown}
+            style={{ ...fieldInput, marginBottom: "6px" }}
+          />
+          {createError && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-danger)", marginBottom: "6px" }}>
+              {createError}
+            </p>
+          )}
+          <div style={{ display: "flex", gap: "6px" }}>
+            <Button size="sm" onClick={handleCreate} loading={saving} disabled={!newName.trim()} style={{ flex: 1 }}>
+              Add
+            </Button>
+            <Button size="sm" variant="secondary" onClick={cancelCreate} disabled={saving} style={{ flex: 1 }}>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TimeBlockChip({
   block,
   selected,
@@ -218,6 +377,7 @@ export function EventSidePanel({
   categories,
   isReadOnly = false,
   onSave,
+  onCreateCategory,
   onClose,
 }: Props) {
   const initial    = mode === "edit" && event ? fromEvent(event) : emptyForm();
@@ -416,18 +576,13 @@ export function EventSidePanel({
           {/* Category */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Category</FieldLabel>
-            <select
-              value={form.category_id ?? ""}
+            <CategorySelect
+              categories={categories}
+              value={form.category_id}
+              onChange={(id) => set("category_id", id)}
+              onCreateCategory={onCreateCategory}
               disabled={isReadOnly}
-              onChange={(e) => set("category_id", e.target.value ? Number(e.target.value) : null)}
-              style={{ ...fieldInput, cursor: isReadOnly ? "not-allowed" : "pointer" }}
-            >
-              <option value="">— None —</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>{c.name}</option>
-              ))}
-            </select>
-            {/* Inline category create added in step 8 */}
+            />
           </div>
 
           {/* Division */}

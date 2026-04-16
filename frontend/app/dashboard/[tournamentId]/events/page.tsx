@@ -305,6 +305,12 @@ export default function EventsPage() {
     await loadAll();
   };
 
+  const handleCreateCategory = async (name: string) => {
+    const cat = await categoriesApi.create(tournamentId, name);
+    await loadAll();
+    return cat;
+  };
+
   // ── Delete block ──────────────────────────────────────────────────────────
 
   const [deleteTarget,    setDeleteTarget]    = useState<TimeBlock | null>(null);
@@ -407,6 +413,7 @@ export default function EventsPage() {
           timeBlocks={timeBlocks}
           categories={categories}
           onSave={handleSaveEvent}
+          onCreateCategory={handleCreateCategory}
           onClose={() => setPanel(null)}
         />
       )}
