@@ -1,33 +1,49 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Event, TournamentCategory } from "@/lib/api";
+import { Event, EventCreate, TimeBlock, TournamentCategory } from "@/lib/api";
 import { catColorVars } from "@/lib/formatters";
 import { Button } from "@/components/ui/Button";
-import { IconPlus, IconSearch } from "@/components/ui/Icons";
+import { IconPlus, IconSearch, IconLayoutCards, IconLayoutTable } from "@/components/ui/Icons";
 import { EventCard } from "@/components/events/EventCard";
+import { EventTable } from "@/components/events/EventTable";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  events:      Event[];
-  categories:  TournamentCategory[];
-  onCardClick: (event: Event) => void;
-  onAddClick:  () => void;
+  events:           Event[];
+  categories:       TournamentCategory[];
+  timeBlocks:       TimeBlock[];
+  onCardClick:      (event: Event) => void;
+  onAddClick:       () => void;
+  onUpdate:         (id: number, delta: Partial<EventCreate>) => Promise<void>;
+  onCreateCategory: (name: string) => Promise<TournamentCategory>;
+  isReadOnly?:      boolean;
 }
 
 // ─── Filter types ─────────────────────────────────────────────────────────────
 
-type DivFilter  = "B" | "C" | null;
-type TypeFilter = "standard" | "trial" | null;
+type DivFilter   = "B" | "C" | null;
+type TypeFilter  = "standard" | "trial" | null;
+type ViewMode    = "cards" | "table";
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCardGrid({ events, categories, onCardClick, onAddClick }: Props) {
+export function EventCardGrid({
+  events,
+  categories,
+  timeBlocks,
+  onCardClick,
+  onAddClick,
+  onUpdate,
+  onCreateCategory,
+  isReadOnly,
+}: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
   const [eventType,  setEventType]  = useState<TypeFilter>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const [viewMode,   setViewMode]   = useState<ViewMode>("cards");
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -138,6 +154,42 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
           <IconPlus size={12} />
           Add event
         </Button>
+
+        {/* View toggle */}
+        <div
+          style={{
+            display:      "flex",
+            border:       "1px solid var(--color-border)",
+            borderRadius: "var(--radius-sm)",
+            overflow:     "hidden",
+          }}
+        >
+          {(["cards", "table"] as ViewMode[]).map((mode) => {
+            const active = viewMode === mode;
+            return (
+              <button
+                key={mode}
+                onClick={() => setViewMode(mode)}
+                title={mode === "cards" ? "Cards view" : "Table view"}
+                style={{
+                  display:        "flex",
+                  alignItems:     "center",
+                  justifyContent: "center",
+                  width:          "30px",
+                  height:         "30px",
+                  background:     active ? "var(--color-accent-subtle)" : "transparent",
+                  border:         "none",
+                  borderRight:    mode === "cards" ? "1px solid var(--color-border)" : "none",
+                  cursor:         "pointer",
+                  color:          active ? "var(--color-accent)" : "var(--color-text-tertiary)",
+                  transition:     "background var(--transition-fast), color var(--transition-fast)",
+                }}
+              >
+                {mode === "cards" ? <IconLayoutCards size={13} /> : <IconLayoutTable size={13} />}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* ── Category chips ── */}
@@ -179,8 +231,17 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
         </div>
       )}
 
-      {/* ── Cards grid ── */}
-      {filtered.length === 0 ? (
+      {/* ── Content: cards or table ── */}
+      {viewMode === "table" ? (
+        <EventTable
+          events={filtered}
+          categories={categories}
+          timeBlocks={timeBlocks}
+          onUpdate={onUpdate}
+          onCreateCategory={onCreateCategory}
+          isReadOnly={isReadOnly}
+        />
+      ) : filtered.length === 0 ? (
         <div style={{
           display:        "flex",
           flexDirection:  "column",

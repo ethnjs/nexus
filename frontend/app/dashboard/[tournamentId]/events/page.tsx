@@ -287,6 +287,11 @@ export default function EventsPage() {
     await loadAll();
   };
 
+  const handleUpdateEvent = async (id: number, delta: Partial<EventCreate>) => {
+    await eventsApi.update(tournamentId, id, delta);
+    await loadAll();
+  };
+
   const handleCreateCategory = async (name: string) => {
     const cat = await categoriesApi.create(tournamentId, name);
     await loadAll();
@@ -375,8 +380,11 @@ export default function EventsPage() {
             <EventCardGrid
               events={events}
               categories={categories}
+              timeBlocks={timeBlocks}
               onCardClick={(event) => setPanel({ type: "edit", event })}
               onAddClick={() => setPanel({ type: "add" })}
+              onUpdate={handleUpdateEvent}
+              onCreateCategory={handleCreateCategory}
             />
           )}
 

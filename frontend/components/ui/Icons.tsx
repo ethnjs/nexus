@@ -291,3 +291,24 @@ export function IconLocation({ size = 13, ...props }: IconProps) {
     </svg>
   );
 }
+
+export function IconLayoutCards({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function IconLayoutTable({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <rect x="2" y="2" width="12" height="3" rx="1" stroke="currentColor" strokeWidth="1.4" />
+      <rect x="2" y="7" width="12" height="2.5" rx="0.75" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="2" y="11.5" width="12" height="2.5" rx="0.75" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
