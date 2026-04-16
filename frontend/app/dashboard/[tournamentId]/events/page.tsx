@@ -14,7 +14,7 @@ import {
   TournamentCategory,
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { IconUpload, IconSheets } from "@/components/ui/Icons";
+import { CsvImportBar } from "@/components/events/CsvImportBar";
 import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
 import { EventSidePanel } from "@/components/events/EventSidePanel";
@@ -82,126 +82,6 @@ function TabBar({
     </div>
   );
 }
-
-// ─── Import bar ───────────────────────────────────────────────────────────────
-
-function ImportBar() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        padding: "10px 14px",
-        background: "var(--color-surface)",
-        border: "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        marginBottom: "20px",
-      }}
-    >
-      <span
-        style={{
-          fontFamily: "var(--font-sans)",
-          fontSize: "12px",
-          fontWeight: 500,
-          color: "var(--color-text-secondary)",
-          marginRight: "4px",
-        }}
-      >
-        Import
-      </span>
-
-      {/* CSV upload */}
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "5px",
-          fontFamily: "var(--font-sans)",
-          fontSize: "12px",
-          fontWeight: 500,
-          color: "var(--color-text-primary)",
-          background: "var(--color-accent-subtle)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-sm)",
-          padding: "4px 10px",
-          cursor: "pointer",
-          transition: "background var(--transition-fast)",
-          userSelect: "none",
-        }}
-      >
-        <IconUpload size={12} />
-        Upload CSV
-        <input
-          type="file"
-          accept=".csv"
-          style={{ display: "none" }}
-          onChange={() => {
-            // TODO: wire up CsvImportBar in step 14
-          }}
-        />
-      </label>
-
-      {/* Help icon */}
-      <button
-        title="CSV import help"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          width: "22px",
-          height: "22px",
-          borderRadius: "50%",
-          border: "1px solid var(--color-border)",
-          background: "none",
-          cursor: "pointer",
-          color: "var(--color-text-tertiary)",
-          fontFamily: "var(--font-sans)",
-          fontSize: "11px",
-          fontWeight: 600,
-          flexShrink: 0,
-        }}
-      >
-        ?
-      </button>
-
-      <div
-        style={{
-          width: "1px",
-          height: "18px",
-          background: "var(--color-border)",
-          margin: "0 4px",
-        }}
-      />
-
-      {/* Google Sheets — disabled until Sheets feature lands */}
-      <button
-        disabled
-        title="Connect Google Sheets (coming soon)"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "5px",
-          fontFamily: "var(--font-sans)",
-          fontSize: "12px",
-          fontWeight: 500,
-          color: "var(--color-text-tertiary)",
-          background: "none",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-sm)",
-          padding: "4px 10px",
-          cursor: "not-allowed",
-          opacity: 0.6,
-        }}
-      >
-        <IconSheets size={12} />
-        Google Sheets
-      </button>
-    </div>
-  );
-}
-
-// ─── Inline icons ─────────────────────────────────────────────────────────────
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -355,7 +235,12 @@ export default function EventsPage() {
         subtitle="Manage tournament events, schedule time blocks, and track locations."
       />
 
-      <ImportBar />
+      <CsvImportBar
+        tournamentId={tournamentId}
+        categories={categories}
+        timeBlocks={timeBlocks}
+        onImportComplete={() => loadAll(true)}
+      />
 
       <TabBar active={activeTab} onChange={setActiveTab} />
 
