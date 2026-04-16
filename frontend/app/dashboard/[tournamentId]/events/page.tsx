@@ -8,6 +8,7 @@ import {
   categoriesApi,
   ApiError,
   Event,
+  EventCreate,
   TimeBlock,
   TimeBlockCreate,
   TournamentCategory,
@@ -15,6 +16,7 @@ import {
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
+import { EventSidePanel } from "@/components/events/EventSidePanel";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -306,6 +308,22 @@ export default function EventsPage() {
 
   // ── Delete block (with 409 modal guard) ──────────────────────────────────
 
+  // ── Event side panel ─────────────────────────────────────────────────────
+
+  type PanelMode = { type: "add" } | { type: "edit"; event: Event } | null;
+  const [panel, setPanel] = useState<PanelMode>(null);
+
+  const handleSaveEvent = async (data: EventCreate) => {
+    if (panel?.type === "edit") {
+      await eventsApi.update(tournamentId, panel.event.id, data);
+    } else {
+      await eventsApi.create(tournamentId, data);
+    }
+    await loadAll();
+  };
+
+  // ── Delete block ──────────────────────────────────────────────────────────
+
   const [deleteTarget,    setDeleteTarget]    = useState<TimeBlock | null>(null);
   const [affectedEvents,  setAffectedEvents]  = useState<AffectedEvent[]>([]);
 
@@ -396,6 +414,18 @@ export default function EventsPage() {
             />
           )}
         </>
+      )}
+
+      {/* ── Event side panel ── */}
+      {panel && (
+        <EventSidePanel
+          mode={panel.type}
+          event={panel.type === "edit" ? panel.event : undefined}
+          timeBlocks={timeBlocks}
+          categories={categories}
+          onSave={handleSaveEvent}
+          onClose={() => setPanel(null)}
+        />
       )}
 
       {/* ── Delete block modal ── */}
