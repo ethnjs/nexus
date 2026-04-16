@@ -93,6 +93,7 @@ def upgrade():
     #    [{"number": 1, "label": "Block 1", "date": "YYYY-MM-DD", "start": "HH:MM", "end": "HH:MM"}, ...]
     #    We build a mapping: (tournament_id, old_number) -> new time_block id
     # ------------------------------------------------------------------
+    import json
     from datetime import datetime, timezone
 
     now = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -104,6 +105,8 @@ def upgrade():
     for t_id, blocks_json in tournaments:
         if not blocks_json:
             continue
+        if isinstance(blocks_json, str):
+            blocks_json = json.loads(blocks_json)
         old_number_to_id[t_id] = {}
         for block in blocks_json:
             number = block.get("number")
@@ -130,6 +133,8 @@ def upgrade():
     for e_id, t_id, blocks_json in events:
         if not blocks_json:
             continue
+        if isinstance(blocks_json, str):
+            blocks_json = json.loads(blocks_json)
         t_map = old_number_to_id.get(t_id, {})
         for block_num in blocks_json:
             tb_id = t_map.get(block_num)
@@ -195,13 +200,14 @@ def upgrade():
     # 9. Migrate memberships.schedule JSON:
     #    [{block: int, duty: str}] -> [{time_block_id: int, duty: str}]
     # ------------------------------------------------------------------
-    import json
     memberships_with_schedule = conn.execute(
         text("SELECT id, tournament_id, schedule FROM memberships WHERE schedule IS NOT NULL")
     ).fetchall()
     for m_id, t_id, schedule_json in memberships_with_schedule:
         if not schedule_json:
             continue
+        if isinstance(schedule_json, str):
+            schedule_json = json.loads(schedule_json)
         t_map = old_number_to_id.get(t_id, {})
         new_schedule = []
         changed = False
