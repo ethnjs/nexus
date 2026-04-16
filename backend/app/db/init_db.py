@@ -33,7 +33,7 @@ def seed_dev_data(db: Session) -> None:
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import Membership, Tournament, TournamentCategory, TimeBlock, User
+    from app.models.models import Event, Membership, Tournament, TournamentCategory, TimeBlock, User
     from app.core.auth import hash_password
     from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
     from datetime import datetime
@@ -109,6 +109,84 @@ def seed_dev_data(db: Session) -> None:
             date=date,
             start=start,
             end=end,
+        ))
+
+    db.flush()  # get time block IDs before creating events
+
+    # Build category name → id lookup
+    cat_map = {
+        cat.name: cat.id
+        for cat in db.query(TournamentCategory).filter_by(tournament_id=tournament.id).all()
+    }
+
+    # 2026 Science Olympiad events
+    # Format: (name, division, category_name)
+    LIFE   = "Life, Personal & Social Science"
+    EARTH  = "Earth and Space Science"
+    PHYS   = "Physical Science & Chemistry"
+    TECH   = "Technology & Engineering"
+    INQ    = "Inquiry & Nature of Science"
+
+    events_div_b = [
+        ("Anatomy & Physiology",  "B", LIFE),
+        ("Astronomy",             "B", EARTH),
+        ("Bungee Drop",           "B", TECH),
+        ("Chemistry Lab",         "B", PHYS),
+        ("Code Busters",          "B", TECH),
+        ("Crime Busters",         "B", INQ),
+        ("Disease Detectives",    "B", LIFE),
+        ("Dynamic Planet",        "B", EARTH),
+        ("Ecology",               "B", LIFE),
+        ("Electric Vehicle",      "B", TECH),
+        ("Food Science",          "B", PHYS),
+        ("Forestry",              "B", LIFE),
+        ("Geologic Mapping",      "B", EARTH),
+        ("Helicopters",           "B", TECH),
+        ("Microbe Mission",       "B", LIFE),
+        ("Mouse Trap Vehicle",    "B", TECH),
+        ("Optics",                "B", PHYS),
+        ("Ping Pong Parachute",   "B", TECH),
+        ("Rocks & Minerals",      "B", EARTH),
+        ("Scrambler",             "B", TECH),
+        ("Solar System",          "B", EARTH),
+        ("Towers",                "B", TECH),
+        ("Write It Do It",        "B", INQ),
+    ]
+
+    events_div_c = [
+        ("Anatomy & Physiology",  "C", LIFE),
+        ("Astronomy",             "C", EARTH),
+        ("Bungee Drop",           "C", TECH),
+        ("Chemistry Lab",         "C", PHYS),
+        ("Code Busters",          "C", TECH),
+        ("Disease Detectives",    "C", LIFE),
+        ("Dynamic Planet",        "C", EARTH),
+        ("Ecology",               "C", LIFE),
+        ("Electric Vehicle",      "C", TECH),
+        ("Experimental Design",   "C", INQ),
+        ("Fermi Questions",       "C", INQ),
+        ("Flight",                "C", TECH),
+        ("Forensics",             "C", PHYS),
+        ("Geologic Mapping",      "C", EARTH),
+        ("Helicopters",           "C", TECH),
+        ("Materials Science",     "C", PHYS),
+        ("Microbe Mission",       "C", LIFE),
+        ("Optics",                "C", PHYS),
+        ("Remote Sensing",        "C", EARTH),
+        ("Rocks & Minerals",      "C", EARTH),
+        ("Scrambler",             "C", TECH),
+        ("Towers",                "C", TECH),
+        ("Write It Do It",        "C", INQ),
+    ]
+
+    for name, division, cat_name in events_div_b + events_div_c:
+        db.add(Event(
+            tournament_id=tournament.id,
+            name=name,
+            division=division,
+            event_type="standard",
+            category_id=cat_map.get(cat_name),
+            volunteers_needed=2,
         ))
 
     # TD membership for the regular user — full manage_tournament access
