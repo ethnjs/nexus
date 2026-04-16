@@ -1,7 +1,7 @@
 "use client";
 
 import { Event, TournamentCategory } from "@/lib/api";
-import { fmtDateShort, fmtTime, catColorVars } from "@/lib/formatters";
+import { catColorVars } from "@/lib/formatters";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -155,30 +155,18 @@ export function EventCard({ event, categories, onClick }: Props) {
               key={block.id}
               style={{
                 display:      "inline-flex",
-                flexDirection: "column",
-                padding:      "3px 8px",
+                padding:      "2px 8px",
                 background:   "var(--color-accent-subtle)",
                 border:       "1px solid var(--color-border)",
                 borderRadius: "var(--radius-sm)",
+                fontFamily:   "var(--font-sans)",
+                fontSize:     "11px",
+                fontWeight:   600,
+                color:        "var(--color-text-primary)",
+                lineHeight:   "18px",
               }}
             >
-              <span style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "11px",
-                fontWeight: 600,
-                color:      "var(--color-text-primary)",
-                lineHeight: 1.3,
-              }}>
-                {block.label}
-              </span>
-              <span style={{
-                fontFamily: "var(--font-mono)",
-                fontSize:   "10px",
-                color:      "var(--color-text-tertiary)",
-                lineHeight: 1.3,
-              }}>
-                {fmtDateShort(block.date)} · {fmtTime(block.start)}–{fmtTime(block.end)}
-              </span>
+              {block.label}
             </span>
           ))
         )}
