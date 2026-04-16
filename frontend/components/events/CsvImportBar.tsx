@@ -593,25 +593,25 @@ export function CsvImportBar({
 
   const importItems: MenuItem[] = [
     {
-      label: "Events CSV…",
+      label: "Events",
       icon:  <IconUpload size={12} />,
       onClick: () => { setOpenMenu(null); eventsFileRef.current?.click(); },
     },
     {
-      label: "Time Blocks CSV…",
+      label: "Time Blocks",
       icon:  <IconUpload size={12} />,
       onClick: () => { setOpenMenu(null); timeBlocksFileRef.current?.click(); },
     },
     "separator",
     {
-      label: "↓ Events template",
+      label: "Events template",
       onClick: () => {
         downloadCSV(EVENTS_CSV_TEMPLATE, "events-import-template.csv");
         setOpenMenu(null);
       },
     },
     {
-      label: "↓ Time Blocks template",
+      label: "Time Blocks template",
       onClick: () => {
         downloadCSV(TIME_BLOCKS_CSV_TEMPLATE, "time-blocks-import-template.csv");
         setOpenMenu(null);
@@ -668,27 +668,27 @@ export function CsvImportBar({
           marginBottom: "20px",
         }}
       >
-        {/* ── Import ▼ ── */}
+        {/* ── Import ── */}
         <div style={{ position: "relative" }}>
           <button
             onClick={() => toggle("import")}
             style={menuBtnStyle(openMenu === "import")}
           >
             <IconUpload size={12} />
-            Import
+            Import CSV
             <IconChevronDown size={11} style={{ marginLeft: "1px", opacity: 0.6 }} />
           </button>
           {openMenu === "import" && <DropdownMenu items={importItems} />}
         </div>
 
-        {/* ── Export ▼ ── */}
+        {/* ── Export ── */}
         <div style={{ position: "relative" }}>
           <button
             onClick={() => toggle("export")}
             style={menuBtnStyle(openMenu === "export")}
           >
             <IconExport size={12} />
-            Export
+            Export CSV
             <IconChevronDown size={11} style={{ marginLeft: "1px", opacity: 0.6 }} />
           </button>
           {openMenu === "export" && <DropdownMenu items={exportItems} />}
@@ -698,7 +698,7 @@ export function CsvImportBar({
         <div style={{ position: "relative" }}>
           <button
             onClick={() => toggle("help")}
-            title="CSV import/export help"
+            title="CSV import help"
             style={{
               display:        "flex",
               alignItems:     "center",
