@@ -48,7 +48,7 @@ const inputStyle: CSSProperties = {
   fontFamily:   "var(--font-mono)",
   fontSize:     "12px",
   color:        "var(--color-text-primary)",
-  background:   "var(--color-surface-raised)",
+  background:   "var(--color-surface)",
   border:       "1px solid var(--color-accent)",
   borderRadius: "var(--radius-sm)",
   outline:      "none",
@@ -145,10 +145,12 @@ function CategoryCell({
   onCreateCategory: (name: string) => Promise<TournamentCategory>;
   isReadOnly?:      boolean;
 }) {
-  const [open,     setOpen]     = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [newName,  setNewName]  = useState("");
-  const [saving,   setSaving]   = useState(false);
+  const [open,         setOpen]         = useState(false);
+  const [creating,     setCreating]     = useState(false);
+  const [newName,      setNewName]      = useState("");
+  const [saving,       setSaving]       = useState(false);
+  // optimistic: undefined = use prop value, anything else = pending commit
+  const [optimistic,   setOptimistic]   = useState<number | null | undefined>(undefined);
   const ref      = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -169,13 +171,24 @@ function CategoryCell({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const cat    = categories.find((c) => c.id === value);
+  // Clear optimistic once the prop catches up
+  useEffect(() => {
+    setOptimistic(undefined);
+  }, [value]);
+
+  const displayValue = optimistic !== undefined ? optimistic : value;
+  const cat    = categories.find((c) => c.id === displayValue);
   const catIdx = cat ? categories.indexOf(cat) : -1;
   const cv     = catIdx >= 0 ? catColorVars(catIdx) : null;
 
   const handleSelect = async (id: number | null) => {
     setOpen(false);
-    await onCommit(id);
+    setOptimistic(id);
+    try {
+      await onCommit(id);
+    } catch {
+      setOptimistic(undefined); // revert on failure
+    }
   };
 
   const handleCreate = async () => {
@@ -206,7 +219,7 @@ function CategoryCell({
           borderRadius: "var(--radius-sm)",
           padding:      "2px 7px",
           cursor:       isReadOnly ? "default" : "pointer",
-          maxWidth:     "120px",
+          maxWidth:     "180px",
           overflow:     "hidden",
           textOverflow: "ellipsis",
           whiteSpace:   "nowrap",
@@ -223,7 +236,7 @@ function CategoryCell({
             left:         0,
             zIndex:       200,
             minWidth:     "160px",
-            background:   "var(--color-surface-raised)",
+            background:   "var(--color-surface)",
             border:       "1px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
             boxShadow:    "0 4px 12px rgba(0,0,0,0.12)",
@@ -240,8 +253,8 @@ function CategoryCell({
               padding:    "7px 10px",
               fontFamily: "var(--font-sans)",
               fontSize:   "12px",
-              color:      value === null ? "var(--color-accent)" : "var(--color-text-secondary)",
-              background: value === null ? "var(--color-accent-subtle)" : "transparent",
+              color:      displayValue === null ? "var(--color-accent)" : "var(--color-text-secondary)",
+              background: displayValue === null ? "var(--color-accent-subtle)" : "transparent",
               border:     "none",
               cursor:     "pointer",
             }}
@@ -255,11 +268,19 @@ function CategoryCell({
 
           {categories.map((c, idx) => {
             const cv2   = catColorVars(idx);
-            const active = c.id === value;
+            const active = c.id === displayValue;
             return (
               <button
                 key={c.id}
                 onClick={() => handleSelect(c.id)}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = cv2.subtle;
+                  (e.currentTarget as HTMLButtonElement).style.color      = cv2.text;
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = active ? cv2.subtle : "transparent";
+                  (e.currentTarget as HTMLButtonElement).style.color      = active ? cv2.text : "var(--color-text-primary)";
+                }}
                 style={{
                   display:    "block",
                   width:      "100%",
@@ -271,6 +292,7 @@ function CategoryCell({
                   background: active ? cv2.subtle : "transparent",
                   border:     "none",
                   cursor:     "pointer",
+                  transition: "background var(--transition-fast), color var(--transition-fast)",
                 }}
               >
                 {c.name}
@@ -476,7 +498,7 @@ function TimeBlocksCell({
             minWidth:     "220px",
             maxHeight:    "200px",
             overflowY:    "auto",
-            background:   "var(--color-surface-raised)",
+            background:   "var(--color-surface)",
             border:       "1px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
             boxShadow:    "0 4px 12px rgba(0,0,0,0.12)",
@@ -612,7 +634,7 @@ function EventTableRow({
     >
       {renderTextCell("name",              200)}
 
-      <td style={{ ...cell, width: 130 }}>
+      <td style={{ ...cell, width: 200, overflow: "visible" }}>
         <CategoryCell
           value={event.category_id}
           categories={categories}
@@ -709,7 +731,7 @@ export function EventTable({
 
   const cols: { label: string; width: number | "auto" }[] = [
     { label: "Name",        width: 200 },
-    { label: "Category",    width: 130 },
+    { label: "Category",    width: 200 },
     { label: "Division",    width: 90  },
     { label: "Type",        width: 90  },
     { label: "Building",    width: 110 },
