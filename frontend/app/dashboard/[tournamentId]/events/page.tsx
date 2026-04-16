@@ -14,6 +14,7 @@ import {
   TournamentCategory,
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { IconUpload, IconSheets } from "@/components/ui/Icons";
 import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
 import { EventSidePanel } from "@/components/events/EventSidePanel";
@@ -125,7 +126,7 @@ function ImportBar() {
           userSelect: "none",
         }}
       >
-        <UploadIcon />
+        <IconUpload size={12} />
         Upload CSV
         <input
           type="file"
@@ -189,7 +190,7 @@ function ImportBar() {
           opacity: 0.6,
         }}
       >
-        <SheetsIcon />
+        <IconSheets size={12} />
         Google Sheets
       </button>
     </div>
@@ -239,24 +240,6 @@ function CardsPlaceholder() {
 }
 
 // ─── Inline icons ─────────────────────────────────────────────────────────────
-
-function UploadIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M8 10V2M4 6l4-4 4 4" />
-      <path d="M2 13h12" />
-    </svg>
-  );
-}
-
-function SheetsIcon() {
-  return (
-    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="2" y="2" width="12" height="12" rx="1.5" />
-      <path d="M2 6h12M6 6v8" />
-    </svg>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 

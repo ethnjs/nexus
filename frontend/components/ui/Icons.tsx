@@ -58,10 +58,18 @@ export function IconVolunteers({ size = 18, ...props }: IconProps) {
 
 export function IconSheets({ size = 18, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <rect x="2" y="3" width="16" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="2" y1="8" x2="18" y2="8" stroke="currentColor" strokeWidth="1.5" />
-      <line x1="10" y1="8" x2="10" y2="17" stroke="currentColor" strokeWidth="1.5" />
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <rect x="2" y="2" width="12" height="12" rx="1.5" />
+      <path d="M2 6h12M6 6v8" />
+    </svg>
+  );
+}
+
+export function IconUpload({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M8 10V2M4 6l4-4 4 4" />
+      <path d="M2 13h12" />
     </svg>
   );
 }
