@@ -58,7 +58,7 @@ function fromEvent(e: Event): FormState {
     room:              e.room ?? "",
     floor:             e.floor ?? "",
     volunteers_needed: e.volunteers_needed,
-    time_block_ids:    e.time_block_ids,
+    time_block_ids:    e.time_block_ids ?? [],
   };
 }
 
@@ -72,8 +72,8 @@ function isDirty(a: FormState, b: FormState): boolean {
     a.room              !== b.room              ||
     a.floor             !== b.floor             ||
     a.volunteers_needed !== b.volunteers_needed ||
-    JSON.stringify(a.time_block_ids.slice().sort()) !==
-    JSON.stringify(b.time_block_ids.slice().sort())
+    JSON.stringify((a.time_block_ids ?? []).slice().sort()) !==
+    JSON.stringify((b.time_block_ids ?? []).slice().sort())
   );
 }
 

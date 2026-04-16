@@ -372,8 +372,9 @@ function TimeBlocksCell({
     return () => document.removeEventListener("mousedown", handler);
   }, [pickerOpen]);
 
-  const assigned  = timeBlocks.filter((b) => event.time_block_ids.includes(b.id));
-  const available = timeBlocks.filter((b) => !event.time_block_ids.includes(b.id));
+  const ids       = event.time_block_ids ?? [];
+  const assigned  = timeBlocks.filter((b) => ids.includes(b.id));
+  const available = timeBlocks.filter((b) => !ids.includes(b.id));
 
   return (
     <div
@@ -643,12 +644,12 @@ function EventTableRow({
           timeBlocks={timeBlocks}
           onRemove={(blockId) =>
             onUpdate(event.id, {
-              time_block_ids: event.time_block_ids.filter((id) => id !== blockId),
+              time_block_ids: (event.time_block_ids ?? []).filter((id) => id !== blockId),
             })
           }
           onAdd={(blockId) =>
             onUpdate(event.id, {
-              time_block_ids: [...event.time_block_ids, blockId],
+              time_block_ids: [...(event.time_block_ids ?? []), blockId],
             })
           }
           isReadOnly={isReadOnly}
