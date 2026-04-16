@@ -50,10 +50,12 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
     background:   active ? "var(--color-accent)" : "transparent",
     border:       "1px solid var(--color-border)",
     borderRadius: "var(--radius-sm)",
-    padding:      "3px 10px",
+    height:       "30px",
+    padding:      "0 10px",
     cursor:       "pointer",
     transition:   "background var(--transition-fast), color var(--transition-fast)",
     whiteSpace:   "nowrap",
+    boxSizing:    "border-box",
   });
 
   return (
@@ -162,10 +164,12 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
                   background:   active ? cv.subtle : "transparent",
                   border:       `1px solid ${active ? cv.main : "var(--color-border)"}`,
                   borderRadius: "var(--radius-sm)",
-                  padding:      "3px 10px",
+                  height:       "30px",
+                  padding:      "0 10px",
                   cursor:       "pointer",
                   transition:   "background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast)",
                   whiteSpace:   "nowrap",
+                  boxSizing:    "border-box",
                 }}
               >
                 {cat.name}

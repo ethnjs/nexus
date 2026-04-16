@@ -129,8 +129,9 @@ function SegmentedControl({
       borderRadius: "var(--radius-md)",
       overflow:     "hidden",
     }}>
-      {options.map((opt) => {
-        const active = opt.value === value;
+      {options.map((opt, idx) => {
+        const active  = opt.value === value;
+        const isLast  = idx === options.length - 1;
         return (
           <button
             key={String(opt.value)}
@@ -144,7 +145,7 @@ function SegmentedControl({
               color:       active ? "var(--color-text-inverse)" : "var(--color-text-secondary)",
               background:  active ? "var(--color-accent)" : "var(--color-surface)",
               border:      "none",
-              borderRight: "1px solid var(--color-border)",
+              borderRight: isLast ? "none" : "1px solid var(--color-border)",
               padding:     "5px 14px",
               cursor:      disabled ? "not-allowed" : "pointer",
               transition:  "background var(--transition-fast), color var(--transition-fast)",
