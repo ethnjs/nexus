@@ -148,9 +148,8 @@ def update_event(
     _require_write_permission(current_user, tournament_id, db)
     event = _get_event_or_404(event_id, tournament_id, db)
 
-    update_data = payload.model_dump(exclude_none=True, exclude={"time_block_ids"})
-    for field, value in update_data.items():
-        setattr(event, field, value)
+    for field in payload.model_fields_set - {"time_block_ids"}:
+        setattr(event, field, getattr(payload, field))
 
     if payload.time_block_ids is not None:
         blocks = (
