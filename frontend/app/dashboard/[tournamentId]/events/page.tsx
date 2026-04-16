@@ -295,18 +295,43 @@ export default function EventsPage() {
   type PanelMode = { type: "add" } | { type: "edit"; event: Event } | null;
   const [panel, setPanel] = useState<PanelMode>(null);
 
+  // Normalize a single freshly-fetched/updated event the same way loadAll does
+  const normalizeEvent = useCallback((e: Event) => ({
+    ...e,
+    time_block_ids: (e.time_blocks ?? []).map((b) => b.id),
+  }), []);
+
+  const patchEventsState = useCallback((updated: Event) => {
+    const normalized = normalizeEvent(updated);
+    setEvents((prev) => prev.map((e) => e.id === normalized.id ? normalized : e));
+  }, [normalizeEvent]);
+
+  // Open edit panel: show immediately with cached data, then refresh just that event
+  const openEditPanel = useCallback(async (event: Event) => {
+    setPanel({ type: "edit", event });
+    try {
+      const fresh = await eventsApi.get(tournamentId, event.id);
+      const normalized = normalizeEvent(fresh);
+      setPanel({ type: "edit", event: normalized });
+      setEvents((prev) => prev.map((e) => e.id === normalized.id ? normalized : e));
+    } catch {
+      // keep the cached data already shown in the panel
+    }
+  }, [tournamentId, normalizeEvent]);
+
   const handleSaveEvent = async (data: EventCreate) => {
     if (panel?.type === "edit") {
-      await eventsApi.update(tournamentId, panel.event.id, data);
+      const updated = await eventsApi.update(tournamentId, panel.event.id, data);
+      patchEventsState(updated);
     } else {
       await eventsApi.create(tournamentId, data);
+      await loadAll(true);
     }
-    await loadAll(true);
   };
 
   const handleUpdateEvent = async (id: number, delta: Partial<EventCreate>) => {
-    await eventsApi.update(tournamentId, id, delta);
-    await loadAll(true);
+    const updated = await eventsApi.update(tournamentId, id, delta);
+    patchEventsState(updated);
   };
 
   const handleCreateCategory = async (name: string) => {
@@ -397,7 +422,7 @@ export default function EventsPage() {
             <EventCardGrid
               events={events}
               categories={categories}
-              onCardClick={(event) => setPanel({ type: "edit", event })}
+              onCardClick={openEditPanel}
               onAddClick={() => setPanel({ type: "add" })}
             />
           )}

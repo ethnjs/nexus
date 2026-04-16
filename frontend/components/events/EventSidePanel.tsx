@@ -387,7 +387,11 @@ export function EventSidePanel({
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
+
+  // Start exit animation; onClose() fires once animation ends
+  const triggerClose = useCallback(() => setIsClosing(true), []);
 
   // Re-sync when the target event changes (e.g. switching between edit targets)
   useEffect(() => {
@@ -413,9 +417,9 @@ export function EventSidePanel({
     if (dirty && !isReadOnly) {
       setDiscarding(true);
     } else {
-      onClose();
+      triggerClose();
     }
-  }, [dirty, isReadOnly, onClose]);
+  }, [dirty, isReadOnly, triggerClose]);
 
   // Escape key closes (with guard)
   useEffect(() => {
@@ -448,7 +452,7 @@ export function EventSidePanel({
         setSavedBase(blank);
         setTimeout(() => nameRef.current?.focus(), 50);
       } else {
-        onClose();
+        triggerClose();
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save event");
@@ -465,6 +469,25 @@ export function EventSidePanel({
 
   return (
     <>
+      <style>{`
+        @keyframes sidePanelSlideIn {
+          from { transform: translateX(100%); }
+          to   { transform: translateX(0); }
+        }
+        @keyframes sidePanelSlideOut {
+          from { transform: translateX(0); }
+          to   { transform: translateX(100%); }
+        }
+        @keyframes sidePanelFadeIn {
+          from { opacity: 0; }
+          to   { opacity: 1; }
+        }
+        @keyframes sidePanelFadeOut {
+          from { opacity: 1; }
+          to   { opacity: 0; }
+        }
+      `}</style>
+
       {/* Backdrop */}
       <div
         onClick={handleClose}
@@ -473,6 +496,9 @@ export function EventSidePanel({
           inset:      0,
           zIndex:     90,
           background: "rgba(0,0,0,0.15)",
+          animation:  isClosing
+            ? "sidePanelFadeOut 200ms ease-in forwards"
+            : "sidePanelFadeIn 180ms ease-out",
         }}
       />
 
@@ -491,7 +517,11 @@ export function EventSidePanel({
           display:     "flex",
           flexDirection: "column",
           overflow:    "hidden",
+          animation:   isClosing
+            ? "sidePanelSlideOut 200ms cubic-bezier(0.55, 0, 1, 0.45) forwards"
+            : "sidePanelSlideIn 220ms cubic-bezier(0.25, 0.46, 0.45, 0.94)",
         }}
+        onAnimationEnd={() => { if (isClosing) onClose(); }}
       >
         {/* ── Header ── */}
         <div style={{
@@ -550,7 +580,7 @@ export function EventSidePanel({
               <Button size="sm" variant="secondary" onClick={() => setDiscarding(false)}>
                 Keep editing
               </Button>
-              <Button size="sm" variant="danger" onClick={onClose}>
+              <Button size="sm" variant="danger" onClick={triggerClose}>
                 Discard
               </Button>
             </div>
