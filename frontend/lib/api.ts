@@ -119,8 +119,8 @@ export const timeBlocksApi = {
     api.post<TimeBlock>(`/tournaments/${tournamentId}/blocks/`, body),
   update: (tournamentId: number, id: number, body: Partial<TimeBlockCreate>) =>
     api.patch<TimeBlock>(`/tournaments/${tournamentId}/blocks/${id}/`, body),
-  delete: (tournamentId: number, id: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/blocks/${id}/`),
+  delete: (tournamentId: number, id: number, force = false) =>
+    api.delete<void>(`/tournaments/${tournamentId}/blocks/${id}/${force ? "?force=true" : ""}`),
 }
 
 // -------------------------------------------------------------------------

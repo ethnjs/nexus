@@ -6,6 +6,7 @@ import {
   eventsApi,
   timeBlocksApi,
   categoriesApi,
+  ApiError,
   Event,
   TimeBlock,
   TimeBlockCreate,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
+import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -302,6 +304,34 @@ export default function EventsPage() {
     await loadAll();
   };
 
+  // ── Delete block (with 409 modal guard) ──────────────────────────────────
+
+  const [deleteTarget,    setDeleteTarget]    = useState<TimeBlock | null>(null);
+  const [affectedEvents,  setAffectedEvents]  = useState<AffectedEvent[]>([]);
+
+  const handleDeleteClick = async (block: TimeBlock) => {
+    try {
+      await timeBlocksApi.delete(tournamentId, block.id);
+      await loadAll();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 409) {
+        const detail = e.detail as { affected_events?: AffectedEvent[] };
+        setAffectedEvents(detail?.affected_events ?? []);
+        setDeleteTarget(block);
+      } else {
+        throw e;
+      }
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    await timeBlocksApi.delete(tournamentId, deleteTarget.id, true);
+    setDeleteTarget(null);
+    setAffectedEvents([]);
+    await loadAll();
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -362,10 +392,20 @@ export default function EventsPage() {
               events={events}
               onAdd={handleAddBlock}
               onEdit={handleEditBlock}
-              onDelete={() => {/* TODO: step 6 */}}
+              onDelete={handleDeleteClick}
             />
           )}
         </>
+      )}
+
+      {/* ── Delete block modal ── */}
+      {deleteTarget && (
+        <DeleteBlockModal
+          block={deleteTarget}
+          affectedEvents={affectedEvents}
+          onConfirm={handleDeleteConfirm}
+          onCancel={() => { setDeleteTarget(null); setAffectedEvents([]); }}
+        />
       )}
     </div>
   );
