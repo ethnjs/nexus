@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Event, EventCreate, TimeBlock, TournamentCategory } from "@/lib/api";
 import { fmtTime, fmtDateShort } from "@/lib/formatters";
+import { parseApiError } from "@/lib/errors";
 import { Button } from "@/components/ui/Button";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -455,7 +456,7 @@ export function EventSidePanel({
         triggerClose();
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save event");
+      setError(parseApiError(e));
     } finally {
       setSaving(false);
     }

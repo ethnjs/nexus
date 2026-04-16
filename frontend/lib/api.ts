@@ -13,10 +13,13 @@ interface RequestOptions {
 export class ApiError extends Error {
   /** The raw `detail` value from the response body (may be a string or object). */
   detail: unknown
-  constructor(public status: number, message: string, detail?: unknown) {
+  /** The full parsed response body — use this to access keys outside `detail` (e.g. `conflict`). */
+  body: unknown
+  constructor(public status: number, message: string, detail?: unknown, body?: unknown) {
     super(message)
     this.name   = 'ApiError'
     this.detail = detail
+    this.body   = body
   }
 }
 
@@ -35,12 +38,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   if (!res.ok) {
     let detail: unknown = `HTTP ${res.status}`
+    let body: unknown
     try {
-      const data = await res.json()
-      detail = data.detail ?? detail
+      body   = await res.json()
+      detail = (body as Record<string, unknown>).detail ?? detail
     } catch {}
     const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
-    throw new ApiError(res.status, message, detail)
+    throw new ApiError(res.status, message, detail, body)
   }
 
   if (res.status === 204) return undefined as T

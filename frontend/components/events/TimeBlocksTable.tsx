@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { TimeBlock, TimeBlockCreate, Event } from "@/lib/api";
 import { fmtTime, fmtDate } from "@/lib/formatters";
+import { parseApiError } from "@/lib/errors";
 import { Button } from "@/components/ui/Button";
 import { IconPlus, IconEdit, IconTrash } from "@/components/ui/Icons";
 
@@ -249,7 +250,7 @@ export function TimeBlocksTable({
       await onAdd(data);
       setShowAddRow(false);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Failed to save block");
+      setSaveError(parseApiError(e));
     } finally {
       setSaving(false);
     }
@@ -262,7 +263,7 @@ export function TimeBlocksTable({
       await onEdit(id, data);
       setEditingId(null);
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "Failed to save block");
+      setSaveError(parseApiError(e));
     } finally {
       setSaving(false);
     }
