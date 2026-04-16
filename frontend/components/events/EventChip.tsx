@@ -12,6 +12,7 @@ export interface EventChipProps {
   columnWidth: number;  // px — controls label truncation / location visibility
   spanCount:   number;  // number of time-block columns this chip spans
   onClick:     () => void;
+  style?:      React.CSSProperties; // overrides for outer div (e.g. left offset in timeline)
 }
 
 // ─── Color resolver ───────────────────────────────────────────────────────────
@@ -81,6 +82,7 @@ export function EventChip({
   columnWidth,
   spanCount,
   onClick,
+  style: styleOverride,
 }: EventChipProps) {
   const colors  = resolveColors(event, categories, colorBy);
   const width   = spanCount * columnWidth - 8;
@@ -98,6 +100,7 @@ export function EventChip({
         bottom:      "5px",
         left:        "4px",
         width:       `${width}px`,
+        ...styleOverride,
         background:  colors.bg,
         border:      `1px ${colors.dashed ? "dashed" : "solid"} ${colors.border}`,
         borderRadius: "var(--radius-sm)",

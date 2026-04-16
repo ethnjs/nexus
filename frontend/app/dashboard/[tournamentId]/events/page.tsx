@@ -20,6 +20,7 @@ import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlock
 import { EventSidePanel } from "@/components/events/EventSidePanel";
 import { EventCardGrid } from "@/components/events/EventCardGrid";
 import { EventTable } from "@/components/events/EventTable";
+import { EventTimeline } from "@/components/events/EventTimeline";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -199,29 +200,6 @@ function ImportBar() {
     </div>
   );
 }
-
-// ─── Placeholder panels (replaced in subsequent steps) ────────────────────────
-
-function TimelinePlaceholder() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "320px",
-        border: "1px dashed var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        color: "var(--color-text-tertiary)",
-        fontFamily: "var(--font-sans)",
-        fontSize: "13px",
-      }}
-    >
-      Timeline view — coming soon
-    </div>
-  );
-}
-
 
 // ─── Inline icons ─────────────────────────────────────────────────────────────
 
@@ -415,7 +393,13 @@ export default function EventsPage() {
       ) : (
         <>
           {activeTab === "timeline" && (
-            <TimelinePlaceholder />
+            <EventTimeline
+              events={events}
+              timeBlocks={timeBlocks}
+              categories={categories}
+              onEventClick={openEditPanel}
+              onAddClick={() => setPanel({ type: "add" })}
+            />
           )}
 
           {activeTab === "cards" && (
