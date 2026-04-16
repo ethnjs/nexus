@@ -15,8 +15,8 @@ const ROW_H        = 44;    // px — event row height
 const DATE_ROW_H   = 26;    // px — top header row
 const BLOCK_ROW_H  = 32;    // px — bottom header row
 const CONTROLS_H   = 50;    // px — controls bar height (incl. padding)
-// Total height of the sticky header (controls + 1px border + date row + block row)
-const STICKY_H     = CONTROLS_H + 1 + DATE_ROW_H + BLOCK_ROW_H;
+// Total height of the sticky header (controls + 1px border + date row + block row - 22px padding from main div)
+const STICKY_H     = CONTROLS_H + 1 + DATE_ROW_H + BLOCK_ROW_H - 22;
 
 type ColorBy = "category" | "division" | "type";
 type GroupBy = "category" | "building" | "az";
