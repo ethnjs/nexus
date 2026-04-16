@@ -8,6 +8,7 @@ import {
   categoriesApi,
   Event,
   TimeBlock,
+  TimeBlockCreate,
   TournamentCategory,
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -289,6 +290,18 @@ export default function EventsPage() {
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // ── Time block handlers ───────────────────────────────────────────────────
+
+  const handleAddBlock = async (data: TimeBlockCreate) => {
+    await timeBlocksApi.create(tournamentId, data);
+    await loadAll();
+  };
+
+  const handleEditBlock = async (id: number, data: Partial<TimeBlockCreate>) => {
+    await timeBlocksApi.update(tournamentId, id, data);
+    await loadAll();
+  };
+
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -347,8 +360,8 @@ export default function EventsPage() {
             <TimeBlocksTable
               timeBlocks={timeBlocks}
               events={events}
-              onAdd={() => {/* TODO: step 5 */}}
-              onEdit={() => {/* TODO: step 5 */}}
+              onAdd={handleAddBlock}
+              onEdit={handleEditBlock}
               onDelete={() => {/* TODO: step 6 */}}
             />
           )}
