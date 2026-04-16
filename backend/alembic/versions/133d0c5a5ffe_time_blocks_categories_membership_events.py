@@ -150,7 +150,7 @@ def upgrade():
     # ------------------------------------------------------------------
     if not _has_column(conn, 'events', 'category_id'):
         with op.batch_alter_table('events') as batch_op:
-            batch_op.add_column(sa.Column('category_id', sa.Integer(), sa.ForeignKey('tournament_categories.id', ondelete='SET NULL'), nullable=True))
+            batch_op.add_column(sa.Column('category_id', sa.Integer(), nullable=True))
 
     # For each distinct (tournament_id, category) string pair, find-or-create a TournamentCategory row
     rows = conn.execute(text(
@@ -248,7 +248,7 @@ def downgrade():
 
     # Re-add legacy columns (batch mode required for SQLite)
     with op.batch_alter_table('memberships') as batch_op:
-        batch_op.add_column(sa.Column('assigned_event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='SET NULL'), nullable=True))
+        batch_op.add_column(sa.Column('assigned_event_id', sa.Integer(), nullable=True))
     with op.batch_alter_table('events') as batch_op:
         batch_op.add_column(sa.Column('category', sa.String(255), nullable=True))
         batch_op.add_column(sa.Column('blocks', sa.JSON(), nullable=True))
