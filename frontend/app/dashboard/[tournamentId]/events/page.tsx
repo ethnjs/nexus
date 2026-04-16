@@ -19,10 +19,11 @@ import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
 import { EventSidePanel } from "@/components/events/EventSidePanel";
 import { EventCardGrid } from "@/components/events/EventCardGrid";
+import { EventTable } from "@/components/events/EventTable";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = "timeline" | "cards" | "blocks";
+type Tab = "timeline" | "cards" | "table" | "blocks";
 
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,7 @@ function TabBar({
   const tabs: { id: Tab; label: string }[] = [
     { id: "timeline", label: "Timeline" },
     { id: "cards",    label: "Cards" },
+    { id: "table",    label: "Table" },
     { id: "blocks",   label: "Time Blocks" },
   ];
 
@@ -380,9 +382,16 @@ export default function EventsPage() {
             <EventCardGrid
               events={events}
               categories={categories}
-              timeBlocks={timeBlocks}
               onCardClick={(event) => setPanel({ type: "edit", event })}
               onAddClick={() => setPanel({ type: "add" })}
+            />
+          )}
+
+          {activeTab === "table" && (
+            <EventTable
+              events={events}
+              categories={categories}
+              timeBlocks={timeBlocks}
               onUpdate={handleUpdateEvent}
               onCreateCategory={handleCreateCategory}
             />
