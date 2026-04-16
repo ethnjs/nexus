@@ -11,6 +11,7 @@ import {
   EventCreate, TimeBlock, TournamentCategory, Event,
 } from "@/lib/api";
 import { parseApiError } from "@/lib/errors";
+import { useTournament } from "@/lib/useTournament";
 
 // ─── CSV parsing ──────────────────────────────────────────────────────────────
 
@@ -455,6 +456,11 @@ export function CsvImportBar({
   timeBlocks,
   onImportComplete,
 }: Props) {
+  const { selectedTournament } = useTournament();
+  const tournamentSlug = selectedTournament
+    ? selectedTournament.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    : `tournament-${tournamentId}`;
+
   type OpenMenu = "import" | "export" | "help" | null;
   const [openMenu, setOpenMenu] = useState<OpenMenu>(null);
 
@@ -580,12 +586,12 @@ export function CsvImportBar({
   // ── Export ───────────────────────────────────────────────────────────────
 
   const handleExportEvents = () => {
-    downloadCSV(buildEventsCSV(events, categories, timeBlocks), `events-${tournamentId}-${todayStr()}.csv`);
+    downloadCSV(buildEventsCSV(events, categories, timeBlocks), `${tournamentSlug}-events-${todayStr()}.csv`);
     setOpenMenu(null);
   };
 
   const handleExportTimeBlocks = () => {
-    downloadCSV(buildTimeBlocksCSV(timeBlocks, events), `time-blocks-${tournamentId}-${todayStr()}.csv`);
+    downloadCSV(buildTimeBlocksCSV(timeBlocks, events), `${tournamentSlug}-time-blocks-${todayStr()}.csv`);
     setOpenMenu(null);
   };
 
