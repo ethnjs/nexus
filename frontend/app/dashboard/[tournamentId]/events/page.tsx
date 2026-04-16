@@ -237,6 +237,7 @@ export default function EventsPage() {
 
       <CsvImportBar
         tournamentId={tournamentId}
+        events={events}
         categories={categories}
         timeBlocks={timeBlocks}
         onImportComplete={() => loadAll(true)}
