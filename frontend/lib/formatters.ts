@@ -1,13 +1,12 @@
 // ─── Time / date formatters ───────────────────────────────────────────────────
 
-/** "HH:MM" (24hr) → "9 AM" / "12:30 PM" */
+/** "HH:MM" (24hr) → "9:00 AM" / "12:30 PM" */
 export function fmtTime(hhmm: string): string {
   const [hStr, mStr] = hhmm.split(":");
   const h = parseInt(hStr, 10);
-  const m = parseInt(mStr, 10);
   const period = h >= 12 ? "PM" : "AM";
   const h12 = h % 12 === 0 ? 12 : h % 12;
-  return m === 0 ? `${h12} ${period}` : `${h12}:${mStr} ${period}`;
+  return `${h12}:${mStr} ${period}`;
 }
 
 /** "YYYY-MM-DD" → "Wed, Mar 15" */

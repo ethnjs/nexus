@@ -2,6 +2,8 @@
 
 import { TimeBlock, Event } from "@/lib/api";
 import { fmtTime, fmtDate } from "@/lib/formatters";
+import { Button } from "@/components/ui/Button";
+import { IconPlus, IconEdit, IconTrash } from "@/components/ui/Icons";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -65,54 +67,6 @@ function DaySeparator({ date }: { date: string }) {
   );
 }
 
-// ─── Action button ────────────────────────────────────────────────────────────
-
-function ActionBtn({
-  children,
-  onClick,
-  danger,
-  title,
-}: {
-  children: React.ReactNode;
-  onClick: () => void;
-  danger?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        fontFamily:  "var(--font-sans)",
-        fontSize:    "12px",
-        fontWeight:  500,
-        color:       danger ? "var(--color-danger)" : "var(--color-text-secondary)",
-        background:  "none",
-        border:      "none",
-        padding:     "3px 8px",
-        borderRadius: "var(--radius-sm)",
-        cursor:      "pointer",
-        transition:  "background var(--transition-fast), color var(--transition-fast)",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = danger
-          ? "var(--color-danger-subtle)"
-          : "var(--color-accent-subtle)";
-        (e.currentTarget as HTMLButtonElement).style.color = danger
-          ? "var(--color-danger)"
-          : "var(--color-text-primary)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "none";
-        (e.currentTarget as HTMLButtonElement).style.color = danger
-          ? "var(--color-danger)"
-          : "var(--color-text-secondary)";
-      }}
-    >
-      {children}
-    </button>
-  );
-}
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -161,35 +115,10 @@ export function TimeBlocksTable({
         </span>
 
         {!isReadOnly && (
-          <button
-            onClick={onAdd}
-            style={{
-              display:      "flex",
-              alignItems:   "center",
-              gap:          "5px",
-              fontFamily:   "var(--font-sans)",
-              fontSize:     "13px",
-              fontWeight:   500,
-              color:        "var(--color-text-inverse)",
-              background:   "var(--color-accent)",
-              border:       "none",
-              borderRadius: "var(--radius-md)",
-              padding:      "6px 14px",
-              cursor:       "pointer",
-              transition:   "background var(--transition-fast)",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "var(--color-accent-hover)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLButtonElement).style.background =
-                "var(--color-accent)";
-            }}
-          >
-            <PlusIcon />
+          <Button size="sm" onClick={onAdd}>
+            <IconPlus size={12} />
             Add block
-          </button>
+          </Button>
         )}
       </div>
 
@@ -336,16 +265,24 @@ export function TimeBlocksTable({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        <ActionBtn onClick={() => onEdit(block)} title="Edit block">
-                          Edit
-                        </ActionBtn>
-                        <ActionBtn
-                          onClick={() => onDelete(block)}
-                          danger
-                          title="Delete block"
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onEdit(block)}
+                          title="Edit block"
+                          style={{ padding: "0 8px" }}
                         >
-                          Delete
-                        </ActionBtn>
+                          <IconEdit size={14} />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => onDelete(block)}
+                          title="Delete block"
+                          style={{ padding: "0 8px", color: "var(--color-danger)" }}
+                        >
+                          <IconTrash size={14} />
+                        </Button>
                       </td>
                     )}
                   </tr>
@@ -359,20 +296,3 @@ export function TimeBlocksTable({
   );
 }
 
-// ─── Icon ─────────────────────────────────────────────────────────────────────
-
-function PlusIcon() {
-  return (
-    <svg
-      width="12"
-      height="12"
-      viewBox="0 0 12 12"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-    >
-      <path d="M6 1v10M1 6h10" />
-    </svg>
-  );
-}
