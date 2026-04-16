@@ -394,6 +394,7 @@ export default function EventsPage() {
               timeBlocks={timeBlocks}
               onUpdate={handleUpdateEvent}
               onCreateCategory={handleCreateCategory}
+              onAddClick={() => setPanel({ type: "add" })}
             />
           )}
 

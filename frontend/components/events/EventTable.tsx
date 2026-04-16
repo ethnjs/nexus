@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useRef, useEffect, CSSProperties } from "react";
+import { useState, useRef, useEffect, useMemo, CSSProperties } from "react";
 import { Event, EventCreate, TimeBlock, TournamentCategory } from "@/lib/api";
 import { catColorVars, fmtTime, fmtDateShort } from "@/lib/formatters";
+import { Button } from "@/components/ui/Button";
+import { IconPlus, IconSearch } from "@/components/ui/Icons";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type TextCol = "name" | "building" | "room" | "floor";
-type NumCol  = "volunteers_needed";
+type TextCol    = "name" | "building" | "room" | "floor";
+type NumCol     = "volunteers_needed";
+type DivFilter  = "B" | "C" | null;
+type TypeFilter = "standard" | "trial" | null;
 
 interface Props {
   events:           Event[];
@@ -15,6 +19,7 @@ interface Props {
   timeBlocks:       TimeBlock[];
   onUpdate:         (id: number, delta: Partial<EventCreate>) => Promise<void>;
   onCreateCategory: (name: string) => Promise<TournamentCategory>;
+  onAddClick:       () => void;
   isReadOnly?:      boolean;
 }
 
@@ -599,11 +604,11 @@ function EventTableRow({
   return (
     <tr
       style={{
-        background:  "transparent",
-        transition:  "background var(--transition-fast)",
+        background: "var(--color-surface)",
+        transition: "background var(--transition-fast)",
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-surface)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "transparent"; }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-accent-subtle)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-surface)"; }}
     >
       {renderTextCell("name",              200)}
 
@@ -667,8 +672,41 @@ export function EventTable({
   timeBlocks,
   onUpdate,
   onCreateCategory,
+  onAddClick,
   isReadOnly,
 }: Props) {
+  const [search,     setSearch]     = useState("");
+  const [division,   setDivision]   = useState<DivFilter>(null);
+  const [eventType,  setEventType]  = useState<TypeFilter>(null);
+  const [categoryId, setCategoryId] = useState<number | null>(null);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return events.filter((e) => {
+      if (q && !e.name.toLowerCase().includes(q)) return false;
+      if (division   !== null && e.division    !== division)    return false;
+      if (eventType  !== null && e.event_type  !== eventType)   return false;
+      if (categoryId !== null && e.category_id !== categoryId)  return false;
+      return true;
+    });
+  }, [events, search, division, eventType, categoryId]);
+
+  const filterBtn = (active: boolean): CSSProperties => ({
+    fontFamily:   "var(--font-sans)",
+    fontSize:     "12px",
+    fontWeight:   active ? 600 : 400,
+    color:        active ? "var(--color-text-inverse)" : "var(--color-text-secondary)",
+    background:   active ? "var(--color-accent)" : "transparent",
+    border:       "1px solid var(--color-border)",
+    borderRadius: "var(--radius-sm)",
+    height:       "30px",
+    padding:      "0 10px",
+    cursor:       "pointer",
+    transition:   "background var(--transition-fast), color var(--transition-fast)",
+    whiteSpace:   "nowrap",
+    boxSizing:    "border-box",
+  });
+
   const cols: { label: string; width: number | "auto" }[] = [
     { label: "Name",        width: 200 },
     { label: "Category",    width: 130 },
@@ -691,7 +729,7 @@ export function EventTable({
     color:           "var(--color-text-secondary)",
     textTransform:   "uppercase",
     letterSpacing:   "0.04em",
-    background:      "var(--color-surface)",
+    background:      "var(--color-bg)",
     borderBottom:    "1px solid var(--color-border)",
     whiteSpace:      "nowrap",
     userSelect:      "none",
@@ -700,65 +738,192 @@ export function EventTable({
     zIndex:          10,
   };
 
-  if (events.length === 0) {
-    return (
-      <div
-        style={{
+  return (
+    <div>
+      {/* ── Toolbar ── */}
+      <div style={{
+        display:      "flex",
+        alignItems:   "center",
+        gap:          "10px",
+        marginBottom: "16px",
+        flexWrap:     "wrap",
+      }}>
+        {/* Search */}
+        <div style={{ position: "relative", flex: "1 1 200px", minWidth: "160px", maxWidth: "280px" }}>
+          <span style={{
+            position:      "absolute",
+            left:          "9px",
+            top:           "50%",
+            transform:     "translateY(-50%)",
+            color:         "var(--color-text-tertiary)",
+            display:       "flex",
+            pointerEvents: "none",
+          }}>
+            <IconSearch size={13} />
+          </span>
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search events…"
+            style={{
+              width:        "100%",
+              height:       "30px",
+              padding:      "0 10px 0 28px",
+              fontFamily:   "var(--font-mono)",
+              fontSize:     "12px",
+              color:        "var(--color-text-primary)",
+              background:   "var(--color-surface)",
+              border:       "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              outline:      "none",
+              boxSizing:    "border-box",
+            }}
+          />
+        </div>
+
+        {/* Division filter */}
+        <div style={{ display: "flex", gap: "4px" }}>
+          {([null, "B", "C"] as DivFilter[]).map((d) => (
+            <button key={String(d)} style={filterBtn(division === d)} onClick={() => setDivision(d)}>
+              {d === null ? "All divs" : `Div ${d}`}
+            </button>
+          ))}
+        </div>
+
+        {/* Type filter */}
+        <div style={{ display: "flex", gap: "4px" }}>
+          {([null, "standard", "trial"] as TypeFilter[]).map((t) => (
+            <button key={String(t)} style={filterBtn(eventType === t)} onClick={() => setEventType(t)}>
+              {t === null ? "All types" : t === "standard" ? "Standard" : "Trial"}
+            </button>
+          ))}
+        </div>
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* Result count */}
+        <span style={{
+          fontFamily: "var(--font-sans)",
+          fontSize:   "12px",
+          color:      "var(--color-text-tertiary)",
+          whiteSpace: "nowrap",
+        }}>
+          {filtered.length} event{filtered.length !== 1 ? "s" : ""}
+        </span>
+
+        {/* Add event */}
+        {!isReadOnly && (
+          <Button size="sm" onClick={onAddClick}>
+            <IconPlus size={12} />
+            Add event
+          </Button>
+        )}
+      </div>
+
+      {/* ── Category chips ── */}
+      {categories.length > 0 && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "16px" }}>
+          <button style={filterBtn(categoryId === null)} onClick={() => setCategoryId(null)}>
+            All categories
+          </button>
+          {categories.map((cat, idx) => {
+            const active = categoryId === cat.id;
+            const cv     = catColorVars(idx);
+            return (
+              <button
+                key={cat.id}
+                onClick={() => setCategoryId(active ? null : cat.id)}
+                style={{
+                  fontFamily:   "var(--font-sans)",
+                  fontSize:     "12px",
+                  fontWeight:   active ? 600 : 400,
+                  color:        active ? cv.text : "var(--color-text-secondary)",
+                  background:   active ? cv.subtle : "transparent",
+                  border:       `1px solid ${active ? cv.main : "var(--color-border)"}`,
+                  borderRadius: "var(--radius-sm)",
+                  height:       "30px",
+                  padding:      "0 10px",
+                  cursor:       "pointer",
+                  transition:   "background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast)",
+                  whiteSpace:   "nowrap",
+                  boxSizing:    "border-box",
+                }}
+              >
+                {cat.name}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── Table ── */}
+      {filtered.length === 0 ? (
+        <div style={{
           display:        "flex",
+          flexDirection:  "column",
           alignItems:     "center",
           justifyContent: "center",
-          height:         "120px",
+          height:         "200px",
+          gap:            "10px",
+          border:         "1px dashed var(--color-border)",
+          borderRadius:   "var(--radius-md)",
           color:          "var(--color-text-tertiary)",
           fontFamily:     "var(--font-sans)",
           fontSize:       "13px",
-          border:         "1px dashed var(--color-border)",
-          borderRadius:   "var(--radius-md)",
-        }}
-      >
-        No events match your filters.
-      </div>
-    );
-  }
-
-  return (
-    <div
-      style={{
-        overflowX:    "auto",
-        border:       "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)",
-      }}
-    >
-      <table
-        style={{
-          tableLayout:    "fixed",
-          width:          "100%",
-          minWidth:       "1100px",
-          borderCollapse: "collapse",
-        }}
-      >
-        <thead>
-          <tr>
-            {cols.map((col) => (
-              <th key={col.label} style={{ ...thStyle, width: col.width }}>
-                {col.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {events.map((ev) => (
-            <EventTableRow
-              key={ev.id}
-              event={ev}
-              categories={categories}
-              timeBlocks={timeBlocks}
-              onUpdate={onUpdate}
-              onCreateCategory={onCreateCategory}
-              isReadOnly={isReadOnly}
-            />
-          ))}
-        </tbody>
-      </table>
+        }}>
+          {events.length === 0 ? (
+            <>
+              <span>No events yet.</span>
+              {!isReadOnly && (
+                <Button size="sm" onClick={onAddClick}>
+                  <IconPlus size={12} />
+                  Add first event
+                </Button>
+              )}
+            </>
+          ) : (
+            <span>No events match your filters.</span>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          overflowX:    "auto",
+          border:       "1px solid var(--color-border)",
+          borderRadius: "var(--radius-md)",
+        }}>
+          <table style={{
+            tableLayout:    "fixed",
+            width:          "100%",
+            minWidth:       "1100px",
+            borderCollapse: "collapse",
+          }}>
+            <thead>
+              <tr>
+                {cols.map((col) => (
+                  <th key={col.label} style={{ ...thStyle, width: col.width }}>
+                    {col.label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((ev) => (
+                <EventTableRow
+                  key={ev.id}
+                  event={ev}
+                  categories={categories}
+                  timeBlocks={timeBlocks}
+                  onUpdate={onUpdate}
+                  onCreateCategory={onCreateCategory}
+                  isReadOnly={isReadOnly}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
