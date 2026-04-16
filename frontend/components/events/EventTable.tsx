@@ -507,7 +507,9 @@ function TimeBlocksCell({
           {available.map((b) => (
             <button
               key={b.id}
-              onClick={() => { setPickerOpen(false); onAdd(b.id); }}
+              onClick={() => onAdd(b.id)}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "var(--color-accent-subtle)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = "transparent"; }}
               style={{
                 display:    "block",
                 width:      "100%",
@@ -519,11 +521,23 @@ function TimeBlocksCell({
                 background: "transparent",
                 border:     "none",
                 cursor:     "pointer",
+                transition: "background var(--transition-fast)",
               }}
             >
               {b.label} · {fmtDateShort(b.date)} {fmtTime(b.start)}–{fmtTime(b.end)}
             </button>
           ))}
+          {available.length === 0 && (
+            <div style={{
+              padding:    "7px 10px",
+              fontFamily: "var(--font-sans)",
+              fontSize:   "12px",
+              color:      "var(--color-text-tertiary)",
+              fontStyle:  "italic",
+            }}>
+              All blocks assigned
+            </div>
+          )}
         </div>
       )}
     </div>
