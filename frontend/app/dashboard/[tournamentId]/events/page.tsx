@@ -240,37 +240,52 @@ export default function EventsPage() {
   const [loading,    setLoading]    = useState(true);
   const [error,      setError]      = useState<string | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
-      const [evts, blocks, cats] = await Promise.all([
+      const [rawEvts, blocks, cats] = await Promise.all([
         eventsApi.listByTournament(tournamentId),
         timeBlocksApi.listByTournament(tournamentId),
         categoriesApi.listByTournament(tournamentId),
       ]);
+      // Normalize: derive time_block_ids from time_blocks when the API omits the id array
+      const evts = rawEvts.map((e) => ({
+        ...e,
+        time_block_ids: (e.time_blocks ?? []).map((b) => b.id),
+      }));
       setEvents(evts);
       setTimeBlocks(blocks);
       setCategories(cats);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load events");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [tournamentId]);
 
   useEffect(() => { loadAll(); }, [loadAll]);
 
+  // Keep panel.event in sync with fresh data after any silent refresh
+  useEffect(() => {
+    setPanel((prev) => {
+      if (prev?.type !== "edit") return prev;
+      const updated = events.find((e) => e.id === prev.event.id);
+      return updated ? { type: "edit", event: updated } : prev;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events]);
+
   // ── Time block handlers ───────────────────────────────────────────────────
 
   const handleAddBlock = async (data: TimeBlockCreate) => {
     await timeBlocksApi.create(tournamentId, data);
-    await loadAll();
+    await loadAll(true);
   };
 
   const handleEditBlock = async (id: number, data: Partial<TimeBlockCreate>) => {
     await timeBlocksApi.update(tournamentId, id, data);
-    await loadAll();
+    await loadAll(true);
   };
 
   // ── Delete block (with 409 modal guard) ──────────────────────────────────
@@ -286,17 +301,17 @@ export default function EventsPage() {
     } else {
       await eventsApi.create(tournamentId, data);
     }
-    await loadAll();
+    await loadAll(true);
   };
 
   const handleUpdateEvent = async (id: number, delta: Partial<EventCreate>) => {
     await eventsApi.update(tournamentId, id, delta);
-    await loadAll();
+    await loadAll(true);
   };
 
   const handleCreateCategory = async (name: string) => {
     const cat = await categoriesApi.create(tournamentId, name);
-    await loadAll();
+    await loadAll(true);
     return cat;
   };
 
@@ -308,7 +323,7 @@ export default function EventsPage() {
   const handleDeleteClick = async (block: TimeBlock) => {
     try {
       await timeBlocksApi.delete(tournamentId, block.id);
-      await loadAll();
+      await loadAll(true);
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) {
         const detail = e.detail as { affected_events?: AffectedEvent[] };
@@ -325,7 +340,7 @@ export default function EventsPage() {
     await timeBlocksApi.delete(tournamentId, deleteTarget.id, true);
     setDeleteTarget(null);
     setAffectedEvents([]);
-    await loadAll();
+    await loadAll(true);
   };
 
   // ── Render ────────────────────────────────────────────────────────────────
