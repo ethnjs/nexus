@@ -65,11 +65,11 @@ export function IconSheets({ size = 18, ...props }: IconProps) {
   );
 }
 
-export function IconUpload({ size = 16, ...props }: IconProps) {
+export function IconUpload({ size = 14, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <path d="M8 10V2M4 6l4-4 4 4" />
-      <path d="M2 13h12" />
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <path d="M8 10V2M5 5l3-3 3 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 11v2a1 1 0 001 1h8a1 1 0 001-1v-2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   );
 }
