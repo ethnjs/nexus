@@ -400,7 +400,7 @@ export function CsvImportBar({ tournamentId, categories, timeBlocks, onImportCom
                 left:         0,
                 zIndex:       100,
                 width:        "400px",
-                background:   "var(--color-surface-raised)",
+                background:   "var(--color-surface)",
                 border:       "1px solid var(--color-border)",
                 borderRadius: "var(--radius-md)",
                 boxShadow:    "var(--shadow-lg)",
