@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import {
-  IconUpload, IconExport, IconSheets, IconWarning, IconChevronDown,
+  IconUpload, IconExport, IconSheets, IconWarning, IconChevronDown, IconTemplate,
 } from "@/components/ui/Icons";
 import {
   eventsApi, timeBlocksApi, categoriesApi,
@@ -594,17 +594,18 @@ export function CsvImportBar({
   const importItems: MenuItem[] = [
     {
       label: "Events",
-      icon:  <IconUpload size={12} />,
+      icon:  <IconUpload size={14} />,
       onClick: () => { setOpenMenu(null); eventsFileRef.current?.click(); },
     },
     {
       label: "Time Blocks",
-      icon:  <IconUpload size={12} />,
+      icon:  <IconUpload size={14} />,
       onClick: () => { setOpenMenu(null); timeBlocksFileRef.current?.click(); },
     },
     "separator",
     {
       label: "Events template",
+      icon:  <IconTemplate size={14} />,
       onClick: () => {
         downloadCSV(EVENTS_CSV_TEMPLATE, "events-import-template.csv");
         setOpenMenu(null);
@@ -612,6 +613,7 @@ export function CsvImportBar({
     },
     {
       label: "Time Blocks template",
+      icon:  <IconTemplate size={14} />,
       onClick: () => {
         downloadCSV(TIME_BLOCKS_CSV_TEMPLATE, "time-blocks-import-template.csv");
         setOpenMenu(null);
@@ -622,12 +624,12 @@ export function CsvImportBar({
   const exportItems: MenuItem[] = [
     {
       label: "Events",
-      icon:  <IconExport size={12} />,
+      icon:  <IconExport size={14} />,
       onClick: handleExportEvents,
     },
     {
       label: "Time Blocks",
-      icon:  <IconExport size={12} />,
+      icon:  <IconExport size={14} />,
       onClick: handleExportTimeBlocks,
     },
   ];
@@ -674,7 +676,7 @@ export function CsvImportBar({
             onClick={() => toggle("import")}
             style={menuBtnStyle(openMenu === "import")}
           >
-            <IconUpload size={12} />
+            <IconUpload size={14} />
             Import CSV
             <IconChevronDown size={11} style={{ marginLeft: "1px", opacity: 0.6 }} />
           </button>
@@ -687,7 +689,7 @@ export function CsvImportBar({
             onClick={() => toggle("export")}
             style={menuBtnStyle(openMenu === "export")}
           >
-            <IconExport size={12} />
+            <IconExport size={14} />
             Export CSV
             <IconChevronDown size={11} style={{ marginLeft: "1px", opacity: 0.6 }} />
           </button>

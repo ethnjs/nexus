@@ -312,3 +312,17 @@ export function IconLayoutTable({ size = 14, ...props }: IconProps) {
     </svg>
   );
 }
+
+/** Document with a folded corner and text lines — used for CSV template downloads. */
+export function IconTemplate({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      {/* Page body — right side clipped for fold */}
+      <path d="M3 2h7l3 3v9a1 1 0 01-1 1H4a1 1 0 01-1-1V3a1 1 0 011-1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      {/* Fold triangle */}
+      <path d="M10 2v3h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Text lines */}
+      <path d="M5 8h6M5 10.5h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
