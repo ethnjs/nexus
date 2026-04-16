@@ -11,8 +11,8 @@ export function fmtTime(hhmm: string): string {
 
 /** "YYYY-MM-DD" → "Wed, Mar 15" */
 export function fmtDate(yyyymmdd: string): string {
-  const [, mo, d] = yyyymmdd.split("-").map(Number);
-  return new Date(0, mo - 1, d).toLocaleDateString("en-US", {
+  const [yr, mo, d] = yyyymmdd.split("-").map(Number);
+  return new Date(yr, mo - 1, d).toLocaleDateString("en-US", {
     weekday: "short",
     month: "short",
     day: "numeric",
@@ -21,8 +21,8 @@ export function fmtDate(yyyymmdd: string): string {
 
 /** "YYYY-MM-DD" → "Mar 15" */
 export function fmtDateShort(yyyymmdd: string): string {
-  const [, mo, d] = yyyymmdd.split("-").map(Number);
-  return new Date(0, mo - 1, d).toLocaleDateString("en-US", {
+  const [yr, mo, d] = yyyymmdd.split("-").map(Number);
+  return new Date(yr, mo - 1, d).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
   });
