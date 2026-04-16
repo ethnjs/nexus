@@ -11,6 +11,7 @@ import {
   TournamentCategory,
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -343,22 +344,13 @@ export default function EventsPage() {
           )}
 
           {activeTab === "blocks" && (
-            // TimeBlocksTable wired in step 4
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "320px",
-                border: "1px dashed var(--color-border)",
-                borderRadius: "var(--radius-md)",
-                color: "var(--color-text-tertiary)",
-                fontFamily: "var(--font-sans)",
-                fontSize: "13px",
-              }}
-            >
-              Time Blocks table — coming soon
-            </div>
+            <TimeBlocksTable
+              timeBlocks={timeBlocks}
+              events={events}
+              onAdd={() => {/* TODO: step 5 */}}
+              onEdit={() => {/* TODO: step 5 */}}
+              onDelete={() => {/* TODO: step 6 */}}
+            />
           )}
         </>
       )}
