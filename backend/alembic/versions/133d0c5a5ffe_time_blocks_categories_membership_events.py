@@ -149,7 +149,8 @@ def upgrade():
     # 7. Add events.category_id and backfill from events.category string
     # ------------------------------------------------------------------
     if not _has_column(conn, 'events', 'category_id'):
-        op.add_column('events', sa.Column('category_id', sa.Integer(), sa.ForeignKey('tournament_categories.id', ondelete='SET NULL'), nullable=True))
+        with op.batch_alter_table('events') as batch_op:
+            batch_op.add_column(sa.Column('category_id', sa.Integer(), sa.ForeignKey('tournament_categories.id', ondelete='SET NULL'), nullable=True))
 
     # For each distinct (tournament_id, category) string pair, find-or-create a TournamentCategory row
     rows = conn.execute(text(
@@ -225,39 +226,47 @@ def upgrade():
             )
 
     # ------------------------------------------------------------------
-    # 10. Drop legacy columns
+    # 10. Drop legacy columns (batch mode required for SQLite)
     # ------------------------------------------------------------------
     if _has_column(conn, 'tournaments', 'blocks'):
-        op.drop_column('tournaments', 'blocks')
-    if _has_column(conn, 'events', 'blocks'):
-        op.drop_column('events', 'blocks')
-    if _has_column(conn, 'events', 'category'):
-        op.drop_column('events', 'category')
+        with op.batch_alter_table('tournaments') as batch_op:
+            batch_op.drop_column('blocks')
+    if _has_column(conn, 'events', 'blocks') or _has_column(conn, 'events', 'category'):
+        with op.batch_alter_table('events') as batch_op:
+            if _has_column(conn, 'events', 'blocks'):
+                batch_op.drop_column('blocks')
+            if _has_column(conn, 'events', 'category'):
+                batch_op.drop_column('category')
     if _has_column(conn, 'memberships', 'assigned_event_id'):
-        op.drop_column('memberships', 'assigned_event_id')
+        with op.batch_alter_table('memberships') as batch_op:
+            batch_op.drop_column('assigned_event_id')
 
 
 def downgrade():
     conn = op.get_bind()
     insp = sa.inspect(conn)
 
-    # Re-add legacy columns
-    op.add_column('memberships', sa.Column('assigned_event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='SET NULL'), nullable=True))
-    op.add_column('events', sa.Column('category', sa.String(255), nullable=True))
-    op.add_column('events', sa.Column('blocks', sa.JSON(), nullable=True))
-    op.add_column('tournaments', sa.Column('blocks', sa.JSON(), nullable=True))
+    # Re-add legacy columns (batch mode required for SQLite)
+    with op.batch_alter_table('memberships') as batch_op:
+        batch_op.add_column(sa.Column('assigned_event_id', sa.Integer(), sa.ForeignKey('events.id', ondelete='SET NULL'), nullable=True))
+    with op.batch_alter_table('events') as batch_op:
+        batch_op.add_column(sa.Column('category', sa.String(255), nullable=True))
+        batch_op.add_column(sa.Column('blocks', sa.JSON(), nullable=True))
+    with op.batch_alter_table('tournaments') as batch_op:
+        batch_op.add_column(sa.Column('blocks', sa.JSON(), nullable=True))
 
     # Restore events.category from category_id
     conn.execute(text("""
-        UPDATE events e
+        UPDATE events
         SET category = (
-            SELECT tc.name FROM tournament_categories tc WHERE tc.id = e.category_id
+            SELECT tc.name FROM tournament_categories tc WHERE tc.id = events.category_id
         )
-        WHERE e.category_id IS NOT NULL
+        WHERE events.category_id IS NOT NULL
     """))
 
     if _has_column(conn, 'events', 'category_id'):
-        op.drop_column('events', 'category_id')
+        with op.batch_alter_table('events') as batch_op:
+            batch_op.drop_column('category_id')
 
     # Drop new tables (cascade handles association tables)
     if insp.has_table('membership_events'):
