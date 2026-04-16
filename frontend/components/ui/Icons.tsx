@@ -265,6 +265,15 @@ export function IconWarning({ size = 16, ...props }: IconProps) {
 
 // ─── Content ─────────────────────────────────────────────────────────────────
 
+export function IconSearch({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M11 11l2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconCalendar({ size = 13, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>

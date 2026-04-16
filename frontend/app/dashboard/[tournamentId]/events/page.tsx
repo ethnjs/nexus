@@ -18,6 +18,7 @@ import { IconUpload, IconSheets } from "@/components/ui/Icons";
 import { TimeBlocksTable } from "@/components/events/TimeBlocksTable";
 import { DeleteBlockModal, AffectedEvent } from "@/components/events/DeleteBlockModal";
 import { EventSidePanel } from "@/components/events/EventSidePanel";
+import { EventCardGrid } from "@/components/events/EventCardGrid";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -219,25 +220,6 @@ function TimelinePlaceholder() {
   );
 }
 
-function CardsPlaceholder() {
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "320px",
-        border: "1px dashed var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        color: "var(--color-text-tertiary)",
-        fontFamily: "var(--font-sans)",
-        fontSize: "13px",
-      }}
-    >
-      Cards view — coming soon
-    </div>
-  );
-}
 
 // ─── Inline icons ─────────────────────────────────────────────────────────────
 
@@ -390,7 +372,12 @@ export default function EventsPage() {
           )}
 
           {activeTab === "cards" && (
-            <CardsPlaceholder />
+            <EventCardGrid
+              events={events}
+              categories={categories}
+              onCardClick={(event) => setPanel({ type: "edit", event })}
+              onAddClick={() => setPanel({ type: "add" })}
+            />
           )}
 
           {activeTab === "blocks" && (
