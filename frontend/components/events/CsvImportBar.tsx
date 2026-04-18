@@ -52,45 +52,41 @@ interface ParsedEventRow {
   room:             string;
   floor:            string;
   volunteersNeeded: number;
-  blockLabels:      string[];
 }
 
 interface EventParseResult {
-  valid:         ParsedEventRow[];
-  errors:        Array<{ rowNum: number; message: string }>;
-  newCategories: string[];
-  unknownBlocks: string[];
+  valid:           ParsedEventRow[];
+  errors:          Array<{ rowNum: number; message: string }>;
+  newCategories:   string[];
+  hasBlocksColumn: boolean;
 }
 
 function parseEventsCSV(
   text: string,
   categories: TournamentCategory[],
-  timeBlocks: TimeBlock[],
 ): EventParseResult {
   const rows = parseCSVText(text);
   if (rows.length === 0) {
-    return { valid: [], errors: [], newCategories: [], unknownBlocks: [] };
+    return { valid: [], errors: [], newCategories: [], hasBlocksColumn: false };
   }
 
-  const headers    = rows[0].map((h) => h.toLowerCase().trim());
-  const col        = (name: string) => headers.indexOf(name);
-  const nameIdx    = col("name");
-  const catIdx     = col("category");
-  const divIdx     = col("division");
-  const typeIdx    = col("type");
-  const bldIdx     = col("building");
-  const roomIdx    = col("room");
-  const floorIdx   = col("floor");
-  const volIdx     = col("volunteers_needed");
-  const blocksIdx  = col("blocks");
+  const headers  = rows[0].map((h) => h.toLowerCase().trim());
+  const col      = (name: string) => headers.indexOf(name);
+  const nameIdx  = col("name");
+  const catIdx   = col("category");
+  const divIdx   = col("division");
+  const typeIdx  = col("type");
+  const bldIdx   = col("building");
+  const roomIdx  = col("room");
+  const floorIdx = col("floor");
+  const volIdx   = col("volunteers_needed");
 
+  const hasBlocksColumn  = headers.includes("blocks");
   const knownCatNames    = new Set(categories.map((c) => c.name.toLowerCase()));
-  const knownBlockLabels = new Set(timeBlocks.map((b) => b.label.toLowerCase()));
 
-  const valid:             ParsedEventRow[]                            = [];
-  const errors:            Array<{ rowNum: number; message: string }> = [];
+  const valid:           ParsedEventRow[]                            = [];
+  const errors:          Array<{ rowNum: number; message: string }> = [];
   const newCategoriesSet = new Set<string>();
-  const unknownBlocksSet = new Set<string>();
 
   for (let i = 1; i < rows.length; i++) {
     const row    = rows[i];
@@ -134,14 +130,6 @@ function parseEventsCSV(
       newCategoriesSet.add(categoryName);
     }
 
-    const rawBlocks  = get(blocksIdx).trim();
-    const allLabels  = rawBlocks
-      ? rawBlocks.split(";").map((l) => l.trim()).filter(Boolean)
-      : [];
-    for (const label of allLabels) {
-      if (!knownBlockLabels.has(label.toLowerCase())) unknownBlocksSet.add(label);
-    }
-
     valid.push({
       rowNum,
       name,
@@ -152,7 +140,6 @@ function parseEventsCSV(
       room:             get(roomIdx).trim(),
       floor:            get(floorIdx).trim(),
       volunteersNeeded,
-      blockLabels:      allLabels.filter((l) => knownBlockLabels.has(l.toLowerCase())),
     });
   }
 
@@ -160,7 +147,7 @@ function parseEventsCSV(
     valid,
     errors,
     newCategories: [...newCategoriesSet],
-    unknownBlocks: [...unknownBlocksSet],
+    hasBlocksColumn,
   };
 }
 
@@ -258,12 +245,10 @@ function todayStr(): string {
 function buildEventsCSV(
   events: Event[],
   categories: TournamentCategory[],
-  timeBlocks: TimeBlock[],
 ): string {
-  const catMap   = new Map(categories.map((c) => [c.id, c.name]));
-  const blockMap = new Map(timeBlocks.map((b) => [b.id, b.label]));
+  const catMap = new Map(categories.map((c) => [c.id, c.name]));
   const rows = [
-    ["name", "category", "division", "type", "building", "room", "floor", "volunteers_needed", "blocks"],
+    ["name", "category", "division", "type", "building", "room", "floor", "volunteers_needed"],
     ...events.map((e) => [
       e.name,
       catMap.get(e.category_id ?? -1) ?? "",
@@ -273,7 +258,6 @@ function buildEventsCSV(
       e.room ?? "",
       e.floor ?? "",
       String(e.volunteers_needed),
-      (e.time_block_ids ?? []).map((id) => blockMap.get(id) ?? "").filter(Boolean).join(";"),
     ]),
   ];
   return rows.map((r) => r.map(escapeCSVField).join(",")).join("\r\n");
@@ -296,9 +280,9 @@ function buildTimeBlocksCSV(timeBlocks: TimeBlock[], events: Event[]): string {
 // ─── Templates ────────────────────────────────────────────────────────────────
 
 const EVENTS_CSV_TEMPLATE = [
-  "name,category,division,type,building,room,floor,volunteers_needed,blocks",
-  '"Sample Event A",Science,B,standard,Main Building,101,1,3,"Morning A;Afternoon B"',
-  '"Sample Event B",,C,trial,,,,2,',
+  "name,category,division,type,building,room,floor,volunteers_needed",
+  '"Sample Event A",Science,B,standard,Main Building,101,1,3',
+  '"Sample Event B",,C,trial,,,,2',
 ].join("\r\n");
 
 const TIME_BLOCKS_CSV_TEMPLATE = [
@@ -318,7 +302,6 @@ const EVENTS_HELP_COLUMNS = [
   { col: "room",             req: false, desc: "Room identifier. Free text." },
   { col: "floor",            req: false, desc: "Floor identifier. Free text." },
   { col: "volunteers_needed",req: false, desc: "Integer ≥ 1. Defaults to 2." },
-  { col: "blocks",           req: false, desc: 'Semicolon-separated block labels. Unrecognized labels are skipped.' },
 ];
 
 const TIME_BLOCKS_HELP_COLUMNS = [
@@ -487,7 +470,7 @@ export function CsvImportBar({
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const result = parseEventsCSV(ev.target?.result as string, categories, timeBlocks);
+      const result = parseEventsCSV(ev.target?.result as string, categories);
       setPreview({ kind: "events", result });
       setImportError(null);
     };
@@ -522,7 +505,6 @@ export function CsvImportBar({
         const created = await categoriesApi.create(tournamentId, catName);
         catMap.set(catName.toLowerCase(), created.id);
       }
-      const blockMap = new Map<string, number>(timeBlocks.map((b) => [b.label.toLowerCase(), b.id]));
 
       for (let i = 0; i < result.valid.length; i++) {
         const row = result.valid[i];
@@ -535,9 +517,7 @@ export function CsvImportBar({
           room:              row.room      || null,
           floor:             row.floor     || null,
           volunteers_needed: row.volunteersNeeded,
-          time_block_ids:    row.blockLabels
-            .map((l) => blockMap.get(l.toLowerCase()))
-            .filter((id): id is number => id !== undefined),
+          time_block_ids:    [],
         };
         await eventsApi.create(tournamentId, body);
         setImportProgress({ done: i + 1, total: result.valid.length });
@@ -586,7 +566,7 @@ export function CsvImportBar({
   // ── Export ───────────────────────────────────────────────────────────────
 
   const handleExportEvents = () => {
-    downloadCSV(buildEventsCSV(events, categories, timeBlocks), `${tournamentSlug}-events-${todayStr()}.csv`);
+    downloadCSV(buildEventsCSV(events, categories), `${tournamentSlug}-events-${todayStr()}.csv`);
     setOpenMenu(null);
   };
 
@@ -880,9 +860,9 @@ function ImportPreviewModal({ preview, importing, progress, error, onImport, onC
   const errors   = preview.result.errors;
   const noun     = isEvents ? "event" : "block";
 
-  const newCategories = isEvents ? (preview.result as EventParseResult).newCategories : [];
-  const unknownBlocks = isEvents ? (preview.result as EventParseResult).unknownBlocks : [];
-  const hasWarnings   = newCategories.length > 0 || unknownBlocks.length > 0;
+  const newCategories  = isEvents ? (preview.result as EventParseResult).newCategories : [];
+  const hasBlocksCol   = isEvents ? (preview.result as EventParseResult).hasBlocksColumn : false;
+  const hasWarnings    = newCategories.length > 0;
 
   const title = isEvents ? "Import events — preview" : "Import time blocks — preview";
 
@@ -902,19 +882,24 @@ function ImportPreviewModal({ preview, importing, progress, error, onImport, onC
         )}
       </div>
 
+      {/* blocks column notice (events only) */}
+      {hasBlocksCol && (
+        <div style={{ padding: "12px 14px", background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", marginBottom: "14px", display: "flex", gap: "10px", alignItems: "flex-start" }}>
+          <IconWarning size={15} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "1px" }} />
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)", lineHeight: 1.5 }}>
+            A &ldquo;blocks&rdquo; column was found and will be ignored. Block assignments must be done inside NEXUS after import.
+          </p>
+        </div>
+      )}
+
       {/* Warnings (events only) */}
       {hasWarnings && (
         <div style={{ padding: "12px 14px", background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", marginBottom: "14px", display: "flex", gap: "10px", alignItems: "flex-start" }}>
           <IconWarning size={15} style={{ color: "var(--color-warning)", flexShrink: 0, marginTop: "1px" }} />
           <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)", lineHeight: 1.5 }}>
             {newCategories.length > 0 && (
-              <p style={{ marginBottom: unknownBlocks.length > 0 ? "6px" : 0 }}>
-                <strong>New categories will be created:</strong> {newCategories.join(", ")}
-              </p>
-            )}
-            {unknownBlocks.length > 0 && (
               <p>
-                <strong>Unknown block labels will be skipped:</strong> {unknownBlocks.join(", ")}
+                <strong>New categories will be created:</strong> {newCategories.join(", ")}
               </p>
             )}
           </div>
