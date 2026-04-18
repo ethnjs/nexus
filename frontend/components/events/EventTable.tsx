@@ -14,13 +14,17 @@ type DivFilter  = "B" | "C" | null;
 type TypeFilter = "standard" | "trial" | null;
 
 interface Props {
-  events:           Event[];
-  categories:       TournamentCategory[];
-  timeBlocks:       TimeBlock[];
-  onUpdate:         (id: number, delta: Partial<EventCreate>) => Promise<void>;
-  onCreateCategory: (name: string) => Promise<TournamentCategory>;
-  onAddClick:       () => void;
-  isReadOnly?:      boolean;
+  events:             Event[];
+  categories:         TournamentCategory[];
+  timeBlocks:         TimeBlock[];
+  onUpdate:           (id: number, delta: Partial<EventCreate>) => Promise<void>;
+  onCreateCategory:   (name: string) => Promise<TournamentCategory>;
+  onAddClick:         () => void;
+  isReadOnly?:        boolean;
+  selectMode?:        boolean;
+  selectedIds?:       Set<number>;
+  onToggleSelect?:    (id: number) => void;
+  onEnterSelectMode?: () => void;
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -553,6 +557,9 @@ function EventTableRow({
   onUpdate,
   onCreateCategory,
   isReadOnly,
+  selectMode,
+  selected,
+  onToggleSelect,
 }: {
   event:            Event;
   categories:       TournamentCategory[];
@@ -560,6 +567,9 @@ function EventTableRow({
   onUpdate:         (id: number, delta: Partial<EventCreate>) => Promise<void>;
   onCreateCategory: (name: string) => Promise<TournamentCategory>;
   isReadOnly?:      boolean;
+  selectMode?:      boolean;
+  selected?:        boolean;
+  onToggleSelect?:  () => void;
 }) {
   const [editing,  setEditing]  = useState<{ col: TextCol | NumCol; draft: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -639,13 +649,38 @@ function EventTableRow({
 
   return (
     <tr
+      onClick={selectMode ? onToggleSelect : undefined}
       style={{
-        background: "var(--color-surface)",
+        background: selected ? "var(--color-accent-subtle)" : "var(--color-surface)",
+        cursor:     selectMode ? "pointer" : "default",
         transition: "background var(--transition-fast)",
       }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-accent-subtle)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-surface)"; }}
+      onMouseEnter={(e) => { if (!selected) (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-accent-subtle)"; }}
+      onMouseLeave={(e) => { if (!selected) (e.currentTarget as HTMLTableRowElement).style.background = "var(--color-surface)"; }}
     >
+      {/* Checkbox cell in select mode */}
+      {selectMode && (
+        <td style={{ ...cell, width: 40, textAlign: "center", padding: "0 8px" }}>
+          <div style={{
+            display:        "inline-flex",
+            alignItems:     "center",
+            justifyContent: "center",
+            width:          "16px",
+            height:         "16px",
+            borderRadius:   "3px",
+            border:         `2px solid ${selected ? "var(--color-accent)" : "var(--color-border)"}`,
+            background:     selected ? "var(--color-accent)" : "var(--color-surface)",
+            flexShrink:     0,
+          }}>
+            {selected && (
+              <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+        </td>
+      )}
+
       {renderTextCell("name",              200)}
 
       <td style={{ ...cell, width: 200, overflow: "visible" }}>
@@ -710,6 +745,10 @@ export function EventTable({
   onCreateCategory,
   onAddClick,
   isReadOnly,
+  selectMode,
+  selectedIds,
+  onToggleSelect,
+  onEnterSelectMode,
 }: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
@@ -744,6 +783,7 @@ export function EventTable({
   });
 
   const cols: { label: string; width: number | "auto" }[] = [
+    ...(selectMode ? [{ label: "", width: 40 as number | "auto" }] : []),
     { label: "Name",        width: 200 },
     { label: "Category",    width: 200 },
     { label: "Division",    width: 90  },
@@ -848,6 +888,13 @@ export function EventTable({
         }}>
           {filtered.length} event{filtered.length !== 1 ? "s" : ""}
         </span>
+
+        {/* Select button */}
+        {!isReadOnly && !selectMode && (
+          <Button size="sm" variant="secondary" onClick={onEnterSelectMode}>
+            Select
+          </Button>
+        )}
 
         {/* Add event */}
         {!isReadOnly && (
@@ -954,6 +1001,9 @@ export function EventTable({
                   onUpdate={onUpdate}
                   onCreateCategory={onCreateCategory}
                   isReadOnly={isReadOnly}
+                  selectMode={selectMode}
+                  selected={selectedIds?.has(ev.id)}
+                  onToggleSelect={() => onToggleSelect?.(ev.id)}
                 />
               ))}
             </tbody>

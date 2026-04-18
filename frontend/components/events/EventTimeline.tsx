@@ -31,6 +31,73 @@ interface Props {
   onAddClick:   () => void;
 }
 
+// ─── Column layout ────────────────────────────────────────────────────────────
+
+export type ColumnLayout = {
+  block:          TimeBlock;
+  xOffset:        number;       // left px from start of column grid (excl. label col)
+  widthFraction:  number;       // 1.0 for all blocks (each occupies one full colW slot)
+  mergedGroupId:  string | null; // non-null when block is part of an overlap group
+};
+
+function toMinutes(t: string): number {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+}
+
+function blocksOverlap(a: TimeBlock, b: TimeBlock): boolean {
+  const s1 = toMinutes(a.start), e1 = toMinutes(a.end);
+  const s2 = toMinutes(b.start), e2 = toMinutes(b.end);
+  function toRanges(s: number, e: number): [number, number][] {
+    return e <= s ? [[s, 1440], [0, e]] : [[s, e]];
+  }
+  for (const [a1, b1] of toRanges(s1, e1))
+    for (const [a2, b2] of toRanges(s2, e2))
+      if (a1 < b2 && b1 > a2) return true;
+  return false;
+}
+
+export function resolveColumnLayout(blocks: TimeBlock[], colW: number): ColumnLayout[] {
+  if (blocks.length === 0) return [];
+
+  // Union-find over block IDs to detect transitive overlap groups
+  const parent = new Map<number, number>(blocks.map((b) => [b.id, b.id]));
+
+  function find(id: number): number {
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    let curr = id;
+    while (curr !== root) { const next = parent.get(curr)!; parent.set(curr, root); curr = next; }
+    return root;
+  }
+  function union(a: number, b: number) {
+    const ra = find(a), rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  }
+
+  for (let i = 0; i < blocks.length; i++)
+    for (let j = i + 1; j < blocks.length; j++)
+      if (blocks[i].date === blocks[j].date && blocksOverlap(blocks[i], blocks[j]))
+        union(blocks[i].id, blocks[j].id);
+
+  const groupSizes = new Map<number, number>();
+  for (const b of blocks) {
+    const root = find(b.id);
+    groupSizes.set(root, (groupSizes.get(root) ?? 0) + 1);
+  }
+
+  return blocks.map((block, i) => {
+    const root = find(block.id);
+    const size = groupSizes.get(root) ?? 1;
+    return {
+      block,
+      xOffset:       i * colW,
+      widthFraction: 1.0,
+      mergedGroupId: size > 1 ? String(root) : null,
+    };
+  });
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 interface Run { startIdx: number; spanCount: number }
@@ -136,8 +203,21 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
     () => [...events.filter((e) => (e.time_block_ids ?? []).length === 0)].sort((a, b) => a.name.localeCompare(b.name)),
     [events],
   );
-  const groups     = useMemo(() => buildGroups(scheduled, categories, groupBy), [scheduled, categories, groupBy]);
-  const dateGroups = useMemo(() => buildDateGroups(timeBlocks), [timeBlocks]);
+  const groups        = useMemo(() => buildGroups(scheduled, categories, groupBy), [scheduled, categories, groupBy]);
+  const dateGroups    = useMemo(() => buildDateGroups(timeBlocks), [timeBlocks]);
+  const columnLayout  = useMemo(() => resolveColumnLayout(timeBlocks, colW), [timeBlocks, colW]);
+
+  // Pre-build a map from mergedGroupId → all blocks in that group (for tooltips)
+  const mergedGroupBlocks = useMemo(() => {
+    const map = new Map<string, TimeBlock[]>();
+    for (const col of columnLayout) {
+      if (col.mergedGroupId) {
+        if (!map.has(col.mergedGroupId)) map.set(col.mergedGroupId, []);
+        map.get(col.mergedGroupId)!.push(col.block);
+      }
+    }
+    return map;
+  }, [columnLayout]);
 
   // ── Shared styles ──────────────────────────────────────────────────────────
 
@@ -251,18 +331,39 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
       {/* Block row */}
       <div style={{ display: "flex", borderBottom: "2px solid var(--color-border)", background: "var(--color-bg)" }}>
         <div style={{ width: LABEL_W, flexShrink: 0, height: BLOCK_ROW_H, position: "sticky", left: 0, zIndex: 15, background: "var(--color-bg)", borderRight: "1px solid var(--color-border)" }} />
-        {timeBlocks.map((block) => (
-          <div key={block.id} style={{ width: colW, flexShrink: 0, height: BLOCK_ROW_H, display: "flex", flexDirection: "column", justifyContent: "center", padding: "0 6px", overflow: "hidden", borderRight: "1px solid var(--color-border)" }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {block.label}
-            </span>
-            {colW >= 110 && (
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
-                {fmtTime(block.start)}–{fmtTime(block.end)}
+        {columnLayout.map((col) => {
+          const groupBlocks = col.mergedGroupId ? (mergedGroupBlocks.get(col.mergedGroupId) ?? []) : [];
+          const tooltip = col.mergedGroupId
+            ? groupBlocks.map((b) => `${b.label} (${fmtTime(b.start)}–${fmtTime(b.end)})`).join(" and ") + " overlap"
+            : undefined;
+          return (
+            <div
+              key={col.block.id}
+              title={tooltip}
+              style={{
+                width:           colW,
+                flexShrink:      0,
+                height:          BLOCK_ROW_H,
+                display:         "flex",
+                flexDirection:   "column",
+                justifyContent:  "center",
+                padding:         "0 6px",
+                overflow:        "hidden",
+                borderRight:     "1px solid var(--color-border)",
+                background:      col.mergedGroupId ? "#FAEEDA" : undefined,
+              }}
+            >
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {col.block.label}
               </span>
-            )}
-          </div>
-        ))}
+              {colW >= 110 && (
+                <span style={{ fontFamily: "var(--font-mono)", fontSize: "10px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
+                  {fmtTime(col.block.start)}–{fmtTime(col.block.end)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

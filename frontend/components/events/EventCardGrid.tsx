@@ -10,10 +10,14 @@ import { EventCard } from "@/components/events/EventCard";
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  events:      Event[];
-  categories:  TournamentCategory[];
-  onCardClick: (event: Event) => void;
-  onAddClick:  () => void;
+  events:            Event[];
+  categories:        TournamentCategory[];
+  onCardClick:       (event: Event) => void;
+  onAddClick:        () => void;
+  selectMode?:       boolean;
+  selectedIds?:      Set<number>;
+  onToggleSelect?:   (id: number) => void;
+  onEnterSelectMode?: () => void;
 }
 
 // ─── Filter types ─────────────────────────────────────────────────────────────
@@ -23,7 +27,7 @@ type TypeFilter = "standard" | "trial" | null;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCardGrid({ events, categories, onCardClick, onAddClick }: Props) {
+export function EventCardGrid({ events, categories, onCardClick, onAddClick, selectMode, selectedIds, onToggleSelect, onEnterSelectMode }: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
   const [eventType,  setEventType]  = useState<TypeFilter>(null);
@@ -133,6 +137,13 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
           {filtered.length} event{filtered.length !== 1 ? "s" : ""}
         </span>
 
+        {/* Select button */}
+        {!selectMode && (
+          <Button size="sm" variant="secondary" onClick={onEnterSelectMode}>
+            Select
+          </Button>
+        )}
+
         {/* Add event */}
         <Button size="sm" onClick={onAddClick}>
           <IconPlus size={12} />
@@ -217,7 +228,10 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick }: P
               key={event.id}
               event={event}
               categories={categories}
-              onClick={() => onCardClick(event)}
+              onClick={selectMode ? undefined : () => onCardClick(event)}
+              selectMode={selectMode}
+              selected={selectedIds?.has(event.id)}
+              onToggleSelect={() => onToggleSelect?.(event.id)}
             />
           ))}
         </div>

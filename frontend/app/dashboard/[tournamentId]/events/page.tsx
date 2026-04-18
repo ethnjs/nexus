@@ -150,7 +150,7 @@ export default function EventsPage() {
 
   // ── Event side panel ─────────────────────────────────────────────────────
 
-  type PanelMode = { type: "add" } | { type: "edit"; event: Event } | null;
+  type PanelMode = { type: "add" } | { type: "edit"; event: Event } | { type: "multi-edit"; ids: number[] } | null;
   const [panel, setPanel] = useState<PanelMode>(null);
 
   // Normalize a single freshly-fetched/updated event the same way loadAll does
@@ -197,6 +197,20 @@ export default function EventsPage() {
     await loadAll(true);
     return cat;
   };
+
+  // ── Select mode ───────────────────────────────────────────────────────────
+
+  const [selectMode,   setSelectMode]   = useState(false);
+  const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set());
+
+  const handleEnterSelectMode = () => setSelectMode(true);
+  const handleExitSelectMode  = () => { setSelectMode(false); setSelectedIds(new Set()); };
+  const handleToggleSelect    = (id: number) =>
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   // ── Delete block ──────────────────────────────────────────────────────────
 
@@ -294,6 +308,10 @@ export default function EventsPage() {
               categories={categories}
               onCardClick={openEditPanel}
               onAddClick={() => setPanel({ type: "add" })}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onEnterSelectMode={handleEnterSelectMode}
             />
           )}
 
@@ -305,6 +323,10 @@ export default function EventsPage() {
               onUpdate={handleUpdateEvent}
               onCreateCategory={handleCreateCategory}
               onAddClick={() => setPanel({ type: "add" })}
+              selectMode={selectMode}
+              selectedIds={selectedIds}
+              onToggleSelect={handleToggleSelect}
+              onEnterSelectMode={handleEnterSelectMode}
             />
           )}
 
@@ -318,6 +340,65 @@ export default function EventsPage() {
             />
           )}
         </>
+      )}
+
+      {/* ── Select mode floating toolbar ── */}
+      {selectMode && (
+        <div style={{
+          position:       "fixed",
+          bottom:         "28px",
+          left:           "50%",
+          transform:      "translateX(-50%)",
+          zIndex:         200,
+          display:        "flex",
+          alignItems:     "center",
+          gap:            "14px",
+          padding:        "10px 18px",
+          background:     "var(--color-surface)",
+          border:         "1px solid var(--color-border)",
+          borderRadius:   "var(--radius-lg)",
+          boxShadow:      "var(--shadow-lg)",
+          fontFamily:     "var(--font-sans)",
+          fontSize:       "13px",
+          whiteSpace:     "nowrap",
+        }}>
+          <span style={{ color: "var(--color-text-secondary)" }}>
+            <strong style={{ color: "var(--color-text-primary)" }}>{selectedIds.size}</strong> selected
+          </span>
+          <div style={{ width: 1, height: 16, background: "var(--color-border)" }} />
+          <button
+            onClick={() => setPanel({ type: "multi-edit", ids: [...selectedIds] })}
+            disabled={selectedIds.size === 0}
+            style={{
+              fontFamily:  "var(--font-sans)",
+              fontSize:    "13px",
+              fontWeight:  500,
+              color:       selectedIds.size === 0 ? "var(--color-text-tertiary)" : "var(--color-accent)",
+              background:  "none",
+              border:      "none",
+              cursor:      selectedIds.size === 0 ? "default" : "pointer",
+              padding:     0,
+            }}
+          >
+            Edit
+          </button>
+          <div style={{ width: 1, height: 16, background: "var(--color-border)" }} />
+          <button
+            onClick={handleExitSelectMode}
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "16px",
+              lineHeight: 1,
+              color:      "var(--color-text-tertiary)",
+              background: "none",
+              border:     "none",
+              cursor:     "pointer",
+              padding:    "0 2px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
       )}
 
       {/* ── Event side panel ── */}

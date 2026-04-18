@@ -6,9 +6,12 @@ import { catColorVars } from "@/lib/formatters";
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  event:      Event;
-  categories: TournamentCategory[];
-  onClick?:   () => void;
+  event:            Event;
+  categories:       TournamentCategory[];
+  onClick?:         () => void;
+  selectMode?:      boolean;
+  selected?:        boolean;
+  onToggleSelect?:  () => void;
 }
 
 // ─── Small badge ─────────────────────────────────────────────────────────────
@@ -48,7 +51,7 @@ function Chip({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCard({ event, categories, onClick }: Props) {
+export function EventCard({ event, categories, onClick, selectMode, selected, onToggleSelect }: Props) {
   // Category color
   const catIdx   = categories.findIndex((c) => c.id === event.category_id);
   const catName  = catIdx >= 0 ? categories[catIdx].name : null;
@@ -58,32 +61,62 @@ export function EventCard({ event, categories, onClick }: Props) {
   const locationParts = [event.building, event.room, event.floor].filter(Boolean);
   const location = locationParts.join(" · ");
 
+  const handleClick = selectMode ? onToggleSelect : onClick;
+  const isInteractive = !!handleClick;
+
   return (
     <div
-      onClick={onClick}
+      onClick={handleClick}
       style={{
-        background:   "var(--color-surface)",
-        border:       "1px solid var(--color-border)",
-        borderRadius: "var(--radius-md)",
-        padding:      "14px 16px",
-        cursor:       onClick ? "pointer" : "default",
-        transition:   "box-shadow var(--transition-fast), border-color var(--transition-fast)",
-        display:      "flex",
+        position:      "relative",
+        background:    selected ? "var(--color-accent-subtle)" : "var(--color-surface)",
+        border:        `1px solid ${selected ? "var(--color-accent)" : "var(--color-border)"}`,
+        borderRadius:  "var(--radius-md)",
+        padding:       "14px 16px",
+        cursor:        isInteractive ? "pointer" : "default",
+        transition:    "box-shadow var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast)",
+        display:       "flex",
         flexDirection: "column",
-        gap:          "8px",
+        gap:           "8px",
       }}
       onMouseEnter={(e) => {
-        if (!onClick) return;
-        (e.currentTarget as HTMLDivElement).style.boxShadow     = "var(--shadow-md)";
-        (e.currentTarget as HTMLDivElement).style.borderColor   = "var(--color-accent)";
+        if (!isInteractive || selected) return;
+        (e.currentTarget as HTMLDivElement).style.boxShadow   = "var(--shadow-md)";
+        (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-accent)";
       }}
       onMouseLeave={(e) => {
+        if (selected) return;
         (e.currentTarget as HTMLDivElement).style.boxShadow   = "";
         (e.currentTarget as HTMLDivElement).style.borderColor = "var(--color-border)";
       }}
     >
+      {/* Checkbox overlay in select mode */}
+      {selectMode && (
+        <div style={{
+          position:       "absolute",
+          top:            "10px",
+          left:           "10px",
+          width:          "16px",
+          height:         "16px",
+          borderRadius:   "3px",
+          border:         `2px solid ${selected ? "var(--color-accent)" : "var(--color-border)"}`,
+          background:     selected ? "var(--color-accent)" : "var(--color-surface)",
+          display:        "flex",
+          alignItems:     "center",
+          justifyContent: "center",
+          flexShrink:     0,
+          transition:     "background var(--transition-fast), border-color var(--transition-fast)",
+        }}>
+          {selected && (
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          )}
+        </div>
+      )}
+
       {/* ── Row 1: name + division ── */}
-      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px", paddingLeft: selectMode ? "22px" : 0 }}>
         <span style={{
           flex:       1,
           fontFamily: "var(--font-serif)",
