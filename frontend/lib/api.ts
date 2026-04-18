@@ -236,6 +236,8 @@ export const eventsApi = {
     api.post<Event>(`/tournaments/${tournamentId}/events/`, body),
   update: (tournamentId: number, id: number, body: Partial<EventCreate>) =>
     api.patch<Event>(`/tournaments/${tournamentId}/events/${id}/`, body),
+  batchUpdate: (tournamentId: number, eventIds: number[], updates: Partial<EventCreate>) =>
+    api.patch<Event[]>(`/tournaments/${tournamentId}/events/batch/`, { event_ids: eventIds, updates }),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
 }
