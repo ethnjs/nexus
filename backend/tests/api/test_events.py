@@ -381,3 +381,112 @@ def test_delete_event(client, td_user, td_tournament):
 def test_delete_event_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.delete(f"/tournaments/{td_tournament.id}/events/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Batch PATCH
+# ---------------------------------------------------------------------------
+
+def test_batch_update_scalar_fields(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    e1 = _make_event(client, td_tournament.id, name="Anatomy",    division="B").json()
+    e2 = _make_event(client, td_tournament.id, name="Boomilever", division="C").json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [e1["id"], e2["id"]], "updates": {"division": "B"}},
+    )
+    assert response.status_code == 200
+    assert all(e["division"] == "B" for e in response.json())
+
+
+def test_batch_update_time_blocks(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    block = _make_block(client, td_tournament.id).json()
+    e1 = _make_event(client, td_tournament.id, name="Anatomy",    division="B").json()
+    e2 = _make_event(client, td_tournament.id, name="Boomilever", division="C").json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [e1["id"], e2["id"]], "updates": {"time_block_ids": [block["id"]]}},
+    )
+    assert response.status_code == 200
+    for e in response.json():
+        assert len(e["time_blocks"]) == 1
+        assert e["time_blocks"][0]["id"] == block["id"]
+
+
+def test_batch_update_clear_time_blocks(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    block = _make_block(client, td_tournament.id).json()
+    e1 = _make_event(client, td_tournament.id, name="Anatomy",    division="B", time_block_ids=[block["id"]]).json()
+    e2 = _make_event(client, td_tournament.id, name="Boomilever", division="C", time_block_ids=[block["id"]]).json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [e1["id"], e2["id"]], "updates": {"time_block_ids": []}},
+    )
+    assert response.status_code == 200
+    assert all(e["time_blocks"] == [] for e in response.json())
+
+
+def test_batch_update_absent_keys_not_applied(client, td_user, td_tournament):
+    """Fields absent from updates must not be modified."""
+    login(client, "td@test.com", "tdpass")
+    e1 = _make_event(client, td_tournament.id, name="Anatomy",    division="B", building="Hall A").json()
+    e2 = _make_event(client, td_tournament.id, name="Boomilever", division="C", building="Hall B").json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [e1["id"], e2["id"]], "updates": {"division": "B"}},
+    )
+    assert response.status_code == 200
+    buildings = {e["id"]: e["building"] for e in response.json()}
+    assert buildings[e1["id"]] == "Hall A"
+    assert buildings[e2["id"]] == "Hall B"
+
+
+def test_batch_update_empty_event_ids(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [], "updates": {"division": "C"}},
+    )
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_batch_update_event_from_other_tournament_returns_404(
+    client, td_user, td_tournament, other_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    other_event = _make_event(client, other_tournament.id, name="Anatomy", division="B").json()
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/batch/",
+        json={"event_ids": [other_event["id"]], "updates": {"division": "C"}},
+    )
+    assert response.status_code == 404
+
+
+def test_batch_update_forbidden_for_non_manager(client, td_user, other_tournament, db):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/events/batch/",
+        json={"event_ids": [], "updates": {"division": "C"}},
+    )
+    assert response.status_code == 403
