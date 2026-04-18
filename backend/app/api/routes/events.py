@@ -11,7 +11,7 @@ from app.core.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import Event, Tournament, User, TimeBlock, TournamentCategory
-from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.schemas.event import EventCreate, EventRead, EventUpdate, EventBatchUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -165,6 +165,52 @@ def update_event(
     db.commit()
     db.refresh(event)
     return event
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/events/batch/ — manage_events or manage_tournament
+# ---------------------------------------------------------------------------
+@router.patch("/batch/", response_model=list[EventRead])
+def batch_update_events(
+    tournament_id: int,
+    payload: EventBatchUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Apply a partial update to multiple events in one request.
+
+    Only keys present in `payload.updates` are written; absent keys are skipped.
+    Returns the updated EventRead list in the same order as event_ids.
+    """
+    _require_write_permission(current_user, tournament_id, db)
+
+    update_data = payload.updates.model_dump(exclude_none=True)
+    time_block_ids = update_data.pop("time_block_ids", None)
+
+    blocks = None
+    if time_block_ids is not None:
+        blocks = (
+            db.query(TimeBlock)
+            .filter(
+                TimeBlock.id.in_(time_block_ids),
+                TimeBlock.tournament_id == tournament_id,
+            )
+            .all()
+        )
+
+    updated: list[Event] = []
+    for event_id in payload.event_ids:
+        event = _get_event_or_404(event_id, tournament_id, db)
+        for field, value in update_data.items():
+            setattr(event, field, value)
+        if blocks is not None:
+            event.time_blocks = blocks
+        updated.append(event)
+
+    db.commit()
+    for event in updated:
+        db.refresh(event)
+    return updated
 
 
 # ---------------------------------------------------------------------------

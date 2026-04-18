@@ -57,6 +57,12 @@ class EventUpdate(BaseModel):
     time_block_ids: list[int] | None = None
 
 
+class EventBatchUpdate(BaseModel):
+    """Batch-update a set of events. Only keys present in `updates` are applied."""
+    event_ids: list[int]
+    updates:   EventUpdate
+
+
 class EventRead(EventBase):
     id: int
     tournament_id: int
