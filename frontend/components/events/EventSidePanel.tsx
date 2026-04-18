@@ -23,12 +23,14 @@ interface FormState {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  mode:               "add" | "edit";
+  mode:               "add" | "edit" | "multi-edit";
   event?:             Event;
+  eventCount?:        number;                                           // "multi-edit" only
   timeBlocks:         TimeBlock[];
   categories:         TournamentCategory[];
   isReadOnly?:        boolean;
   onSave:             (data: EventCreate) => Promise<void>;
+  onMultiSave?:       (data: Partial<EventCreate>) => Promise<void>;  // "multi-edit" only
   onCreateCategory:   (name: string) => Promise<TournamentCategory>;
   onClose:            () => void;
 }
@@ -375,13 +377,16 @@ function TimeBlockChip({
 export function EventSidePanel({
   mode,
   event,
+  eventCount,
   timeBlocks,
   categories,
   isReadOnly = false,
   onSave,
+  onMultiSave,
   onCreateCategory,
   onClose,
 }: Props) {
+  const isMultiEdit = mode === "multi-edit";
   const initial    = mode === "edit" && event ? fromEvent(event) : emptyForm();
   const [form, setForm]           = useState<FormState>(initial);
   const [savedBase, setSavedBase] = useState<FormState>(initial);
@@ -401,7 +406,7 @@ export function EventSidePanel({
     setSavedBase(base);
     setError(null);
     setDiscarding(false);
-    setTimeout(() => nameRef.current?.focus(), 50);
+    if (!isMultiEdit) setTimeout(() => nameRef.current?.focus(), 50);
   }, [event?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = isDirty(form, savedBase);
@@ -432,28 +437,39 @@ export function EventSidePanel({
   }, [handleClose]);
 
   const handleSave = async (andAdd = false) => {
-    if (!form.name.trim()) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave({
-        name:              form.name.trim(),
-        category_id:       form.category_id,
-        division:          form.division,
-        event_type:        form.event_type,
-        building:          form.building || null,
-        room:              form.room || null,
-        floor:             form.floor || null,
-        volunteers_needed: form.volunteers_needed,
-        time_block_ids:    form.time_block_ids,
-      });
-      if (andAdd) {
-        const blank = emptyForm();
-        setForm(blank);
-        setSavedBase(blank);
-        setTimeout(() => nameRef.current?.focus(), 50);
-      } else {
+      if (isMultiEdit) {
+        await onMultiSave!({
+          category_id:       form.category_id,
+          division:          form.division,
+          event_type:        form.event_type,
+          volunteers_needed: form.volunteers_needed,
+          time_block_ids:    form.time_block_ids,
+        });
         triggerClose();
+      } else {
+        if (!form.name.trim()) return;
+        await onSave({
+          name:              form.name.trim(),
+          category_id:       form.category_id,
+          division:          form.division,
+          event_type:        form.event_type,
+          building:          form.building || null,
+          room:              form.room || null,
+          floor:             form.floor || null,
+          volunteers_needed: form.volunteers_needed,
+          time_block_ids:    form.time_block_ids,
+        });
+        if (andAdd) {
+          const blank = emptyForm();
+          setForm(blank);
+          setSavedBase(blank);
+          setTimeout(() => nameRef.current?.focus(), 50);
+        } else {
+          triggerClose();
+        }
       }
     } catch (e) {
       setError(parseApiError(e));
@@ -464,9 +480,11 @@ export function EventSidePanel({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const title = isReadOnly
-    ? (event?.name ?? "Event")
-    : mode === "add" ? "Add event" : "Edit event";
+  const title = isMultiEdit
+    ? `Edit ${eventCount ?? 0} event${(eventCount ?? 0) !== 1 ? "s" : ""}`
+    : isReadOnly
+      ? (event?.name ?? "Event")
+      : mode === "add" ? "Add event" : "Edit event";
 
   return (
     <>
@@ -591,17 +609,35 @@ export function EventSidePanel({
         {/* ── Scrollable form body ── */}
         <div style={{ flex: 1, overflowY: "auto", padding: "20px" }}>
 
+          {/* Multi-edit info banner */}
+          {isMultiEdit && (
+            <div style={{
+              padding:      "10px 12px",
+              background:   "var(--color-accent-subtle)",
+              border:       "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              marginBottom: "18px",
+              fontFamily:   "var(--font-sans)",
+              fontSize:     "12px",
+              color:        "var(--color-text-secondary)",
+              lineHeight:   1.5,
+            }}>
+              Editing <strong style={{ color: "var(--color-text-primary)" }}>{eventCount ?? 0}</strong> event{(eventCount ?? 0) !== 1 ? "s" : ""}.
+              {" "}Time blocks and other fields below will be applied to all selected events.
+            </div>
+          )}
+
           {/* Name */}
           <div style={{ marginBottom: "18px" }}>
-            <FieldLabel required>Name</FieldLabel>
+            <FieldLabel required={!isMultiEdit}>Name</FieldLabel>
             <input
               ref={nameRef}
               type="text"
               value={form.name}
-              placeholder="Event name"
-              disabled={isReadOnly}
+              placeholder={isMultiEdit ? "Not editable in bulk" : "Event name"}
+              disabled={isReadOnly || isMultiEdit}
               onChange={(e) => set("name", e.target.value)}
-              style={fieldInput}
+              style={{ ...fieldInput, opacity: isMultiEdit ? 0.5 : 1 }}
             />
           </div>
 
@@ -649,13 +685,13 @@ export function EventSidePanel({
           {/* Location row */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Location</FieldLabel>
-            <div style={{ display: "flex", gap: "8px" }}>
+            <div style={{ display: "flex", gap: "8px", opacity: isMultiEdit ? 0.5 : 1 }}>
               <div style={{ flex: 2 }}>
                 <input
                   type="text"
                   value={form.building}
-                  placeholder="Building"
-                  disabled={isReadOnly}
+                  placeholder={isMultiEdit ? "Not editable in bulk" : "Building"}
+                  disabled={isReadOnly || isMultiEdit}
                   onChange={(e) => set("building", e.target.value)}
                   style={fieldInput}
                 />
@@ -665,7 +701,7 @@ export function EventSidePanel({
                   type="text"
                   value={form.room}
                   placeholder="Room"
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || isMultiEdit}
                   onChange={(e) => set("room", e.target.value)}
                   style={fieldInput}
                 />
@@ -675,7 +711,7 @@ export function EventSidePanel({
                   type="text"
                   value={form.floor}
                   placeholder="Floor"
-                  disabled={isReadOnly}
+                  disabled={isReadOnly || isMultiEdit}
                   onChange={(e) => set("floor", e.target.value)}
                   style={fieldInput}
                 />
@@ -746,6 +782,15 @@ export function EventSidePanel({
           {isReadOnly ? (
             <Button variant="secondary" size="sm" onClick={onClose} fullWidth>
               Close
+            </Button>
+          ) : isMultiEdit ? (
+            <Button
+              size="sm"
+              onClick={() => handleSave(false)}
+              loading={saving}
+              fullWidth
+            >
+              Apply to {eventCount ?? 0} event{(eventCount ?? 0) !== 1 ? "s" : ""}
             </Button>
           ) : (
             <div style={{ display: "flex", gap: "8px" }}>

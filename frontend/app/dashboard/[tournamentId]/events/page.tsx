@@ -187,6 +187,13 @@ export default function EventsPage() {
     }
   };
 
+  const handleMultiSave = async (data: Partial<EventCreate>) => {
+    if (panel?.type !== "multi-edit") return;
+    await Promise.all(panel.ids.map((id) => eventsApi.update(tournamentId, id, data)));
+    await loadAll(true);
+    // select mode intentionally stays active after save
+  };
+
   const handleUpdateEvent = async (id: number, delta: Partial<EventCreate>) => {
     const updated = await eventsApi.update(tournamentId, id, delta);
     patchEventsState(updated);
@@ -404,11 +411,13 @@ export default function EventsPage() {
       {/* ── Event side panel ── */}
       {panel && (
         <EventSidePanel
-          mode={panel.type}
+          mode={panel.type === "multi-edit" ? "multi-edit" : panel.type}
           event={panel.type === "edit" ? panel.event : undefined}
+          eventCount={panel.type === "multi-edit" ? panel.ids.length : undefined}
           timeBlocks={timeBlocks}
           categories={categories}
           onSave={handleSaveEvent}
+          onMultiSave={handleMultiSave}
           onCreateCategory={handleCreateCategory}
           onClose={() => setPanel(null)}
         />
