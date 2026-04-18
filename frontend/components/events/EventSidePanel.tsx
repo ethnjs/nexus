@@ -20,6 +20,40 @@ interface FormState {
   time_block_ids:    number[];
 }
 
+// Sentinel used in multi-edit to mean "user hasn't touched this field — skip it"
+const NO_CHANGE = "__nc__" as const;
+type NoChange = typeof NO_CHANGE;
+
+interface MultiEditForm {
+  division:          "B" | "C" | null | NoChange;
+  category_id:       number | null | NoChange;
+  event_type:        "standard" | "trial" | NoChange;
+  volunteers_needed: number | NoChange;
+  time_block_ids:    number[];
+  timeBlocksDirty:   boolean;  // false = "no change"; true = explicit intent (even if empty)
+}
+
+function emptyMultiEditForm(): MultiEditForm {
+  return {
+    division:          NO_CHANGE,
+    category_id:       NO_CHANGE,
+    event_type:        NO_CHANGE,
+    volunteers_needed: NO_CHANGE,
+    time_block_ids:    [],
+    timeBlocksDirty:   false,
+  };
+}
+
+function buildMultiEditPayload(form: MultiEditForm): Partial<EventCreate> {
+  const payload: Partial<EventCreate> = {};
+  if (form.division    !== NO_CHANGE) payload.division          = form.division;
+  if (form.category_id !== NO_CHANGE) payload.category_id       = form.category_id;
+  if (form.event_type  !== NO_CHANGE) payload.event_type        = form.event_type;
+  if (form.volunteers_needed !== NO_CHANGE) payload.volunteers_needed = form.volunteers_needed;
+  if (form.timeBlocksDirty)           payload.time_block_ids    = form.time_block_ids;
+  return payload;
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -169,12 +203,14 @@ function CategorySelect({
   onChange,
   onCreateCategory,
   disabled,
+  showNoChange,
 }: {
   categories:         TournamentCategory[];
-  value:              number | null;
-  onChange:           (id: number | null) => void;
+  value:              number | null | NoChange;
+  onChange:           (id: number | null | NoChange) => void;
   onCreateCategory:   (name: string) => Promise<TournamentCategory>;
   disabled?:          boolean;
+  showNoChange?:      boolean;
 }) {
   const [creating,     setCreating]     = useState(false);
   const [newName,      setNewName]      = useState("");
@@ -242,7 +278,11 @@ function CategorySelect({
     }} />
   );
 
-  const allOptions = [{ id: null as number | null, name: "— None —" }, ...categories.map(c => ({ id: c.id as number | null, name: c.name }))];
+  const allOptions: { id: number | null | NoChange; name: string }[] = [
+    ...(showNoChange ? [{ id: NO_CHANGE, name: "— no change —" }] : []),
+    { id: null, name: "— None —" },
+    ...categories.map((c) => ({ id: c.id as number | null, name: c.name })),
+  ];
 
   return (
     <div style={{
@@ -390,8 +430,10 @@ export function EventSidePanel({
   const initial    = mode === "edit" && event ? fromEvent(event) : emptyForm();
   const [form, setForm]           = useState<FormState>(initial);
   const [savedBase, setSavedBase] = useState<FormState>(initial);
+  const [meForm, setMeForm]       = useState<MultiEditForm>(emptyMultiEditForm());
   const [saving,    setSaving]    = useState(false);
   const [error,     setError]     = useState<string | null>(null);
+  const [noOpNotice, setNoOpNotice] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
@@ -404,12 +446,18 @@ export function EventSidePanel({
     const base = mode === "edit" && event ? fromEvent(event) : emptyForm();
     setForm(base);
     setSavedBase(base);
+    setMeForm(emptyMultiEditForm());
     setError(null);
+    setNoOpNotice(false);
     setDiscarding(false);
     if (!isMultiEdit) setTimeout(() => nameRef.current?.focus(), 50);
   }, [event?.id, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dirty = isDirty(form, savedBase);
+  const setMe = <K extends keyof MultiEditForm>(field: K, value: MultiEditForm[K]) => {
+    setMeForm((f) => ({ ...f, [field]: value }));
+    setNoOpNotice(false);
+  };
 
   const set = <K extends keyof FormState>(field: K, value: FormState[K]) =>
     setForm((f) => ({ ...f, [field]: value }));
@@ -437,39 +485,48 @@ export function EventSidePanel({
   }, [handleClose]);
 
   const handleSave = async (andAdd = false) => {
+    if (isMultiEdit) {
+      const payload = buildMultiEditPayload(meForm);
+      if (Object.keys(payload).length === 0) {
+        setNoOpNotice(true);
+        return;
+      }
+      setSaving(true);
+      setError(null);
+      try {
+        await onMultiSave!(payload);
+        setMeForm(emptyMultiEditForm());
+        setNoOpNotice(false);
+      } catch (e) {
+        setError(parseApiError(e));
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
-      if (isMultiEdit) {
-        await onMultiSave!({
-          category_id:       form.category_id,
-          division:          form.division,
-          event_type:        form.event_type,
-          volunteers_needed: form.volunteers_needed,
-          time_block_ids:    form.time_block_ids,
-        });
-        triggerClose();
+      if (!form.name.trim()) return;
+      await onSave({
+        name:              form.name.trim(),
+        category_id:       form.category_id,
+        division:          form.division,
+        event_type:        form.event_type,
+        building:          form.building || null,
+        room:              form.room || null,
+        floor:             form.floor || null,
+        volunteers_needed: form.volunteers_needed,
+        time_block_ids:    form.time_block_ids,
+      });
+      if (andAdd) {
+        const blank = emptyForm();
+        setForm(blank);
+        setSavedBase(blank);
+        setTimeout(() => nameRef.current?.focus(), 50);
       } else {
-        if (!form.name.trim()) return;
-        await onSave({
-          name:              form.name.trim(),
-          category_id:       form.category_id,
-          division:          form.division,
-          event_type:        form.event_type,
-          building:          form.building || null,
-          room:              form.room || null,
-          floor:             form.floor || null,
-          volunteers_needed: form.volunteers_needed,
-          time_block_ids:    form.time_block_ids,
-        });
-        if (andAdd) {
-          const blank = emptyForm();
-          setForm(blank);
-          setSavedBase(blank);
-          setTimeout(() => nameRef.current?.focus(), 50);
-        } else {
-          triggerClose();
-        }
+        triggerClose();
       }
     } catch (e) {
       setError(parseApiError(e));
@@ -622,8 +679,13 @@ export function EventSidePanel({
               color:        "var(--color-text-secondary)",
               lineHeight:   1.5,
             }}>
-              Editing <strong style={{ color: "var(--color-text-primary)" }}>{eventCount ?? 0}</strong> event{(eventCount ?? 0) !== 1 ? "s" : ""}.
-              {" "}Time blocks and other fields below will be applied to all selected events.
+              <strong style={{ color: "var(--color-text-primary)" }}>
+                Editing {eventCount ?? 0} event{(eventCount ?? 0) !== 1 ? "s" : ""}
+              </strong>
+              <br />
+              Fields you change will be applied to all selected events.
+              <br />
+              Fields left unchanged will not be modified.
             </div>
           )}
 
@@ -644,42 +706,69 @@ export function EventSidePanel({
           {/* Category */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Category</FieldLabel>
-            <CategorySelect
-              categories={categories}
-              value={form.category_id}
-              onChange={(id) => set("category_id", id)}
-              onCreateCategory={onCreateCategory}
-              disabled={isReadOnly}
-            />
+            {isMultiEdit ? (
+              <CategorySelect
+                categories={categories}
+                value={meForm.category_id}
+                onChange={(id) => setMe("category_id", id as number | null | NoChange)}
+                onCreateCategory={onCreateCategory}
+                disabled={isReadOnly}
+                showNoChange
+              />
+            ) : (
+              <CategorySelect
+                categories={categories}
+                value={form.category_id}
+                onChange={(id) => set("category_id", id as number | null)}
+                onCreateCategory={onCreateCategory}
+                disabled={isReadOnly}
+              />
+            )}
           </div>
 
           {/* Division */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Division</FieldLabel>
             <SegmentedControl
-              value={form.division}
+              value={isMultiEdit ? (meForm.division === NO_CHANGE ? NO_CHANGE : meForm.division) : form.division}
               options={[
-                { label: "B",  value: "B" },
-                { label: "C",  value: "C" },
-                { label: "—",  value: null },
+                { label: "B", value: "B" },
+                { label: "C", value: "C" },
+                { label: "—", value: null },
               ]}
-              onChange={(v) => set("division", v as "B" | "C" | null)}
+              onChange={(v) => isMultiEdit
+                ? setMe("division", v as "B" | "C" | null)
+                : set("division", v as "B" | "C" | null)
+              }
               disabled={isReadOnly}
             />
+            {isMultiEdit && meForm.division === NO_CHANGE && (
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", display: "block", marginTop: "4px" }}>
+                — no change —
+              </span>
+            )}
           </div>
 
           {/* Type */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Type</FieldLabel>
             <SegmentedControl
-              value={form.event_type}
+              value={isMultiEdit ? (meForm.event_type === NO_CHANGE ? NO_CHANGE : meForm.event_type) : form.event_type}
               options={[
                 { label: "Standard", value: "standard" },
                 { label: "Trial",    value: "trial" },
               ]}
-              onChange={(v) => set("event_type", v as "standard" | "trial")}
+              onChange={(v) => isMultiEdit
+                ? setMe("event_type", v as "standard" | "trial")
+                : set("event_type", v as "standard" | "trial")
+              }
               disabled={isReadOnly}
             />
+            {isMultiEdit && meForm.event_type === NO_CHANGE && (
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", display: "block", marginTop: "4px" }}>
+                — no change —
+              </span>
+            )}
           </div>
 
           {/* Location row */}
@@ -722,39 +811,91 @@ export function EventSidePanel({
           {/* Volunteers needed */}
           <div style={{ marginBottom: "18px" }}>
             <FieldLabel>Volunteers needed</FieldLabel>
-            <input
-              type="number"
-              min={1}
-              value={form.volunteers_needed}
-              disabled={isReadOnly}
-              onChange={(e) => set("volunteers_needed", Math.max(1, Number(e.target.value)))}
-              style={{ ...fieldInput, width: "90px" }}
-            />
+            {isMultiEdit ? (
+              <input
+                type="number"
+                min={1}
+                value={meForm.volunteers_needed === NO_CHANGE ? "" : meForm.volunteers_needed}
+                placeholder="— no change —"
+                disabled={isReadOnly}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setMe("volunteers_needed", isNaN(n) || n < 1 ? NO_CHANGE : n);
+                }}
+                style={{ ...fieldInput, width: "90px" }}
+              />
+            ) : (
+              <input
+                type="number"
+                min={1}
+                value={form.volunteers_needed}
+                disabled={isReadOnly}
+                onChange={(e) => set("volunteers_needed", Math.max(1, Number(e.target.value)))}
+                style={{ ...fieldInput, width: "90px" }}
+              />
+            )}
           </div>
 
           {/* Time blocks */}
           <div style={{ marginBottom: "8px" }}>
-            <FieldLabel>Time blocks</FieldLabel>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "5px" }}>
+              <FieldLabel>Time blocks</FieldLabel>
+              {isMultiEdit && (
+                <button
+                  type="button"
+                  onClick={() => { setMe("time_block_ids", []); setMe("timeBlocksDirty", true); }}
+                  style={{
+                    fontFamily:  "var(--font-sans)",
+                    fontSize:    "11px",
+                    color:       "var(--color-text-tertiary)",
+                    background:  "none",
+                    border:      "none",
+                    cursor:      "pointer",
+                    padding:     0,
+                    textDecoration: "underline",
+                    marginBottom: "5px",
+                  }}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            {isMultiEdit && !meForm.timeBlocksDirty && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", marginBottom: "7px" }}>
+                No change — click a block or &ldquo;Clear all&rdquo; to set blocks for all selected events.
+              </p>
+            )}
             {timeBlocks.length === 0 ? (
-              <p style={{
-                fontFamily: "var(--font-sans)",
-                fontSize:   "12px",
-                color:      "var(--color-text-tertiary)",
-                fontStyle:  "italic",
-              }}>
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", fontStyle: "italic" }}>
                 No time blocks have been created yet.
               </p>
             ) : (
               <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
-                {timeBlocks.map((block) => (
-                  <TimeBlockChip
-                    key={block.id}
-                    block={block}
-                    selected={form.time_block_ids.includes(block.id)}
-                    onClick={() => toggleBlock(block.id)}
-                    disabled={isReadOnly}
-                  />
-                ))}
+                {timeBlocks.map((block) => {
+                  const selected = isMultiEdit
+                    ? meForm.time_block_ids.includes(block.id)
+                    : form.time_block_ids.includes(block.id);
+                  return (
+                    <TimeBlockChip
+                      key={block.id}
+                      block={block}
+                      selected={selected}
+                      onClick={() => {
+                        if (isMultiEdit) {
+                          setMe("timeBlocksDirty", true);
+                          setMe("time_block_ids",
+                            meForm.time_block_ids.includes(block.id)
+                              ? meForm.time_block_ids.filter((x) => x !== block.id)
+                              : [...meForm.time_block_ids, block.id]
+                          );
+                        } else {
+                          toggleBlock(block.id);
+                        }
+                      }}
+                      disabled={isReadOnly}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
@@ -776,6 +917,18 @@ export function EventSidePanel({
               marginBottom: "10px",
             }}>
               {error}
+            </p>
+          )}
+
+          {/* No-op notice (multi-edit: no fields dirty) */}
+          {noOpNotice && !error && (
+            <p style={{
+              fontFamily:   "var(--font-sans)",
+              fontSize:     "12px",
+              color:        "var(--color-text-secondary)",
+              marginBottom: "10px",
+            }}>
+              No changes to apply — edit at least one field first.
             </p>
           )}
 
