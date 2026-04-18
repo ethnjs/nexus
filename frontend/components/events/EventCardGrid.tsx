@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Event, TournamentCategory } from "@/lib/api";
 import { catColorVars } from "@/lib/formatters";
 import { Button } from "@/components/ui/Button";
@@ -14,10 +14,11 @@ interface Props {
   categories:        TournamentCategory[];
   onCardClick:       (event: Event) => void;
   onAddClick:        () => void;
-  selectMode?:       boolean;
-  selectedIds?:      Set<number>;
-  onToggleSelect?:   (id: number) => void;
-  onEnterSelectMode?: () => void;
+  selectMode?:          boolean;
+  selectedIds?:         Set<number>;
+  onToggleSelect?:      (id: number) => void;
+  onEnterSelectMode?:   () => void;
+  onFilteredIdsChange?: (ids: number[]) => void;
 }
 
 // ─── Filter types ─────────────────────────────────────────────────────────────
@@ -27,7 +28,7 @@ type TypeFilter = "standard" | "trial" | null;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCardGrid({ events, categories, onCardClick, onAddClick, selectMode, selectedIds, onToggleSelect, onEnterSelectMode }: Props) {
+export function EventCardGrid({ events, categories, onCardClick, onAddClick, selectMode, selectedIds, onToggleSelect, onEnterSelectMode, onFilteredIdsChange }: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
   const [eventType,  setEventType]  = useState<TypeFilter>(null);
@@ -43,6 +44,10 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick, sel
       return true;
     });
   }, [events, search, division, eventType, categoryId]);
+
+  useEffect(() => {
+    onFilteredIdsChange?.(filtered.map((e) => e.id));
+  }, [filtered, onFilteredIdsChange]);
 
   // ── Shared styles ──────────────────────────────────────────────────────────
 
