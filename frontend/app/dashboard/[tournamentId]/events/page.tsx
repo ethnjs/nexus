@@ -177,17 +177,17 @@ export default function EventsPage() {
     }
   }, [tournamentId, normalizeEvent]);
 
-  const handleSaveEvent = async (data: EventCreate) => {
+  const handleSaveEvent = async (data: Omit<EventCreate, 'tournament_id'>) => {
     if (panel?.type === "edit") {
       const updated = await eventsApi.update(tournamentId, panel.event.id, data);
       patchEventsState(updated);
     } else {
-      await eventsApi.create(tournamentId, data);
+      await eventsApi.create(tournamentId, { ...data, tournament_id: tournamentId });
       await loadAll(true);
     }
   };
 
-  const handleMultiSave = async (data: Partial<EventCreate>) => {
+  const handleMultiSave = async (data: Partial<Omit<EventCreate, 'tournament_id'>>) => {
     if (panel?.type !== "multi-edit") return;
     await eventsApi.batchUpdate(tournamentId, panel.ids, data);
     await loadAll(true);

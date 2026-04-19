@@ -509,6 +509,7 @@ export function CsvImportBar({
       for (let i = 0; i < result.valid.length; i++) {
         const row = result.valid[i];
         const body: EventCreate = {
+          tournament_id:     tournamentId,
           name:              row.name,
           division:          row.division,
           event_type:        row.eventType,

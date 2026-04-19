@@ -63,8 +63,8 @@ interface Props {
   timeBlocks:         TimeBlock[];
   categories:         TournamentCategory[];
   isReadOnly?:        boolean;
-  onSave:             (data: EventCreate) => Promise<void>;
-  onMultiSave?:       (data: Partial<EventCreate>) => Promise<void>;  // "multi-edit" only
+  onSave:             (data: Omit<EventCreate, 'tournament_id'>) => Promise<void>;
+  onMultiSave?:       (data: Partial<Omit<EventCreate, 'tournament_id'>>) => Promise<void>;  // "multi-edit" only
   onCreateCategory:   (name: string) => Promise<TournamentCategory>;
   onClose:            () => void;
 }

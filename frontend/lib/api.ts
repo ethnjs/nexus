@@ -210,6 +210,7 @@ export interface Event {
 }
 
 export interface EventCreate {
+  tournament_id:     number
   name:              string
   division?:         'B' | 'C' | null
   event_type?:       'standard' | 'trial'
