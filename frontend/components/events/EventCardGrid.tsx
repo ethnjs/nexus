@@ -14,6 +14,7 @@ interface Props {
   categories:        TournamentCategory[];
   onCardClick:       (event: Event) => void;
   onAddClick:        () => void;
+  hideFilters?:      boolean;
   selectMode?:          boolean;
   selectedIds?:         Set<number>;
   onToggleSelect?:      (id: number) => void;
@@ -28,13 +29,14 @@ type TypeFilter = "standard" | "trial" | null;
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCardGrid({ events, categories, onCardClick, onAddClick, selectMode, selectedIds, onToggleSelect, onEnterSelectMode, onFilteredIdsChange }: Props) {
+export function EventCardGrid({ events, categories, onCardClick, onAddClick, hideFilters = false, selectMode, selectedIds, onToggleSelect, onEnterSelectMode, onFilteredIdsChange }: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
   const [eventType,  setEventType]  = useState<TypeFilter>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
 
   const filtered = useMemo(() => {
+    if (hideFilters) return events;
     const q = search.toLowerCase().trim();
     return events.filter((e) => {
       if (q && !e.name.toLowerCase().includes(q)) return false;
@@ -43,7 +45,7 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick, sel
       if (categoryId !== null && e.category_id !== categoryId) return false;
       return true;
     });
-  }, [events, search, division, eventType, categoryId]);
+  }, [events, search, division, eventType, categoryId, hideFilters]);
 
   useEffect(() => {
     onFilteredIdsChange?.(filtered.map((e) => e.id));
@@ -70,13 +72,14 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick, sel
   return (
     <div>
       {/* ── Toolbar ── */}
-      <div style={{
-        display:      "flex",
-        alignItems:   "center",
-        gap:          "10px",
-        marginBottom: "16px",
-        flexWrap:     "wrap",
-      }}>
+      {!hideFilters && (
+        <div style={{
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "10px",
+          marginBottom: "16px",
+          flexWrap:     "wrap",
+        }}>
         {/* Search */}
         <div style={{ position: "relative", flex: "1 1 200px", minWidth: "160px", maxWidth: "280px" }}>
           <span style={{
@@ -154,10 +157,11 @@ export function EventCardGrid({ events, categories, onCardClick, onAddClick, sel
           <IconPlus size={12} />
           Add event
         </Button>
-      </div>
+        </div>
+      )}
 
       {/* ── Category chips ── */}
-      {categories.length > 0 && (
+      {!hideFilters && categories.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "16px" }}>
           <button
             style={filterBtn(categoryId === null)}

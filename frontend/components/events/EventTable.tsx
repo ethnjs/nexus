@@ -33,6 +33,7 @@ interface Props {
   onUpdate:           (id: number, delta: Partial<EventCreate>) => Promise<void>;
   onCreateCategory:   (name: string) => Promise<TournamentCategory>;
   onAddClick:         () => void;
+  hideFilters?:       boolean;
   isReadOnly?:          boolean;
   selectMode?:          boolean;
   selectedIds?:         Set<number>;
@@ -784,6 +785,7 @@ export function EventTable({
   onUpdate,
   onCreateCategory,
   onAddClick,
+  hideFilters = false,
   isReadOnly,
   selectMode,
   selectedIds,
@@ -801,6 +803,7 @@ export function EventTable({
   const headerRafRef = useRef<number | null>(null);
 
   const filtered = useMemo(() => {
+    if (hideFilters) return events;
     const q = search.toLowerCase().trim();
     return events.filter((e) => {
       if (q && !e.name.toLowerCase().includes(q)) return false;
@@ -809,7 +812,7 @@ export function EventTable({
       if (categoryId !== null && e.category_id !== categoryId)  return false;
       return true;
     });
-  }, [events, search, division, eventType, categoryId]);
+  }, [events, search, division, eventType, categoryId, hideFilters]);
 
   useEffect(() => {
     onFilteredIdsChange?.(filtered.map((e) => e.id));
@@ -831,7 +834,7 @@ export function EventTable({
     boxSizing:    "border-box",
   });
 
-  const cols: { label: string; width: number | "auto" }[] = [
+  const cols: { label: string; width: number | "auto" }[] = useMemo(() => ([
     ...(selectMode ? [{ label: "", width: COL_W.select as number | "auto" }] : []),
     { label: "Name",        width: COL_W.name       },
     { label: "Category",    width: COL_W.category   },
@@ -842,7 +845,7 @@ export function EventTable({
     { label: "Floor",       width: COL_W.floor      },
     { label: "Volunteers",  width: COL_W.volunteers },
     { label: "Time Blocks", width: COL_W.timeBlocks },
-  ];
+  ]), [selectMode]);
   const stickyPrefixWidth = selectMode ? COL_W.select + COL_W.name : COL_W.name;
   const headerScrollMeta = useMemo(() => {
     let start = 0;
@@ -926,13 +929,14 @@ export function EventTable({
   return (
     <div>
       {/* ── Toolbar ── */}
-      <div style={{
-        display:      "flex",
-        alignItems:   "center",
-        gap:          "10px",
-        marginBottom: "16px",
-        flexWrap:     "wrap",
-      }}>
+      {!hideFilters && (
+        <div style={{
+          display:      "flex",
+          alignItems:   "center",
+          gap:          "10px",
+          marginBottom: "16px",
+          flexWrap:     "wrap",
+        }}>
         {/* Search */}
         <div style={{ position: "relative", flex: "1 1 200px", minWidth: "160px", maxWidth: "280px" }}>
           <span style={{
@@ -1012,10 +1016,11 @@ export function EventTable({
             Add event
           </Button>
         )}
-      </div>
+        </div>
+      )}
 
       {/* ── Category chips ── */}
-      {categories.length > 0 && (
+      {!hideFilters && categories.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "16px" }}>
           <button style={filterBtn(categoryId === null)} onClick={() => setCategoryId(null)}>
             All categories
@@ -1123,9 +1128,15 @@ export function EventTable({
                         <div
                           onClick={() => {
                             const ids = filtered.map((e) => e.id);
-                            allSelected
-                              ? ids.forEach((id) => selectedIds?.has(id) && onToggleSelect?.(id))
-                              : ids.filter((id) => !selectedIds?.has(id)).forEach((id) => onToggleSelect?.(id));
+                            if (allSelected) {
+                              ids.forEach((id) => {
+                                if (selectedIds?.has(id)) onToggleSelect?.(id);
+                              });
+                            } else {
+                              ids
+                                .filter((id) => !selectedIds?.has(id))
+                                .forEach((id) => onToggleSelect?.(id));
+                            }
                           }}
                           style={{
                             display: "inline-flex", alignItems: "center", justifyContent: "center",
