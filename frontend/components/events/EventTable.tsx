@@ -13,6 +13,19 @@ type NumCol     = "volunteers_needed";
 type DivFilter  = "B" | "C" | null;
 type TypeFilter = "standard" | "trial" | null;
 
+const COL_W = {
+  select: 40,
+  name: 220,
+  category: 200,
+  division: 90,
+  type: 90,
+  building: 180,
+  room: 90,
+  floor: 70,
+  volunteers: 90,
+  timeBlocks: 520,
+} as const;
+
 interface Props {
   events:             Event[];
   categories:         TournamentCategory[];
@@ -574,6 +587,7 @@ function EventTableRow({
 }) {
   const [editing,  setEditing]  = useState<{ col: TextCol | NumCol; draft: string } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const stickyNameLeft = selectMode ? COL_W.select : 0;
 
   useEffect(() => {
     if (editing) setTimeout(() => inputRef.current?.select(), 10);
@@ -602,7 +616,11 @@ function EventTableRow({
 
   const revert = () => setEditing(null);
 
-  const renderTextCell = (col: TextCol | NumCol, width: number | "auto") => {
+  const renderTextCell = (
+    col: TextCol | NumCol,
+    width: number | "auto",
+    stickyLeft?: number,
+  ) => {
     const isActive   = editing?.col === col;
     const rawVal     = event[col];
     const displayVal = rawVal != null ? String(rawVal) : "";
@@ -618,6 +636,15 @@ function EventTableRow({
           paddingLeft:   10,
           paddingRight:  10,
           overflow:      isActive ? "visible" : "hidden",
+          ...(stickyLeft !== undefined
+            ? {
+                position: "sticky",
+                left: stickyLeft,
+                zIndex: 5,
+                background: "inherit",
+                borderRight: "1px solid var(--color-border)",
+              }
+            : {}),
         }}
       >
         {isActive ? (
@@ -661,7 +688,19 @@ function EventTableRow({
     >
       {/* Checkbox cell in select mode */}
       {selectMode && (
-        <td style={{ ...cell, width: 40, textAlign: "center", padding: "0 8px" }}>
+        <td
+          style={{
+            ...cell,
+            width: COL_W.select,
+            textAlign: "center",
+            padding: "0 8px",
+            position: "sticky",
+            left: 0,
+            zIndex: 6,
+            background: "inherit",
+            borderRight: "1px solid var(--color-border)",
+          }}
+        >
           <div style={{
             display:        "inline-flex",
             alignItems:     "center",
@@ -682,9 +721,9 @@ function EventTableRow({
         </td>
       )}
 
-      {renderTextCell("name",              200)}
+      {renderTextCell("name",              COL_W.name, stickyNameLeft)}
 
-      <td style={{ ...cell, width: 200, overflow: "visible" }}>
+      <td style={{ ...cell, width: COL_W.category, overflow: "visible" }}>
         <CategoryCell
           value={event.category_id}
           categories={categories}
@@ -694,7 +733,7 @@ function EventTableRow({
         />
       </td>
 
-      <td style={{ ...cell, width: 90 }}>
+      <td style={{ ...cell, width: COL_W.division }}>
         <DivisionCell
           value={event.division}
           onCommit={(div) => onUpdate(event.id, { division: div })}
@@ -702,7 +741,7 @@ function EventTableRow({
         />
       </td>
 
-      <td style={{ ...cell, width: 90 }}>
+      <td style={{ ...cell, width: COL_W.type }}>
         <TypeCell
           value={event.event_type}
           onToggle={() => onUpdate(event.id, { event_type: event.event_type === "standard" ? "trial" : "standard" })}
@@ -710,12 +749,12 @@ function EventTableRow({
         />
       </td>
 
-      {renderTextCell("building",          110)}
-      {renderTextCell("room",              90)}
-      {renderTextCell("floor",             70)}
-      {renderTextCell("volunteers_needed", 80)}
+      {renderTextCell("building",          COL_W.building)}
+      {renderTextCell("room",              COL_W.room)}
+      {renderTextCell("floor",             COL_W.floor)}
+      {renderTextCell("volunteers_needed", COL_W.volunteers)}
 
-      <td style={{ ...cell, width: "auto", overflow: "visible", minWidth: 180 }}>
+      <td style={{ ...cell, width: COL_W.timeBlocks, overflow: "visible", minWidth: COL_W.timeBlocks }}>
         <TimeBlocksCell
           event={event}
           timeBlocks={timeBlocks}
@@ -789,17 +828,28 @@ export function EventTable({
   });
 
   const cols: { label: string; width: number | "auto" }[] = [
-    ...(selectMode ? [{ label: "", width: 40 as number | "auto" }] : []),
-    { label: "Name",        width: 200 },
-    { label: "Category",    width: 200 },
-    { label: "Division",    width: 90  },
-    { label: "Type",        width: 90  },
-    { label: "Building",    width: 110 },
-    { label: "Room",        width: 90  },
-    { label: "Floor",       width: 70  },
-    { label: "Volunteers",  width: 80  },
-    { label: "Time Blocks", width: "auto" },
+    ...(selectMode ? [{ label: "", width: COL_W.select as number | "auto" }] : []),
+    { label: "Name",        width: COL_W.name       },
+    { label: "Category",    width: COL_W.category   },
+    { label: "Division",    width: COL_W.division   },
+    { label: "Type",        width: COL_W.type       },
+    { label: "Building",    width: COL_W.building   },
+    { label: "Room",        width: COL_W.room       },
+    { label: "Floor",       width: COL_W.floor      },
+    { label: "Volunteers",  width: COL_W.volunteers },
+    { label: "Time Blocks", width: COL_W.timeBlocks },
   ];
+  const tableMinWidth =
+    (selectMode ? COL_W.select : 0) +
+    COL_W.name +
+    COL_W.category +
+    COL_W.division +
+    COL_W.type +
+    COL_W.building +
+    COL_W.room +
+    COL_W.floor +
+    COL_W.volunteers +
+    COL_W.timeBlocks;
 
   const thStyle: CSSProperties = {
     padding:         "0 10px",
@@ -984,18 +1034,35 @@ export function EventTable({
         }}>
           <table style={{
             tableLayout:    "fixed",
-            width:          "100%",
-            minWidth:       "1100px",
+            width:          tableMinWidth,
+            minWidth:       tableMinWidth,
             borderCollapse: "collapse",
           }}>
             <thead>
               <tr>
                 {cols.map((col, i) => {
                   const isCheckboxCol = selectMode && i === 0;
+                  const isNameCol = selectMode ? i === 1 : i === 0;
+                  const stickyLeft = isCheckboxCol ? 0 : isNameCol ? (selectMode ? COL_W.select : 0) : undefined;
                   const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds?.has(e.id));
                   const someSelected = !allSelected && filtered.some((e) => selectedIds?.has(e.id));
                   return (
-                    <th key={col.label || "cb"} style={{ ...thStyle, width: col.width, textAlign: isCheckboxCol ? "center" : "left", padding: isCheckboxCol ? "0 8px" : undefined }}>
+                    <th
+                      key={col.label || "cb"}
+                      style={{
+                        ...thStyle,
+                        width: col.width,
+                        textAlign: isCheckboxCol ? "center" : "left",
+                        ...(isCheckboxCol ? { padding: "0 8px" } : {}),
+                        ...(stickyLeft !== undefined
+                          ? {
+                              left: stickyLeft,
+                              zIndex: 12,
+                              borderRight: "1px solid var(--color-border)",
+                            }
+                          : {}),
+                      }}
+                    >
                       {isCheckboxCol ? (
                         <div
                           onClick={() => {
