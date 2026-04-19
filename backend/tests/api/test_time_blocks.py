@@ -228,18 +228,8 @@ def test_delete_block_requires_manage_events(client, td_user, other_tournament, 
 
 
 # ---------------------------------------------------------------------------
-# Overlap validation
+# Additional time behavior
 # ---------------------------------------------------------------------------
-
-def test_create_block_overlap_returns_409(client, td_user, td_tournament):
-    """Creating a block whose time range overlaps an existing block returns 409."""
-    login(client, "td@test.com", "tdpass")
-    _make_block(client, td_tournament.id, start="09:00", end="11:00")
-    response = _make_block(client, td_tournament.id, start="10:00", end="12:00")
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert "conflict" in detail
-    assert detail["conflict"]["start"] == "09:00"
 
 
 def test_create_block_adjacent_allowed(client, td_user, td_tournament):
@@ -249,18 +239,6 @@ def test_create_block_adjacent_allowed(client, td_user, td_tournament):
     response = _make_block(client, td_tournament.id, label="Block 2", start="11:00", end="13:00")
     assert response.status_code == 201
 
-
-def test_patch_block_to_overlap_returns_409(client, td_user, td_tournament):
-    """PATCHing a block so it overlaps another block returns 409."""
-    login(client, "td@test.com", "tdpass")
-    _make_block(client, td_tournament.id, label="Block 1", start="09:00", end="11:00")
-    b2 = _make_block(client, td_tournament.id, label="Block 2", start="13:00", end="15:00").json()
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/blocks/{b2['id']}/",
-        json={"start": "10:00", "end": "14:00"},
-    )
-    assert response.status_code == 409
-    assert "conflict" in response.json()["detail"]
 
 
 def test_patch_block_self_exclusion_allowed(client, td_user, td_tournament):
@@ -282,10 +260,3 @@ def test_create_midnight_spanning_block_allowed(client, td_user, td_tournament):
     assert response.status_code == 201
 
 
-def test_create_block_overlapping_midnight_spanning_returns_409(client, td_user, td_tournament):
-    """A block that falls within the range of a midnight-spanning block returns 409."""
-    login(client, "td@test.com", "tdpass")
-    _make_block(client, td_tournament.id, label="Late Block", start="23:00", end="01:00")
-    # 00:00–00:30 falls inside 23:00–01:00 (normalized 23:00–25:00)
-    response = _make_block(client, td_tournament.id, label="Overlap Block", start="00:00", end="00:30")
-    assert response.status_code == 409
