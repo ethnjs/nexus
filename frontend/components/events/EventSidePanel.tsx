@@ -945,7 +945,7 @@ export function EventSidePanel({
             >
               Apply to {eventCount ?? 0} event{(eventCount ?? 0) !== 1 ? "s" : ""}
             </Button>
-          ) : (
+          ) : mode === "add" ? (
             <div style={{ display: "flex", gap: "8px" }}>
               <Button
                 variant="secondary"
@@ -967,6 +967,16 @@ export function EventSidePanel({
                 Save
               </Button>
             </div>
+          ) : (
+            <Button
+              size="sm"
+              onClick={() => handleSave(false)}
+              loading={saving}
+              disabled={!form.name.trim()}
+              fullWidth
+            >
+              Save
+            </Button>
           )}
         </div>
       </div>
