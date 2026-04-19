@@ -79,6 +79,8 @@ export function DeleteBlockModal({ block, affectedEvents, onConfirm, onCancel }:
             border:       "1px solid var(--color-border)",
             borderRadius: "var(--radius-md)",
             overflow:     "hidden",
+            maxHeight:    "min(44vh, 360px)",
+            overflowY:    "auto",
             marginBottom: "20px",
           }}
         >

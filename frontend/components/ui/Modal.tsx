@@ -37,6 +37,8 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
           padding: '28px',
           width,
           maxWidth: 'calc(100vw - 32px)',
+          maxHeight: 'calc(100vh - 32px)',
+          overflowY: 'auto',
           boxShadow: 'var(--shadow-lg)',
         }}
         onClick={(e) => e.stopPropagation()}
