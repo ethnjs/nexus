@@ -356,26 +356,27 @@ export default function EventsPage() {
 
       {activeTab !== "blocks" && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
-          <Input
-            value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-            placeholder="Search events..."
-            font="mono"
-            fullWidth
-            style={{ maxWidth: "320px" }}
-          />
-          <Button
-            onClick={() => setFiltersOpen(true)}
-            size="sm"
-            variant={activeFilterCount > 0 ? "primary" : "secondary"}
-          >
-            Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-          </Button>
-          {activeFilterCount > 0 && (
-            <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
-              Clear filters
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Input
+              value={filters.search}
+              onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+              placeholder="Search events..."
+              font="mono"
+              style={{ width: "240px" }}
+            />
+            <Button
+              onClick={() => setFiltersOpen(true)}
+              size="sm"
+              variant={activeFilterCount > 0 ? "primary" : "secondary"}
+            >
+              Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
             </Button>
-          )}
+            {activeFilterCount > 0 && (
+              <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
+                Clear
+              </Button>
+            )}
+          </div>
           <div style={{ flex: 1 }} />
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
             {filteredEvents.length} event{filteredEvents.length !== 1 ? "s" : ""}
