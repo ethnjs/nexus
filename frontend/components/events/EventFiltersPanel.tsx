@@ -133,7 +133,7 @@ export function EventFiltersPanel({
 
   const addBuilding = (value: string) => {
     const cleaned = value.trim();
-    if (!cleaned || draft.buildings.includes(cleaned)) return;
+    if (!cleaned || draft.buildings.includes(cleaned) || !buildingOptions.includes(cleaned)) return;
     setDraft((d) => ({ ...d, buildings: [...d.buildings, cleaned] }));
     setBuildingQuery("");
     setBuildingOpen(false);
@@ -411,16 +411,15 @@ export function EventFiltersPanel({
                   if (e.key === "Enter") {
                     e.preventDefault();
                     if (buildingSuggestions.length > 0) addBuilding(buildingSuggestions[0]);
-                    else addBuilding(buildingQuery);
                   }
                   if (e.key === "Escape") setBuildingOpen(false);
                 }}
                 placeholder="Type or select building..."
                 style={fieldInput}
               />
-              {buildingOpen && buildingSuggestions.length > 0 && (
+              {buildingOpen && (buildingSuggestions.length > 0 || buildingQuery.trim().length > 0) && (
                 <div style={dropdownList}>
-                  {buildingSuggestions.map((b) => (
+                  {buildingSuggestions.length > 0 ? buildingSuggestions.map((b) => (
                     <button
                       key={b}
                       type="button"
@@ -430,7 +429,11 @@ export function EventFiltersPanel({
                     >
                       {b}
                     </button>
-                  ))}
+                  )) : (
+                    <div style={{ padding: "8px 12px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                      No results
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -473,9 +476,9 @@ export function EventFiltersPanel({
                 placeholder="Type or select block..."
                 style={fieldInput}
               />
-              {blockOpen && blockSuggestions.length > 0 && (
+              {blockOpen && (blockSuggestions.length > 0 || blockQuery.trim().length > 0) && (
                 <div style={dropdownList}>
-                  {blockSuggestions.map((b) => (
+                  {blockSuggestions.length > 0 ? blockSuggestions.map((b) => (
                     <button
                       key={b.id}
                       type="button"
@@ -485,7 +488,11 @@ export function EventFiltersPanel({
                     >
                       {b.label}
                     </button>
-                  ))}
+                  )) : (
+                    <div style={{ padding: "8px 12px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+                      No results
+                    </div>
+                  )}
                 </div>
               )}
             </div>
