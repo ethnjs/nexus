@@ -642,7 +642,7 @@ function EventTableRow({
                 left: stickyLeft,
                 zIndex: 5,
                 background: "inherit",
-                borderRight: "1px solid var(--color-border)",
+                boxShadow: "inset -1px 0 0 var(--color-border)",
               }
             : {}),
         }}
@@ -698,7 +698,7 @@ function EventTableRow({
             left: 0,
             zIndex: 6,
             background: "inherit",
-            borderRight: "1px solid var(--color-border)",
+            boxShadow: "inset -1px 0 0 var(--color-border)",
           }}
         >
           <div style={{
@@ -1114,7 +1114,7 @@ export function EventTable({
                           ? {
                               left: stickyLeft,
                               zIndex: 12,
-                              borderRight: "1px solid var(--color-border)",
+                              boxShadow: "inset -1px 0 0 var(--color-border)",
                             }
                           : {}),
                       }}
