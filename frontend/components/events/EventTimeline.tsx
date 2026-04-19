@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Event, TimeBlock, TournamentCategory } from "@/lib/api";
 import { fmtDate, fmtTime, catColorVars } from "@/lib/formatters";
 import { EventChip } from "@/components/events/EventChip";
@@ -184,11 +184,28 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   const contentScrollRef      = useRef<HTMLDivElement>(null);
   const unscheduledSubRef     = useRef<HTMLDivElement>(null);
   const unscheduledContentRef = useRef<HTMLDivElement>(null);
+  const dateLabelRefs         = useRef<Map<string, HTMLSpanElement>>(new Map());
+  const latestScrollLeftRef   = useRef<number>(0);
+  const rafRef                = useRef<number | null>(null);
 
   const syncScroll = (scrollLeft: number) => {
+    latestScrollLeftRef.current = scrollLeft;
     for (const ref of [headerRowsScrollRef, contentScrollRef, unscheduledSubRef, unscheduledContentRef]) {
       if (ref.current && ref.current.scrollLeft !== scrollLeft)
         ref.current.scrollLeft = scrollLeft;
+    }
+    if (rafRef.current === null) {
+      rafRef.current = window.requestAnimationFrame(() => {
+        rafRef.current = null;
+        for (const dg of dateGroupsWithOffsets) {
+          const label = dateLabelRefs.current.get(dg.date);
+          if (!label) continue;
+          const labelWidth = label.offsetWidth;
+          const maxShift   = Math.max(0, dg.width - 16 - labelWidth);
+          const shift      = Math.min(Math.max(0, latestScrollLeftRef.current - dg.start), maxShift);
+          label.style.transform = `translateX(${shift}px)`;
+        }
+      });
     }
   };
   const onContentScroll     = () => syncScroll(contentScrollRef.current?.scrollLeft ?? 0);
@@ -206,7 +223,37 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   );
   const groups        = useMemo(() => buildGroups(scheduled, categories, groupBy), [scheduled, categories, groupBy]);
   const dateGroups    = useMemo(() => buildDateGroups(timeBlocks), [timeBlocks]);
+  const dateGroupsWithOffsets = useMemo(() => {
+    let start = 0;
+    return dateGroups.map((dg) => {
+      const width = dg.blockCount * colW;
+      const item = { ...dg, start, width };
+      start += width;
+      return item;
+    });
+  }, [dateGroups, colW]);
   const columnLayout  = useMemo(() => resolveColumnLayout(timeBlocks, colW), [timeBlocks, colW]);
+
+  useEffect(() => {
+    const scrollLeft = contentScrollRef.current?.scrollLeft ?? latestScrollLeftRef.current;
+    latestScrollLeftRef.current = scrollLeft;
+    for (const dg of dateGroupsWithOffsets) {
+      const label = dateLabelRefs.current.get(dg.date);
+      if (!label) continue;
+      const labelWidth = label.offsetWidth;
+      const maxShift   = Math.max(0, dg.width - 16 - labelWidth);
+      const shift      = Math.min(Math.max(0, scrollLeft - dg.start), maxShift);
+      label.style.transform = `translateX(${shift}px)`;
+    }
+  }, [dateGroupsWithOffsets]);
+
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+      }
+    };
+  }, []);
 
   // Pre-build a map from mergedGroupId → all blocks in that group (for tooltips)
   const mergedGroupBlocks = useMemo(() => {
@@ -320,13 +367,21 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
       {/* Date row */}
       <div style={{ display: "flex", borderBottom: "1px solid var(--color-border)", background: "var(--color-bg)" }}>
         <div style={{ width: LABEL_W, flexShrink: 0, height: DATE_ROW_H, position: "sticky", left: 0, zIndex: 15, background: "var(--color-bg)", borderRight: "1px solid var(--color-border)" }} />
-        {dateGroups.map((dg) => (
-          <div key={dg.date} style={{ width: dg.blockCount * colW, flexShrink: 0, height: DATE_ROW_H, display: "flex", alignItems: "center", padding: "0 8px", overflow: "hidden", borderRight: "1px solid var(--color-border)" }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {dg.label}
-            </span>
-          </div>
-        ))}
+        {dateGroupsWithOffsets.map((dg) => {
+          return (
+            <div key={dg.date} style={{ width: dg.width, flexShrink: 0, height: DATE_ROW_H, display: "flex", alignItems: "center", padding: "0 8px", overflow: "hidden", borderRight: "1px solid var(--color-border)" }}>
+              <span
+                ref={(el) => {
+                  if (el) dateLabelRefs.current.set(dg.date, el);
+                  else dateLabelRefs.current.delete(dg.date);
+                }}
+                style={{ display: "inline-block", transform: "translateX(0px)", willChange: "transform", fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-secondary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "calc(100% - 8px)" }}
+              >
+                {dg.label}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Block row */}
