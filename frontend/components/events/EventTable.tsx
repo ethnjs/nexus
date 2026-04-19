@@ -25,8 +25,6 @@ const COL_W = {
   volunteers: 90,
   timeBlocks: 800,
 } as const;
-const TABLE_ROW_H = 40;
-const TABLE_OVERSCAN = 10;
 
 interface Props {
   events:             Event[];
@@ -814,8 +812,6 @@ export function EventTable({
   const headerLabelRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
   const latestTableScrollRef = useRef<number>(0);
   const headerRafRef = useRef<number | null>(null);
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewportH, setViewportH] = useState(560);
 
   const filtered = useMemo(() => {
     if (hideFilters) return events;
@@ -885,15 +881,6 @@ export function EventTable({
     COL_W.floor +
     COL_W.volunteers +
     COL_W.timeBlocks;
-  const totalRows = filtered.length;
-  const startIdx = Math.max(0, Math.floor(scrollTop / TABLE_ROW_H) - TABLE_OVERSCAN);
-  const endIdx = Math.min(
-    totalRows,
-    Math.ceil((scrollTop + viewportH) / TABLE_ROW_H) + TABLE_OVERSCAN,
-  );
-  const visibleRows = filtered.slice(startIdx, endIdx);
-  const topPad = startIdx * TABLE_ROW_H;
-  const bottomPad = Math.max(0, (totalRows - endIdx) * TABLE_ROW_H);
 
   const applyHeaderTransforms = useCallback(() => {
     for (const meta of headerScrollMeta) {
@@ -912,8 +899,6 @@ export function EventTable({
     if (!node) return;
     const scrollLeft = node.scrollLeft;
     latestTableScrollRef.current = scrollLeft;
-    setScrollTop(node.scrollTop);
-    if (node.clientHeight !== viewportH) setViewportH(node.clientHeight);
     if (headerRafRef.current === null) {
       headerRafRef.current = window.requestAnimationFrame(() => {
         headerRafRef.current = null;
@@ -1114,8 +1099,8 @@ export function EventTable({
         </div>
       ) : (
         <div style={{
-          overflow:     "auto",
-          maxHeight:    "68vh",
+          overflowX:    "auto",
+          overflowY:    "visible",
           border:       "1px solid var(--color-border)",
           borderRadius: "var(--radius-md)",
         }}
@@ -1207,12 +1192,7 @@ export function EventTable({
               </tr>
             </thead>
             <tbody>
-              {topPad > 0 && (
-                <tr aria-hidden>
-                  <td colSpan={cols.length} style={{ padding: 0, border: "none", height: topPad }} />
-                </tr>
-              )}
-              {visibleRows.map((ev) => (
+              {filtered.map((ev) => (
                 <MemoEventTableRow
                   key={ev.id}
                   event={ev}
@@ -1226,11 +1206,6 @@ export function EventTable({
                   onToggleSelect={() => onToggleSelect?.(ev.id)}
                 />
               ))}
-              {bottomPad > 0 && (
-                <tr aria-hidden>
-                  <td colSpan={cols.length} style={{ padding: 0, border: "none", height: bottomPad }} />
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
