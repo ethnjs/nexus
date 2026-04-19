@@ -44,6 +44,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
     <div style={{
       fontFamily: "var(--font-sans)",
       fontSize: "11px",
+      fontWeight: "bold",
       color: "var(--color-text-secondary)",
       textTransform: "uppercase",
       letterSpacing: "0.04em",
@@ -184,37 +185,36 @@ export function EventFiltersPanel({
     borderBottom: "1px solid var(--color-border)",
     background: "var(--color-surface)",
     color: "var(--color-text-primary)",
-    fontFamily: "var(--font-mono)",
-    fontSize: "12px",
-    padding: "8px 10px",
+    fontFamily: "var(--font-sans)",
+    fontSize: "13px",
+    padding: "8px 12px",
     cursor: "pointer",
   };
 
   const fieldInput: React.CSSProperties = {
     width: "100%",
-    height: "36px",
-    padding: "0 10px",
-    fontFamily: "var(--font-mono)",
+    height: "34px",
+    padding: "0 12px",
+    fontFamily: "var(--font-sans)",
     fontSize: "13px",
     background: "var(--color-surface)",
     color: "var(--color-text-primary)",
     border: "1px solid var(--color-border)",
-    borderRadius: "var(--radius-sm)",
+    borderRadius: "var(--radius-md)",
     outline: "none",
     boxSizing: "border-box",
-    transition: "border-color 150ms ease",
   };
 
   return (
     <>
       <style>{`
         @keyframes filterPanelIn {
-          from { transform: translateX(-100%); }
+          from { transform: translateX(100%); }
           to   { transform: translateX(0); }
         }
         @keyframes filterPanelOut {
           from { transform: translateX(0); }
-          to   { transform: translateX(-100%); }
+          to   { transform: translateX(100%); }
         }
         @keyframes filterFadeIn {
           from { opacity: 0; }
@@ -246,11 +246,11 @@ export function EventFiltersPanel({
         style={{
           position:      "fixed",
           top:           "var(--topbar-height)",
-          left:          0,
+          right:         0,
           width:         "360px",
           height:        "calc(100vh - var(--topbar-height))",
           background:    "var(--color-surface)",
-          borderRight:   "1px solid var(--color-border)",
+          borderLeft:    "1px solid var(--color-border)",
           boxShadow:     "var(--shadow-lg)",
           zIndex:        100,
           display:       "flex",
@@ -383,6 +383,17 @@ export function EventFiltersPanel({
           {/* Building */}
           <section>
             <SectionLabel>Building</SectionLabel>
+            {draft.buildings.length > 0 && (
+              <div style={{ marginBottom: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {draft.buildings.map((b) => (
+                  <SelectedChip
+                    key={b}
+                    label={b}
+                    onRemove={() => setDraft((d) => ({ ...d, buildings: d.buildings.filter((x) => x !== b) }))}
+                  />
+                ))}
+              </div>
+            )}
             <div
               style={{ position: "relative" }}
               onBlur={(e) => {
@@ -406,8 +417,6 @@ export function EventFiltersPanel({
                 }}
                 placeholder="Type or select building..."
                 style={fieldInput}
-                onMouseEnter={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--color-border-strong)"; }}
-                onMouseLeave={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--color-border)"; }}
               />
               {buildingOpen && buildingSuggestions.length > 0 && (
                 <div style={dropdownList}>
@@ -425,22 +434,22 @@ export function EventFiltersPanel({
                 </div>
               )}
             </div>
-            {draft.buildings.length > 0 && (
-              <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {draft.buildings.map((b) => (
-                  <SelectedChip
-                    key={b}
-                    label={b}
-                    onRemove={() => setDraft((d) => ({ ...d, buildings: d.buildings.filter((x) => x !== b) }))}
-                  />
-                ))}
-              </div>
-            )}
           </section>
 
           {/* Time blocks */}
           <section>
             <SectionLabel>Time blocks</SectionLabel>
+            {draft.timeBlockIds.length > 0 && (
+              <div style={{ marginBottom: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                {draft.timeBlockIds.map((id) => (
+                  <SelectedChip
+                    key={id}
+                    label={blockLabelById.get(id) ?? `#${id}`}
+                    onRemove={() => setDraft((d) => ({ ...d, timeBlockIds: d.timeBlockIds.filter((x) => x !== id) }))}
+                  />
+                ))}
+              </div>
+            )}
             <div
               style={{ position: "relative" }}
               onBlur={(e) => {
@@ -463,8 +472,6 @@ export function EventFiltersPanel({
                 }}
                 placeholder="Type or select block..."
                 style={fieldInput}
-                onMouseEnter={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--color-border-strong)"; }}
-                onMouseLeave={(e) => { (e.target as HTMLInputElement).style.borderColor = "var(--color-border)"; }}
               />
               {blockOpen && blockSuggestions.length > 0 && (
                 <div style={dropdownList}>
@@ -482,17 +489,6 @@ export function EventFiltersPanel({
                 </div>
               )}
             </div>
-            {draft.timeBlockIds.length > 0 && (
-              <div style={{ marginTop: "8px", display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {draft.timeBlockIds.map((id) => (
-                  <SelectedChip
-                    key={id}
-                    label={blockLabelById.get(id) ?? `#${id}`}
-                    onRemove={() => setDraft((d) => ({ ...d, timeBlockIds: d.timeBlockIds.filter((x) => x !== id) }))}
-                  />
-                ))}
-              </div>
-            )}
           </section>
 
         </div>
