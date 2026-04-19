@@ -189,7 +189,7 @@ export default function EventsPage() {
 
   const handleMultiSave = async (data: Partial<EventCreate>) => {
     if (panel?.type !== "multi-edit") return;
-    await Promise.all(panel.ids.map((id) => eventsApi.update(tournamentId, id, data)));
+    await eventsApi.batchUpdate(tournamentId, panel.ids, data);
     await loadAll(true);
     // select mode intentionally stays active after save
   };
@@ -209,6 +209,7 @@ export default function EventsPage() {
 
   const [selectMode,   setSelectMode]   = useState(false);
   const [selectedIds,  setSelectedIds]  = useState<Set<number>>(new Set());
+  const [filteredIds,  setFilteredIds]  = useState<number[]>([]);
 
   const handleEnterSelectMode = () => setSelectMode(true);
   const handleExitSelectMode  = () => { setSelectMode(false); setSelectedIds(new Set()); };
@@ -218,6 +219,7 @@ export default function EventsPage() {
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
+  const handleSelectAll = () => setSelectedIds(new Set(filteredIds));
 
   // ── Delete block ──────────────────────────────────────────────────────────
 
@@ -319,6 +321,7 @@ export default function EventsPage() {
               selectedIds={selectedIds}
               onToggleSelect={handleToggleSelect}
               onEnterSelectMode={handleEnterSelectMode}
+              onFilteredIdsChange={setFilteredIds}
             />
           )}
 
@@ -334,6 +337,7 @@ export default function EventsPage() {
               selectedIds={selectedIds}
               onToggleSelect={handleToggleSelect}
               onEnterSelectMode={handleEnterSelectMode}
+              onFilteredIdsChange={setFilteredIds}
             />
           )}
 
@@ -372,6 +376,23 @@ export default function EventsPage() {
           <span style={{ color: "var(--color-text-secondary)" }}>
             <strong style={{ color: "var(--color-text-primary)" }}>{selectedIds.size}</strong> selected
           </span>
+          <div style={{ width: 1, height: 16, background: "var(--color-border)" }} />
+          <button
+            onClick={handleSelectAll}
+            disabled={filteredIds.length === 0}
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize:   "13px",
+              fontWeight: 500,
+              color:      filteredIds.length === 0 ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
+              background: "none",
+              border:     "none",
+              cursor:     filteredIds.length === 0 ? "default" : "pointer",
+              padding:    0,
+            }}
+          >
+            Select all
+          </button>
           <div style={{ width: 1, height: 16, background: "var(--color-border)" }} />
           <button
             onClick={() => setPanel({ type: "multi-edit", ids: [...selectedIds] })}

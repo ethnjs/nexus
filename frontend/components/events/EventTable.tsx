@@ -20,11 +20,12 @@ interface Props {
   onUpdate:           (id: number, delta: Partial<EventCreate>) => Promise<void>;
   onCreateCategory:   (name: string) => Promise<TournamentCategory>;
   onAddClick:         () => void;
-  isReadOnly?:        boolean;
-  selectMode?:        boolean;
-  selectedIds?:       Set<number>;
-  onToggleSelect?:    (id: number) => void;
-  onEnterSelectMode?: () => void;
+  isReadOnly?:          boolean;
+  selectMode?:          boolean;
+  selectedIds?:         Set<number>;
+  onToggleSelect?:      (id: number) => void;
+  onEnterSelectMode?:   () => void;
+  onFilteredIdsChange?: (ids: number[]) => void;
 }
 
 // ─── Shared styles ────────────────────────────────────────────────────────────
@@ -749,6 +750,7 @@ export function EventTable({
   selectedIds,
   onToggleSelect,
   onEnterSelectMode,
+  onFilteredIdsChange,
 }: Props) {
   const [search,     setSearch]     = useState("");
   const [division,   setDivision]   = useState<DivFilter>(null);
@@ -765,6 +767,10 @@ export function EventTable({
       return true;
     });
   }, [events, search, division, eventType, categoryId]);
+
+  useEffect(() => {
+    onFilteredIdsChange?.(filtered.map((e) => e.id));
+  }, [filtered, onFilteredIdsChange]);
 
   const filterBtn = (active: boolean): CSSProperties => ({
     fontFamily:   "var(--font-sans)",
@@ -984,11 +990,43 @@ export function EventTable({
           }}>
             <thead>
               <tr>
-                {cols.map((col) => (
-                  <th key={col.label} style={{ ...thStyle, width: col.width }}>
-                    {col.label}
-                  </th>
-                ))}
+                {cols.map((col, i) => {
+                  const isCheckboxCol = selectMode && i === 0;
+                  const allSelected = filtered.length > 0 && filtered.every((e) => selectedIds?.has(e.id));
+                  const someSelected = !allSelected && filtered.some((e) => selectedIds?.has(e.id));
+                  return (
+                    <th key={col.label || "cb"} style={{ ...thStyle, width: col.width, textAlign: isCheckboxCol ? "center" : "left", padding: isCheckboxCol ? "0 8px" : undefined }}>
+                      {isCheckboxCol ? (
+                        <div
+                          onClick={() => {
+                            const ids = filtered.map((e) => e.id);
+                            allSelected
+                              ? ids.forEach((id) => selectedIds?.has(id) && onToggleSelect?.(id))
+                              : ids.filter((id) => !selectedIds?.has(id)).forEach((id) => onToggleSelect?.(id));
+                          }}
+                          style={{
+                            display: "inline-flex", alignItems: "center", justifyContent: "center",
+                            width: 18, height: 18, borderRadius: "3px",
+                            border: `1.5px solid ${allSelected || someSelected ? "var(--color-accent)" : "var(--color-border)"}`,
+                            background: allSelected ? "var(--color-accent)" : "transparent",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {allSelected && (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M1.5 5L4 7.5L8.5 2.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          )}
+                          {someSelected && !allSelected && (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                              <path d="M2 5H8" stroke="var(--color-accent)" strokeWidth="1.5" strokeLinecap="round" />
+                            </svg>
+                          )}
+                        </div>
+                      ) : col.label}
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
