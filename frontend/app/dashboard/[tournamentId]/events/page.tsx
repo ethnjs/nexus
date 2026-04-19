@@ -23,7 +23,6 @@ import { EventTable } from "@/components/events/EventTable";
 import { EventTimeline } from "@/components/events/EventTimeline";
 import { EventFiltersPanel, EventFilters } from "@/components/events/EventFiltersPanel";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -357,12 +356,23 @@ export default function EventsPage() {
       {activeTab !== "blocks" && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <Input
+            <input
+              type="search"
               value={filters.search}
               onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
               placeholder="Search events..."
-              font="mono"
-              style={{ width: "240px" }}
+              style={{
+                height: "34px",
+                padding: "0 12px",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                fontFamily: "var(--font-sans)",
+                fontSize: "13px",
+                color: "var(--color-text-primary)",
+                background: "var(--color-surface)",
+                outline: "none",
+                width: "240px",
+              }}
             />
             <Button
               onClick={() => setFiltersOpen(true)}
