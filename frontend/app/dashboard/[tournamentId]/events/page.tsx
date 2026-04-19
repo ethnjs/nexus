@@ -21,13 +21,14 @@ import { EventSidePanel } from "@/components/events/EventSidePanel";
 import { EventCardGrid } from "@/components/events/EventCardGrid";
 import { EventTable } from "@/components/events/EventTable";
 import { EventTimeline } from "@/components/events/EventTimeline";
+import { CategoriesTable } from "@/components/events/CategoriesTable";
 import { EventFiltersPanel, EventFilters } from "@/components/events/EventFiltersPanel";
 import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
-type Tab = "timeline" | "cards" | "table" | "blocks";
+type Tab = "timeline" | "cards" | "table" | "blocks" | "categories";
 
 const EMPTY_FILTERS: EventFilters = {
   search: "",
@@ -53,6 +54,7 @@ function TabBar({
     { id: "cards",    label: "Cards" },
     { id: "table",    label: "Table" },
     { id: "blocks",   label: "Time Blocks" },
+    { id: "categories", label: "Categories" },
   ];
 
   return (
@@ -354,7 +356,7 @@ export default function EventsPage() {
 
       <TabBar active={activeTab} onChange={handleTabChange} />
 
-      {activeTab !== "blocks" && (
+      {(activeTab === "timeline" || activeTab === "cards" || activeTab === "table") && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
             <input
@@ -491,6 +493,25 @@ export default function EventsPage() {
               onAdd={handleAddBlock}
               onEdit={handleEditBlock}
               onDelete={handleDeleteClick}
+            />
+          )}
+
+          {activeTab === "categories" && (
+            <CategoriesTable
+              categories={categories}
+              events={events}
+              onAdd={async (name) => {
+                await categoriesApi.create(tournamentId, name);
+                await loadAll(true);
+              }}
+              onEdit={async (category, name) => {
+                await categoriesApi.update(tournamentId, category.id, name);
+                await loadAll(true);
+              }}
+              onDelete={async (category) => {
+                await categoriesApi.delete(tournamentId, category.id);
+                await loadAll(true);
+              }}
             />
           )}
         </>

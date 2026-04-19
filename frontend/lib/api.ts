@@ -143,6 +143,8 @@ export const categoriesApi = {
     api.get<TournamentCategory[]>(`/tournaments/${tournamentId}/categories/`),
   create: (tournamentId: number, name: string) =>
     api.post<TournamentCategory>(`/tournaments/${tournamentId}/categories/`, { name }),
+  update: (tournamentId: number, id: number, name: string) =>
+    api.patch<TournamentCategory>(`/tournaments/${tournamentId}/categories/${id}/`, { name }),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/categories/${id}/`),
 }

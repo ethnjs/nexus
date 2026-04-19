@@ -11,6 +11,10 @@ class TournamentCategoryCreate(TournamentCategoryBase):
     pass
 
 
+class TournamentCategoryUpdate(BaseModel):
+    name: str
+
+
 class TournamentCategoryRead(TournamentCategoryBase):
     id: int
     tournament_id: int

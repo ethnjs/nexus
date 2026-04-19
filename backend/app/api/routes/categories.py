@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.models import TournamentCategory, Event, User
-from app.schemas.tournament_category import TournamentCategoryCreate, TournamentCategoryRead
+from app.schemas.tournament_category import TournamentCategoryCreate, TournamentCategoryRead, TournamentCategoryUpdate
 from app.core.permissions import MANAGE_EVENTS, VIEW_EVENTS, require_permission
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/categories", tags=["categories"])
@@ -53,14 +53,15 @@ def create_category(
     return db_cat
 
 
-@router.delete("/{cat_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_category(
+@router.patch("/{cat_id}/", response_model=TournamentCategoryRead)
+def update_category(
     tournament_id: int,
     cat_id: int,
+    payload: TournamentCategoryUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    """Delete a custom category. Seeded categories cannot be deleted."""
+    """Rename a custom category. Default categories cannot be edited."""
     db_cat = (
         db.query(TournamentCategory)
         .filter(
@@ -75,7 +76,50 @@ def delete_category(
     if not db_cat.is_custom:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Seeded categories cannot be deleted",
+            detail="Default categories cannot be edited",
+        )
+
+    existing = (
+        db.query(TournamentCategory)
+        .filter(
+            TournamentCategory.tournament_id == tournament_id,
+            TournamentCategory.name == payload.name,
+            TournamentCategory.id != cat_id,
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail="Category already exists")
+
+    db_cat.name = payload.name
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+
+
+@router.delete("/{cat_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_category(
+    tournament_id: int,
+    cat_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    """Delete a custom category. Default categories cannot be deleted."""
+    db_cat = (
+        db.query(TournamentCategory)
+        .filter(
+            TournamentCategory.id == cat_id,
+            TournamentCategory.tournament_id == tournament_id,
+        )
+        .first()
+    )
+    if not db_cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+
+    if not db_cat.is_custom:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Default categories cannot be deleted",
         )
 
     # Check for events using this category
