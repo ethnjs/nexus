@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect, useMemo, CSSProperties } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, CSSProperties } from "react";
 import { Event, EventCreate, TimeBlock, TournamentCategory } from "@/lib/api";
 import { catColorVars, fmtTime, fmtDateShort } from "@/lib/formatters";
 import { Button } from "@/components/ui/Button";
@@ -23,7 +23,7 @@ const COL_W = {
   room: 90,
   floor: 70,
   volunteers: 90,
-  timeBlocks: 520,
+  timeBlocks: 1000,
 } as const;
 
 interface Props {
@@ -795,6 +795,10 @@ export function EventTable({
   const [division,   setDivision]   = useState<DivFilter>(null);
   const [eventType,  setEventType]  = useState<TypeFilter>(null);
   const [categoryId, setCategoryId] = useState<number | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement>(null);
+  const headerLabelRefs = useRef<Map<number, HTMLSpanElement>>(new Map());
+  const latestTableScrollRef = useRef<number>(0);
+  const headerRafRef = useRef<number | null>(null);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
@@ -839,6 +843,19 @@ export function EventTable({
     { label: "Volunteers",  width: COL_W.volunteers },
     { label: "Time Blocks", width: COL_W.timeBlocks },
   ];
+  const stickyPrefixWidth = selectMode ? COL_W.select + COL_W.name : COL_W.name;
+  const headerScrollMeta = useMemo(() => {
+    let start = 0;
+    return cols
+      .map((col, i) => {
+        const width = Number(col.width);
+        const sticky = selectMode ? i <= 1 : i === 0;
+        const meta = { index: i, start, width, sticky };
+        start += width;
+        return meta;
+      })
+      .filter((m) => !m.sticky);
+  }, [cols, selectMode]);
   const tableMinWidth =
     (selectMode ? COL_W.select : 0) +
     COL_W.name +
@@ -850,6 +867,42 @@ export function EventTable({
     COL_W.floor +
     COL_W.volunteers +
     COL_W.timeBlocks;
+
+  const applyHeaderTransforms = useCallback(() => {
+    for (const meta of headerScrollMeta) {
+      const label = headerLabelRefs.current.get(meta.index);
+      if (!label) continue;
+      const labelWidth = label.offsetWidth;
+      const maxShift = Math.max(0, meta.width - 20 - labelWidth);
+      const desired = latestTableScrollRef.current + stickyPrefixWidth - meta.start;
+      const shift = Math.min(Math.max(0, desired), maxShift);
+      label.style.transform = `translateX(${shift}px)`;
+    }
+  }, [headerScrollMeta, stickyPrefixWidth]);
+
+  const onTableScroll = () => {
+    const scrollLeft = tableScrollRef.current?.scrollLeft ?? 0;
+    latestTableScrollRef.current = scrollLeft;
+    if (headerRafRef.current === null) {
+      headerRafRef.current = window.requestAnimationFrame(() => {
+        headerRafRef.current = null;
+        applyHeaderTransforms();
+      });
+    }
+  };
+
+  useEffect(() => {
+    latestTableScrollRef.current = tableScrollRef.current?.scrollLeft ?? 0;
+    applyHeaderTransforms();
+  }, [applyHeaderTransforms]);
+
+  useEffect(() => {
+    return () => {
+      if (headerRafRef.current !== null) {
+        window.cancelAnimationFrame(headerRafRef.current);
+      }
+    };
+  }, []);
 
   const thStyle: CSSProperties = {
     padding:         "0 10px",
@@ -1031,7 +1084,10 @@ export function EventTable({
           overflowX:    "auto",
           border:       "1px solid var(--color-border)",
           borderRadius: "var(--radius-md)",
-        }}>
+        }}
+        ref={tableScrollRef}
+        onScroll={onTableScroll}
+        >
           <table style={{
             tableLayout:    "fixed",
             width:          tableMinWidth,
@@ -1090,7 +1146,21 @@ export function EventTable({
                             </svg>
                           )}
                         </div>
-                      ) : col.label}
+                      ) : (
+                        <span
+                          ref={(el) => {
+                            if (el) headerLabelRefs.current.set(i, el);
+                            else headerLabelRefs.current.delete(i);
+                          }}
+                          style={{
+                            display: "inline-block",
+                            transform: "translateX(0px)",
+                            willChange: "transform",
+                          }}
+                        >
+                          {col.label}
+                        </span>
+                      )}
                     </th>
                   );
                 })}
