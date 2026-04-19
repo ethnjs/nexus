@@ -12,6 +12,12 @@ def _make_category(client, tournament_id, name="Robotics"):
     )
 
 
+def _update_category(client, tournament_id, cat_id, name):
+    return client.patch(
+        f"/tournaments/{tournament_id}/categories/{cat_id}/", json={"name": name}
+    )
+
+
 def _make_event(client, tournament_id, **overrides):
     payload = {"tournament_id": tournament_id, "name": "Boomilever", "division": "C"}
     payload.update(overrides)
@@ -122,6 +128,83 @@ def test_create_category_requires_manage_events(
 
 def test_create_category_unauthenticated(client, td_tournament):
     assert _make_category(client, td_tournament.id).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Update
+# ---------------------------------------------------------------------------
+
+def test_update_custom_category(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_category(client, td_tournament.id, name="Robotics").json()
+    response = _update_category(client, td_tournament.id, created["id"], "Engineering")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == created["id"]
+    assert data["name"] == "Engineering"
+    assert data["is_custom"] is True
+
+
+def test_update_default_category_forbidden(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    categories = client.get(f"/tournaments/{td_tournament.id}/categories/").json()
+    default_cat = next(c for c in categories if not c["is_custom"])
+    response = _update_category(client, td_tournament.id, default_cat["id"], "Renamed")
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Default categories cannot be edited"
+
+
+def test_update_category_duplicate_name_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    cat_a = _make_category(client, td_tournament.id, name="Robotics").json()
+    _make_category(client, td_tournament.id, name="Engineering")
+    response = _update_category(client, td_tournament.id, cat_a["id"], "Engineering")
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Category already exists"
+
+
+def test_update_category_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _update_category(client, td_tournament.id, 9999, "Renamed")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Category not found"
+
+
+def test_update_category_wrong_tournament_404(
+    client, td_user, td_tournament, other_tournament, db
+):
+    """A category from tournament A is not reachable via tournament B's URL."""
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    cat = _make_category(client, td_tournament.id, name="Robotics").json()
+    response = _update_category(client, other_tournament.id, cat["id"], "Renamed")
+    assert response.status_code == 404
+
+
+def test_update_category_requires_manage_events(
+    client, td_user, other_tournament, db
+):
+    db.add(Membership(
+        user_id=td_user.id,
+        tournament_id=other_tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    response = _update_category(client, other_tournament.id, 1, "Renamed")
+    assert response.status_code == 403
+
+
+def test_update_category_unauthenticated(client, td_tournament):
+    response = _update_category(client, td_tournament.id, 1, "Renamed")
+    assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------
