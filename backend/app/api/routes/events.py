@@ -135,39 +135,6 @@ def create_event(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
-# ---------------------------------------------------------------------------
-@router.patch("/{event_id}/", response_model=EventRead)
-def update_event(
-    tournament_id: int,
-    event_id: int,
-    payload: EventUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_write_permission(current_user, tournament_id, db)
-    event = _get_event_or_404(event_id, tournament_id, db)
-
-    for field in payload.model_fields_set - {"time_block_ids"}:
-        setattr(event, field, getattr(payload, field))
-
-    if payload.time_block_ids is not None:
-        blocks = (
-            db.query(TimeBlock)
-            .filter(
-                TimeBlock.id.in_(payload.time_block_ids),
-                TimeBlock.tournament_id == tournament_id,
-            )
-            .all()
-        )
-        event.time_blocks = blocks
-
-    db.commit()
-    db.refresh(event)
-    return event
-
-
-# ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/events/batch/ — manage_events or manage_tournament
 # ---------------------------------------------------------------------------
 @router.patch("/batch/", response_model=list[EventRead])
@@ -211,6 +178,39 @@ def batch_update_events(
     for event in updated:
         db.refresh(event)
     return updated
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
+# ---------------------------------------------------------------------------
+@router.patch("/{event_id}/", response_model=EventRead)
+def update_event(
+    tournament_id: int,
+    event_id: int,
+    payload: EventUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _require_write_permission(current_user, tournament_id, db)
+    event = _get_event_or_404(event_id, tournament_id, db)
+
+    for field in payload.model_fields_set - {"time_block_ids"}:
+        setattr(event, field, getattr(payload, field))
+
+    if payload.time_block_ids is not None:
+        blocks = (
+            db.query(TimeBlock)
+            .filter(
+                TimeBlock.id.in_(payload.time_block_ids),
+                TimeBlock.tournament_id == tournament_id,
+            )
+            .all()
+        )
+        event.time_blocks = blocks
+
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 # ---------------------------------------------------------------------------
