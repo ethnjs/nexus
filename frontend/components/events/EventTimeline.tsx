@@ -178,14 +178,15 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   const [groupBy, setGroupBy] = useState<GroupBy>("category");
   const [colorBy, setColorBy] = useState<ColorBy>("category");
 
-  // Scroll sync: all overflow-hidden sections track scrollLeft of the active scroller
-  const headerScrollRef       = useRef<HTMLDivElement>(null);
+  // Scroll sync: timeline header rows + body sections track scrollLeft of the active scroller.
+  // Controls bar is intentionally excluded so it stays fixed in the x direction.
+  const headerRowsScrollRef   = useRef<HTMLDivElement>(null);
   const contentScrollRef      = useRef<HTMLDivElement>(null);
   const unscheduledSubRef     = useRef<HTMLDivElement>(null);
   const unscheduledContentRef = useRef<HTMLDivElement>(null);
 
   const syncScroll = (scrollLeft: number) => {
-    for (const ref of [headerScrollRef, contentScrollRef, unscheduledSubRef, unscheduledContentRef]) {
+    for (const ref of [headerRowsScrollRef, contentScrollRef, unscheduledSubRef, unscheduledContentRef]) {
       if (ref.current && ref.current.scrollLeft !== scrollLeft)
         ref.current.scrollLeft = scrollLeft;
     }
@@ -396,12 +397,18 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   return (
     <div style={outerStyle}>
 
-      {/* ── Sticky header: controls + date/block rows ── */}
+      {/* ── Sticky top controls: fixed x, sticky y ── */}
       <div
-        ref={headerScrollRef}
-        style={{ position: "sticky", top: "-22px", zIndex: 20, overflowX: "hidden", background: "var(--color-bg)" }}
+        style={{ position: "sticky", top: "-22px", zIndex: 21, background: "var(--color-bg)" }}
       >
         {controlsBar}
+      </div>
+
+      {/* ── Sticky timeline header rows: scroll-synced on x, sticky on y ── */}
+      <div
+        ref={headerRowsScrollRef}
+        style={{ position: "sticky", top: `${CONTROLS_H - 22}px`, zIndex: 20, overflowX: "hidden", background: "var(--color-bg)" }}
+      >
         {headerRows}
       </div>
 
