@@ -171,6 +171,17 @@ function buildDateGroups(timeBlocks: TimeBlock[]): DateGroup[] {
   return groups;
 }
 
+function withDateOffsets(dateGroups: DateGroup[], colW: number): Array<DateGroup & { start: number; width: number }> {
+  let start = 0;
+  const rows: Array<DateGroup & { start: number; width: number }> = [];
+  for (const dg of dateGroups) {
+    const width = dg.blockCount * colW;
+    rows.push({ ...dg, start, width });
+    start += width;
+  }
+  return rows;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function EventTimeline({ events, timeBlocks, categories, onEventClick, onAddClick }: Props) {
@@ -223,15 +234,7 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
   );
   const groups        = useMemo(() => buildGroups(scheduled, categories, groupBy), [scheduled, categories, groupBy]);
   const dateGroups    = useMemo(() => buildDateGroups(timeBlocks), [timeBlocks]);
-  const dateGroupsWithOffsets = useMemo(() => {
-    let start = 0;
-    return dateGroups.map((dg) => {
-      const width = dg.blockCount * colW;
-      const item = { ...dg, start, width };
-      start += width;
-      return item;
-    });
-  }, [dateGroups, colW]);
+  const dateGroupsWithOffsets = withDateOffsets(dateGroups, colW);
   const columnLayout  = useMemo(() => resolveColumnLayout(timeBlocks, colW), [timeBlocks, colW]);
 
   useEffect(() => {
@@ -347,16 +350,6 @@ export function EventTimeline({ events, timeBlocks, categories, onEventClick, on
         <option value="division">Color by division</option>
         <option value="type">Color by type</option>
       </select>
-
-      <div style={{ flex: 1 }} />
-
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
-        {events.length} event{events.length !== 1 ? "s" : ""}
-      </span>
-
-      <Button size="sm" onClick={onAddClick}>
-        <IconPlus size={12} /> Add event
-      </Button>
     </div>
   );
 

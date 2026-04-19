@@ -21,25 +21,20 @@ import { EventSidePanel } from "@/components/events/EventSidePanel";
 import { EventCardGrid } from "@/components/events/EventCardGrid";
 import { EventTable } from "@/components/events/EventTable";
 import { EventTimeline } from "@/components/events/EventTimeline";
+import { EventFiltersPanel, EventFilters } from "@/components/events/EventFiltersPanel";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
 type Tab = "timeline" | "cards" | "table" | "blocks";
-type NullToken = "__none__";
-const NONE: NullToken = "__none__";
-
-type EventFilters = {
-  search: string;
-  categoryIds: Array<number | NullToken>;
-  divisions: Array<"B" | "C" | NullToken>;
-  buildings: string[];
-  timeBlockIds: number[];
-};
 
 const EMPTY_FILTERS: EventFilters = {
   search: "",
   categoryIds: [],
+  includeNoCategory: false,
   divisions: [],
+  includeNoDivision: false,
   buildings: [],
   timeBlockIds: [],
 };
@@ -101,102 +96,6 @@ function TabBar({
   );
 }
 
-function toggleInSet<T>(arr: T[], value: T): T[] {
-  return arr.includes(value) ? arr.filter((v) => v !== value) : [...arr, value];
-}
-
-function checkboxRow(label: string, checked: boolean, onChange: () => void) {
-  return (
-    <label style={{ display: "flex", alignItems: "center", gap: "8px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-      <input type="checkbox" checked={checked} onChange={onChange} />
-      {label}
-    </label>
-  );
-}
-
-function FiltersModal({
-  open,
-  filters,
-  categories,
-  buildings,
-  timeBlocks,
-  onChange,
-  onClear,
-  onClose,
-}: {
-  open: boolean;
-  filters: EventFilters;
-  categories: TournamentCategory[];
-  buildings: string[];
-  timeBlocks: TimeBlock[];
-  onChange: (next: EventFilters) => void;
-  onClear: () => void;
-  onClose: () => void;
-}) {
-  if (!open) return null;
-
-  return (
-    <>
-      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 120, background: "rgba(0,0,0,0.15)" }} />
-      <div style={{ position: "fixed", top: "80px", left: "50%", transform: "translateX(-50%)", zIndex: 130, width: "min(760px, calc(100vw - 32px))", maxHeight: "calc(100vh - 120px)", overflow: "auto", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
-          <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 400, color: "var(--color-text-primary)" }}>Filters</h3>
-          <button onClick={onClose} style={{ border: "none", background: "none", cursor: "pointer", color: "var(--color-text-secondary)", fontSize: "18px" }}>×</button>
-        </div>
-
-        <div style={{ display: "grid", gap: "18px", padding: "14px 16px" }}>
-          <section>
-            <h4 style={{ fontFamily: "var(--font-sans)", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-secondary)", marginBottom: "8px" }}>Category</h4>
-            <div style={{ display: "grid", gap: "6px" }}>
-              {checkboxRow("No category", filters.categoryIds.includes(NONE), () => onChange({ ...filters, categoryIds: toggleInSet(filters.categoryIds, NONE) }))}
-              {categories.map((c) => (
-                <div key={`cat-${c.id}`}>
-                  {checkboxRow(c.name, filters.categoryIds.includes(c.id), () => onChange({ ...filters, categoryIds: toggleInSet(filters.categoryIds, c.id) }))}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <h4 style={{ fontFamily: "var(--font-sans)", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-secondary)", marginBottom: "8px" }}>Division</h4>
-            <div style={{ display: "grid", gap: "6px" }}>
-              {checkboxRow("Division B", filters.divisions.includes("B"), () => onChange({ ...filters, divisions: toggleInSet(filters.divisions, "B") }))}
-              {checkboxRow("Division C", filters.divisions.includes("C"), () => onChange({ ...filters, divisions: toggleInSet(filters.divisions, "C") }))}
-              {checkboxRow("No division", filters.divisions.includes(NONE), () => onChange({ ...filters, divisions: toggleInSet(filters.divisions, NONE) }))}
-            </div>
-          </section>
-
-          <section>
-            <h4 style={{ fontFamily: "var(--font-sans)", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-secondary)", marginBottom: "8px" }}>Building</h4>
-            <div style={{ display: "grid", gap: "6px" }}>
-              {buildings.length === 0 ? <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>No building values yet.</span> : buildings.map((b) => (
-                <div key={`bld-${b}`}>
-                  {checkboxRow(b, filters.buildings.includes(b), () => onChange({ ...filters, buildings: toggleInSet(filters.buildings, b) }))}
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section>
-            <h4 style={{ fontFamily: "var(--font-sans)", fontSize: "12px", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-text-secondary)", marginBottom: "8px" }}>Time Blocks</h4>
-            <div style={{ display: "grid", gap: "6px" }}>
-              {timeBlocks.length === 0 ? <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>No time blocks yet.</span> : timeBlocks.map((b) => (
-                <div key={`tb-${b.id}`}>
-                  {checkboxRow(`${b.label}`, filters.timeBlockIds.includes(b.id), () => onChange({ ...filters, timeBlockIds: toggleInSet(filters.timeBlockIds, b.id) }))}
-                </div>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", borderTop: "1px solid var(--color-border)" }}>
-          <button onClick={onClear} style={{ border: "none", background: "none", color: "var(--color-text-secondary)", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px" }}>Clear all</button>
-          <button onClick={onClose} style={{ border: "1px solid var(--color-border)", background: "var(--color-surface)", borderRadius: "var(--radius-sm)", padding: "6px 10px", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px" }}>Done</button>
-        </div>
-      </div>
-    </>
-  );
-}
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
@@ -219,8 +118,8 @@ export default function EventsPage() {
 
   const activeFilterCount = useMemo(() => {
     return Number(filters.search.trim().length > 0)
-      + Number(filters.categoryIds.length > 0)
-      + Number(filters.divisions.length > 0)
+      + Number(filters.categoryIds.length > 0 || filters.includeNoCategory)
+      + Number(filters.divisions.length > 0 || filters.includeNoDivision)
       + Number(filters.buildings.length > 0)
       + Number(filters.timeBlockIds.length > 0);
   }, [filters]);
@@ -262,8 +161,8 @@ export default function EventsPage() {
 
   const filteredEvents = useMemo(() => {
     const q = filters.search.trim().toLowerCase();
-    const hasCategory = filters.categoryIds.length > 0;
-    const hasDivision = filters.divisions.length > 0;
+    const hasCategory = filters.categoryIds.length > 0 || filters.includeNoCategory;
+    const hasDivision = filters.divisions.length > 0 || filters.includeNoDivision;
     const hasBuilding = filters.buildings.length > 0;
     const hasTimeBlocks = filters.timeBlockIds.length > 0;
     const categorySet = new Set(filters.categoryIds);
@@ -275,13 +174,15 @@ export default function EventsPage() {
       if (q && !e.name.toLowerCase().includes(q)) return false;
 
       if (hasCategory) {
-        const catVal: number | NullToken = e.category_id ?? NONE;
-        if (!categorySet.has(catVal)) return false;
+        const matchesExplicitCategory = e.category_id !== null && categorySet.has(e.category_id);
+        const matchesNoCategory = e.category_id === null && filters.includeNoCategory;
+        if (!matchesExplicitCategory && !matchesNoCategory) return false;
       }
 
       if (hasDivision) {
-        const divVal: "B" | "C" | NullToken = (e.division ?? NONE) as "B" | "C" | NullToken;
-        if (!divisionSet.has(divVal)) return false;
+        const matchesExplicitDivision = (e.division === "B" || e.division === "C") && divisionSet.has(e.division);
+        const matchesNoDivision = e.division === null && filters.includeNoDivision;
+        if (!matchesExplicitDivision && !matchesNoDivision) return false;
       }
 
       if (hasBuilding) {
@@ -455,48 +356,25 @@ export default function EventsPage() {
 
       {activeTab !== "blocks" && (
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px", flexWrap: "wrap" }}>
-          <input
-            type="text"
+          <Input
             value={filters.search}
             onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
             placeholder="Search events..."
-            style={{
-              width: "min(320px, 100%)",
-              height: "32px",
-              padding: "0 10px",
-              fontFamily: "var(--font-mono)",
-              fontSize: "12px",
-              color: "var(--color-text-primary)",
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
+            font="mono"
+            fullWidth
+            style={{ maxWidth: "320px" }}
           />
-          <button
+          <Button
             onClick={() => setFiltersOpen(true)}
-            style={{
-              height: "32px",
-              padding: "0 10px",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-sm)",
-              background: activeFilterCount > 0 ? "var(--color-accent-subtle)" : "var(--color-surface)",
-              color: "var(--color-text-primary)",
-              fontFamily: "var(--font-sans)",
-              fontSize: "12px",
-              cursor: "pointer",
-            }}
+            size="sm"
+            variant={activeFilterCount > 0 ? "primary" : "secondary"}
           >
             Filters{activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}
-          </button>
+          </Button>
           {activeFilterCount > 0 && (
-            <button
-              onClick={() => setFilters(EMPTY_FILTERS)}
-              style={{ border: "none", background: "none", color: "var(--color-text-secondary)", fontFamily: "var(--font-sans)", fontSize: "12px", cursor: "pointer" }}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>
               Clear filters
-            </button>
+            </Button>
           )}
           <div style={{ flex: 1 }} />
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", whiteSpace: "nowrap" }}>
@@ -504,19 +382,13 @@ export default function EventsPage() {
             {isPendingTab ? " · switching..." : ""}
           </span>
           {!selectMode && activeTab !== "timeline" && (
-            <button
-              onClick={handleEnterSelectMode}
-              style={{ height: "32px", padding: "0 10px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", background: "var(--color-surface)", color: "var(--color-text-primary)", fontFamily: "var(--font-sans)", fontSize: "12px", cursor: "pointer" }}
-            >
+            <Button onClick={handleEnterSelectMode} size="sm" variant="secondary">
               Select
-            </button>
+            </Button>
           )}
-          <button
-            onClick={() => setPanel({ type: "add" })}
-            style={{ height: "32px", padding: "0 10px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)", background: "var(--color-accent)", color: "var(--color-text-inverse)", fontFamily: "var(--font-sans)", fontSize: "12px", cursor: "pointer" }}
-          >
+          <Button onClick={() => setPanel({ type: "add" })} size="sm">
             Add event
-          </button>
+          </Button>
         </div>
       )}
 
@@ -611,16 +483,16 @@ export default function EventsPage() {
         </>
       )}
 
-      <FiltersModal
-        open={filtersOpen}
-        filters={filters}
-        categories={categories}
-        buildings={buildingOptions}
-        timeBlocks={timeBlocks}
-        onChange={setFilters}
-        onClear={() => setFilters(EMPTY_FILTERS)}
-        onClose={() => setFiltersOpen(false)}
-      />
+      {filtersOpen && (
+        <EventFiltersPanel
+          filters={filters}
+          categories={categories}
+          buildingOptions={buildingOptions}
+          timeBlocks={timeBlocks}
+          onApply={setFilters}
+          onClose={() => setFiltersOpen(false)}
+        />
+      )}
 
       {/* ── Select mode floating toolbar ── */}
       {selectMode && (
