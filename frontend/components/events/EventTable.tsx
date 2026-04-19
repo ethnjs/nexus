@@ -876,7 +876,7 @@ export function EventTable({
       const maxShift = Math.max(0, meta.width - 20 - labelWidth);
       const desired = latestTableScrollRef.current + stickyPrefixWidth - meta.start;
       const shift = Math.min(Math.max(0, desired), maxShift);
-      label.style.transform = `translateX(${shift}px)`;
+      label.style.transform = `translateX(${Math.round(shift)}px)`;
     }
   }, [headerScrollMeta, stickyPrefixWidth]);
 
