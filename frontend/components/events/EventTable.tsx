@@ -19,11 +19,11 @@ const COL_W = {
   category: 200,
   division: 90,
   type: 90,
-  building: 180,
-  room: 90,
+  building: 150,
+  room: 200,
   floor: 70,
   volunteers: 90,
-  timeBlocks: 1000,
+  timeBlocks: 800,
 } as const;
 
 interface Props {
