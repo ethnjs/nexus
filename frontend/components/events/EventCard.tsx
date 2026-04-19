@@ -2,6 +2,7 @@
 
 import { Event, TournamentCategory } from "@/lib/api";
 import { catColorVars } from "@/lib/formatters";
+import { memo } from "react";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -51,7 +52,7 @@ function Chip({
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EventCard({ event, categories, onClick, selectMode, selected, onToggleSelect }: Props) {
+function EventCardComponent({ event, categories, onClick, selectMode, selected, onToggleSelect }: Props) {
   // Category color
   const catIdx   = categories.findIndex((c) => c.id === event.category_id);
   const catName  = catIdx >= 0 ? categories[catIdx].name : null;
@@ -207,3 +208,12 @@ export function EventCard({ event, categories, onClick, selectMode, selected, on
     </div>
   );
 }
+
+export const EventCard = memo(
+  EventCardComponent,
+  (prev, next) =>
+    prev.event === next.event &&
+    prev.categories === next.categories &&
+    prev.selectMode === next.selectMode &&
+    prev.selected === next.selected,
+);
