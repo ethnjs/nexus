@@ -23,6 +23,7 @@ import { EventTable } from "@/components/events/EventTable";
 import { EventTimeline } from "@/components/events/EventTimeline";
 import { EventFiltersPanel, EventFilters } from "@/components/events/EventFiltersPanel";
 import { Button } from "@/components/ui/Button";
+import { IconPlus } from "@/components/ui/Icons";
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
 
@@ -398,6 +399,7 @@ export default function EventsPage() {
             </Button>
           )}
           <Button onClick={() => setPanel({ type: "add" })} size="sm">
+            <IconPlus size={14} />
             Add event
           </Button>
         </div>
