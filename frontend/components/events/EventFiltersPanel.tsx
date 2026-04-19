@@ -136,14 +136,12 @@ export function EventFiltersPanel({
     if (!cleaned || draft.buildings.includes(cleaned) || !buildingOptions.includes(cleaned)) return;
     setDraft((d) => ({ ...d, buildings: [...d.buildings, cleaned] }));
     setBuildingQuery("");
-    setBuildingOpen(false);
   };
 
   const addBlock = (id: number) => {
     if (draft.timeBlockIds.includes(id)) return;
     setDraft((d) => ({ ...d, timeBlockIds: [...d.timeBlockIds, id] }));
     setBlockQuery("");
-    setBlockOpen(false);
   };
 
   const clearAll = () =>
