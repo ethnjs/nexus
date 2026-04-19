@@ -5,7 +5,7 @@ from scalar_fastapi import get_scalar_api_reference
 
 from app.core.config import get_settings
 from app.core.security import verify_api_key
-from app.db.init_db import init_db, seed_dev_data
+from app.db.init_db import init_db, seed_users, seed_tournament, seed_time_blocks, seed_events
 from app.api.routes import tournaments, sheets, events, users, memberships
 from app.api.routes import auth, time_blocks, categories
 
@@ -20,7 +20,14 @@ async def lifespan(app: FastAPI):
         if get_settings().app_env in ("development", "preview"):
             from app.db.session import SessionLocal
             with SessionLocal() as db:
-                seed_dev_data(db)
+                if settings.seed_users:
+                    seed_users(db)
+                if settings.seed_tournament:
+                    seed_tournament(db)
+                if settings.seed_time_blocks:
+                    seed_time_blocks(db)
+                if settings.seed_events:
+                    seed_events(db)
     yield
 
 

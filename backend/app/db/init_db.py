@@ -21,29 +21,21 @@ def init_db() -> None:
     print("✓ Database tables created.")
 
 
-def seed_dev_data(db: Session) -> None:
+def seed_users(db: Session) -> None:
     """
-    Seed dev database with:
+    Seed dev users:
     - 1 admin account  (role="admin")
-    - 1 regular user account  (role="user", tournament_director membership)
-    - 1 sample tournament owned by the regular user
-    - TD membership for the regular user (positions=["tournament_director"])
-    - Volunteer membership for the admin (positions=["event_supervisor"])
-      — demonstrates that admin can also hold a per-tournament membership
+    - 1 regular user account  (role="user")
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import Event, Membership, Tournament, TournamentCategory, TimeBlock, User
+    from app.models.models import User
     from app.core.auth import hash_password
-    from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
-    from datetime import datetime
 
-    # Skip if already seeded
     if db.query(User).filter(User.email == "admin@nexus.dev").first():
-        print("✓ Dev seed already exists, skipping.")
+        print("✓ Dev users already exist, skipping.")
         return
 
-    # Admin account — full site-wide access, bypasses all tournament checks.
     admin = User(
         email="admin@nexus.dev",
         hashed_password=hash_password("admin1234"),
@@ -54,9 +46,6 @@ def seed_dev_data(db: Session) -> None:
     )
     db.add(admin)
 
-    # Regular user account — tournament access determined by membership positions.
-    # Previously "td@nexus.dev" with role="td"; now role="user" with a
-    # tournament_director membership on the sample tournament.
     td = User(
         email="td@nexus.dev",
         hashed_password=hash_password("td1234"),
@@ -66,9 +55,33 @@ def seed_dev_data(db: Session) -> None:
         is_active=True,
     )
     db.add(td)
-    db.flush()  # get IDs before creating tournament + memberships
+    db.commit()
 
-    # Sample tournament owned by the regular user
+    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin)")
+    print("✓ Seeded: td@nexus.dev / td1234  (role=user)")
+
+
+def seed_tournament(db: Session) -> None:
+    """
+    Seed the sample tournament, default categories, and memberships.
+
+    Idempotent — skips if the tournament already exists.
+    Requires seed_users to have run first.
+    """
+    from app.models.models import Membership, Tournament, TournamentCategory, User
+    from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
+    from datetime import datetime
+
+    if db.query(Tournament).filter(Tournament.name == "2026 National Tournament @ USC").first():
+        print("✓ Dev tournament already exists, skipping.")
+        return
+
+    td = db.query(User).filter(User.email == "td@nexus.dev").first()
+    admin = db.query(User).filter(User.email == "admin@nexus.dev").first()
+    if not td or not admin:
+        print("✗ seed_tournament requires seed_users to run first — skipping.")
+        return
+
     tournament = Tournament(
         name="2026 National Tournament @ USC",
         start_date=datetime(2026, 5, 21, 8, 0),
@@ -81,9 +94,8 @@ def seed_dev_data(db: Session) -> None:
         },
     )
     db.add(tournament)
-    db.flush()  # get tournament.id before creating time_blocks, categories, memberships
+    db.flush()
 
-    # Seed default categories
     for cat_name in DEFAULT_CATEGORIES:
         db.add(TournamentCategory(
             tournament_id=tournament.id,
@@ -91,7 +103,41 @@ def seed_dev_data(db: Session) -> None:
             is_custom=False,
         ))
 
-    # Seed sample time blocks
+    db.add(Membership(
+        user_id=td.id,
+        tournament_id=tournament.id,
+        positions=["tournament_director"],
+        status="confirmed",
+    ))
+    db.add(Membership(
+        user_id=admin.id,
+        tournament_id=tournament.id,
+        positions=["event_supervisor"],
+        status="confirmed",
+    ))
+    db.commit()
+
+    print(f"✓ Seeded tournament: '{tournament.name}'")
+
+
+def seed_time_blocks(db: Session) -> None:
+    """
+    Seed sample time blocks for the dev tournament.
+
+    Idempotent — skips if any time blocks already exist for the tournament.
+    Requires seed_tournament to have run first.
+    """
+    from app.models.models import TimeBlock, Tournament
+
+    tournament = db.query(Tournament).filter(Tournament.name == "2026 National Tournament @ USC").first()
+    if not tournament:
+        print("✗ seed_time_blocks requires seed_tournament to run first — skipping.")
+        return
+
+    if db.query(TimeBlock).filter(TimeBlock.tournament_id == tournament.id).first():
+        print("✓ Dev time blocks already exist, skipping.")
+        return
+
     sample_blocks = [
         ("Block 1", "2026-05-23", "08:00", "09:00"),
         ("Block 2", "2026-05-23", "09:15", "10:15"),
@@ -110,22 +156,40 @@ def seed_dev_data(db: Session) -> None:
             start=start,
             end=end,
         ))
+    db.commit()
 
-    db.flush()  # get time block IDs before creating events
+    print(f"✓ Seeded {len(sample_blocks)} time blocks.")
 
-    # Build category name → id lookup
+
+def seed_events(db: Session) -> None:
+    """
+    Seed 2026 Science Olympiad events for the dev tournament.
+
+    Idempotent — skips if any events already exist for the tournament.
+    Requires seed_tournament to have run first.
+    """
+    from app.models.models import Event, Tournament, TournamentCategory
+
+    tournament = db.query(Tournament).filter(Tournament.name == "2026 National Tournament @ USC").first()
+    if not tournament:
+        print("✗ seed_events requires seed_tournament to run first — skipping.")
+        return
+
+    from app.models.models import Event as EventModel
+    if db.query(EventModel).filter(EventModel.tournament_id == tournament.id).first():
+        print("✓ Dev events already exist, skipping.")
+        return
+
     cat_map = {
         cat.name: cat.id
         for cat in db.query(TournamentCategory).filter_by(tournament_id=tournament.id).all()
     }
 
-    # 2026 Science Olympiad events
-    # Format: (name, division, category_name)
-    LIFE   = "Life, Personal & Social Science"
-    EARTH  = "Earth and Space Science"
-    PHYS   = "Physical Science & Chemistry"
-    TECH   = "Technology & Engineering"
-    INQ    = "Inquiry & Nature of Science"
+    LIFE  = "Life, Personal & Social Science"
+    EARTH = "Earth and Space Science"
+    PHYS  = "Physical Science & Chemistry"
+    TECH  = "Technology & Engineering"
+    INQ   = "Inquiry & Nature of Science"
 
     events_div_b = [
         ("Anatomy & Physiology",  "B", LIFE),
@@ -179,7 +243,8 @@ def seed_dev_data(db: Session) -> None:
         ("Write It Do It",        "C", INQ),
     ]
 
-    for name, division, cat_name in events_div_b + events_div_c:
+    all_events = events_div_b + events_div_c
+    for name, division, cat_name in all_events:
         db.add(Event(
             tournament_id=tournament.id,
             name=name,
@@ -188,31 +253,9 @@ def seed_dev_data(db: Session) -> None:
             category_id=cat_map.get(cat_name),
             volunteers_needed=2,
         ))
-
-    # TD membership for the regular user — full manage_tournament access
-    td_membership = Membership(
-        user_id=td.id,
-        tournament_id=tournament.id,
-        positions=["tournament_director"],
-        status="confirmed",
-    )
-    db.add(td_membership)
-
-    # Volunteer membership for admin — demonstrates cross-role scenario:
-    # admin has site-wide access AND a volunteer-level membership here
-    admin_membership = Membership(
-        user_id=admin.id,
-        tournament_id=tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    )
-    db.add(admin_membership)
-
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, event_supervisor in sample tournament)")
-    print("✓ Seeded: td@nexus.dev / td1234  (role=user, tournament_director in sample tournament)")
-    print(f"✓ Seeded tournament: '{tournament.name}'")
+    print(f"✓ Seeded {len(all_events)} events.")
 
 
 if __name__ == "__main__":
@@ -222,4 +265,11 @@ if __name__ == "__main__":
 
     if settings.app_env in ("development", "preview"):
         with SessionLocal() as db:
-            seed_dev_data(db)
+            if settings.seed_users:
+                seed_users(db)
+            if settings.seed_tournament:
+                seed_tournament(db)
+            if settings.seed_time_blocks:
+                seed_time_blocks(db)
+            if settings.seed_events:
+                seed_events(db)

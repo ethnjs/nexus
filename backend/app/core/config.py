@@ -20,6 +20,12 @@ class Settings(BaseSettings):
     # Must be set to a long random string in production — never commit the real value
     jwt_secret: str = "dev-secret-change-in-production"
 
+    # Dev seed toggles — only apply when app_env is "development" or "preview"
+    seed_users: bool = True
+    seed_tournament: bool = True
+    seed_time_blocks: bool = True
+    seed_events: bool = True
+
 
 @lru_cache()
 def get_settings() -> Settings:
