@@ -136,8 +136,8 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     if month is None or day is None:
         return None
 
-    for block in (tournament.blocks or []):
-        block_date_str = block.get("date", "")
+    for block in (tournament.time_blocks or []):
+        block_date_str = block.date if hasattr(block, "date") else block.get("date", "")
         if not block_date_str:
             continue
         try:

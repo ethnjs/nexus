@@ -21,7 +21,7 @@ import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { FieldLabel } from "@/components/ui/FieldLabel";
-import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
+import { IconArrowLeft, IconCheckCircle, IconUpload } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
 import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
@@ -529,7 +529,7 @@ export default function EditSheetPage() {
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>Fetching headers…</span>
             )}
             <div style={{ flexShrink: 0 }}>
-              <Button variant="secondary" size="sm" onClick={triggerImport}>Import JSON</Button>
+              <Button variant="secondary" size="sm" onClick={triggerImport}><IconUpload size={12} />Import JSON</Button>
               <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>

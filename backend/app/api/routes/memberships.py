@@ -10,7 +10,7 @@ from app.core.permissions import (
     require_permission,
 )
 from app.db.session import get_db
-from app.models.models import Event, Membership, Tournament, User
+from app.models.models import Membership, Tournament, User
 from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
@@ -27,7 +27,6 @@ def _serialize(m: Membership, include_user: bool = False) -> dict:
         "id": m.id,
         "user_id": m.user_id,
         "tournament_id": m.tournament_id,
-        "assigned_event_id": m.assigned_event_id,
         "positions": m.positions,
         "schedule": m.schedule,
         "status": m.status,
@@ -180,14 +179,6 @@ def create_membership(
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    if payload.assigned_event_id:
-        event = db.query(Event).filter(
-            Event.id == payload.assigned_event_id,
-            Event.tournament_id == tournament_id,
-        ).first()
-        if not event:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
-
     existing = db.query(Membership).filter(
         Membership.user_id == payload.user_id,
         Membership.tournament_id == tournament_id,
@@ -225,14 +216,6 @@ def update_membership(
     """TD/volunteer-coordinator manual override — can update any field."""
     _require_write_permission(current_user, tournament_id, db)
     m = _get_membership_or_404(membership_id, tournament_id, db)
-
-    if payload.assigned_event_id is not None:
-        event = db.query(Event).filter(
-            Event.id == payload.assigned_event_id,
-            Event.tournament_id == tournament_id,
-        ).first()
-        if not event:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
 
     update_data = payload.model_dump(exclude_none=True)
 

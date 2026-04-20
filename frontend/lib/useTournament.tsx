@@ -8,29 +8,9 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { tournamentsApi } from "./api";
+import { tournamentsApi, Tournament } from "./api";
 
-export interface Tournament {
-  id: number;
-  name: string;
-  location: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  blocks: Array<{
-    number: number;
-    label: string;
-    date: string;
-    start: string;
-    end: string;
-  }>;
-  volunteer_schema: {
-    custom_fields: Array<{ key: string; label: string; type: string }>;
-    positions: Array<{ key: string; label: string; permissions: string[] }>;
-  };
-  owner_id: number;
-  created_at: string;
-  updated_at: string;
-}
+export type { Tournament };
 
 interface TournamentContextValue {
   tournaments: Tournament[];

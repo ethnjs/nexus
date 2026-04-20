@@ -16,22 +16,21 @@ class AvailabilitySlot(BaseModel):
 
 class ScheduleSlot(BaseModel):
     """A single day-of block assignment."""
-    block: int   # block number
-    duty: str    # position key or free string, e.g. "event_supervisor"
+    time_block_id: int  # FK into time_blocks table
+    duty: str           # position key or free string, e.g. "event_supervisor"
 
 
 class MembershipBase(BaseModel):
     user_id: int
     tournament_id: int
-    assigned_event_id: int | None = None
 
     # Position keys from tournament.volunteer_schema["positions"].
     # Drives both title and system permissions within this tournament.
     # e.g. ["lead_event_supervisor", "test_writer"]
     positions: list[str] | None = None
 
-    # Day-of block schedule — one entry per block.
-    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
+    # Day-of block schedule — one entry per time block.
+    # e.g. [{"time_block_id": 3, "duty": "event_supervisor"}, {"time_block_id": 7, "duty": "scoring"}]
     schedule: list[ScheduleSlot] | None = None
 
     status: str = "interested"
@@ -78,7 +77,6 @@ class MembershipCreate(MembershipBase):
 
 class MembershipUpdate(BaseModel):
     """Partial update — TD/coordinator manual override for any field."""
-    assigned_event_id: int | None = None
     positions: list[str] | None = None
     schedule: list[ScheduleSlot] | None = None
     status: str | None = None

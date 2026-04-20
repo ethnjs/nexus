@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 def _make_tournament(blocks=None, start_date=None):
     t = MagicMock()
-    t.blocks = blocks or []
+    t.time_blocks = blocks or []
     t.start_date = start_date
     return t
 
