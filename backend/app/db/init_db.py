@@ -55,6 +55,16 @@ def seed_users(db: Session) -> None:
         is_active=True,
     )
     db.add(td)
+
+    demo = User(
+        email="demo@nexus.dev",
+        hashed_password=hash_password("demoUsEr328563010"),
+        first_name="Demo",
+        last_name="User",
+        role="user",
+        is_active=True,
+    )
+    db.add(demo)
     db.commit()
 
     print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin)")
