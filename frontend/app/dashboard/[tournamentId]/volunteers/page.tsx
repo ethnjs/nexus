@@ -355,7 +355,7 @@ export default function VolunteersPage() {
                     <TagList items={m.positions ?? []} />
                   </td>
 
-                  <td style={tdSec}>{m.assigned_event_id != null ? String(m.assigned_event_id) : "—"}</td>
+                  <td style={tdSec}>{"—"}</td>{/* TODO: wire assigned_event_id when event assignment is implemented */}
                   <td style={{ ...tdSec, whiteSpace: "normal", maxWidth: "260px" }}>{m.notes ?? "—"}</td>
 
                   {/* Extra data — wider, wrapping */}

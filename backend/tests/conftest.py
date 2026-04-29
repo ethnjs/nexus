@@ -29,8 +29,8 @@ from app.api.routes.sheets import get_sheets_service, get_forms_service
 from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.core.auth import hash_password
-from app.core.permissions import DEFAULT_POSITIONS
-from app.models.models import Membership, Tournament, User
+from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
+from app.models.models import Membership, Tournament, TournamentCategory, User
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
@@ -123,16 +123,26 @@ def other_user(db):
 # Tournament + membership fixtures
 # ---------------------------------------------------------------------------
 
+def _seed_tournament(db, tournament):
+    """Seed DEFAULT_CATEGORIES for a tournament, mirroring the POST /tournaments/ route."""
+    for cat_name in DEFAULT_CATEGORIES:
+        db.add(TournamentCategory(
+            tournament_id=tournament.id,
+            name=cat_name,
+            is_custom=False,
+        ))
+
+
 @pytest.fixture
 def td_tournament(db, td_user):
     tournament = Tournament(
         name="TD Test Tournament",
         owner_id=td_user.id,
-        blocks=[],
         volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
     )
     db.add(tournament)
     db.flush()
+    _seed_tournament(db, tournament)
     db.add(Membership(
         user_id=td_user.id,
         tournament_id=tournament.id,
@@ -149,11 +159,11 @@ def other_tournament(db, other_user):
     tournament = Tournament(
         name="Other Test Tournament",
         owner_id=other_user.id,
-        blocks=[],
         volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
     )
     db.add(tournament)
     db.flush()
+    _seed_tournament(db, tournament)
     db.add(Membership(
         user_id=other_user.id,
         tournament_id=tournament.id,

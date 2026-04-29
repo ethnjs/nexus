@@ -35,9 +35,6 @@ class Tournament(Base):
     end_date = Column(DateTime(timezone=True), nullable=True)
     location = Column(String(255), nullable=True)
 
-    # [{number, label, date, start, end}, ...]
-    blocks = Column(JSON, nullable=False, default=list)
-
     # {
     #   custom_fields: [{key, label, type}, ...],
     #   positions: [{key, label, permissions: [...]}, ...]
@@ -62,6 +59,73 @@ class Tournament(Base):
     )
     memberships = relationship(
         "Membership", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    time_blocks = relationship(
+        "TimeBlock", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    categories = relationship(
+        "TournamentCategory", back_populates="tournament", cascade="all, delete-orphan"
+    )
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] TimeBlock
+# ---------------------------------------------------------------------------
+class TimeBlock(Base):
+    __tablename__ = "time_blocks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    label = Column(String(255), nullable=False)
+    date = Column(String(10), nullable=False)   # "YYYY-MM-DD"
+    start = Column(String(5), nullable=False)    # "HH:MM" 24hr
+    end = Column(String(5), nullable=False)      # "HH:MM" 24hr
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="time_blocks")
+    events = relationship(
+        "Event", secondary="event_time_blocks", back_populates="time_blocks"
+    )
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] EventTimeBlock (Association Table)
+# ---------------------------------------------------------------------------
+class EventTimeBlock(Base):
+    __tablename__ = "event_time_blocks"
+
+    event_id = Column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
+    time_block_id = Column(
+        Integer, ForeignKey("time_blocks.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] TournamentCategory
+# ---------------------------------------------------------------------------
+class TournamentCategory(Base):
+    __tablename__ = "tournament_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    name = Column(String(255), nullable=False)
+    is_custom = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime, default=utcnow)
+
+    tournament = relationship("Tournament", back_populates="categories")
+    events = relationship("Event", back_populates="category")
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_category_name"),
     )
 
 
@@ -124,7 +188,7 @@ class User(Base):
 #   tournament. Position definitions (including permissions) live in
 #   Tournament.volunteer_schema["positions"] and can be customised per-tournament.
 #
-# schedule: day-of block assignments (e.g. [{"block": 1, "duty": "event_supervisor"}])
+# schedule: day-of block assignments (e.g. [{"time_block_id": 1, "duty": "event_supervisor"}])
 #   Only populated for volunteers with day-of duties. One entry per block.
 #   Separate from positions — a volunteer_coordinator might be an event_supervisor
 #   during competition blocks.
@@ -144,18 +208,14 @@ class Membership(Base):
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
-    assigned_event_id = Column(
-        Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True
-    )
 
     # Title(s) + permission level within this tournament.
     # List of position keys defined in tournament.volunteer_schema["positions"].
     # e.g. ["lead_event_supervisor", "test_writer"]
     positions = Column(JSON, nullable=True)
 
-    # Day-of block schedule — [{block: int, duty: str}, ...]
+    # Day-of block schedule — [{time_block_id: int, duty: str}, ...]
     # One entry per block. duty is a free string (typically a position key).
-    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
     schedule = Column(JSON, nullable=True)
 
     # Volunteer availability/assignment status
@@ -191,7 +251,9 @@ class Membership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("Event", back_populates="memberships")
+    events = relationship(
+        "Event", secondary="membership_events", back_populates="memberships"
+    )
 
     __table_args__ = (
         # One membership per user per tournament
@@ -207,6 +269,20 @@ class Membership(Base):
     student_status       = Column(String(100), nullable=True)
     competition_exp      = Column(Text,        nullable=True)
     volunteering_exp     = Column(Text,        nullable=True)
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] MembershipEvent (Association Table)
+# ---------------------------------------------------------------------------
+class MembershipEvent(Base):
+    __tablename__ = "membership_events"
+
+    membership_id = Column(
+        Integer, ForeignKey("memberships.id", ondelete="CASCADE"), primary_key=True
+    )
+    event_id = Column(
+        Integer, ForeignKey("events.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -244,19 +320,27 @@ class Event(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
     name = Column(String(255), nullable=False)
-    division = Column(String(4), nullable=False)           # "B" | "C"
+    division = Column(String(4), nullable=True)           # "B" | "C" | null
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
-    category = Column(String(255), nullable=True)
+    category_id = Column(
+        Integer, ForeignKey("tournament_categories.id", ondelete="SET NULL"), nullable=True
+    )
     building = Column(String(255), nullable=True)
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
     volunteers_needed = Column(Integer, nullable=False, default=2)
-    blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    created_at = Column(DateTime, default=utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
-    memberships = relationship("Membership", back_populates="assigned_event")
+    category = relationship("TournamentCategory", back_populates="events")
+    time_blocks = relationship(
+        "TimeBlock", secondary="event_time_blocks", back_populates="events"
+    )
+    memberships = relationship(
+        "Membership", secondary="membership_events", back_populates="events"
+    )
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),

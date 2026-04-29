@@ -2,19 +2,8 @@
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.core.permissions import DEFAULT_POSITIONS
+from app.core.permissions import DEFAULT_POSITIONS, DEFAULT_CATEGORIES
 from app.models.models import Membership, Tournament
-
-SAMPLE_BLOCKS = [
-    {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
-    {"number": 2, "label": "Block 2", "date": "2025-11-15", "start": "09:15", "end": "10:15"},
-    {"number": 3, "label": "Block 3", "date": "2025-11-15", "start": "10:30", "end": "11:30"},
-    {"number": 4, "label": "Block 4", "date": "2025-11-15", "start": "12:30", "end": "13:30"},
-    {"number": 5, "label": "Block 5", "date": "2025-11-15", "start": "13:45", "end": "14:45"},
-    {"number": 6, "label": "Block 6", "date": "2025-11-15", "start": "15:00", "end": "16:00"},
-    {"number": 7, "label": "Scoring", "date": "2025-11-15", "start": "16:15", "end": "17:15"},
-    {"number": 8, "label": "Awards",  "date": "2025-11-15", "start": "17:30", "end": "18:30"},
-]
 
 SAMPLE_VOLUNTEER_SCHEMA = {
     "custom_fields": [
@@ -103,7 +92,8 @@ def test_create_tournament_minimal(client, td_user):
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Minimal Tournament"
-    assert data["blocks"] == []
+    assert data["time_blocks"] == []
+    assert len(data["categories"]) == len(DEFAULT_CATEGORIES)
 
 
 def test_create_tournament_auto_populates_default_positions(client, td_user):
@@ -137,14 +127,15 @@ def test_create_tournament_full(client, td_user):
         "start_date": "2025-05-21T08:00:00",
         "end_date": "2025-05-23T18:00:00",
         "location": "USC",
-        "blocks": SAMPLE_BLOCKS,
         "volunteer_schema": SAMPLE_VOLUNTEER_SCHEMA,
     })
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Nationals 2025"
-    assert len(data["blocks"]) == 8
+    assert data["location"] == "USC"
     assert len(data["volunteer_schema"]["custom_fields"]) == 3
+    assert data["time_blocks"] == []
+    assert len(data["categories"]) == len(DEFAULT_CATEGORIES)
 
 
 def test_create_tournament_invalid_dates(client, td_user):
@@ -153,17 +144,6 @@ def test_create_tournament_invalid_dates(client, td_user):
         "name": "Bad Dates",
         "start_date": "2025-11-15T08:00:00",
         "end_date": "2025-11-14T08:00:00",
-    }).status_code == 422
-
-
-def test_create_tournament_duplicate_block_numbers(client, td_user):
-    login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/", json={
-        "name": "Bad Blocks",
-        "blocks": [
-            {"number": 1, "label": "B1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
-            {"number": 1, "label": "B1 Again", "date": "2025-11-15", "start": "09:00", "end": "10:00"},
-        ]
     }).status_code == 422
 
 
@@ -180,6 +160,19 @@ def test_get_tournament_member_can_access(client, td_user, td_tournament):
     response = client.get(f"/tournaments/{td_tournament.id}/")
     assert response.status_code == 200
     assert response.json()["name"] == td_tournament.name
+
+
+def test_get_tournament_response_includes_time_blocks_and_categories(
+    client, td_user, td_tournament
+):
+    """TournamentRead must include time_blocks list and seeded categories."""
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/").json()
+    assert "time_blocks" in data
+    assert isinstance(data["time_blocks"], list)
+    assert "categories" in data
+    category_names = {c["name"] for c in data["categories"]}
+    assert set(DEFAULT_CATEGORIES) <= category_names
 
 
 def test_get_tournament_non_member_gets_404(client, td_user, other_tournament):
@@ -243,13 +236,6 @@ def test_update_tournament_non_member_gets_404(client, td_user, other_tournament
     assert client.patch(
         f"/tournaments/{other_tournament.id}/", json={"name": "Ghost"}
     ).status_code == 404
-
-
-def test_update_tournament_add_blocks(client, td_user, td_tournament):
-    login(client, "td@test.com", "tdpass")
-    response = client.patch(f"/tournaments/{td_tournament.id}/", json={"blocks": SAMPLE_BLOCKS})
-    assert response.status_code == 200
-    assert len(response.json()["blocks"]) == 8
 
 
 def test_update_tournament_positions(client, td_user, td_tournament):

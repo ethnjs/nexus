@@ -15,7 +15,7 @@ import {
   makeRichRow,
   SheetConfigMappingTable,
 } from "@/components/ui/SheetConfigMappingTable";
-import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
+import { IconArrowLeft, IconCheckCircle, IconWarning, IconUpload } from "@/components/ui/Icons";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
@@ -589,7 +589,7 @@ export default function NewSheetPage() {
               )}
             </div>
             <div style={{ flexShrink: 0 }}>
-              <Button variant="secondary" size="sm" onClick={triggerImport}>Import JSON</Button>
+              <Button variant="secondary" size="sm" onClick={triggerImport}><IconUpload size={12} />Import JSON</Button>
               <input ref={importInputRef} type="file" accept=".json,application/json" style={{ display: "none" }} onChange={handleImportFile} />
             </div>
           </div>

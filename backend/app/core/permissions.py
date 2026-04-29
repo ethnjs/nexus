@@ -74,7 +74,7 @@ DEFAULT_POSITIONS: list[dict] = [
     {
         "key":         "tournament_director",
         "label":       "Tournament Director",
-        "permissions": [MANAGE_TOURNAMENT],
+        "permissions": [MANAGE_TOURNAMENT, MANAGE_EVENTS],
     },
     {
         "key":         "volunteer_coordinator",
@@ -141,6 +141,20 @@ DEFAULT_POSITIONS: list[dict] = [
         "label":       "Test Reviewer",
         "permissions": [VIEW_EVENTS],
     },
+]
+
+
+# ---------------------------------------------------------------------------
+# Default category definitions
+# Auto-populated into tournament_categories when a tournament is created.
+# ---------------------------------------------------------------------------
+
+DEFAULT_CATEGORIES: list[str] = [
+    "Life, Personal & Social Science",
+    "Earth and Space Science",
+    "Physical Science & Chemistry",
+    "Technology & Engineering",
+    "Inquiry & Nature of Science",
 ]
 
 
