@@ -16,9 +16,17 @@ settings = get_settings()
 
 
 def init_db() -> None:
-    """Create all tables defined on Base metadata."""
-    Base.metadata.create_all(bind=engine)
-    print("✓ Database tables created.")
+    """Run all pending Alembic migrations (upgrade to head).
+
+    Safe to call on every startup — Alembic is idempotent and will
+    no-op if the database is already at the latest revision.
+    """
+    from alembic.config import Config
+    from alembic import command
+
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
+    print("✓ Database migrated to head.")
 
 
 def seed_users(db: Session) -> None:
