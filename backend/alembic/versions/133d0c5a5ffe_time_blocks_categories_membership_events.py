@@ -50,7 +50,6 @@ def upgrade():
             sa.Column('created_at', sa.DateTime(), nullable=True),
             sa.Column('updated_at', sa.DateTime(), nullable=True),
         )
-        op.create_index('ix_time_blocks_id', 'time_blocks', ['id'])
 
     # ------------------------------------------------------------------
     # 2. Create tournament_categories
@@ -65,7 +64,6 @@ def upgrade():
             sa.Column('created_at', sa.DateTime(), nullable=True),
             sa.UniqueConstraint('tournament_id', 'name', name='uq_tournament_category_name'),
         )
-        op.create_index('ix_tournament_categories_id', 'tournament_categories', ['id'])
 
     # ------------------------------------------------------------------
     # 3. Create event_time_blocks association table
