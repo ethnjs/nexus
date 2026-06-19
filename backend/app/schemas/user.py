@@ -1,4 +1,5 @@
 from __future__ import annotations
+from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, field_validator
 from app.core.phone import format_phone_us
@@ -34,18 +35,18 @@ class UserCreate(UserBase):
 
 class UserUpdate(BaseModel):
     """Partial update — all fields optional. TD manual override."""
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    phone: str | None = None
-    shirt_size: str | None = None
-    dietary_restriction: str | None = None
-    university: str | None = None
-    major: str | None = None
-    employer: str | None = None
-    university: str | None = None
-    major: str | None = None
-    employer: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    shirt_size: Optional[str] = None
+    dietary_restriction: Optional[str] = None
+    university: Optional[str] = None
+    major: Optional[str] = None
+    employer: Optional[str] = None
+    university: Optional[str] = None
+    major: Optional[str] = None
+    employer: Optional[str] = None
 
     @field_validator("phone", mode="before")
     @classmethod

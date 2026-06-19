@@ -94,13 +94,12 @@ class User(Base):
     major = Column(String(255), nullable=True)
     employer = Column(String(255), nullable=True)
 
-    # Promoted from extra_data — user-level attributes that travel across tournaments
-    student_status = Column(String(255), nullable=True)      # e.g. "1st Year", "Graduate", "Alumni"
+    student_status = Column(String(255), nullable=True)       # e.g. "1st Year", "Graduate", "Alumni"
     competition_exp = Column(Text, nullable=True)             # free-form competition experience
     volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
 
     # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in
+    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     is_active = Column(Boolean, nullable=False, default=True)
 
