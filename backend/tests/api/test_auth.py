@@ -104,56 +104,202 @@ class TestMe:
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/register/
+# POST /auth/register/   (public self-registration)
 # ---------------------------------------------------------------------------
 
+VALID_PASSWORD = "Secure@123"  # satisfies all validator rules
+
+
 class TestRegister:
-    def test_admin_can_register_user(self, client, admin_user):
-        login(client, "admin@test.com", "adminpass")
+    def test_register_success(self, client):
         res = client.post("/auth/register/", json={
-            "email": "newuser@test.com",
-            "password": "newpass123",
+            "email": "new@test.com",
+            "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
         })
         assert res.status_code == 201
-        assert res.json()["role"] == "user"
-        assert res.json()["email"] == "newuser@test.com"
+        data = res.json()
+        assert data["email"] == "new@test.com"
+        assert data["role"] == "user"
+        assert data["is_active"] == True
+        assert "hashed_password" not in data
 
-    def test_registered_user_role_is_always_user(self, client, admin_user):
-        login(client, "admin@test.com", "adminpass")
+    def test_register_sets_cookie(self, client):
+        # Registration should log the user in immediately
         res = client.post("/auth/register/", json={
-            "email": "another@test.com",
-            "password": "pass",
+            "email": "new@test.com",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
         })
         assert res.status_code == 201
-        assert res.json()["role"] == "user"
+        assert "access_token" in res.cookies
 
-    def test_non_admin_cannot_register(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        res = client.post("/auth/register/", json={
-            "email": "another@test.com",
-            "password": "pass",
+    def test_register_auto_login(self, client):
+        # Cookie from registration should allow immediate access to /me/
+        client.post("/auth/register/", json={
+            "email": "new@test.com",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
         })
-        assert res.status_code == 403
+        res = client.get("/auth/me/")
+        assert res.status_code == 200
+        assert res.json()["email"] == "new@test.com"
 
-    def test_unauthenticated_cannot_register(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "pass",
-        }).status_code == 401
+    def test_register_email_stored_lowercase(self, client):
+        res = client.post("/auth/register/", json={
+            "email": "NEW@TEST.COM",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
+        })
+        assert res.status_code == 201
+        assert res.json()["email"] == "new@test.com"
 
-    def test_duplicate_email_rejected(self, client, admin_user, td_user):
-        login(client, "admin@test.com", "adminpass")
+    def test_register_duplicate_email_rejected(self, client, td_user):
         assert client.post("/auth/register/", json={
-            "email": "td@test.com", "password": "pass",
+            "email": "td@test.com",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
         }).status_code == 409
 
-    def test_registered_user_can_login(self, client, admin_user):
-        login(client, "admin@test.com", "adminpass")
+    def test_register_can_login_with_new_credentials(self, client):
+        # Confirms the password was hashed and stored correctly
         client.post("/auth/register/", json={
-            "email": "brand@new.com", "password": "securepass",
+            "email": "new@test.com",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
         })
         client.post("/auth/logout/")
-        res = login(client, "brand@new.com", "securepass")
-        assert res.status_code == 200
-        assert res.json()["role"] == "user"
+        assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_register_password_too_short(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "Ab@1",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+    def test_register_password_missing_uppercase(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "secure@123",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+    def test_register_password_missing_lowercase(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "SECURE@123",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+    def test_register_password_missing_number(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "Secure@abc",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+    def test_register_password_missing_symbol(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "Secure1234",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+    def test_register_password_invalid_char(self, client):
+        # Control characters (ASCII < 32) should be rejected
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com", "password": "Secure@1\x01",
+            "first_name": "New", "last_name": "User",
+        }).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/admin/register/   (admin-only account creation)
+# ---------------------------------------------------------------------------
+
+class TestAdminRegister:
+    def test_admin_can_create_user(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/auth/admin/register/", json={
+            "email": "newuser@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "user",
+        })
+        assert res.status_code == 201
+        data = res.json()
+        assert data["email"] == "newuser@test.com"
+        assert data["role"] == "user"
+
+    def test_admin_can_create_admin(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/auth/admin/register/", json={
+            "email": "newadmin@test.com",
+            "first_name": "New",
+            "last_name": "Admin",
+            "role": "admin",
+        })
+        assert res.status_code == 201
+        assert res.json()["role"] == "admin"
+
+    def test_admin_created_user_is_inactive(self, client, admin_user):
+        # Accounts created by admin are inactive until the user activates via email
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/auth/admin/register/", json={
+            "email": "newuser@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "user",
+        })
+        assert res.status_code == 201
+        assert res.json()["is_active"] == False
+
+    def test_admin_created_user_cannot_login(self, client, admin_user):
+        # Inactive + no password — login must be blocked
+        login(client, "admin@test.com", "adminpass")
+        client.post("/auth/admin/register/", json={
+            "email": "newuser@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "user",
+        })
+        client.post("/auth/logout/")
+        assert login(client, "newuser@test.com", "anything").status_code == 401
+
+    def test_non_admin_cannot_admin_register(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/admin/register/", json={
+            "email": "new@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "user",
+        }).status_code == 403
+
+    def test_unauthenticated_cannot_admin_register(self, client):
+        assert client.post("/auth/admin/register/", json={
+            "email": "new@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "user",
+        }).status_code == 401
+
+    def test_admin_register_duplicate_email_rejected(self, client, admin_user, td_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.post("/auth/admin/register/", json={
+            "email": "td@test.com",
+            "first_name": "TD",
+            "last_name": "User",
+            "role": "user",
+        }).status_code == 409
+
+    def test_admin_register_invalid_role_rejected(self, client, admin_user):
+        # Schema-level: only "admin" | "user" are valid roles
+        login(client, "admin@test.com", "adminpass")
+        assert client.post("/auth/admin/register/", json={
+            "email": "new@test.com",
+            "first_name": "New",
+            "last_name": "User",
+            "role": "superuser",
+        }).status_code == 422
