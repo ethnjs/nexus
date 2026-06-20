@@ -97,7 +97,9 @@ class User(Base):
     # if a student
     university = Column(String(255), nullable=True)
     major = Column(String(255), nullable=True)
-    student_status = Column(String(255), nullable=True)       # e.g. "1st Year", "Graduate", "Alumni"
+    student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
+    year_level = Column(Integer, nullable=True)
+    graduation_year = Column(Integer, nullable=True)
 
     # if not a student
     employer = Column(String(255), nullable=True)
