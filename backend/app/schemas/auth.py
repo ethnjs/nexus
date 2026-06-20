@@ -76,15 +76,3 @@ class AdminRegisterRequest(BaseModel):
     first_name: str
     last_name: str
     role: Literal["admin", "user"]
-
-
-class UserResponse(BaseModel):
-    id: int
-    email: str
-    first_name: Optional[str]
-    last_name: Optional[str]
-    role: str          # "admin" | "user"
-    is_active: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}

@@ -7,7 +7,7 @@ from app.core.permissions import MANAGE_TOURNAMENT, MANAGE_VOLUNTEERS, has_permi
 from app.core.users import check_if_email_exists
 from app.db.session import get_db
 from app.models.models import Membership, User
-from app.schemas.user import UserRead, UserUpdate, AdminUserUpdate
+from app.schemas.user import UserResponse, UserUpdate, AdminUserUpdate
 
 router = APIRouter(tags=["users"])
 
@@ -22,7 +22,7 @@ def _find_user_by_id(db: Session, id: int) -> User:
 # ---------------------------------------------------------------------------
 # GET /users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/", response_model=list[UserRead])
+@router.get("/admin/users/", response_model=list[UserResponse])
 def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
@@ -34,7 +34,7 @@ def list_users(
 # ---------------------------------------------------------------------------
 # GET /users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/{user_id}/", response_model=UserRead)
+@router.get("/admin/users/{user_id}/", response_model=UserResponse)
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -50,7 +50,7 @@ def get_user(
 # ---------------------------------------------------------------------------
 # GET /users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/by-email/{email}/", response_model=UserRead)
+@router.get("/admin/users/by-email/{email}/", response_model=UserResponse)
 def get_user_by_email(
     email: str,
     db: Session = Depends(get_db),
@@ -66,7 +66,7 @@ def get_user_by_email(
 # ---------------------------------------------------------------------------
 # PATCH /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.patch("/admin/users/{user_id}/", response_model=UserRead)
+@router.patch("/admin/users/{user_id}/", response_model=UserResponse)
 def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
@@ -102,7 +102,7 @@ def admin_delete_user(
 # GET /tournaments/{tournament_id}/users/{user_id}
 # Requires manage_volunteers or manage_tournament for that tournament.
 # ---------------------------------------------------------------------------
-@router.get("/tournaments/{tournament_id}/users/{user_id}/", response_model=UserRead)
+@router.get("/tournaments/{tournament_id}/users/{user_id}/", response_model=UserResponse)
 def get_tournament_user(
     tournament_id: int,
     user_id: int,
@@ -140,7 +140,7 @@ def get_tournament_user(
 # ---------------------------------------------------------------------------
 # PATCH /users/me/ — authenticated user updates their own profile
 # ---------------------------------------------------------------------------
-@router.patch("/users/me/", response_model=UserRead)
+@router.patch("/users/me/", response_model=UserResponse)
 def update_user_me(
     body: UserUpdate,
     db: Session = Depends(get_db),

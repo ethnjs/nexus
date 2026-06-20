@@ -13,7 +13,8 @@ from app.core.config import get_settings
 from app.core.users import check_if_email_exists
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, UserResponse
+from app.schemas.user import UserResponse
+from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest
 
 router = APIRouter( tags=["auth"])
 
@@ -49,10 +50,10 @@ def _clear_auth_cookie(response: Response) -> None:
 def _create_user(
         db: Session,
         email: str,
-        phone: str,
         first_name: str,
         last_name: str,
         role: str,
+        phone: Optional[str] = None,
         password: Optional[str] = None,
         is_active: bool = True
     ) -> User:
@@ -122,7 +123,7 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     """
     check_if_email_exists(db, body.email)
 
-    user = _create_user(db, body.email, body.phone, body.first_name, body.last_name, "user", body.password)
+    user = _create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
 
     token = create_access_token(user.id)
     _set_auth_cookie(response, token)
