@@ -108,12 +108,14 @@ class TestMe:
 # ---------------------------------------------------------------------------
 
 VALID_PASSWORD = "Secure@123"  # satisfies all validator rules
+VALID_PHONE = "9495551234"
 
 
 class TestRegister:
     def test_register_success(self, client):
         res = client.post("/auth/register/", json={
             "email": "new@test.com",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -129,6 +131,7 @@ class TestRegister:
         # Registration should log the user in immediately
         res = client.post("/auth/register/", json={
             "email": "new@test.com",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -140,6 +143,7 @@ class TestRegister:
         # Cookie from registration should allow immediate access to /me/
         client.post("/auth/register/", json={
             "email": "new@test.com",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -151,6 +155,7 @@ class TestRegister:
     def test_register_email_stored_lowercase(self, client):
         res = client.post("/auth/register/", json={
             "email": "NEW@TEST.COM",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -161,6 +166,7 @@ class TestRegister:
     def test_register_duplicate_email_rejected(self, client, td_user):
         assert client.post("/auth/register/", json={
             "email": "td@test.com",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -170,6 +176,7 @@ class TestRegister:
         # Confirms the password was hashed and stored correctly
         client.post("/auth/register/", json={
             "email": "new@test.com",
+            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
             "first_name": "New",
             "last_name": "User",
@@ -179,50 +186,50 @@ class TestRegister:
 
     def test_register_password_too_short(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Ab@1",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "Ab@1",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
     def test_register_password_missing_uppercase(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "secure@123",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "secure@123",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
     def test_register_password_missing_lowercase(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "SECURE@123",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "SECURE@123",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
     def test_register_password_missing_number(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure@abc",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure@abc",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
     def test_register_password_missing_symbol(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure1234",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure1234",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
     def test_register_password_invalid_char(self, client):
         # Control characters (ASCII < 32) should be rejected
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "password": "Secure@1\x01",
+            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure@1\x01",
             "first_name": "New", "last_name": "User",
         }).status_code == 422
 
 
 # ---------------------------------------------------------------------------
-# POST /auth/admin/register/   (admin-only account creation)
+# POST /admin/auth/register/   (admin-only account creation)
 # ---------------------------------------------------------------------------
 
 class TestAdminRegister:
     def test_admin_can_create_user(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/auth/admin/register/", json={
+        res = client.post("/admin/auth/register/", json={
             "email": "newuser@test.com",
             "first_name": "New",
             "last_name": "User",
@@ -235,7 +242,7 @@ class TestAdminRegister:
 
     def test_admin_can_create_admin(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/auth/admin/register/", json={
+        res = client.post("/admin/auth/register/", json={
             "email": "newadmin@test.com",
             "first_name": "New",
             "last_name": "Admin",
@@ -247,7 +254,7 @@ class TestAdminRegister:
     def test_admin_created_user_is_inactive(self, client, admin_user):
         # Accounts created by admin are inactive until the user activates via email
         login(client, "admin@test.com", "adminpass")
-        res = client.post("/auth/admin/register/", json={
+        res = client.post("/admin/auth/register/", json={
             "email": "newuser@test.com",
             "first_name": "New",
             "last_name": "User",
@@ -259,7 +266,7 @@ class TestAdminRegister:
     def test_admin_created_user_cannot_login(self, client, admin_user):
         # Inactive + no password — login must be blocked
         login(client, "admin@test.com", "adminpass")
-        client.post("/auth/admin/register/", json={
+        client.post("/admin/auth/register/", json={
             "email": "newuser@test.com",
             "first_name": "New",
             "last_name": "User",
@@ -270,7 +277,7 @@ class TestAdminRegister:
 
     def test_non_admin_cannot_admin_register(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        assert client.post("/auth/admin/register/", json={
+        assert client.post("/admin/auth/register/", json={
             "email": "new@test.com",
             "first_name": "New",
             "last_name": "User",
@@ -278,7 +285,7 @@ class TestAdminRegister:
         }).status_code == 403
 
     def test_unauthenticated_cannot_admin_register(self, client):
-        assert client.post("/auth/admin/register/", json={
+        assert client.post("/admin/auth/register/", json={
             "email": "new@test.com",
             "first_name": "New",
             "last_name": "User",
@@ -287,7 +294,7 @@ class TestAdminRegister:
 
     def test_admin_register_duplicate_email_rejected(self, client, admin_user, td_user):
         login(client, "admin@test.com", "adminpass")
-        assert client.post("/auth/admin/register/", json={
+        assert client.post("/admin/auth/register/", json={
             "email": "td@test.com",
             "first_name": "TD",
             "last_name": "User",
@@ -297,7 +304,7 @@ class TestAdminRegister:
     def test_admin_register_invalid_role_rejected(self, client, admin_user):
         # Schema-level: only "admin" | "user" are valid roles
         login(client, "admin@test.com", "adminpass")
-        assert client.post("/auth/admin/register/", json={
+        assert client.post("/admin/auth/register/", json={
             "email": "new@test.com",
             "first_name": "New",
             "last_name": "User",
