@@ -1,20 +1,11 @@
 from __future__ import annotations
+from typing import Optional
 
 import re
 
 
-def format_phone_us(value: str | None) -> str | None:
+def normalize_phone(value: Optional[str]) -> Optional[str]:
     """
-    Normalize a phone string to '(###) ###-####' when it looks like a US number.
-
-    Accepted inputs:
-    - 10 digits: '9495551234', '(949)555-1234', '949-555-1234'
-    - 11 digits starting with 1: '+1 949 555 1234'
-
-    Returns:
-    - Formatted US number when parseable
-    - Trimmed original string when not parseable as US
-    - None for null/blank input
     """
     if value is None:
         return None
@@ -28,7 +19,7 @@ def format_phone_us(value: str | None) -> str | None:
         digits = digits[1:]
 
     if len(digits) == 10:
-        return f"({digits[0:3]}) {digits[3:6]}-{digits[6:10]}"
+        return digits
 
-    return text
+    raise ValueError("Invalid US phone number format")
 

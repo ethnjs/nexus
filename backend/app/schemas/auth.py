@@ -2,6 +2,8 @@ from pydantic import BaseModel, EmailStr, field_validator
 from typing import Optional, Literal
 from datetime import datetime
 
+from app.core.phone import normalize_phone as _normalize_phone
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -18,10 +20,17 @@ PASSWORD_ERROR_MSG: dict[str, str] = {
 
 class RegisterRequest(BaseModel):
     email: EmailStr
+    phone: str
     password: str
     first_name: str
     last_name: str
     # role is intentionally excluded — all publicly registered users are "user".
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_phone(cls, phone: str) -> str:
+        return _normalize_phone(phone)
+
 
     @field_validator("password")
     @classmethod
@@ -62,6 +71,7 @@ class RegisterRequest(BaseModel):
 
 class AdminRegisterRequest(BaseModel):
     email: EmailStr
+    # phone excluded b/c user will set themselves when they make their own account
     # password is excluded because when user logs into their new account they will make one themselves
     first_name: str
     last_name: str

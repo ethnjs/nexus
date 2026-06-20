@@ -88,21 +88,26 @@ class User(Base):
     last_name = Column(String(100), nullable=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     phone = Column(String(32), nullable=True)
-    shirt_size = Column(String(16), nullable=True)
-    dietary_restriction = Column(String(255), nullable=True)
-    university = Column(String(255), nullable=True)
-    major = Column(String(255), nullable=True)
-    employer = Column(String(255), nullable=True)
-
-    student_status = Column(String(255), nullable=True)       # e.g. "1st Year", "Graduate", "Alumni"
-    competition_exp = Column(Text, nullable=True)             # free-form competition experience
-    volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
 
     # Auth fields
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     is_active = Column(Boolean, nullable=False, default=True)
+    
+    # if a student
+    university = Column(String(255), nullable=True)
+    major = Column(String(255), nullable=True)
+    student_status = Column(String(255), nullable=True)       # e.g. "1st Year", "Graduate", "Alumni"
 
+    # if not a student
+    employer = Column(String(255), nullable=True)
+    
+    competition_exp = Column(Text, nullable=True)             # free-form competition experience
+    volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
+
+    shirt_size = Column(String(16), nullable=True)
+    dietary_restriction = Column(String(255), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, field_validator
-from app.core.phone import format_phone_us
+from app.core.phone import normalize_phone as _normalize_phone
 
 
 class UserBase(BaseModel):
@@ -26,7 +26,7 @@ class UserBase(BaseModel):
     @field_validator("phone", mode="before")
     @classmethod
     def normalize_phone(cls, v: str | None) -> str | None:
-        return format_phone_us(v)
+        return _normalize_phone(v)
 
 
 class UserCreate(UserBase):
@@ -43,15 +43,13 @@ class UserUpdate(BaseModel):
     dietary_restriction: Optional[str] = None
     university: Optional[str] = None
     major: Optional[str] = None
-    employer: Optional[str] = None
-    university: Optional[str] = None
-    major: Optional[str] = None
+    student_status: Optional[str] = None
     employer: Optional[str] = None
 
     @field_validator("phone", mode="before")
     @classmethod
     def normalize_phone(cls, v: str | None) -> str | None:
-        return format_phone_us(v)
+        return _normalize_phone(v)
 
 
 class UserRead(UserBase):

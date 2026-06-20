@@ -56,6 +56,7 @@ def _check_if_user_exists(db: Session, email: str):
 def _create_user(
         db: Session,
         email: str,
+        phone: str,
         first_name: str,
         last_name: str,
         role: str,
