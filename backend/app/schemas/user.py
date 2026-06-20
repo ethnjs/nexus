@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, field_validator
 from app.core.phone import normalize_phone as _normalize_phone
@@ -34,7 +34,7 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(BaseModel):
-    """Partial update — all fields optional. TD manual override."""
+    """Partial update — all fields optional."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[str] = None
@@ -51,6 +51,9 @@ class UserUpdate(BaseModel):
     def normalize_phone(cls, v: str | None) -> str | None:
         return _normalize_phone(v)
 
+class AdminUserUpdate(BaseModel):
+    role: Optional[Literal["user", "admin"]] = None
+    is_active: Optional[bool] = None
 
 class UserRead(UserBase):
     id: int

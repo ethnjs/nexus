@@ -10,11 +10,12 @@ from app.core.auth import (
     require_admin,
 )
 from app.core.config import get_settings
+from app.core.users import check_if_email_exists
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, UserResponse
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter( tags=["auth"])
 
 COOKIE_NAME = "access_token"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
@@ -45,14 +46,6 @@ def _clear_auth_cookie(response: Response) -> None:
         domain=".ethanshih.com" if is_prod else None,
     )
 
-def _check_if_user_exists(db: Session, email: str):
-    existing = db.query(User).filter(User.email == email.lower()).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
-
 def _create_user(
         db: Session,
         email: str,
@@ -79,7 +72,7 @@ def _create_user(
     return user
     
 
-@router.post("/login/", response_model=UserResponse)
+@router.post("/auth/login/", response_model=UserResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
@@ -108,26 +101,26 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     return user
 
 
-@router.post("/logout/", status_code=status.HTTP_200_OK)
+@router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
     _clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
 
-@router.get("/me/", response_model=UserResponse)
+@router.get("/auth/me/", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user."""
     return current_user
 
 
-@router.post("/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     """
     Public route to create a new user account.
     All registered users get role="user".
     """
-    _check_if_user_exists(db, body.email)
+    check_if_email_exists(db, body.email)
 
     user = _create_user(db, body.email, body.phone, body.first_name, body.last_name, "user", body.password)
 
@@ -136,12 +129,12 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 
     return user
 
-@router.post("/admin/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """
     Admin only. Can create normal users and admin users. Password is excluded to allow the newly created user
     to set their own.
     """
-    _check_if_user_exists(db, body.email)
+    check_if_email_exists(db, body.email)
 
     return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
