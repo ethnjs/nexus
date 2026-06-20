@@ -66,6 +66,7 @@ def _create_user(
 
     user = User(
         email=email.lower(),
+        phone=phone,
         hashed_password=hash_password(password) if password else None,
         first_name=first_name,
         last_name=last_name,
@@ -128,7 +129,7 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     """
     _check_if_user_exists(db, body.email)
 
-    user = _create_user(db, body.email, body.first_name, body.last_name, "user", body.password)
+    user = _create_user(db, body.email, body.phone, body.first_name, body.last_name, "user", body.password)
 
     token = create_access_token(user.id)
     _set_auth_cookie(response, token)
