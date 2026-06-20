@@ -83,8 +83,9 @@ class UserResponse(BaseModel):
 
         if not self.student_status:
             missing.append("student_status")
-        elif self.student_status == "Non-Student" and not self.employer:
-            missing.append("employer")
+        elif self.student_status == "Non-Student":
+            if not self.employer:
+                missing.append("employer")
         else:
             school_required = ["university", "major", "year_level", "graduation_year"]
             for f in school_required:
