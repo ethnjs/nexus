@@ -11,14 +11,30 @@ export default function SignInPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
-    const [error, setError] = useState('')
+    const [errors, setErrors] = useState<{ email?: string; form?: string }>({})
 
     const router = useRouter()
+
+    function validateEmail(email: string): string | null {
+        if (!email.includes('@')) return "An email address must have an @-sign."
+        const atLoc = email.indexOf('@')
+        if (atLoc === email.length - 1) return "There must be something after the @-sign."
+        if (!email.includes('.', atLoc)) return "The part after the @-sign is not valid. It should have a period."
+        if (email.indexOf('.', atLoc) === email.length - 1) return "An email address cannot end with a period."
+        return null
+    }
 
     async function handleSubmit(e: React.SyntheticEvent) {
         e.preventDefault()
         setLoading(true)
-        setError('')
+        setErrors({})
+
+        const emailError = validateEmail(email)
+        if (emailError) {
+            setErrors({ email: emailError })
+            setLoading(false)
+            return
+        }
         
         try {
             await authApi.login(email, password)
@@ -26,9 +42,9 @@ export default function SignInPage() {
             router.push('/dashboard')
         } catch (error: unknown) {
             if (error instanceof ApiError) {
-                setError(error.message)
+                setErrors({ form: error.message })
             } else {
-                setError("Something went wrong :(")
+                setErrors({ form: "Something went wrong :(" })
             }
         } finally {
             setLoading(false)
@@ -46,6 +62,7 @@ export default function SignInPage() {
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 autoComplete="email"
+                error={errors.email}
                 fullWidth
             />
             <Input
@@ -64,13 +81,13 @@ export default function SignInPage() {
             >Sign In</Button>
 
             <div>
-                {error && (
+                {errors.form && (
                     <p style={{
                         fontFamily: 'var(--font-sans)',
                         fontSize: '14px',
                         color: 'var(--color-danger)'
                     }}>
-                        {error}
+                        {errors.form}
                     </p>
                 )}
             </div>
