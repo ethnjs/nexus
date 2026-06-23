@@ -39,7 +39,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       const data = await res.json()
       detail = data.detail ?? detail
     } catch {}
-    const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
+    
+    let message: string = `HTTP ${res.status}`
+
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = detail[0]["ctx"]?.reason ?? detail[0]["msg"]
+    }
+
     throw new ApiError(res.status, message, detail)
   }
 

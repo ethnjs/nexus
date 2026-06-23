@@ -25,7 +25,7 @@ const FONT_MAP: Record<InputFont, string> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'sans', className = '', id, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', className = '', id, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
 
