@@ -12,7 +12,7 @@ export default function SignInPage() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
-    const [errors, setErrors] = useState<{ email?: string; form?: string }>({})
+    const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({})
 
     const router = useRouter()
 
@@ -31,8 +31,10 @@ export default function SignInPage() {
         setErrors({})
 
         const emailError = validateEmail(email)
-        if (emailError) {
-            setErrors({ email: emailError })
+        const passwordError = !password ? "Password is empty." : null
+
+        if (emailError || passwordError) {
+            setErrors({ email: emailError ?? undefined, password: passwordError ?? undefined })
             setLoading(false)
             return
         }
@@ -88,7 +90,7 @@ export default function SignInPage() {
                     type="email"
                     placeholder="you@email.com"
                     value={email}
-                    onChange={e => setEmail(e.target.value)}
+                    onChange={e => { setEmail(e.target.value); setErrors(er => ({...er, email: undefined })) }}
                     autoComplete="email"
                     error={errors.email}
                     fullWidth
@@ -98,8 +100,9 @@ export default function SignInPage() {
                     type="password"
                     placeholder="••••••••"
                     value={password}
-                    onChange={e => setPassword(e.target.value)}
+                    onChange={e => { setPassword(e.target.value); setErrors(er => ({...er, password: undefined})) }}
                     autoComplete="current-password"
+                    error={errors.password}
                     fullWidth
                 />
                 <Button
