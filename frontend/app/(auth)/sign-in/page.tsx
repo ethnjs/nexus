@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { ApiError, authApi } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { IconArrowLeft } from '@/components/ui/Icons'
 
 
 export default function SignInPage() {
@@ -52,46 +53,75 @@ export default function SignInPage() {
     }
 
     return (
-        <form onSubmit={handleSubmit} noValidate>
-            <h1 style={{ fontFamily: 'var(--font-serif)' }}>NEXUS</h1>
-            <h2 style={{ fontFamily: 'var(--font-sans)' }}>Sign In</h2>
-            <Input
-                label="Email"
-                type="email"
-                placeholder="you@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                autoComplete="email"
-                error={errors.email}
-                fullWidth
-            />
-            <Input
-                label="Password"
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                autoComplete="current-password"
-                fullWidth
-            />
-            <Button
-                type="submit"
-                loading={loading}
-                fullWidth
-            >Sign In</Button>
-
-            <div>
-                {errors.form && (
-                    <p style={{
-                        fontFamily: 'var(--font-sans)',
-                        fontSize: '14px',
-                        color: 'var(--color-danger)'
-                    }}>
-                        {errors.form}
-                    </p>
-                )}
+        <section style={{ maxWidth: '420px', width: '100%' }}>
+            <div style={{ marginBottom: '5px' }}>
+                <button onClick={() => router.push('/')} className="link-subtle" style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    fontFamily: 'var(--font-sans)'
+                }}>
+                    <IconArrowLeft/>Back to home
+                </button>
             </div>
-        </form>
+            
+            <div style={{ marginBottom: '10px' }}>
+                <h1 style={{
+                    fontFamily: 'var(--font-serif)',
+                    fontSize: '48px',
+                    color: 'var(--color-text-primary)'
+                }}>NEXUS</h1>
+            </div>
+            
+            <div style={{ marginBottom: '30px' }}>
+                <h2 style={{
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: '28px',
+                    fontWeight: '700',
+                    color: 'var(--color-text-primary)'
+                }}>Sign In</h2>
+            </div>
+
+            <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <Input
+                    label="Email"
+                    type="email"
+                    placeholder="you@email.com"
+                    value={email}
+                    onChange={e => setEmail(e.target.value)}
+                    autoComplete="email"
+                    error={errors.email}
+                    fullWidth
+                />
+                <Input
+                    label="Password"
+                    type="password"
+                    placeholder="••••••••"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    fullWidth
+                />
+                <Button
+                    type="submit"
+                    loading={loading}
+                    fullWidth
+                >Sign In</Button>
+
+                <div>
+                    {errors.form && (
+                        <p style={{
+                            fontFamily: 'var(--font-sans)',
+                            fontSize: '14px',
+                            color: 'var(--color-danger)'
+                        }}>
+                            {errors.form}
+                        </p>
+                    )}
+                </div>
+            </form>
+        </section>
+        
     )
 }
 
