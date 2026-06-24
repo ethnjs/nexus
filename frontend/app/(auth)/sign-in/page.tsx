@@ -6,6 +6,7 @@ import { ApiError, authApi } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { IconArrowLeft } from '@/components/ui/Icons'
+import { validateEmail } from '@/lib/auth'
 
 
 export default function SignInPage() {
@@ -16,22 +17,13 @@ export default function SignInPage() {
 
     const router = useRouter()
 
-    function validateEmail(email: string): string | null {
-        if (!email.includes('@')) return "An email address must have an @-sign."
-        const atLoc = email.indexOf('@')
-        if (atLoc === email.length - 1) return "There must be something after the @-sign."
-        if (!email.includes('.', atLoc)) return "The part after the @-sign is not valid. It should have a period."
-        if (email.indexOf('.', atLoc) === email.length - 1) return "An email address cannot end with a period."
-        return null
-    }
-
     async function handleSubmit(e: React.SyntheticEvent) {
         e.preventDefault()
         setLoading(true)
         setErrors({})
 
         const emailError = validateEmail(email)
-        const passwordError = !password ? "Password is empty." : null
+        const passwordError = !password ? "Cannot be empty." : null
 
         if (emailError || passwordError) {
             setErrors({ email: emailError ?? undefined, password: passwordError ?? undefined })

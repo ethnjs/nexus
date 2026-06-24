@@ -67,8 +67,8 @@ export const api = {
 // -------------------------------------------------------------------------
 // Auth
 // -------------------------------------------------------------------------
-type ROLE = 'admin' | 'user'
-type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
+export type ROLE = 'admin' | 'user'
+export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
 
 export interface User {
   id:                  number
