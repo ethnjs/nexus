@@ -62,7 +62,7 @@ export function checkPassword(password: string, confirm: string | null = null): 
     }
 
 
-    if (password === confirm) checks["confirm"] = true
+    if (password && password === confirm) checks["confirm"] = true
 
     return checks
 }

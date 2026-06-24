@@ -274,3 +274,19 @@ export function IconLocation({ size = 13, ...props }: IconProps) {
     </svg>
   );
 }
+
+export function IconCheckCircleSolid({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M320 576C178.6 576 64 461.4 64 320C64 178.6 178.6 64 320 64C461.4 64 576 178.6 576 320C576 461.4 461.4 576 320 576zM438 209.7C427.3 201.9 412.3 204.3 404.5 215L285.1 379.2L233 327.1C223.6 317.7 208.4 317.7 199.1 327.1C189.8 336.5 189.7 351.7 199.1 361L271.1 433C276.1 438 282.9 440.5 289.9 440C296.9 439.5 303.3 435.9 307.4 430.2L443.3 243.2C451.1 232.5 448.7 217.5 438 209.7z" />
+    </svg>
+  );
+}
+
+export function IconXCircleSolid({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M320 576C178.6 576 64 461.4 64 320C64 178.6 178.6 64 320 64C461.4 64 576 178.6 576 320C576 461.4 461.4 576 320 576zM435.3 204.7C424.6 194 407.4 194 396.7 204.7L320 281.4L243.3 204.7C232.6 194 215.4 194 204.7 204.7C194 215.4 194 232.6 204.7 243.3L281.4 320L204.7 396.7C194 407.4 194 424.6 204.7 435.3C215.4 446 232.6 446 243.3 435.3L320 358.6L396.7 435.3C407.4 446 424.6 446 435.3 435.3C446 424.6 446 407.4 435.3 396.7L358.6 320L435.3 243.3C446 232.6 446 215.4 435.3 204.7z" />
+    </svg>
+  );
+}
