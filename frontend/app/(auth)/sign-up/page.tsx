@@ -8,15 +8,14 @@ import { IconArrowLeft, IconCheckCircleSolid, IconXCircleSolid } from "@/compone
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
+import { RadioOption } from "@/components/ui/RadioOption"
 
 
 
 interface ProfileQuestionProps {
   question: string
   children: React.ReactNode
-  showSkip?: boolean
   onSkip?: () => void
-  showNext?: boolean
   onNext?: () => void
   isActive?: boolean
 }
@@ -24,12 +23,12 @@ interface ProfileQuestionProps {
 function ProfileQuestion({
   question,
   children,
-  showSkip = false,
-  onSkip = ()=>{},
-  showNext = false,
-  onNext = ()=>{},
+  onSkip = undefined,
+  onNext = undefined,
   isActive = false
 }: ProfileQuestionProps) {
+  const showSkip = !!onSkip
+  const showNext = !!onNext
   return (
     <div style={{marginBottom: '20px'}}>
       <p style={{ marginBottom: '5px', fontFamily: 'var(--font-sans)', fontSize: '18px', color: 'var(--color-text-primary)' }}>{question}</p>
@@ -333,7 +332,6 @@ export default function SignUpPage() {
           <form>
             <ProfileQuestion
               question="What is your student status?"
-              showSkip
               onSkip={() => setState(5)}
               isActive={state === 2}
             ><Select
@@ -400,12 +398,10 @@ export default function SignUpPage() {
                 </ProfileQuestion>
                 <ProfileQuestion
                   question="What is your projected graduation year?"
-                  showSkip
                   onSkip={() => {
                     setProfileData(d => ({...d, university: undefined, major: undefined, year_level: undefined, graduation_year: undefined}))
                     setState(5)
                   }}
-                  showNext
                   onNext={() => {
                     const ers: typeof errors = {}
 
@@ -433,6 +429,89 @@ export default function SignUpPage() {
                   />
                 </ProfileQuestion>
               </div>
+            )}
+
+            {state >= 4 && profileData.student_status === "Non-Student" && (
+              <ProfileQuestion
+                question="Who is your employer?"
+                onSkip={() => setState(5)}
+                onNext={() => {
+                  !profileData.employer ? setErrors(er => ({...er, employer: "Cannot be empty."})) : setState(5)
+                }}
+                isActive={state === 4}
+              ><Input
+                    type="text"
+                    value={profileData.employer ?? ''}
+                    onChange={e => {
+                      setProfileData(d => ({...d, employer: e.target.value}))
+                      setErrors(er => ({...er, employer: undefined}))
+                    }}
+                    error={errors.employer}
+                />
+              </ProfileQuestion>
+            )}
+
+            {state >= 5 && (
+              <ProfileQuestion
+                question="Have you competed in Science Olympiad before?"
+                onSkip={() => {
+                  setProfileData(d => ({...d, competition_exp: undefined}))
+                  setState(7)
+                }}
+                isActive={state === 5}
+              ><div style={{ display: 'flex', gap: '8px' }}>
+                <RadioOption 
+                  name="competed"
+                  value="yes"
+                  checked={profileData.competition_exp !== undefined && profileData.competition_exp !== "No competition experience."}
+                  onChange={() => {
+                    setProfileData(d => ({...d, competition_exp: ""}))
+                    if (state >= 7) return
+                    setState(6)
+                  }}
+                  label="Yes"
+                  showCircle={false}
+                  solid
+                />
+                <RadioOption 
+                  name="competed"
+                  value="no"
+                  checked={profileData.competition_exp === "No competition experience."}
+                  onChange={() => { 
+                    setProfileData(d => ({...d, competition_exp: "No competition experience."}))
+                    if (state >= 7) return
+                    setState(7) 
+                  }}
+                  label="No"
+                  showCircle={false}
+                  solid
+                />
+              </div>
+              </ProfileQuestion>
+            )}
+
+            {state >= 6 && profileData.competition_exp !== "No competition experience." && (
+              <ProfileQuestion
+                question="List your competition experience."
+                onSkip={() => {
+                  setProfileData(d => ({...d, competition_exp: undefined}))
+                  setState(7)
+                }}
+                onNext={() => {
+                  !profileData.competition_exp ? setErrors(er => ({...er, competition_exp: "Cannot be empty."}))
+                    : setState(7)
+                }}
+                isActive={state === 6}
+              ><Input
+                    type="text"
+                    value={profileData.competition_exp ?? ''}
+                    onChange={e => {
+                      setProfileData(d => ({...d, competition_exp: e.target.value}))
+                      setErrors(er => ({...er, competition_exp: undefined}))
+                    }}
+                    error={errors.competition_exp}
+                />
+              </ProfileQuestion>
             )}
 
             <div style={{marginTop: '10px', display: 'flex', gap: '10px'}}>
