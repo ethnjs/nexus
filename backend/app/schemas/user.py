@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, field_validator, computed_field
+from pydantic import BaseModel, EmailStr, field_validator, computed_field
 from app.core.phone import normalize_phone as _normalize_phone
 
 
@@ -13,7 +13,7 @@ class UserUpdate(BaseModel):
     """Partial update — all fields optional."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    email: Optional[str] = None
+    email: Optional[EmailStr] = None
     phone: Optional[str] = None
 
     student_status: Optional[STUDENT_STATUS] = None
@@ -30,12 +30,12 @@ class UserUpdate(BaseModel):
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
 
-    @field_validator("email")
+    @field_validator("first_name", "last_name", "email", "phone")
     @classmethod
-    def validate_email(cls, v: str) -> str:
-        if "@" not in v or "." not in v.split("@")[-1]:
-            raise ValueError("Invalid email address")
-        return v.lower().strip()
+    def reject_null(cls, v):
+        if v is None:
+            raise ValueError("Cannot be null")
+        return v
 
     @field_validator("phone", mode="before")
     @classmethod
@@ -50,7 +50,7 @@ class UserResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
-    email: str
+    email: EmailStr
     phone: Optional[str] = None
 
     role: ROLE
