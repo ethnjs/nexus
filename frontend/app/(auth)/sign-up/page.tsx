@@ -1,13 +1,56 @@
 'use client'
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { User, STUDENT_STATUS, authApi, ApiError } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
-import { IconArrowLeft, IconCheckCircle, IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
+import { IconArrowLeft, IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
+import { Select } from "@/components/ui/Select"
 
+
+
+interface ProfileQuestionProps {
+  question: string
+  children: React.ReactNode
+  showSkip?: boolean
+  onSkip?: () => void
+  showNext?: boolean
+  onNext?: () => void
+  isActive?: boolean
+}
+
+function ProfileQuestion({
+  question,
+  children,
+  showSkip = false,
+  onSkip = ()=>{},
+  showNext = false,
+  onNext = ()=>{},
+  isActive = false
+}: ProfileQuestionProps) {
+  return (
+    <div style={{marginBottom: '20px'}}>
+      <p style={{ marginBottom: '5px', fontFamily: 'var(--font-sans)', fontSize: '18px', color: 'var(--color-text-primary)' }}>{question}</p>
+      {children}
+      {isActive && (showSkip || showNext) && (
+        <div style={{marginTop: '10px', justifyContent:'right', display: 'flex', gap: '5px'}}>
+          {showSkip && (<Button
+            type="button"
+            variant="secondary"
+            onClick={onSkip}
+          >Skip</Button>)}
+          {showNext && (<Button
+            type="button"
+            variant="primary"
+            onClick={onNext}
+          >Next</Button>)}
+        </div>
+      )}
+    </div>
+  )
+}
 
 
 export default function SignUpPage() {
@@ -82,6 +125,12 @@ export default function SignUpPage() {
   }>({})
 
   const router = useRouter()
+
+  // for dev only
+  useEffect(() => {
+    if (process.env.NODE_ENV !== 'development') return
+    authApi.me().then(u => { setUser(u); setState(2) })
+  }, [])
 
   async function handleRegisterSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -259,6 +308,151 @@ export default function SignUpPage() {
               )}
             </div>
           </form>
+        </section>
+      )}
+
+      {state >= 2 && (
+        <section style={{ maxWidth: '600px', width: '100%' }}>
+          <div style={{ marginBottom: '10px' }}>
+            <h1 style={{
+              fontFamily: 'var(--font-serif)',
+              fontSize: '48px',
+              color: 'var(--color-text-primary)'
+            }}>NEXUS</h1>
+          </div>
+
+          <div style={{ marginBottom: '30px' }}>
+            <h2 style={{
+              fontFamily: 'var(--font-sans)',
+              fontSize: '28px',
+              fontWeight: '700',
+              color: 'var(--color-text-primary)'
+            }}>Complete Your Profile</h2>
+          </div>
+          
+          <form>
+            <ProfileQuestion
+              question="What is your student status?"
+              showSkip
+              onSkip={() => setState(5)}
+              isActive={state === 2}
+            ><Select
+                value={profileData.student_status ?? ''}
+                onChange={v => {
+                  setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
+                  if (state >= 5) return
+                  if (v === 'Undergraduate' || v === 'Graduate') {
+                    setState(3)
+                  } else if (v === 'Non-Student') {
+                    setState(4)
+                  }
+                }}
+                options={[
+                  { value: "Undergraduate", label: "Undergraduate" },
+                  { value: "Graduate", label: "Graduate" },
+                  { value: "Non-Student", label: "Non-Student" }
+                ]}
+                fullWidth
+              />
+            </ProfileQuestion>
+            
+            { state >= 3 && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
+              <div>
+                <ProfileQuestion question="What university do you attend?">
+                  <Input
+                      type="text"
+                      value={profileData.university}
+                      onChange={e => {
+                        setProfileData(d => ({...d, university: e.target.value}))
+                        setErrors(er => ({...er, university: undefined}))
+                      }}
+                      error={errors.university}
+                  />
+                </ProfileQuestion>
+                <ProfileQuestion question="What is your major?">
+                  <Input
+                      type="text"
+                      value={profileData.major}
+                      onChange={e => {
+                        setProfileData(d => ({...d, major: e.target.value}))
+                        setErrors(er => ({...er, major: undefined}))
+                      }}
+                      error={errors.major}
+                  />
+                </ProfileQuestion>
+                <ProfileQuestion question="What is your grade level?">
+                  <Select
+                    value={String(profileData.year_level  ?? '')}
+                    onChange={v => {
+                      setProfileData(d => ({...d, year_level: Number(v)}))
+                      setErrors(er => ({...er, year_level: undefined}))
+                    }}
+                    options={[
+                      { value: "1", label: "1st Year" },
+                      { value: "2", label: "2nd Year" },
+                      { value: "3", label: "3rd Year" },
+                      { value: "4", label: "4th Year" },
+                      { value: "5", label: "5th+ Year" },
+                    ]}
+                    error={errors.year_level}
+                    fullWidth
+                  />
+                </ProfileQuestion>
+                <ProfileQuestion
+                  question="What is your projected graduation year?"
+                  showSkip
+                  onSkip={() => {
+                    setProfileData(d => ({...d, university: undefined, major: undefined, year_level: undefined, graduation_year: undefined}))
+                    setState(5)
+                  }}
+                  showNext
+                  onNext={() => {
+                    const ers: typeof errors = {}
+
+                    if (!profileData.university) ers.university = "Cannot be empty."
+                    if (!profileData.major) ers.major = "Cannot be empty."
+                    if (!profileData.year_level) ers.year_level = "Cannot be empty."
+
+                    if (!profileData.graduation_year) ers.graduation_year = "Cannot be empty."
+                    else if (profileData.graduation_year < 1000 || profileData.graduation_year > 9999)
+                      ers.graduation_year = "Must be a valid year."
+
+                    Object.keys(ers).length > 0 ? setErrors(er => ({...er, ...ers})) : setState(5)
+                  }}
+                  isActive={state === 3}
+                ><Input
+                      type="text"
+                      value={profileData.graduation_year ?? ''}
+                      onChange={e => {
+                        const raw = e.target.value.replace(/\D/g, '').slice(0, 4)
+                        setErrors(er => ({ ...er, graduation_year: raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined }))
+                        setProfileData(d => ({ ...d, graduation_year: raw ? Number(raw) : undefined }))
+                      }}
+
+                      error={errors.graduation_year}
+                  />
+                </ProfileQuestion>
+              </div>
+            )}
+
+            <div style={{marginTop: '10px', display: 'flex', gap: '10px'}}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="lg"
+                onClick={e => router.push("/dashboard")}
+                fullWidth
+              >Skip All</Button>
+              <Button
+                type="button"
+                variant="primary"
+                size="lg"
+                disabled={state !== 11}
+                fullWidth
+              >Complete</Button>
+            </div>
+          </form>
+          <p>State {state}</p> {/* for debug only, remove later */}
         </section>
       )}
     </>

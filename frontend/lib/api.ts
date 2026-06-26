@@ -70,15 +70,11 @@ export const api = {
 export type ROLE = 'admin' | 'user'
 export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
 
-export interface User {
-  id:                  number
+interface UserBase {
   email:               string
   first_name:          string
   last_name:           string
   phone:               string | null
-
-  role:                ROLE
-  is_active:           boolean
 
   student_status:      STUDENT_STATUS | null
   university:          string | null
@@ -93,12 +89,21 @@ export interface User {
 
   shirt_size:          string | null
   dietary_restriction: string | null
+}
+
+export interface User extends UserBase {
+  id:                  number
   
+  role:                ROLE
+  is_active:           boolean
+
   created_at:          string
   updated_at:          string
 
   missing_profile_fields: string[]
 }
+
+interface UserUpdate extends UserBase {}
 
 export interface AuthRegister {
   email:      string
@@ -120,11 +125,12 @@ export const authApi = {
 // Users
 // -------------------------------------------------------------------------
 export const usersApi = {
-  list:       ()                                 => api.get<User[]>('/users/'),
-  get:        (id: number)                       => api.get<User>(`/users/${id}/`),
-  getByEmail: (email: string)                    => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
-  update:     (id: number, body: Partial<User>)  => api.patch<User>(`/users/${id}/`, body),
-  delete:     (id: number)                       => api.delete<void>(`/users/${id}/`),
+  list:       ()                                       => api.get<User[]>('/users/'),
+  get:        (id: number)                             => api.get<User>(`/users/${id}/`),
+  getByEmail: (email: string)                          => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
+  update:     (id: number, body: Partial<UserUpdate>)  => api.patch<User>(`/users/${id}/`, body),
+  updateMe:   (body: Partial<UserUpdate>)              => api.patch<User>('/users/me/', body),
+  delete:     (id: number)                             => api.delete<void>(`/users/${id}/`),
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<User>(`/tournaments/${tournamentId}/users/${userId}/`),
 }

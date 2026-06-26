@@ -39,6 +39,7 @@ interface SelectProps {
   options:      SelectItem[]
   label?:       string
   placeholder?: string
+  error?:       string
   disabled?:    boolean
   fullWidth?:   boolean
   /**
@@ -84,7 +85,8 @@ export function Select({
   onChange,
   options,
   label,
-  placeholder = 'Select…',
+  placeholder = 'Select . . .',
+  error,
   disabled = false,
   fullWidth = false,
   size = 'md',
@@ -216,7 +218,8 @@ export function Select({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const borderColor = focused && !open
+  // TODO: color-border-strong is too similar to color-border — focused state is barely visible
+  const borderColor = error ? 'var(--color-danger)' : focused && !open
     ? 'var(--color-border-strong)'
     : 'var(--color-border)'
 
@@ -331,6 +334,12 @@ export function Select({
               )
             })}
           </div>
+        )}
+
+        {error && (
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
+            {error}
+          </p>
         )}
       </div>
     </div>
