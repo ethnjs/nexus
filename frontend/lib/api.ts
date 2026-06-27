@@ -67,8 +67,9 @@ export const api = {
 // -------------------------------------------------------------------------
 // Auth
 // -------------------------------------------------------------------------
-export type ROLE = 'admin' | 'user'
+export type ROLE = "admin" | "user"
 export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
+export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
 
 interface UserBase {
   email:               string
@@ -87,7 +88,7 @@ interface UserBase {
   competition_exp:     string | null
   volunteering_exp:    string | null
 
-  shirt_size:          string | null
+  shirt_size:          SHIRT_SIZE | null
   dietary_restriction: string | null
 }
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from "react"
-import { User, STUDENT_STATUS, authApi, ApiError } from "@/lib/api"
+import { User, STUDENT_STATUS, authApi, ApiError, SHIRT_SIZE } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
 import { IconArrowLeft, IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
@@ -66,10 +66,13 @@ export default function SignUpPage() {
   //  9  Shirt size
   // 10  Dietary restrictions?                           (yes / no)
   // 11  Dietary restriction text
+  // 12  Complete button activated
   // ────────────────────────────────────────────────────────────────────────
   const [state, setState] = useState(1)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(false)
+
+
   const [name, setName] = useState<{ first: string, last: string }>({ first: '', last: '' })
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -97,9 +100,12 @@ export default function SignUpPage() {
     competition_exp?: string
     volunteering_exp?: string
 
-    shirt_size?: string
+    shirt_size?: SHIRT_SIZE
     dietary_restriction?: string
   }>({})
+  const [competedBefore, setCompetedBefore] = useState<boolean | null>(null)
+  const [volunteeredBefore, setVolunteeredBefore] = useState<boolean | null> (null)
+  const [hasDietary, setHasDietary] = useState<boolean | null>(null)
 
 
   const [errors, setErrors] = useState<{
@@ -456,7 +462,6 @@ export default function SignUpPage() {
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
                 onSkip={() => {
-                  setProfileData(d => ({...d, competition_exp: undefined}))
                   setState(7)
                 }}
                 isActive={state === 5}
@@ -464,9 +469,9 @@ export default function SignUpPage() {
                 <RadioOption 
                   name="competed"
                   value="yes"
-                  checked={profileData.competition_exp !== undefined && profileData.competition_exp !== "No competition experience."}
+                  checked={competedBefore === true}
                   onChange={() => {
-                    setProfileData(d => ({...d, competition_exp: ""}))
+                    setCompetedBefore(true)
                     if (state >= 7) return
                     setState(6)
                   }}
@@ -477,9 +482,9 @@ export default function SignUpPage() {
                 <RadioOption 
                   name="competed"
                   value="no"
-                  checked={profileData.competition_exp === "No competition experience."}
+                  checked={competedBefore === false}
                   onChange={() => { 
-                    setProfileData(d => ({...d, competition_exp: "No competition experience."}))
+                    setCompetedBefore(false)
                     if (state >= 7) return
                     setState(7) 
                   }}
@@ -491,11 +496,11 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 6 && profileData.competition_exp !== "No competition experience." && (
+            {state >= 6 && competedBefore && (
               <ProfileQuestion
                 question="List your competition experience."
                 onSkip={() => {
-                  setProfileData(d => ({...d, competition_exp: undefined}))
+                  setCompetedBefore(null)
                   setState(7)
                 }}
                 onNext={() => {
@@ -518,17 +523,16 @@ export default function SignUpPage() {
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
                 onSkip={() => {
-                  setProfileData(d => ({...d, competition_exp: undefined}))
                   setState(9)
                 }}
                 isActive={state === 7}
               ><div style={{ display: 'flex', gap: '8px' }}>
                 <RadioOption 
-                  name="voluntereed"
+                  name="volunteered"
                   value="yes"
-                  checked={profileData.volunteering_exp !== undefined && profileData.volunteering_exp !== "No volunteer experience."}
+                  checked={volunteeredBefore === true}
                   onChange={() => {
-                    setProfileData(d => ({...d, volunteering_exp: ""}))
+                    setVolunteeredBefore(true)
                     if (state >= 9) return
                     setState(8)
                   }}
@@ -539,9 +543,9 @@ export default function SignUpPage() {
                 <RadioOption 
                   name="volunteered"
                   value="no"
-                  checked={profileData.volunteering_exp === "No volunteer experience."}
+                  checked={volunteeredBefore === false}
                   onChange={() => {
-                    setProfileData(d => ({...d, volunteering_exp: "No volunteer experience."}))
+                    setVolunteeredBefore(false)
                     if (state >= 9) return
                     setState(9) 
                   }}
@@ -553,11 +557,11 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 8 && profileData.volunteering_exp !== "No volunteer experience." && (
+            {state >= 8 && volunteeredBefore && (
               <ProfileQuestion
                 question="List your volunteer experience."
                 onSkip={() => {
-                  setProfileData(d => ({...d, volunteering_exp: undefined}))
+                  setVolunteeredBefore(null)
                   setState(9)
                 }}
                 onNext={() => {
@@ -576,6 +580,95 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
+            {state >= 9 && (
+              <ProfileQuestion
+                question="What is your shirt size?"
+                onSkip={() => {
+                  setProfileData(d => ({...d, shirt_size: undefined}))
+                  setState(10)
+                }}
+                isActive={state === 9}
+              ><div style={{ display: 'flex', gap: '8px' }}>
+                {["XS", "S", "M", "L", "XL", "XXL"].map(size => (
+                  <RadioOption 
+                    name="shirt"
+                    value={size}
+                    key={size}
+                    checked={profileData.shirt_size === size}
+                    onChange={() => {
+                      setProfileData(d => ({...d, shirt_size: size as SHIRT_SIZE}))
+                      if (state === 9) setState(10)
+                    }}
+                    label={size}
+                    showCircle={false}
+                    solid
+                  />
+                ))}
+              </div>
+              </ProfileQuestion>
+            )}
+
+            {state >= 10 && (
+              <ProfileQuestion
+                question="Do you have any dietary restrictions?"
+                onSkip={() => {
+                  setState(12)
+                }}
+                isActive={state === 10}
+              ><div style={{ display: 'flex', gap: '8px' }}>
+                <RadioOption 
+                  name="dietary"
+                  value="yes"
+                  checked={hasDietary === true}
+                  onChange={() => {
+                    setHasDietary(true)
+                    if (state >= 12) return
+                    setState(11)
+                  }}
+                  label="Yes"
+                  showCircle={false}
+                  solid
+                />
+                <RadioOption 
+                  name="dietary"
+                  value="no"
+                  checked={hasDietary === false}
+                  onChange={() => {
+                    setHasDietary(false)
+                    if (state >= 12) return
+                    setState(12) 
+                  }}
+                  label="No"
+                  showCircle={false}
+                  solid
+                />
+              </div>
+              </ProfileQuestion>
+            )}
+
+            {state >= 11 && hasDietary && (
+              <ProfileQuestion
+                question="List your dietary restrictions."
+                onSkip={() => {
+                  setHasDietary(null)
+                  setState(12)
+                }}
+                onNext={() => {
+                  !profileData.dietary_restriction ? setErrors(er => ({...er, dietary_restriction: "Cannot be empty."}))
+                    : setState(12)
+                }}
+                isActive={state === 11}
+              ><Textarea
+                    value={profileData.dietary_restriction ?? ''}
+                    onChange={e => {
+                      setProfileData(d => ({...d, dietary_restriction: e.target.value}))
+                      setErrors(er => ({...er, dietary_restriction: undefined}))
+                    }}
+                    error={errors.dietary_restriction}
+                />
+              </ProfileQuestion>
+            )}
+
             <div style={{marginTop: '10px', display: 'flex', gap: '10px'}}>
               <Button
                 type="button"
@@ -588,7 +681,7 @@ export default function SignUpPage() {
                 type="button"
                 variant="primary"
                 size="lg"
-                disabled={state !== 11}
+                disabled={state !== 12}
                 fullWidth
               >Complete</Button>
             </div>
