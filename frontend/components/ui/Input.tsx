@@ -25,7 +25,7 @@ const FONT_MAP: Record<InputFont, string> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', className = '', id, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', className = '', id, value, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
 
@@ -68,6 +68,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
           }}
           className={className}
+          value={value ?? ''}
           {...props}
         />
         {error && (

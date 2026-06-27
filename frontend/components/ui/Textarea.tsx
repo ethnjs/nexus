@@ -19,7 +19,7 @@ const FONT_MAP: Record<InputFont, string> = {
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
-  ({ label, error, fullWidth, rows = 4, font='mono', className='', id, ...props }, ref) => {
+  ({ label, error, fullWidth, rows = 4, font='mono', className='', id, value, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
 
@@ -54,6 +54,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
           }}
           className={className}
+          value={value ?? ''}
           {...props}
         />
         {error && (

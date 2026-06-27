@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from "react"
-import { User, STUDENT_STATUS, authApi, ApiError, SHIRT_SIZE } from "@/lib/api"
+import { User, STUDENT_STATUS, authApi, ApiError, SHIRT_SIZE, usersApi } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
 import { IconArrowLeft, IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
@@ -103,6 +103,7 @@ export default function SignUpPage() {
     shirt_size?: SHIRT_SIZE
     dietary_restriction?: string
   }>({})
+  const [isStudent, setIsStudent] = useState<boolean | null>(null)
   const [competedBefore, setCompetedBefore] = useState<boolean | null>(null)
   const [volunteeredBefore, setVolunteeredBefore] = useState<boolean | null> (null)
   const [hasDietary, setHasDietary] = useState<boolean | null>(null)
@@ -173,6 +174,51 @@ export default function SignUpPage() {
         setErrors({ form1: error.message })
       } else {
         setErrors({ form1: "Something went wrong :(" })
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleProfileSubmit(e: React.SyntheticEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setErrors({})
+
+    const cleaned = { ...profileData }
+
+    if (cleaned.student_status === 'Undergraduate' || cleaned.student_status === 'Graduate') {
+      cleaned.employer = undefined
+    } else if (cleaned.student_status === 'Non-Student') {
+      cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined
+    } else {
+      cleaned.student_status = cleaned.employer = cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined
+    }
+
+    cleaned.competition_exp  = competedBefore === false ? "No competition experience."  : competedBefore === null  ? undefined : cleaned.competition_exp
+    cleaned.volunteering_exp = volunteeredBefore === false ? "No volunteer experience." : volunteeredBefore === null ? undefined : cleaned.volunteering_exp
+
+    for (const key of Object.keys(cleaned)) {
+      if (cleaned[key as keyof typeof cleaned] === "") {
+        (cleaned as Record<string, unknown>)[key] = undefined
+      }
+    }
+
+    if (cleaned.graduation_year && (cleaned.graduation_year < 1000 || cleaned.graduation_year > 9999)) {
+      setErrors(er => ({...er, graduation_year: "Must be a valid year."}))
+      setLoading(false)
+      return
+    }
+
+    try {
+      await usersApi.updateMe(cleaned)
+
+      router.push("/dashboard")
+    } catch (error: unknown) {
+      if (error instanceof ApiError) {
+        setErrors({ form2: error.message })
+      } else {
+        setErrors({ form2: "Something went wrong :(" })
       }
     } finally {
       setLoading(false)
@@ -336,7 +382,7 @@ export default function SignUpPage() {
             }}>Complete Your Profile</h2>
           </div>
           
-          <form>
+          <form onSubmit={handleProfileSubmit} noValidate>
             <ProfileQuestion
               question="What is your student status?"
               onSkip={() => setState(5)}
@@ -387,7 +433,7 @@ export default function SignUpPage() {
                 </ProfileQuestion>
                 <ProfileQuestion question="What is your grade level?">
                   <Select
-                    value={String(profileData.year_level  ?? '')}
+                    value={String(profileData.year_level ?? '')}
                     onChange={v => {
                       setProfileData(d => ({...d, year_level: Number(v)}))
                       setErrors(er => ({...er, year_level: undefined}))
@@ -425,7 +471,7 @@ export default function SignUpPage() {
                   isActive={state === 3}
                 ><Input
                       type="text"
-                      value={profileData.graduation_year ?? ''}
+                      value={profileData.graduation_year}
                       onChange={e => {
                         const raw = e.target.value.replace(/\D/g, '').slice(0, 4)
                         setErrors(er => ({ ...er, graduation_year: raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined }))
@@ -448,7 +494,7 @@ export default function SignUpPage() {
                 isActive={state === 4}
               ><Input
                     type="text"
-                    value={profileData.employer ?? ''}
+                    value={profileData.employer}
                     onChange={e => {
                       setProfileData(d => ({...d, employer: e.target.value}))
                       setErrors(er => ({...er, employer: undefined}))
@@ -509,7 +555,7 @@ export default function SignUpPage() {
                 }}
                 isActive={state === 6}
               ><Textarea
-                    value={profileData.competition_exp ?? ''}
+                    value={profileData.competition_exp}
                     onChange={e => {
                       setProfileData(d => ({...d, competition_exp: e.target.value}))
                       setErrors(er => ({...er, competition_exp: undefined}))
@@ -570,7 +616,7 @@ export default function SignUpPage() {
                 }}
                 isActive={state === 8}
               ><Textarea
-                    value={profileData.volunteering_exp ?? ''}
+                    value={profileData.volunteering_exp}
                     onChange={e => {
                       setProfileData(d => ({...d, volunteering_exp: e.target.value}))
                       setErrors(er => ({...er, volunteering_exp: undefined}))
@@ -659,7 +705,7 @@ export default function SignUpPage() {
                 }}
                 isActive={state === 11}
               ><Textarea
-                    value={profileData.dietary_restriction ?? ''}
+                    value={profileData.dietary_restriction}
                     onChange={e => {
                       setProfileData(d => ({...d, dietary_restriction: e.target.value}))
                       setErrors(er => ({...er, dietary_restriction: undefined}))
@@ -674,16 +720,29 @@ export default function SignUpPage() {
                 type="button"
                 variant="secondary"
                 size="lg"
-                onClick={e => router.push("/dashboard")}
+                onClick={() => router.push("/dashboard")}
                 fullWidth
               >Skip All</Button>
               <Button
-                type="button"
+                type="submit"
                 variant="primary"
                 size="lg"
                 disabled={state !== 12}
+                loading={loading}
                 fullWidth
               >Complete</Button>
+            </div>
+
+            <div>
+              {errors.form2 && (
+                <p style={{
+                  fontFamily: 'var(--font-sans)',
+                  fontSize: '14px',
+                  color: 'var(--color-danger)'
+                }}>
+                  {errors.form2}
+                </p>
+              )}
             </div>
           </form>
           <p>State {state}</p> {/* for debug only, remove later */}

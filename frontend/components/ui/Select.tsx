@@ -10,6 +10,9 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// TODO(decision): SelectOption.value is string-only. Accepting string | number would require
+// changing SelectProps.value and onChange signature, propagating to all call sites.
+// Current workaround: convert numbers to string at the call site with String().
 export interface SelectOption {
   value:     string
   label:     string
