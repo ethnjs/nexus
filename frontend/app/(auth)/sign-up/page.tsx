@@ -52,6 +52,14 @@ function ProfileQuestion({
   )
 }
 
+function setCookie() {
+  document.cookie = "inSignUpFlow=true; path=/"
+}
+
+function clearCookie() {
+  document.cookie = "inSignUpFlow=; path=/; max-age=0"
+}
+
 
 export default function SignUpPage() {
   // ── Sign-up step states ──────────────────────────────────────────────────
@@ -103,7 +111,6 @@ export default function SignUpPage() {
     shirt_size?: SHIRT_SIZE
     dietary_restriction?: string
   }>({})
-  const [isStudent, setIsStudent] = useState<boolean | null>(null)
   const [competedBefore, setCompetedBefore] = useState<boolean | null>(null)
   const [volunteeredBefore, setVolunteeredBefore] = useState<boolean | null> (null)
   const [hasDietary, setHasDietary] = useState<boolean | null>(null)
@@ -133,11 +140,16 @@ export default function SignUpPage() {
 
   const router = useRouter()
 
-  // for dev only
   useEffect(() => {
-    if (process.env.NODE_ENV !== 'development') return
-    authApi.me().then(u => { setUser(u); setState(2) })
-  }, [])
+    authApi.me().then(user => {
+      if (document.cookie.includes("inSignUpFlow")) {
+        setUser(user)
+        setState(2)
+      } else {
+        router.push('/dashboard')
+      }
+    }).catch(() => {})
+  })
 
   async function handleRegisterSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
@@ -167,6 +179,8 @@ export default function SignUpPage() {
         first_name: name.first,
         last_name: name.last
       }))
+
+      setCookie()
 
       setState(2)
     } catch (error: unknown) {
@@ -213,6 +227,7 @@ export default function SignUpPage() {
     try {
       await usersApi.updateMe(cleaned)
 
+      clearCookie()
       router.push("/dashboard")
     } catch (error: unknown) {
       if (error instanceof ApiError) {
@@ -720,7 +735,7 @@ export default function SignUpPage() {
                 type="button"
                 variant="secondary"
                 size="lg"
-                onClick={() => router.push("/dashboard")}
+                onClick={() => { clearCookie(); router.push("/dashboard") }}
                 fullWidth
               >Skip All</Button>
               <Button
@@ -745,7 +760,6 @@ export default function SignUpPage() {
               )}
             </div>
           </form>
-          <p>State {state}</p> {/* for debug only, remove later */}
         </section>
       )}
     </>
