@@ -22,18 +22,19 @@ export function RadioOption({ name, value, checked, onChange, label, description
       borderRadius: 'var(--radius-sm)',
       background: bg,
       cursor: 'pointer',
-      transition: 'border-color 120ms ease, background 120ms ease',
+      transition: 'color 120ms ease, border-color 120ms ease, background 120ms ease',
     }}>
-      {showCircle && (
-        <input
-          type="radio"
-          name={name}
-          value={value}
-          checked={checked}
-          onChange={() => onChange(value)}
-          style={{ accentColor: 'var(--color-accent)', flexShrink: 0 }}
-        />
-      )}
+      <input
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        onChange={() => onChange(value)}
+        style={showCircle
+          ? { accentColor: 'var(--color-accent)', flexShrink: 0 }
+          : { position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none'}
+        }
+      />
       <div>
         <div style={{
           fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',

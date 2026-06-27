@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
 import { RadioOption } from "@/components/ui/RadioOption"
+import { Textarea } from "@/components/ui/Textarea"
 
 
 
@@ -311,7 +312,7 @@ export default function SignUpPage() {
       )}
 
       {state >= 2 && (
-        <section style={{ maxWidth: '600px', width: '100%' }}>
+        <section style={{ maxWidth: '600px', width: '100%', margin: '20px 0px'}}>
           <div style={{ marginBottom: '10px' }}>
             <h1 style={{
               fontFamily: 'var(--font-serif)',
@@ -502,14 +503,75 @@ export default function SignUpPage() {
                     : setState(7)
                 }}
                 isActive={state === 6}
-              ><Input
-                    type="text"
+              ><Textarea
                     value={profileData.competition_exp ?? ''}
                     onChange={e => {
                       setProfileData(d => ({...d, competition_exp: e.target.value}))
                       setErrors(er => ({...er, competition_exp: undefined}))
                     }}
                     error={errors.competition_exp}
+                />
+              </ProfileQuestion>
+            )}
+
+            {state >= 7 && (
+              <ProfileQuestion
+                question="Have you volunteered for Science Olympiad before?"
+                onSkip={() => {
+                  setProfileData(d => ({...d, competition_exp: undefined}))
+                  setState(9)
+                }}
+                isActive={state === 7}
+              ><div style={{ display: 'flex', gap: '8px' }}>
+                <RadioOption 
+                  name="voluntereed"
+                  value="yes"
+                  checked={profileData.volunteering_exp !== undefined && profileData.volunteering_exp !== "No volunteer experience."}
+                  onChange={() => {
+                    setProfileData(d => ({...d, volunteering_exp: ""}))
+                    if (state >= 9) return
+                    setState(8)
+                  }}
+                  label="Yes"
+                  showCircle={false}
+                  solid
+                />
+                <RadioOption 
+                  name="volunteered"
+                  value="no"
+                  checked={profileData.volunteering_exp === "No volunteer experience."}
+                  onChange={() => {
+                    setProfileData(d => ({...d, volunteering_exp: "No volunteer experience."}))
+                    if (state >= 9) return
+                    setState(9) 
+                  }}
+                  label="No"
+                  showCircle={false}
+                  solid
+                />
+              </div>
+              </ProfileQuestion>
+            )}
+
+            {state >= 8 && profileData.volunteering_exp !== "No volunteer experience." && (
+              <ProfileQuestion
+                question="List your volunteer experience."
+                onSkip={() => {
+                  setProfileData(d => ({...d, volunteering_exp: undefined}))
+                  setState(9)
+                }}
+                onNext={() => {
+                  !profileData.volunteering_exp ? setErrors(er => ({...er, volunteering_exp: "Cannot be empty."}))
+                    : setState(9)
+                }}
+                isActive={state === 8}
+              ><Textarea
+                    value={profileData.volunteering_exp ?? ''}
+                    onChange={e => {
+                      setProfileData(d => ({...d, volunteering_exp: e.target.value}))
+                      setErrors(er => ({...er, volunteering_exp: undefined}))
+                    }}
+                    error={errors.volunteering_exp}
                 />
               </ProfileQuestion>
             )}
