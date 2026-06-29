@@ -14,4 +14,4 @@ async def send_verification_email(to: str, token: str) -> None:
         "text": f"Please verify your email: {settings.frontend_url.rstrip('/')}/verify-email?token={token}"
     }
 
-    resend.Emails.send_async(params)
+    await resend.Emails.send_async(params)
