@@ -8,7 +8,7 @@ async def send_verification_email(to: str, token: str) -> None:
     resend.api_key = settings.resend_api_key
     
     params: resend.Emails.SendParams = {
-        "from": "NEXUS <no-reply@nexus.ethanshih.com>",
+        "from": "NEXUS <verify@nexus.ethanshih.com>",
         "to": to,
         "subject": "Verify Your Email on NEXUS",
         "text": f"Please verify your email: {settings.frontend_url.rstrip('/')}/verify-email?token={token}"
