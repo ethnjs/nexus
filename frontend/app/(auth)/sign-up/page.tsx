@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
 import { RadioOption } from "@/components/ui/RadioOption"
 import { Textarea } from "@/components/ui/Textarea"
+import { Modal } from "@/components/ui/Modal"
 
 
 
@@ -109,6 +110,7 @@ export default function SignUpPage() {
     confirm: boolean
   }>({ length: false, upper: false, lower: false, number: false, symbol: false, confirm: false })
 
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   const [profileData, setProfileData] = useState<{
     student_status?: STUDENT_STATUS
@@ -196,7 +198,9 @@ export default function SignUpPage() {
 
       setCookie()
 
-      setState(STATE.STUDENT_STATUS)
+      authApi.sendEmailVerification().then(() => {
+        setShowVerifyModal(true)
+      }).catch(() => {}).finally(() => setState(STATE.STUDENT_STATUS))
     } catch (error: unknown) {
       if (error instanceof ApiError) {
         setErrors({ form1: error.message })
@@ -206,6 +210,21 @@ export default function SignUpPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function VerifyModal() {
+    return (
+      <Modal onClose={() => {}}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <IconCheckCircleSolid style={{ color: 'var(--color-success)', marginBottom: '20px' }} size={72} />
+          <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '10px' }}>
+            Your account was created successfully
+          </h2>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', marginBottom: '10px' }}>We sent a verification link to {user?.email ?? email}</p>
+          <Button fullWidth onClick={() => setShowVerifyModal(false)}>Got it!</Button>
+        </div>
+      </Modal>
+    )
   }
 
   async function handleProfileSubmit(e: React.SyntheticEvent) {
@@ -390,6 +409,8 @@ export default function SignUpPage() {
 
       {state >= STATE.STUDENT_STATUS && (
         <section style={{ maxWidth: '600px', width: '100%', margin: '20px 0px'}}>
+          {showVerifyModal && <VerifyModal />}
+
           <div style={{ marginBottom: '10px' }}>
             <h1 style={{
               fontFamily: 'var(--font-serif)',
