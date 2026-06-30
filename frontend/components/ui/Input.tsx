@@ -30,7 +30,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     const inputId = id ?? generatedId
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: fullWidth ? '100%' : undefined }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: fullWidth ? '100%' : undefined }}>
         {label && (
           <label
             htmlFor={inputId}
