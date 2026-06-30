@@ -53,6 +53,7 @@ class UserResponse(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
 
+    email_verified: bool
     role: ROLE
     is_active: bool
     

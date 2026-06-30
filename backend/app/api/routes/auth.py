@@ -149,10 +149,7 @@ def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _:
 
     return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
 
-@router.get(
-    "/auth/verify-email",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
+@router.get("/auth/verify-email/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
         404: {"description": "User not found"},
@@ -169,10 +166,7 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     return {"detail": "User email successfully verified"}
 
 # todo: add rate limiting
-@router.post(
-    "/auth/send-email-verification",
-    status_code=status.HTTP_200_OK,
-    response_model=MessageResponse,
+@router.post("/auth/send-email-verification/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
     responses={
         400: {"description": "Email already verified"},
         500: {"description": "Failed to send verification email"},
