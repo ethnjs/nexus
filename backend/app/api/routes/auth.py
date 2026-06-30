@@ -15,7 +15,7 @@ from app.core.email_verification import generate_verification_token, verify_veri
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.user import UserResponse
-from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest
+from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, MessageResponse
 from app.services.email_service import send_verification_email
 
 router = APIRouter( tags=["auth"])
@@ -79,7 +79,7 @@ async def _send_verification_email(to: str, id: int):
         await send_verification_email(to, generate_verification_token(id))
 
     except Exception:
-        raise HTTPException(500, "Failed to send verification email.")
+        raise HTTPException(500, "Failed to send verification email")
 
 
 @router.post("/auth/login/", response_model=UserResponse)
@@ -149,11 +149,19 @@ def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _:
 
     return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
 
-@router.get("/auth/verify-email", status_code=status.HTTP_200_OK)
+@router.get(
+    "/auth/verify-email",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={
+        400: {"description": "Invalid or expired token"},
+        404: {"description": "User not found"},
+    },
+)
 def verify_email(token: str, db: Session = Depends(get_db)):
     user_id = verify_verification_token(token)
     if user_id is None:
-        raise HTTPException(400, "Email verification is invalid or has expired.")
+        raise HTTPException(400, "Invalid or expired token")
     
     user = find_user_by_id(db, user_id)
     user.email_verified = True
@@ -161,11 +169,19 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     return {"detail": "User email successfully verified"}
 
 # todo: add rate limiting
-@router.post("/auth/send-email-verification", status_code=status.HTTP_200_OK)
-async def resend_email_verification(user: User = Depends(get_current_user)):
+@router.post(
+    "/auth/send-email-verification",
+    status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={
+        400: {"description": "Email already verified"},
+        500: {"description": "Failed to send verification email"},
+    },
+)
+async def send_email_verification(user: User = Depends(get_current_user)):
     if user.email_verified:
-        raise HTTPException(400, "User email already verified.")
+        raise HTTPException(400, "Email already verified")
     
     await _send_verification_email(user.email, user.id)
 
-    return {"detail": "Verification email successfully sent."}
+    return {"detail": "Verification email successfully sent"}
