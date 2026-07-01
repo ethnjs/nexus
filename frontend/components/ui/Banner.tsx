@@ -5,7 +5,7 @@ import { IconErrorCircle, IconWarningBanner, IconCheckCircle } from '@/component
 
 type BannerVariant = 'success' | 'error' | 'warning' | 'info'
 
-interface BannerProps {
+export interface BannerProps {
   variant: BannerVariant
   message: string
   /** Optional ReactNode rendered to the right of the message — e.g. a Button */
