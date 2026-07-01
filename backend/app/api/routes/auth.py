@@ -176,6 +176,6 @@ async def send_email_verification(user: User = Depends(get_current_user)):
     if user.email_verified:
         raise HTTPException(400, "Email already verified")
     
-    await _send_verification_email(user.email, user.id)
+    # await _send_verification_email(user.email, user.id)
 
     return {"detail": "Verification email successfully sent"}

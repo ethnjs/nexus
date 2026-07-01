@@ -95,6 +95,7 @@ interface UserBase {
 export interface User extends UserBase {
   id:                  number
   
+  email_verified:      boolean
   role:                ROLE
   is_active:           boolean
 
