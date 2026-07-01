@@ -97,7 +97,7 @@ export default function DashboardPage() {
   const [showModal, setShowModal]     = useState(false)
 
   const [dismissedBanners, setDismissedBanners] = useState<Record<number, string>>(() => {
-    const dismissed = localStorage.getItem('dismissedBanners')
+    const dismissed = typeof window !== "undefined" ? localStorage.getItem("dismissedBanners") : "{}"
     if (!dismissed) return {}
     try {
       return JSON.parse(dismissed)
@@ -115,9 +115,9 @@ export default function DashboardPage() {
         variant="secondary"
         onClick={() => {
           setLoading(l => ({...l, "verify-email": true}))
-          authApi.sendEmailVerification().then(() => setSendEmailSuccess(true)).catch(err => {
+          authApi.sendEmailVerification().then(/* () => setSendEmailSuccess(true) */ () => {}).catch(err => {
             const message = err instanceof ApiError ? err.message : "Something went wrong"
-            setErrors({send: message})
+            // setErrors({send: message})
           }).finally(() => setLoading(l => ({...l, "verify-email": false})))
         }}
         loading={loading["verify-email"]}
