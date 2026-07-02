@@ -127,6 +127,7 @@ export default function DashboardPage() {
         message={resendEmailTooltipMessages}
       ><Button
           variant="secondary"
+          size="sm"
           onClick={() => {
             setLoading(l => ({...l, "verify-email": true}))
             authApi.sendEmailVerification().then(() => setTooltipStatus(s => ({...s, "resendEmail": 'success'}))).catch(err => {
@@ -143,6 +144,7 @@ export default function DashboardPage() {
       condition: user => user.missing_profile_fields.length > 0, snoozeDays: 3,
       action: <Button
         variant="secondary"
+        size="sm"
         onClick={() => router.push('/dashboard')} // temp for now, will push to profile later
       >Complete Profile</Button>
     }
