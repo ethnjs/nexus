@@ -9,6 +9,7 @@ import { Banner, BannerProps } from "@/components/ui/Banner"
 import { Button } from "@/components/ui/Button"
 import { IconPlus, IconCalendar, IconLocation } from "@/components/ui/Icons"
 import { useAuth } from "@/lib/useAuth"
+import { Tooltip, TooltipStatus } from "@/components/ui/Tooltip"
 
 
 
@@ -89,6 +90,8 @@ function TournamentCard({ tournament, counts, onClick }: { tournament: Tournamen
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+
+
 export default function DashboardPage() {
   const router = useRouter()
   const [tournaments, setTournaments] = useState<Tournament[]>([])
@@ -106,22 +109,35 @@ export default function DashboardPage() {
     }
   })
 
+  const [tooltipStatus, setTooltipStatus] = useState<Record<string, TooltipStatus>>({"resendEmail": 'idle'})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
   const user = useAuth().user
+
+  const resendEmailTooltipMessages: Partial<Record<TooltipStatus, string | undefined>> = {
+    'success': "Email sent successfully. Please check your inbox.",
+    'error': errors["resendEmail"] ?? undefined
+  }
 
   const bannerRules: BannerRule[] = [
     {id: 1, variant: "warning", message: "Please verify your email address", 
       condition: user => !user.email_verified, snoozeDays: 1,
-      action: <Button
-        variant="secondary"
-        onClick={() => {
-          setLoading(l => ({...l, "verify-email": true}))
-          authApi.sendEmailVerification().then(/* () => setSendEmailSuccess(true) */ () => {}).catch(err => {
-            const message = err instanceof ApiError ? err.message : "Something went wrong"
-            // setErrors({send: message})
-          }).finally(() => setLoading(l => ({...l, "verify-email": false})))
-        }}
-        loading={loading["verify-email"]}
-      >Resend Email</Button>
+      action: <Tooltip
+        status={tooltipStatus["resendEmail"]}
+        message={resendEmailTooltipMessages}
+      ><Button
+          variant="secondary"
+          onClick={() => {
+            setLoading(l => ({...l, "verify-email": true}))
+            authApi.sendEmailVerification().then(() => setTooltipStatus(s => ({...s, "resendEmail": 'success'}))).catch(err => {
+              const message = err instanceof ApiError ? err.message : "Something went wrong"
+              setTooltipStatus(s => ({...s, "resendEmail": 'error'}))
+              setErrors({"resendEmail": message})
+            }).finally(() => setLoading(l => ({...l, "verify-email": false})))
+          }}
+          loading={loading["verify-email"]}
+        >Resend Email</Button>
+      </Tooltip>
     },
     {id: 2, variant: "warning", message: "Your profile is incomplete",
       condition: user => user.missing_profile_fields.length > 0, snoozeDays: 3,
@@ -136,6 +152,8 @@ export default function DashboardPage() {
     if (!user) return false
     return e.condition(user) && (new Date(Date.now()).toISOString() >= (dismissedBanners[e.id] ?? ''))
   })
+
+  
 
   useEffect(() => {
     tournamentsApi.list().then((data) => {
