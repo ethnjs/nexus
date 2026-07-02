@@ -1,7 +1,7 @@
 'use client'
 
 import { Button } from "@/components/ui/Button"
-import { IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
+import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { Spinner } from "@/components/ui/Spinner"
 import { ApiError, authApi, User } from "@/lib/api"
 import { useRouter, useSearchParams } from "next/navigation"
@@ -84,7 +84,7 @@ function VerifyEmailContent() {
       {state === 2 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
           <span style={{ marginBottom: '10px', display: 'flex', gap: '5px', alignItems: 'center', fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
-              <IconCheckCircleSolid style={{ color: 'var(--color-success)'}} size={16} />Email successfully verified.
+              <IconCheckCircle style={{ color: 'var(--color-success)'}} size={16} />Email successfully verified.
           </span>
           {user ? (
             <Button onClick={() => router.push('/dashboard')}>Go to Dashboard</Button>
@@ -99,7 +99,7 @@ function VerifyEmailContent() {
       {state === 3 && (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
           <span style={{ marginBottom: '10px', alignItems: 'center', display: 'flex', gap: '6px', fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
-              <IconXCircleSolid style={{ color: 'var(--color-danger)'}} size={16} />Error: {errors.verify}
+              <IconXCircle style={{ color: 'var(--color-danger)'}} size={16} />Error: {errors.verify}
           </span>
           {user ? (
             <>
