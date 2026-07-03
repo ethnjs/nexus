@@ -11,7 +11,7 @@ STATUS LEGEND:
 
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Integer, String, Text, Boolean, DateTime, JSON,
+    Integer, String, Text, Boolean, Date, DateTime, JSON,
     ForeignKey, UniqueConstraint, Column,
 )
 from sqlalchemy.orm import relationship
@@ -88,6 +88,8 @@ class User(Base):
     last_name = Column(String(100), nullable=False)
     email = Column(String(255), unique=True, index=True, nullable=False)
     phone = Column(String(32), nullable=True)
+    date_of_birth = Column(Date, nullable=True)
+    pronouns = Column(String(100), nullable=True)
 
     # Auth fields
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
@@ -105,8 +107,9 @@ class User(Base):
     # if not a student
     employer = Column(String(255), nullable=True)
     
-    competition_exp = Column(Text, nullable=True)             # free-form competition experience
-    volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
+    has_competition_experience = Column(Boolean, nullable=True)
+    has_volunteer_experience = Column(Boolean, nullable=True)
+    # has_stem_experience = Column(Boolean, nullable=True)        # debatable
 
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
