@@ -11,7 +11,7 @@ from sqlalchemy import (
     ForeignKey, UniqueConstraint, Column,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from typing import Optional
 
 from app.db.session import Base
@@ -120,7 +120,7 @@ class User(Base):
     status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
     
     # if a student
-    university = Column(String(255), nullable=True)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     major = Column(String(255), nullable=True)
     student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
     year_level = Column(Integer, nullable=True)
@@ -157,6 +157,7 @@ class User(Base):
         foreign_keys="UserVolunteerExperience.user_id",
         cascade="all, delete-orphan"
     )
+    university = relationship("University", back_populates="users")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -246,6 +247,7 @@ class Tournament(Base):
     name = Column(String(255), nullable=False)
     start_date = Column(DateTime(timezone=True), nullable=True)
     end_date = Column(DateTime(timezone=True), nullable=True)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
 
     # [{number, label, date, start, end}, ...]
@@ -276,6 +278,20 @@ class Tournament(Base):
     memberships = relationship(
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
+    university = relationship("University", back_populates="tournaments")
+
+    # Schema Validator: at least one of "university_id" or "location" must be set
+    @validates("university_id", "location")
+    def validate_tournament_source(self, key, value):
+        # Determine the other field's value
+        univ = value if key == "university_id" else self.university_id
+        loc = value if key == "location" else self.location
+
+        # If both are None, raise a validation error. At least one must be set.
+        if not univ and not loc:
+            raise ValueError("Tournament must have either a university_id or a location.")
+
+        return value
 
 # ---------------------------------------------------------------------------
 # Tournament Membership
@@ -437,3 +453,33 @@ class SheetConfig(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
+
+
+# ---------------------------------------------------------------------------
+# [In Progress???] University
+# A master lookup registry of standardized post-secondary institutions.
+#
+# Serves as the single source of truth across the platform to eliminate free-text
+# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User 
+# profiles and Tournaments reference this table to establish structural ties.
+#
+# unique constraints:
+#   name: The full official name of the institution (e.g., "Stanford University").
+#
+# nullable fields:
+#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for 
+#     compact UI rendering, dashboard badges, and quick search indexing.
+#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
+#     context on proximity for tournament planning or regional chapter groupings.
+# ---------------------------------------------------------------------------
+class University(Base):
+    __tablename__ = "universities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
+    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+
+    # Relationships
+    tournaments = relationship("Tournament", back_populates="university")
+    users = relationship("User", back_populates="university")
