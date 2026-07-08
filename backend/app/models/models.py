@@ -158,7 +158,7 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="users")
-    chapter_membership = relationship("ChapterMembership", back_populates="users")
+    chapter_membership = relationship("ChapterMembership", back_populates="users", uselist=False)
     chapter_join_code = relationship("ChapterJoinCode", back_populates="creator")
 
 # ---------------------------------------------------------------------------
@@ -486,7 +486,7 @@ class University(Base):
     # Relationships
     tournaments = relationship("Tournament", back_populates="university")
     users = relationship("User", back_populates="university")
-    alumni_chapters = relationship("AlumniChapter", back_populates="university")
+    alumni_chapters = relationship("AlumniChapter", back_populates="university", uselist=False)
 
 
 # ---------------------------------------------------------------------------
@@ -507,8 +507,8 @@ class AlumniChapter(Base):
 
     # Relationships
     university = relationship("University", back_populates="alumni_chapters")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapters")
-    chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapters", cascade="all, delete-orphan")
+    chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
     tournaments = relationship("TournamentChapter", back_populates="chapters")
 
 
@@ -525,9 +525,9 @@ class ChapterMembership(Base):
     __tablename__ = "chapter_memberships"
 
     id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), nullable=False)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
-    # unique=Ture on user_id, so users can only join one chapter at DataBase level
+    # unique=True on user_id, so users can only join one chapter at DataBase level
     role = Column(String(32), nullable=False, default="member")
     # "lead", | "officer" | "member"
     joined_at = Column(DateTime(timezone=True), default=utcnow)
@@ -550,7 +550,7 @@ class ChapterJoinCode(Base):
     __tablename__ = "chapter_join_codes"
 
     id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), nullable=False)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     code = Column(String(8), unique=True, nullable=False)
     label = Column(String(255), nullable=True)
