@@ -507,6 +507,7 @@ class AlumniChapter(Base):
 
     # Relationships
     university = relationship("University", back_populates="alumni_chapters")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapters")
     chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter")
     tournaments = relationship("TournamentChapter", back_populates="chapters")
 
