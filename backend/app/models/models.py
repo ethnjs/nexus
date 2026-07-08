@@ -158,6 +158,7 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="users")
+    chapter_membership = relationship("ChapterMembership", back_populates="users")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -504,3 +505,28 @@ class AlumniChapter(Base):
 
     # Relationships
     university = relationship("University", back_populates="alumni_chapters")
+
+
+# ---------------------------------------------------------------------------
+# [ACTIVE] ChapterMembership
+# Explicit join table managing the connection between users and chapters.
+#
+# Tracks the structural relationship determining which alumni belong to
+# which regional hub. It provides the database anchor for user-chapter
+# association, serving as the foundation for assigning leadership positions.
+# ---------------------------------------------------------------------------
+
+class ChapterMembership(Base):
+    __tablename__ = "chapter_memberships"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    # unique=Ture on user_id, so users can only join one chapter at DataBase level
+    role = Column(String(32), nullable=False, default="member")
+    # "lead", | "officer" | "member"
+    joined_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    alumni_chapters = relationship("AlumniChapter", back_populates="chapter_memberships")
+    users = relationship("User", back_populates="chapter_membership")
