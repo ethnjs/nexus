@@ -281,6 +281,7 @@ class Tournament(Base):
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="tournaments")
+    chapters = relationship("TournamentChapter", back_populates="tournaments")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
     @validates("university_id", "location")
@@ -507,6 +508,7 @@ class AlumniChapter(Base):
     # Relationships
     university = relationship("University", back_populates="alumni_chapters")
     chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter")
+    tournaments = relationship("TournamentChapter", back_populates="chapters")
 
 
 # ---------------------------------------------------------------------------
@@ -558,3 +560,22 @@ class ChapterJoinCode(Base):
     # Relationships
     alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_code")
     creator = relationship("User", back_populates="chapter_join_code")
+
+
+# ---------------------------------------------------------------------------
+# [In Progress???] TournamentChapter
+# Junction table mapping AlumniChapters to affiliated Tournaments.
+#
+# Enables a many-to-many relationship tracking which alumni chapters are
+# supporting, hosting, or participating in specific Science Olympiad tournaments.
+# ---------------------------------------------------------------------------
+
+class TournamentChapter(Base):
+    __tablename__ = "tournament_chapters"
+
+    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
+
+    # Relationships
+    tournaments = relationship("Tournament", back_populates="chapters")
+    chapters = relationship("AlumniChapter", back_populates="tournaments")
