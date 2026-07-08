@@ -483,3 +483,24 @@ class University(Base):
     # Relationships
     tournaments = relationship("Tournament", back_populates="university")
     users = relationship("User", back_populates="university")
+    alumni_chapters = relationship("AlumniChapter", back_populates="university")
+
+
+# ---------------------------------------------------------------------------
+# [In Progress???] AlumniChapter
+# Regional organizations or networks where alumni coordinate and connect.
+#
+# A chapter defines a specific geographic hub (e.g., "Bay Area"). It acts
+# as the parent container for both regional leadership roles and local events.
+# ---------------------------------------------------------------------------
+
+class AlumniChapter(Base):
+    __tablename__ = "alumni_chapters"
+
+    id = Column(Integer,  primary_key=True)
+    name = Column(String(255), nullable=False)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    university = relationship("University", back_populates="alumni_chapters")
