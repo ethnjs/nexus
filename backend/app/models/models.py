@@ -159,6 +159,7 @@ class User(Base):
     )
     university = relationship("University", back_populates="users")
     chapter_membership = relationship("ChapterMembership", back_populates="users")
+    chapter_join_code = relationship("ChapterJoinCode", back_populates="creator")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -505,6 +506,7 @@ class AlumniChapter(Base):
 
     # Relationships
     university = relationship("University", back_populates="alumni_chapters")
+    chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter")
 
 
 # ---------------------------------------------------------------------------
@@ -530,3 +532,29 @@ class ChapterMembership(Base):
     # Relationships
     alumni_chapters = relationship("AlumniChapter", back_populates="chapter_memberships")
     users = relationship("User", back_populates="chapter_membership")
+
+
+# ---------------------------------------------------------------------------
+# [In Progress???] ChapterJoinCode
+# Temporary access tokens used for user onboarding into an AlumniChapter.
+#
+# Generates unique, time-sensitive or usage-restricted join codes that allow
+# prospective members to self-verify and join a specific chapter without
+# requiring manual admin approval for every request.
+# ---------------------------------------------------------------------------
+
+class ChapterJoinCode(Base):
+    __tablename__ = "chapter_join_codes"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    code = Column(String(8), unique=True, nullable=False)
+    label = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_code")
+    creator = relationship("User", back_populates="chapter_join_code")
