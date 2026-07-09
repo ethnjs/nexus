@@ -3,10 +3,6 @@ SQLAlchemy ORM models.
 
 NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
 with SQLAlchemy 2.0.36 + Python 3.13.
-
-STATUS LEGEND:
-  [ACTIVE] — built and in use
-  [FUTURE] — planned, not yet implemented
 """
 
 from datetime import datetime, timezone
@@ -24,49 +20,7 @@ def utcnow():
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] Tournament
-# ---------------------------------------------------------------------------
-class Tournament(Base):
-    __tablename__ = "tournaments"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    start_date = Column(DateTime(timezone=True), nullable=True)
-    end_date = Column(DateTime(timezone=True), nullable=True)
-    location = Column(String(255), nullable=True)
-
-    # [{number, label, date, start, end}, ...]
-    blocks = Column(JSON, nullable=False, default=list)
-
-    # {
-    #   custom_fields: [{key, label, type}, ...],
-    #   positions: [{key, label, permissions: [...]}, ...]
-    # }
-    # Positions are auto-populated from DEFAULT_POSITIONS on tournament create.
-    # TDs can customise per-tournament at any time.
-    volunteer_schema = Column(JSON, nullable=False, default=dict)
-
-    # The user who created this tournament.
-    # Always has a membership with positions=["tournament_director"].
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-    owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
-    sheet_configs = relationship(
-        "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
-    )
-    events = relationship(
-        "Event", back_populates="tournament", cascade="all, delete-orphan"
-    )
-    memberships = relationship(
-        "Membership", back_populates="tournament", cascade="all, delete-orphan"
-    )
-
-
-# ---------------------------------------------------------------------------
-# [ACTIVE] User
+# User
 # Core identity — volunteers, TDs, and admins all live here.
 #
 # role = "admin" | "user"
@@ -118,15 +72,79 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     memberships = relationship(
-        "Membership", back_populates="user", cascade="all, delete-orphan"
+        "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
     )
     tournaments = relationship(
         "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
     )
 
+# ---------------------------------------------------------------------------
+# Event Category
+# ---------------------------------------------------------------------------
+class EventCategory(Base):
+    __tablename__ = "event_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+
+    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] Membership
+# Event
+# ---------------------------------------------------------------------------
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+
+    category = relationship("EventCategory", back_populates="events")
+
+
+# ---------------------------------------------------------------------------
+# Tournament
+# ---------------------------------------------------------------------------
+class Tournament(Base):
+    __tablename__ = "tournaments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    start_date = Column(DateTime(timezone=True), nullable=True)
+    end_date = Column(DateTime(timezone=True), nullable=True)
+    location = Column(String(255), nullable=True)
+
+    # [{number, label, date, start, end}, ...]
+    blocks = Column(JSON, nullable=False, default=list)
+
+    # {
+    #   custom_fields: [{key, label, type}, ...],
+    #   positions: [{key, label, permissions: [...]}, ...]
+    # }
+    # Positions are auto-populated from DEFAULT_POSITIONS on tournament create.
+    # TDs can customise per-tournament at any time.
+    volunteer_schema = Column(JSON, nullable=False, default=dict)
+
+    # The user who created this tournament.
+    # Always has a membership with positions=["tournament_director"].
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
+    sheet_configs = relationship(
+        "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    events = relationship(
+        "TournamentEvent", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    memberships = relationship(
+        "Membership", back_populates="tournament", cascade="all, delete-orphan"
+    )
+
+# ---------------------------------------------------------------------------
+# Tournament Membership
 # Links a User to a Tournament — their full volunteer record for that event.
 #
 # positions: list of position keys (e.g. ["tournament_director", "test_writer"])
@@ -144,8 +162,8 @@ class User(Base):
 # are defined per-tournament in Tournament.volunteer_schema["custom_fields"], making
 # the system flexible for any tournament's arbitrary form data.
 # ---------------------------------------------------------------------------
-class Membership(Base):
-    __tablename__ = "memberships"
+class TournamentMembership(Base):
+    __tablename__ = "tournament_memberships"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(
@@ -155,7 +173,7 @@ class Membership(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
     assigned_event_id = Column(
-        Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
     )
 
     # Title(s) + permission level within this tournament.
@@ -201,7 +219,7 @@ class Membership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("Event", back_populates="memberships")
+    assigned_event = relationship("TournamentEvent", back_populates="memberships")
 
     __table_args__ = (
         # One membership per user per tournament
@@ -220,7 +238,7 @@ class Membership(Base):
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] SheetConfig
+# SheetConfig
 # ---------------------------------------------------------------------------
 class SheetConfig(Base):
     __tablename__ = "sheet_configs"
@@ -244,29 +262,34 @@ class SheetConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] Event
+# Tournament Event
 # ---------------------------------------------------------------------------
-class Event(Base):
-    __tablename__ = "events"
+class TournamentEvent(Base):
+    __tablename__ = "tournament_events"
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
+    
     name = Column(String(255), nullable=False)
     division = Column(String(4), nullable=False)           # "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
     category = Column(String(255), nullable=True)
+    
     building = Column(String(255), nullable=True)
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
+    
     volunteers_needed = Column(Integer, nullable=False, default=2)
+    
     blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
+    
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
-    memberships = relationship("Membership", back_populates="assigned_event")
+    memberships = relationship("TournamentMembership", back_populates="assigned_event")
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
