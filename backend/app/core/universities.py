@@ -1,5 +1,5 @@
 from fastapi import HTTPException, status
-from typing import Optional, Literal
+from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.models import University
