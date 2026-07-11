@@ -1,85 +1,102 @@
+"""Tests for /universities and /admin/universities endpoints."""
 import uuid
-from typing import Generator
 
-import pytest
-from fastapi import HTTPException
-from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
-
-from app.api.routes.universities import create_university, delete_university, get_universities
-from app.db.session import SessionLocal
-from app.main import app
-from app.models.models import University, User
-from app.schemas.university import UniversityCreate
-
-client = TestClient(app)
+from tests.conftest import login
+from app.models.models import AlumniChapter, University
 
 
-@pytest.fixture
-def db() -> Generator[Session, None, None]:
-    session = SessionLocal()
-    try:
-        yield session
-    finally:
-        session.close()
-
-
-def make_admin_user() -> User:
-    return User(
-        email="admin@example.com",
-        hashed_password="fakehashedpassword",
-        first_name="Admin",
-        last_name="User",
-        role="admin",
-        is_active=True,
-    )
-
-
-def test_get_universities_returns_created_university(db: Session):
-    unique_name = f"Test University {uuid.uuid4()}"
-    university = University(name=unique_name, abbreviation="TU", location="Test City")
+def _university(db, **kwargs):
+    defaults = {"name": f"Test University {uuid.uuid4()}", "abbreviation": "TU", "location": "Test City"}
+    defaults.update(kwargs)
+    university = University(**defaults)
     db.add(university)
     db.commit()
     db.refresh(university)
-
-    results = get_universities(db)
-
-    assert any(item.name == unique_name for item in results)
+    return university
 
 
-def test_create_university_creates_record(db: Session):
+# ---------------------------------------------------------------------------
+# GET /universities/ — public
+# ---------------------------------------------------------------------------
+
+def test_get_universities_returns_created_university(client, db):
+    university = _university(db)
+    res = client.get("/universities/")
+    assert res.status_code == 200
+    assert any(item["name"] == university.name for item in res.json())
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/universities/ — admin only
+# ---------------------------------------------------------------------------
+
+def test_create_university_creates_record(client, admin_user, db):
+    login(client, "admin@test.com", "adminpass")
     unique_name = f"New University {uuid.uuid4()}"
-    body = UniversityCreate(name=unique_name, abbreviation="NU", location="Nowhere")
+    res = client.post("/admin/universities/", json={
+        "name": unique_name, "abbreviation": "NU", "location": "Nowhere",
+    })
+    assert res.status_code == 201
+    data = res.json()
+    assert data["name"] == unique_name
+    assert data["abbreviation"] == "NU"
+    assert data["location"] == "Nowhere"
 
-    created = create_university(body, db, make_admin_user())
-
-    assert created.id is not None
-    assert created.name == unique_name
-    assert created.abbreviation == "NU"
-    assert created.location == "Nowhere"
-
-    fetched = db.query(University).filter_by(id=created.id).first()
+    fetched = db.query(University).filter_by(id=data["id"]).first()
     assert fetched is not None
     assert fetched.name == unique_name
 
 
-def test_create_university_rejects_duplicate_name(db: Session):
+def test_create_university_rejects_duplicate_name(client, admin_user, db):
+    login(client, "admin@test.com", "adminpass")
     unique_name = f"Duplicate University {uuid.uuid4()}"
-    body = UniversityCreate(name=unique_name, abbreviation="DU", location="City")
+    body = {"name": unique_name, "abbreviation": "DU", "location": "City"}
 
-    create_university(body, db, make_admin_user())
-
-    with pytest.raises(HTTPException):
-        create_university(body, db, make_admin_user())
+    assert client.post("/admin/universities/", json=body).status_code == 201
+    assert client.post("/admin/universities/", json=body).status_code == 409
 
 
-def test_delete_university_removes_record(db: Session):
-    unique_name = f"Delete University {uuid.uuid4()}"
-    university = University(name=unique_name, abbreviation="DU", location="City")
-    db.add(university)
-    db.commit()
-    db.refresh(university)
+def test_create_university_non_admin_forbidden(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    res = client.post("/admin/universities/", json={"name": "Sneaky U"})
+    assert res.status_code == 403
 
-    delete_university(university.id, db, make_admin_user())
 
+def test_create_university_unauthenticated(client):
+    res = client.post("/admin/universities/", json={"name": "Sneaky U"})
+    assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# DELETE /universities — admin only
+# ---------------------------------------------------------------------------
+
+def test_delete_university_removes_record(client, admin_user, db):
+    university = _university(db)
+    login(client, "admin@test.com", "adminpass")
+
+    res = client.delete(f"/universities?university_id={university.id}")
+    assert res.status_code == 204
     assert db.query(University).filter_by(id=university.id).first() is None
+
+
+def test_delete_university_referenced_by_chapter_conflicts(client, admin_user, db):
+    university = _university(db)
+    db.add(AlumniChapter(name="Test Chapter", university_id=university.id))
+    db.commit()
+    login(client, "admin@test.com", "adminpass")
+
+    res = client.delete(f"/universities?university_id={university.id}")
+    assert res.status_code == 409
+    assert db.query(University).filter_by(id=university.id).first() is not None
+
+
+def test_delete_university_not_found(client, admin_user):
+    login(client, "admin@test.com", "adminpass")
+    assert client.delete("/universities?university_id=9999").status_code == 404
+
+
+def test_delete_university_non_admin_forbidden(client, td_user, db):
+    university = _university(db)
+    login(client, "td@test.com", "tdpass")
+    assert client.delete(f"/universities?university_id={university.id}").status_code == 403
