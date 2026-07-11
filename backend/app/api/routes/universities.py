@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from sqlalchemy import exists
 
 from app.core.auth import require_admin
 from app.models.models import User, University, AlumniChapter
@@ -54,10 +53,10 @@ def delete_university(
     university = db.query(University).filter(University.id == university_id).first()
     if not university:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="University not found")
-    has_chapters = db.query(exists().where(AlumniChapter.university_id == university_id).scalar())
+    has_chapters = db.query(AlumniChapter).filter(AlumniChapter.university_id == university_id).first()
     if has_chapters:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Referenced by Alumni Chapter.")
-    has_users = db.query(exists().where(User.university_id == university_id).scalar())
+    has_users = db.query(User).filter(User.university_id == university.id).first()
     if has_users:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Referenced by one or more Users.")
     db.delete(university)
