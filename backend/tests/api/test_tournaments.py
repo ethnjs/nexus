@@ -99,7 +99,7 @@ def test_list_my_tournaments_unauthenticated(client):
 
 def test_create_tournament_minimal(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Minimal Tournament"})
+    response = client.post("/tournaments/", json={"name": "Minimal Tournament", "location": "Test Location"})
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Minimal Tournament"
@@ -108,7 +108,7 @@ def test_create_tournament_minimal(client, td_user):
 
 def test_create_tournament_auto_populates_default_positions(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Auto Positions"})
+    response = client.post("/tournaments/", json={"name": "Auto Positions", "location": "Test Location"})
     assert response.status_code == 201
     schema = response.json()["volunteer_schema"]
     assert "positions" in schema
@@ -119,7 +119,7 @@ def test_create_tournament_auto_populates_default_positions(client, td_user):
 
 def test_create_tournament_auto_creates_td_membership(client, td_user, db):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Auto TournamentMembership"})
+    response = client.post("/tournaments/", json={"name": "Auto TournamentMembership", "location": "Test Location"})
     assert response.status_code == 201
     tournament_id = response.json()["id"]
     membership = db.query(TournamentMembership).filter(
@@ -153,6 +153,7 @@ def test_create_tournament_invalid_dates(client, td_user):
         "name": "Bad Dates",
         "start_date": "2025-11-15T08:00:00",
         "end_date": "2025-11-14T08:00:00",
+        "location": "Test Location",
     }).status_code == 422
 
 
@@ -160,6 +161,7 @@ def test_create_tournament_duplicate_block_numbers(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.post("/tournaments/", json={
         "name": "Bad Blocks",
+        "location": "Test Location",
         "blocks": [
             {"number": 1, "label": "B1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
             {"number": 1, "label": "B1 Again", "date": "2025-11-15", "start": "09:00", "end": "10:00"},
@@ -168,7 +170,7 @@ def test_create_tournament_duplicate_block_numbers(client, td_user):
 
 
 def test_create_tournament_unauthenticated(client):
-    assert client.post("/tournaments/", json={"name": "Sneaky"}).status_code == 401
+    assert client.post("/tournaments/", json={"name": "Sneaky", "location": "Nowhere"}).status_code == 401
 
 
 # ---------------------------------------------------------------------------
