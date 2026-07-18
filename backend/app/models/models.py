@@ -83,6 +83,12 @@ class User(Base):
         foreign_keys="UserCompetitionExperience.user_id",
         cascade="all, delete-orphan"
     )
+    volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="user",
+        foreign_keys="UserVolunteerExperience.user_id",
+        cascade="all, delete-orphan"
+    )
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -100,6 +106,42 @@ class UserCompetitionExperience(Base):
     event = relationship("Event", back_populates="user_competition_experience")
 
 
+
+# ---------------------------------------------------------------------------
+# Volunteer Experience
+# ---------------------------------------------------------------------------
+class UserVolunteerExperience(Base):
+    __tablename__ = "user_volunteer_experience"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    
+    # manual add by the user
+    tournament_name = Column(String(255), nullable=True)
+    year = Column(Integer, nullable=True)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
+    role = Column(String(63), nullable=True)
+
+    # NEXUS tournament
+    tournament_id = Column(Integer, ForeignKey('tournaments.id', ondelete="CASCADE"), nullable=True)
+    
+    # keys: "event", "other"
+    #   - "event" only on manual add, for custom event names (doesn't exist in cannonical list)
+    #   - "other" extra notes from user on their experience (both routes: manual and NEXUS)
+    notes = Column(JSON, nullable=True)
+    
+    # locked state locks everything except notes
+    is_locked = Column(Boolean, default=False, nullable=False)
+
+    # NEXUS -- tournament_id only
+    # manual -- tournament_name, year, role, event_id or notes["events"] (for custom event names)
+    # NOTE: possible bugs since the NEXUS vs. manual constraint isn't enforced at the raw SQL level
+
+    user = relationship("User", back_populates="volunteer_experience")
+    tournament = relationship("Tournament", back_populates="user_volunteer_experience")
+    event = relationship("Event", back_populates="user_volunteer_experience")
+
+    
 
 # ---------------------------------------------------------------------------
 # Event Category
@@ -127,6 +169,11 @@ class Event(Base):
         "UserCompetitionExperience",
         back_populates="event",
         foreign_keys="UserCompetitionExperience.event_id"
+    )
+    user_volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="event",
+        foreign_keys="UserVolunteerExperience.event_id"
     )
 
 
@@ -169,6 +216,12 @@ class Tournament(Base):
     )
     memberships = relationship(
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
+    )
+    user_volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="tournament",
+        foreign_keys="UserVolunteerExperience.tournament_id",
+        cascade="all, delete-orphan"
     )
 
 # ---------------------------------------------------------------------------
