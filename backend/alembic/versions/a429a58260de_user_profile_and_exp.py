@@ -71,21 +71,18 @@ def upgrade() -> None:
     )
     op.create_index('ix_user_competition_experience_id', 'user_competition_experience', ['id'], unique=False)
 
-    # --- user_volunteer_experience table ---
+    # --- user_volunteer_experience table (manual pre-NEXUS entries only) ---
     op.create_table(
         'user_volunteer_experience',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('user_id', sa.Integer(), nullable=False),
-        sa.Column('tournament_name', sa.String(length=255), nullable=True),
-        sa.Column('year', sa.Integer(), nullable=True),
+        sa.Column('tournament_name', sa.String(length=255), nullable=False),
+        sa.Column('year', sa.Integer(), nullable=False),
         sa.Column('event_id', sa.Integer(), nullable=True),
-        sa.Column('role', sa.String(length=63), nullable=True),
-        sa.Column('tournament_id', sa.Integer(), nullable=True),
+        sa.Column('role', sa.String(length=63), nullable=False),
         sa.Column('notes', sa.JSON(), nullable=True),
-        sa.Column('is_locked', sa.Boolean(), nullable=False),
         sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='RESTRICT'),
-        sa.ForeignKeyConstraint(['tournament_id'], ['tournaments.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index('ix_user_volunteer_experience_id', 'user_volunteer_experience', ['id'], unique=False)
