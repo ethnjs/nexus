@@ -19,7 +19,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # --- users: Task 1 column changes ---
+    # --- users: column changes (add dob, pronouns, etc.) ---
     op.add_column('users', sa.Column('date_of_birth', sa.Date(), nullable=True))
     op.add_column('users', sa.Column('pronouns', sa.String(length=100), nullable=True))
     op.add_column('users', sa.Column('has_competition_experience', sa.Boolean(), nullable=True))
@@ -57,8 +57,26 @@ def upgrade() -> None:
     )
     op.create_index('ix_events_id', 'events', ['id'], unique=False)
 
+    # --- user_competition_experience table ---
+    op.create_table(
+        'user_competition_experience',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('user_id', sa.Integer(), nullable=False),
+        sa.Column('event_id', sa.Integer(), nullable=False),
+        sa.Column('school', sa.String(length=255), nullable=False),
+        sa.Column('notes', sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
+        sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='RESTRICT'),
+        sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_index('ix_user_competition_experience_id', 'user_competition_experience', ['id'], unique=False)
+
 
 def downgrade() -> None:
+    # --- drop user_competition_experience ---
+    op.drop_index('ix_user_competition_experience_id', table_name='user_competition_experience')
+    op.drop_table('user_competition_experience')
+
     # --- drop canonical events ---
     op.drop_index('ix_events_id', table_name='events')
     op.drop_table('events')
@@ -75,7 +93,7 @@ def downgrade() -> None:
     op.drop_index('ix_tournament_events_id', table_name='events')
     op.create_index('ix_events_id', 'events', ['id'], unique=False)
 
-    # --- users: reverse Task 1 ---
+    # --- users: reverse users column changes (dob, pronouns, etc.) ---
     op.add_column('users', sa.Column('volunteering_exp', sa.TEXT(), nullable=True))
     op.add_column('users', sa.Column('competition_exp', sa.TEXT(), nullable=True))
     op.drop_column('users', 'has_volunteer_experience')

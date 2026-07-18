@@ -77,6 +77,29 @@ class User(Base):
     tournaments = relationship(
         "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
     )
+    competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="user",
+        foreign_keys="UserCompetitionExperience.user_id",
+        cascade="all, delete-orphan"
+    )
+
+# ---------------------------------------------------------------------------
+# Competition Experience
+# ---------------------------------------------------------------------------
+class UserCompetitionExperience(Base):
+    __tablename__ = "user_competition_experience"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=False)
+    school = Column(String(255), nullable=False)
+    notes = Column(Text, nullable=True)
+
+    user = relationship("User", back_populates="competition_experience")
+    event = relationship("Event", back_populates="user_competition_experience")
+
+
 
 # ---------------------------------------------------------------------------
 # Event Category
@@ -100,6 +123,11 @@ class Event(Base):
     category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
 
     category = relationship("EventCategory", back_populates="events")
+    user_competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="event",
+        foreign_keys="UserCompetitionExperience.event_id"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +168,7 @@ class Tournament(Base):
         "TournamentEvent", back_populates="tournament", cascade="all, delete-orphan"
     )
     memberships = relationship(
-        "Membership", back_populates="tournament", cascade="all, delete-orphan"
+        "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
 
 # ---------------------------------------------------------------------------
