@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Optional, Literal
-from datetime import datetime
+from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, field_validator, computed_field
 from app.core.phone import normalize_phone as _normalize_phone
 
@@ -15,6 +15,8 @@ class UserUpdate(BaseModel):
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+    date_of_birth: Optional[date] = None
+    pronouns: Optional[str] = None
 
     student_status: Optional[STUDENT_STATUS] = None
     university: Optional[str] = None
@@ -23,9 +25,9 @@ class UserUpdate(BaseModel):
     graduation_year: Optional[int] = None
 
     employer: Optional[str] = None
-    
-    competition_exp: Optional[str] = None
-    volunteering_exp: Optional[str] = None
+
+    has_competition_experience: Optional[bool] = None
+    has_volunteer_experience: Optional[bool] = None
 
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
@@ -46,12 +48,16 @@ class AdminUserUpdate(BaseModel):
     role: Optional[Literal["user", "admin"]] = None
     is_active: Optional[bool] = None
 
-class UserResponse(BaseModel):
+class UserBaseResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
     email: EmailStr
     phone: Optional[str] = None
+    pronouns: Optional[str] = None
+
+    is_over_18: Optional[bool] = None
+    is_over_21: Optional[bool] = None
 
     email_verified: bool
     role: ROLE
@@ -64,9 +70,9 @@ class UserResponse(BaseModel):
     graduation_year: Optional[int] = None
 
     employer: Optional[str] = None
-    
-    competition_exp: Optional[str] = None
-    volunteering_exp: Optional[str] = None
+
+    has_competition_experience: Optional[bool] = None
+    has_volunteer_experience: Optional[bool] = None
 
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
@@ -76,10 +82,20 @@ class UserResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
+    
+
+class UserMeSlimResponse(UserBaseResponse):
+    date_of_birth: date
+
+class UserSlimResponse(UserBaseResponse):
+    pass
+
+
+class UserFullResponse(UserSlimResponse):
     @computed_field
     @property
     def missing_profile_fields(self) -> list[str]:
-        always_required = ["phone", "competition_exp", "volunteering_exp", "shirt_size", "dietary_restriction"]
+        always_required = ["phone", "date_of_birth", "pronouns", "shirt_size", "dietary_restriction"]
         missing = [f for f in always_required if not getattr(self, f)]
 
         if not self.student_status:
@@ -93,5 +109,14 @@ class UserResponse(BaseModel):
                 if not getattr(self, f):
                     missing.append(f)
             
+        for flag, field_name in [
+            (self.has_competition_experience, "has_competition_experience"),
+            (self.has_volunteer_experience, "has_volunteer_experience"),
+        ]:
+            if flag is None:
+                missing.append(field_name)
 
         return missing
+    
+class UserMeFullResponse(UserFullResponse):
+    date_of_birth: date
