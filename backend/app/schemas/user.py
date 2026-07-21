@@ -60,26 +60,9 @@ class UserSlimResponse(BaseModel):
     phone: Optional[str] = None
     pronouns: Optional[str] = None
 
-    is_over_18: Optional[bool] = None
-    is_over_21: Optional[bool] = None
-
     email_verified: bool
     role: ROLE
     is_active: bool
-    
-    student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[str] = None
-    major: Optional[str] = None
-    year_level: Optional[int] = None
-    graduation_year: Optional[int] = None
-
-    employer: Optional[str] = None
-
-    has_competition_experience: Optional[bool] = None
-    has_volunteer_experience: Optional[bool] = None
-
-    shirt_size: Optional[str] = None
-    dietary_restriction: Optional[str] = None
 
     created_at: datetime
     updated_at: datetime
@@ -92,8 +75,22 @@ class UserMeSlimResponse(UserSlimResponse):
 
 
 class UserFullResponse(UserSlimResponse):
+    student_status: Optional[STUDENT_STATUS] = None
+    university: Optional[str] = None
+    major: Optional[str] = None
+    year_level: Optional[int] = None
+    graduation_year: Optional[int] = None
+
+    employer: Optional[str] = None
+
+    has_competition_experience: Optional[bool] = None
+    has_volunteer_experience: Optional[bool] = None
+
     competition_experience: list[CompetitionExperienceResponse] = []
     volunteer_experience: list[VolunteerExperienceResponse] = []
+
+    shirt_size: Optional[str] = None
+    dietary_restriction: Optional[str] = None
     
 class UserMeFullResponse(UserFullResponse):
     date_of_birth: date
