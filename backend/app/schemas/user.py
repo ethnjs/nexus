@@ -70,7 +70,7 @@ class UserSlimResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 class UserMeSlimResponse(UserSlimResponse):
-    date_of_birth: date
+    is_profile_complete: bool
 
 
 
@@ -94,31 +94,4 @@ class UserFullResponse(UserSlimResponse):
     
 class UserMeFullResponse(UserFullResponse):
     date_of_birth: date
-
-    @computed_field
-    @property
-    def missing_profile_fields(self) -> list[str]:
-        always_required = ["phone", "date_of_birth", "pronouns", "shirt_size", "dietary_restriction"]
-        missing = [f for f in always_required if not getattr(self, f)]
-
-        if not self.student_status:
-            missing.append("student_status")
-        elif self.student_status == "Non-Student":
-            if not self.employer:
-                missing.append("employer")
-        else:
-            school_required = ["university", "major", "year_level", "graduation_year"]
-            for f in school_required:
-                if not getattr(self, f):
-                    missing.append(f)
-            
-        for flag, field_name, exp_list in [
-            (self.has_competition_experience, "has_competition_experience", self.competition_experience),
-            (self.has_volunteer_experience, "has_volunteer_experience", self.volunteer_experience),
-        ]:
-            if flag is None:
-                missing.append(field_name)
-            elif flag is True and not exp_list:
-                missing.append(field_name)
-
-        return missing
+    missing_profile_fields: list[str] = []

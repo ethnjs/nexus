@@ -12,9 +12,10 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.email_verification import generate_verification_token, verify_verification_token
+from app.core.profile_status import is_profile_complete
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.user import UserResponse
+from app.schemas.user import UserMeSlimResponse, UserSlimResponse
 from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, MessageResponse
 from app.services.email_service import send_verification_email
 
@@ -82,7 +83,7 @@ async def _send_verification_email(to: str, id: int):
         raise HTTPException(500, "Failed to send verification email")
 
 
-@router.post("/auth/login/", response_model=UserResponse)
+@router.post("/auth/login/", response_model=UserSlimResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
@@ -118,13 +119,13 @@ def logout(response: Response):
     return {"detail": "Logged out"}
 
 
-@router.get("/auth/me/", response_model=UserResponse)
-def me(current_user: User = Depends(get_current_user)):
-    """Return the currently authenticated user."""
-    return current_user
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    response = UserMeSlimResponse.model_validate(current_user)
+    response.is_profile_complete = is_profile_complete(current_user, db=db)
+    return response
 
 
-@router.post("/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/register/", response_model=UserMeSlimResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     """
     Public route to create a new user account.
@@ -139,7 +140,7 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 
     return user
 
-@router.post("/admin/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
 def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """
     Admin only. Can create normal users and admin users. Password is excluded to allow the newly created user
