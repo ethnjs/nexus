@@ -15,7 +15,7 @@ from sqlalchemy.orm import relationship
 from typing import Optional
 
 from app.db.session import Base
-from app.core.users import calculate_age, meets_age_requirement
+from app.core.age import meets_age_requirement
 
 
 def utcnow():
