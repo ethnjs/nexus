@@ -250,3 +250,57 @@ class TestMissingProfileFields:
         missing = client.get("/users/me/").json()["missing_profile_fields"]
         assert "university" not in missing
         assert "major" not in missing
+
+
+# ---------------------------------------------------------------------------
+# is_profile_complete — boolean field on UserMeSlimResponse (GET /auth/me/)
+# ---------------------------------------------------------------------------
+
+class TestIsProfileComplete:
+    def test_fresh_user_is_not_complete(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.get("/auth/me/").json()["is_profile_complete"] is False
+
+    def test_non_student_complete_profile(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.patch("/users/me/", json={
+            "phone": VALID_PHONE,
+            "date_of_birth": "2000-01-01",
+            "pronouns": "she/her",
+            "student_status": "Non-Student",
+            "employer": "Acme Corp",
+            "has_competition_experience": False,
+            "has_volunteer_experience": False,
+            "shirt_size": "M",
+            "dietary_restriction": "None",
+        })
+        assert client.get("/auth/me/").json()["is_profile_complete"] is True
+
+    def test_student_complete_profile(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.patch("/users/me/", json={
+            "phone": VALID_PHONE,
+            "date_of_birth": "2000-01-01",
+            "pronouns": "she/her",
+            "student_status": "Undergraduate",
+            "university": "MIT",
+            "major": "CS",
+            "year_level": 2,
+            "graduation_year": 2027,
+            "has_competition_experience": False,
+            "has_volunteer_experience": False,
+            "shirt_size": "L",
+            "dietary_restriction": "None",
+        })
+        assert client.get("/auth/me/").json()["is_profile_complete"] is True
+
+    def test_student_missing_school_fields_is_not_complete(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.patch("/users/me/", json={"phone": VALID_PHONE, "student_status": "Undergraduate"})
+        assert client.get("/auth/me/").json()["is_profile_complete"] is False
+
+    def test_partial_update_does_not_flip_to_complete(self, client, td_user):
+        # Only phone answered — plenty of other required fields still missing.
+        login(client, "td@test.com", "tdpass")
+        client.patch("/users/me/", json={"phone": VALID_PHONE})
+        assert client.get("/auth/me/").json()["is_profile_complete"] is False
