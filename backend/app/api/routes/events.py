@@ -1,178 +1,144 @@
-from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
-from app.core.auth import get_current_user
-from app.core.permissions import (
-    MANAGE_EVENTS,
-    MANAGE_TOURNAMENT,
-    VIEW_EVENTS,
-    require_membership,
-    require_permission,
-    has_permission,
-)
 from app.db.session import get_db
-from app.models.models import Event, Tournament, User
-from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.models.models import Event, EventCategory, User
+from app.core.auth import require_admin
+from app.schemas.event import (
+    EventResponse, EventCreate, EventUpdate,
+    EventCategoryResponse, EventCategoryCreate, EventCategoryUpdate,
+)
 
-# Routes are nested: /tournaments/{tournament_id}/events/...
-# tournament_id is always present in the path, which drives the permission check.
-router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["events"])
-
-
-def _serialize(event: Event) -> dict:
-    return {
-        "id": event.id,
-        "tournament_id": event.tournament_id,
-        "name": event.name,
-        "division": event.division,
-        "event_type": event.event_type,
-        "category": event.category,
-        "building": event.building,
-        "room": event.room,
-        "floor": event.floor,
-        "volunteers_needed": event.volunteers_needed,
-        "blocks": event.blocks or [],
-        "created_at": event.created_at,
-        "updated_at": event.updated_at,
-    }
-
-
-def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> Event:
-    """
-    Fetch event by ID and validate it belongs to the given tournament.
-    Returns 404 if not found or tournament mismatch — prevents cross-tournament access.
-    """
-    event = db.query(Event).filter(Event.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
-    if event.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
-    return event
-
-
-def _require_write_permission(user: User, tournament_id: int, db: Session) -> None:
-    """Raises 403 unless user has manage_events or manage_tournament."""
-    if not (
-        has_permission(user, tournament_id, MANAGE_EVENTS, db)
-        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
+router = APIRouter(tags=["events"])
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/events/ — view_events or manage_events
+# GET /events/ — list all events
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[EventRead])
-def list_events(
-    tournament_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(VIEW_EVENTS)),
-):
-    """List all events for a tournament, ordered by division then name."""
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    events = (
-        db.query(Event)
-        .filter(Event.tournament_id == tournament_id)
-        .order_by(Event.division, Event.name)
-        .all()
-    )
-    return [_serialize(e) for e in events]
+@router.get("/events/", response_model=list[EventResponse])
+def list_events(db: Session = Depends(get_db)):
+    return db.query(Event).all()
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/events/{event_id} — view_events or manage_events
+# POST /events/ — admin only, create a new event
 # ---------------------------------------------------------------------------
-@router.get("/{event_id}/", response_model=EventRead)
-def get_event(
-    tournament_id: int,
-    event_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(VIEW_EVENTS)),
-):
-    return _serialize(_get_event_or_404(event_id, tournament_id, db))
+@router.post("/events/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+def create_event(body: EventCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    category = db.get(EventCategory, body.category_id)
+    if not category:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
 
-
-# ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/events/ — manage_events or manage_tournament
-# ---------------------------------------------------------------------------
-@router.post("/", response_model=EventRead, status_code=status.HTTP_201_CREATED)
-def create_event(
-    tournament_id: int,
-    payload: EventCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_write_permission(current_user, tournament_id, db)
-
-    # Validate tournament_id in body matches path
-    if payload.tournament_id != tournament_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="tournament_id in body does not match URL",
-        )
-
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    existing = db.query(Event).filter(
-        Event.tournament_id == tournament_id,
-        Event.name == payload.name,
-        Event.division == payload.division,
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Event '{payload.name}' division {payload.division} already exists in this tournament",
-        )
-
-    event = Event(**payload.model_dump())
+    event = Event(name=body.name, category_id=body.category_id)
     db.add(event)
     db.commit()
     db.refresh(event)
-    return _serialize(event)
+    return event
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
+# PATCH /events/{id}/ — admin only, partial update
 # ---------------------------------------------------------------------------
-@router.patch("/{event_id}/", response_model=EventRead)
-def update_event(
-    tournament_id: int,
-    event_id: int,
-    payload: EventUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_write_permission(current_user, tournament_id, db)
-    event = _get_event_or_404(event_id, tournament_id, db)
+@router.patch("/events/{event_id}/", response_model=EventResponse)
+def update_event(event_id: int, body: EventUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    data = body.model_dump(exclude_unset=True)
+
+    if "category_id" in data:
+        category = db.get(EventCategory, data["category_id"])
+        if not category:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+
+    for field, value in data.items():
         setattr(event, field, value)
 
     db.commit()
     db.refresh(event)
-    return _serialize(event)
+    return event
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
+# DELETE /events/{id}/ — admin only, hard delete blocked if experience entries exist
 # ---------------------------------------------------------------------------
-@router.delete("/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def delete_event(
-    tournament_id: int,
-    event_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _require_write_permission(current_user, tournament_id, db)
-    event = _get_event_or_404(event_id, tournament_id, db)
+@router.delete("/events/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_event(event_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    event = db.get(Event, event_id)
+    if not event:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
     db.delete(event)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete event: it has associated competition or volunteer experience entries",
+        )
+
+
+# ---------------------------------------------------------------------------
+# GET /event-categories/ — list all event categories
+# ---------------------------------------------------------------------------
+@router.get("/event-categories/", response_model=list[EventCategoryResponse])
+def list_event_categories(db: Session = Depends(get_db)):
+    return db.query(EventCategory).all()
+
+
+# ---------------------------------------------------------------------------
+# POST /event-categories/ — admin only, create a new category
+# ---------------------------------------------------------------------------
+@router.post("/event-categories/", response_model=EventCategoryResponse, status_code=status.HTTP_201_CREATED)
+def create_event_category(body: EventCategoryCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    category = EventCategory(name=body.name)
+    db.add(category)
     db.commit()
+    db.refresh(category)
+    return category
+
+
+# ---------------------------------------------------------------------------
+# PATCH /event-categories/{id}/ — admin only, partial update
+# ---------------------------------------------------------------------------
+@router.patch("/event-categories/{category_id}/", response_model=EventCategoryResponse)
+def update_event_category(
+    category_id: int,
+    body: EventCategoryUpdate,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    category = db.get(EventCategory, category_id)
+    if not category:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(category, field, value)
+
+    db.commit()
+    db.refresh(category)
+    return category
+
+
+# ---------------------------------------------------------------------------
+# DELETE /event-categories/{id}/ — admin only, cascades to delete its events
+# (blocked if any of those events has experience entries — see delete_event note)
+# ---------------------------------------------------------------------------
+@router.delete("/event-categories/{category_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_event_category(category_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    category = db.get(EventCategory, category_id)
+    if not category:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+
+    db.delete(category)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Cannot delete category: one or more of its events has associated experience entries",
+        )
