@@ -10,8 +10,12 @@ from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
     ForeignKey, UniqueConstraint, Column,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
+from typing import Optional
+
 from app.db.session import Base
+from app.core.users import calculate_age, meets_age_requirement
 
 
 def utcnow():
@@ -286,6 +290,25 @@ class TournamentMembership(Base):
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
     assigned_event = relationship("TournamentEvent", back_populates="memberships")
+
+    @hybrid_property
+    def is_over_18(self) -> Optional[bool]:
+        if self.user.date_of_birth is None:
+            return None
+        
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 18)
+    
+    @hybrid_property
+    def is_over_21(self) -> Optional[bool]:
+        if self.user.date_of_birth is None:
+            return None
+        
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 21)
+    
+    # TODO: Add @is_over_18.expression / @is_over_21.expression using date-arithmetic
+    # (dob + interval '18 years' <= tournament.start_date) so tournament directors can
+    # filter registrations server-side instead of client-side. Needed once dashboard
+    # moves age filtering to backend / registration lists get large enough to paginate.
 
     __table_args__ = (
         # One membership per user per tournament
