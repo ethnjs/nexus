@@ -2,7 +2,9 @@ from __future__ import annotations
 from typing import Optional, Literal
 from datetime import datetime, date
 from pydantic import BaseModel, EmailStr, field_validator, computed_field
+
 from app.core.phone import normalize_phone as _normalize_phone
+from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
 
 
 ROLE = Literal["admin", "user"]
@@ -48,7 +50,9 @@ class AdminUserUpdate(BaseModel):
     role: Optional[Literal["user", "admin"]] = None
     is_active: Optional[bool] = None
 
-class UserBaseResponse(BaseModel):
+    
+
+class UserSlimResponse(BaseModel):
     id: int
     first_name: str
     last_name: str
@@ -82,16 +86,18 @@ class UserBaseResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-    
-
-class UserMeSlimResponse(UserBaseResponse):
+class UserMeSlimResponse(UserSlimResponse):
     date_of_birth: date
 
-class UserSlimResponse(UserBaseResponse):
-    pass
 
 
 class UserFullResponse(UserSlimResponse):
+    competition_experience: list[CompetitionExperienceResponse] = []
+    volunteer_experience: list[VolunteerExperienceResponse] = []
+    
+class UserMeFullResponse(UserFullResponse):
+    date_of_birth: date
+
     @computed_field
     @property
     def missing_profile_fields(self) -> list[str]:
@@ -109,14 +115,13 @@ class UserFullResponse(UserSlimResponse):
                 if not getattr(self, f):
                     missing.append(f)
             
-        for flag, field_name in [
-            (self.has_competition_experience, "has_competition_experience"),
-            (self.has_volunteer_experience, "has_volunteer_experience"),
+        for flag, field_name, exp_list in [
+            (self.has_competition_experience, "has_competition_experience", self.competition_experience),
+            (self.has_volunteer_experience, "has_volunteer_experience", self.volunteer_experience),
         ]:
             if flag is None:
                 missing.append(field_name)
+            elif flag is True and not exp_list:
+                missing.append(field_name)
 
         return missing
-    
-class UserMeFullResponse(UserFullResponse):
-    date_of_birth: date
