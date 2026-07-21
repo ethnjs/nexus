@@ -3,7 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
 from app.core.permissions import DEFAULT_POSITIONS
-from app.models.models import Membership, Tournament
+from app.models.models import TournamentMembership, Tournament
 
 SAMPLE_BLOCKS = [
     {"number": 1, "label": "Block 1", "date": "2025-11-15", "start": "08:00", "end": "09:00"},
@@ -68,7 +68,7 @@ def test_list_my_tournaments_excludes_others(
 def test_list_my_tournaments_includes_volunteer_membership(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["event_supervisor"],
@@ -119,12 +119,12 @@ def test_create_tournament_auto_populates_default_positions(client, td_user):
 
 def test_create_tournament_auto_creates_td_membership(client, td_user, db):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Auto Membership"})
+    response = client.post("/tournaments/", json={"name": "Auto TournamentMembership"})
     assert response.status_code == 201
     tournament_id = response.json()["id"]
-    membership = db.query(Membership).filter(
-        Membership.user_id == td_user.id,
-        Membership.tournament_id == tournament_id,
+    membership = db.query(TournamentMembership).filter(
+        TournamentMembership.user_id == td_user.id,
+        TournamentMembership.tournament_id == tournament_id,
     ).first()
     assert membership is not None
     assert "tournament_director" in membership.positions
@@ -195,7 +195,7 @@ def test_get_tournament_admin_can_access_any(client, admin_user, td_tournament):
 def test_get_tournament_volunteer_member_can_access(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["event_supervisor"],
@@ -225,7 +225,7 @@ def test_update_tournament_td_can_patch(client, td_user, td_tournament):
 def test_update_tournament_volunteer_member_cannot_patch(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["event_supervisor"],
@@ -283,7 +283,7 @@ def test_delete_tournament_admin_can_delete(client, admin_user, td_tournament):
 def test_delete_tournament_non_owner_member_cannot_delete(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["tournament_director"],

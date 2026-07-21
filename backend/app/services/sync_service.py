@@ -16,7 +16,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.models.models import Event, Membership, SheetConfig, Tournament, User
+from app.models.models import Event, TournamentMembership, SheetConfig, Tournament, User
 from app.core.phone import normalize_phone
 from app.schemas.sheet_config import (
     PARSE_TIME_RANGE_ACTIONS,
@@ -616,9 +616,9 @@ def sync_sheet(
                 db.add(user)
                 db.flush()
 
-            membership = db.query(Membership).filter(
-                Membership.user_id == user.id,
-                Membership.tournament_id == tournament.id,
+            membership = db.query(TournamentMembership).filter(
+                TournamentMembership.user_id == user.id,
+                TournamentMembership.tournament_id == tournament.id,
             ).first()
 
             merged_availability = _merge_availability([], availability_slots)
@@ -632,7 +632,7 @@ def sync_sheet(
                 membership.extra_data = existing_extra
                 updated += 1
             else:
-                membership = Membership(
+                membership = TournamentMembership(
                     user_id=user.id,
                     tournament_id=tournament.id,
                     status="interested",

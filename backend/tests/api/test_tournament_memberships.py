@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.models.models import Membership
+from app.models.models import TournamentMembership
 
 
 def _make_user(db, email="alice@example.com"):
@@ -139,7 +139,7 @@ def test_create_membership_non_member_forbidden(client, td_user, other_tournamen
 def test_create_membership_volunteer_member_forbidden(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["event_supervisor"],
@@ -180,7 +180,7 @@ def test_list_memberships_filter_by_status(client, td_user, td_tournament, db):
 def test_list_memberships_requires_view_volunteers(
     client, td_user, other_tournament, db
 ):
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=other_tournament.id,
         positions=["event_supervisor"],

@@ -1,7 +1,11 @@
 """
 Shared pytest fixtures.
 
-Uses an in-memory SQLite DB for all tests — fast, isolated, no cleanup needed.
+Uses a dedicated Postgres database ("nexus_test", on the same Docker Postgres
+container as dev) for all tests — real Postgres semantics (savepoints, FK
+enforcement) so behavior matches prod, with a separate DB so a rollback bug
+can never touch real dev data. Each test runs inside an outer transaction
+that's rolled back at teardown, so no cleanup is needed between tests.
 The Google Sheets and Forms services are mocked so tests never hit the real API.
 
 Fixture hierarchy:
@@ -19,7 +23,7 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("API_KEY", "")
 
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from unittest.mock import MagicMock
 
@@ -30,7 +34,7 @@ from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.core.auth import hash_password
 from app.core.permissions import DEFAULT_POSITIONS
-from app.models.models import Membership, Tournament, User
+from app.models.models import TournamentMembership, Tournament, User
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
@@ -39,18 +43,10 @@ from app.schemas.sheet_config import (
     SheetValidateResponse,
 )
 
-test_engine = create_engine(
-    "sqlite:///:memory:",
-    connect_args={"check_same_thread": False},
-    echo=False,
+TEST_DATABASE_URL = os.environ.get(
+    "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"
 )
-
-
-@event.listens_for(test_engine, "connect")
-def set_sqlite_pragma(dbapi_connection, connection_record):
-    cursor = dbapi_connection.cursor()
-    cursor.execute("PRAGMA foreign_keys=ON")
-    cursor.close()
+test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
 
 @pytest.fixture(scope="function")
@@ -58,7 +54,10 @@ def db():
     connection = test_engine.connect()
     transaction = connection.begin()
     Base.metadata.create_all(bind=connection)
-    session = Session(bind=connection)
+    # create_savepoint: session.commit()/rollback() operate on a nested SAVEPOINT,
+    # not the outer transaction — so a mid-test rollback (e.g. a caught IntegrityError)
+    # only undoes that one unit of work, not everything committed earlier in the test.
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield session
     finally:
@@ -134,7 +133,7 @@ def td_tournament(db, td_user):
     )
     db.add(tournament)
     db.flush()
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=td_user.id,
         tournament_id=tournament.id,
         positions=["tournament_director"],
@@ -155,7 +154,7 @@ def other_tournament(db, other_user):
     )
     db.add(tournament)
     db.flush()
-    db.add(Membership(
+    db.add(TournamentMembership(
         user_id=other_user.id,
         tournament_id=tournament.id,
         positions=["tournament_director"],

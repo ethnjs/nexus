@@ -1,7 +1,7 @@
-"""Tests for /admin/users, /users/me, and /tournaments/{id}/users endpoints."""
+"""Tests for /admin/users and /users/me endpoints."""
 from tests.conftest import login
 from app.core.auth import hash_password
-from app.models.models import Membership, User
+from app.models.models import User
 
 
 VALID_PHONE = "9495551234"
@@ -189,7 +189,7 @@ class TestMissingProfileFields:
     def test_fresh_user_has_missing_fields(self, client, td_user):
         # td_user has no profile data — phone and student_status should be missing
         login(client, "td@test.com", "tdpass")
-        missing = client.get("/auth/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/").json()["missing_profile_fields"]
         assert "phone" in missing
         assert "student_status" in missing
 
@@ -197,36 +197,40 @@ class TestMissingProfileFields:
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={
             "phone": VALID_PHONE,
+            "date_of_birth": "2000-01-01",
+            "pronouns": "she/her",
             "student_status": "Non-Student",
             "employer": "Acme Corp",
-            "competition_exp": "10 years",
-            "volunteering_exp": "5 years",
+            "has_competition_experience": False,
+            "has_volunteer_experience": False,
             "shirt_size": "M",
             "dietary_restriction": "None",
         })
-        assert client.get("/auth/me/").json()["missing_profile_fields"] == []
+        assert client.get("/users/me/").json()["missing_profile_fields"] == []
 
     def test_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={
             "phone": VALID_PHONE,
+            "date_of_birth": "2000-01-01",
+            "pronouns": "she/her",
             "student_status": "Undergraduate",
             "university": "MIT",
             "major": "CS",
             "year_level": 2,
             "graduation_year": 2027,
-            "competition_exp": "3 years",
-            "volunteering_exp": "2 years",
+            "has_competition_experience": False,
+            "has_volunteer_experience": False,
             "shirt_size": "L",
             "dietary_restriction": "None",
         })
-        assert client.get("/auth/me/").json()["missing_profile_fields"] == []
+        assert client.get("/users/me/").json()["missing_profile_fields"] == []
 
     def test_student_missing_school_fields(self, client, td_user):
         # student_status answered but university/major not filled in yet
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={"phone": VALID_PHONE, "student_status": "Undergraduate"})
-        missing = client.get("/auth/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/").json()["missing_profile_fields"]
         assert "university" in missing
         assert "major" in missing
 
@@ -234,84 +238,15 @@ class TestMissingProfileFields:
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={
             "phone": VALID_PHONE,
+            "date_of_birth": "2000-01-01",
+            "pronouns": "she/her",
             "student_status": "Non-Student",
             "employer": "Acme Corp",
-            "competition_exp": "10 years",
-            "volunteering_exp": "5 years",
+            "has_competition_experience": False,
+            "has_volunteer_experience": False,
             "shirt_size": "M",
             "dietary_restriction": "None",
         })
-        missing = client.get("/auth/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/").json()["missing_profile_fields"]
         assert "university" not in missing
         assert "major" not in missing
-
-
-# ---------------------------------------------------------------------------
-# GET /tournaments/{id}/users/{user_id}/ — manage_volunteers or manage_tournament
-# ---------------------------------------------------------------------------
-
-class TestTournamentUser:
-    def test_td_can_access_member(self, client, admin_user, td_user, td_tournament, db):
-        alice = _db_user(db)
-        db.add(Membership(
-            user_id=alice.id,
-            tournament_id=td_tournament.id,
-            positions=["event_supervisor"],
-            status="confirmed",
-        ))
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        res = client.get(f"/tournaments/{td_tournament.id}/users/{alice.id}/")
-        assert res.status_code == 200
-        assert res.json()["email"] == "alice@example.com"
-
-    def test_volunteer_coordinator_can_access(
-        self, client, admin_user, td_user, other_tournament, db
-    ):
-        db.add(Membership(
-            user_id=td_user.id,
-            tournament_id=other_tournament.id,
-            positions=["volunteer_coordinator"],
-            status="confirmed",
-        ))
-        alice = _db_user(db)
-        db.add(Membership(
-            user_id=alice.id,
-            tournament_id=other_tournament.id,
-            positions=["event_supervisor"],
-            status="confirmed",
-        ))
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        assert client.get(
-            f"/tournaments/{other_tournament.id}/users/{alice.id}/"
-        ).status_code == 200
-
-    def test_event_supervisor_forbidden(
-        self, client, td_user, other_tournament, admin_user, db
-    ):
-        db.add(Membership(
-            user_id=td_user.id,
-            tournament_id=other_tournament.id,
-            positions=["event_supervisor"],
-            status="confirmed",
-        ))
-        alice = _db_user(db)
-        db.add(Membership(
-            user_id=alice.id,
-            tournament_id=other_tournament.id,
-            positions=["event_supervisor"],
-            status="confirmed",
-        ))
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-        assert client.get(
-            f"/tournaments/{other_tournament.id}/users/{alice.id}/"
-        ).status_code == 403
-
-    def test_non_member_returns_404(self, client, admin_user, td_user, td_tournament, db):
-        alice = _db_user(db)
-        login(client, "td@test.com", "tdpass")
-        assert client.get(
-            f"/tournaments/{td_tournament.id}/users/{alice.id}/"
-        ).status_code == 404

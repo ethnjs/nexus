@@ -163,12 +163,14 @@ class Event(Base):
     user_competition_experience = relationship(
         "UserCompetitionExperience",
         back_populates="event",
-        foreign_keys="UserCompetitionExperience.event_id"
+        foreign_keys="UserCompetitionExperience.event_id",
+        passive_deletes=True,
     )
     user_volunteer_experience = relationship(
         "UserVolunteerExperience",
         back_populates="event",
-        foreign_keys="UserVolunteerExperience.event_id"
+        foreign_keys="UserVolunteerExperience.event_id",
+        passive_deletes=True,
     )
 
 

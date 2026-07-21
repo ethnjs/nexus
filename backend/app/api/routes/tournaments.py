@@ -10,7 +10,7 @@ from app.core.permissions import (
     has_any_membership,
 )
 from app.db.session import get_db
-from app.models.models import Membership, Tournament, User
+from app.models.models import TournamentMembership, Tournament, User
 from app.schemas.tournament import TournamentCreate, TournamentRead, TournamentUpdate
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
@@ -71,8 +71,8 @@ def list_my_tournaments(
     else:
         tournaments = (
             db.query(Tournament)
-            .join(Membership, Membership.tournament_id == Tournament.id)
-            .filter(Membership.user_id == current_user.id)
+            .join(TournamentMembership, TournamentMembership.tournament_id == Tournament.id)
+            .filter(TournamentMembership.user_id == current_user.id)
             .order_by(Tournament.created_at.desc())
             .all()
         )
@@ -105,7 +105,7 @@ def create_tournament(
     db.flush()  # get tournament.id before creating membership
 
     # Auto-create a tournament_director membership for the creator.
-    membership = Membership(
+    membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=tournament.id,
         positions=["tournament_director"],

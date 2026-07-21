@@ -70,7 +70,7 @@ class UserSlimResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 class UserMeSlimResponse(UserSlimResponse):
-    is_profile_complete: bool
+    is_profile_complete: bool = False
 
 
 
@@ -93,5 +93,5 @@ class UserFullResponse(UserSlimResponse):
     dietary_restriction: Optional[str] = None
     
 class UserMeFullResponse(UserFullResponse):
-    date_of_birth: date
+    date_of_birth: Optional[date] = None
     missing_profile_fields: list[str] = []

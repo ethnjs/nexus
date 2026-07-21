@@ -11,6 +11,8 @@ def inactive_user(db):
     user = User(
         email="inactive@test.com",
         hashed_password=hash_password("pass"),
+        first_name="Inactive",
+        last_name="User",
         role="user",
         is_active=False,
     )
@@ -22,7 +24,13 @@ def inactive_user(db):
 
 @pytest.fixture
 def volunteer_no_password(db):
-    user = User(email="vol@test.com", role="user", is_active=True)
+    user = User(
+        email="vol@test.com",
+        first_name="Volunteer",
+        last_name="NoPassword",
+        role="user",
+        is_active=True,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)

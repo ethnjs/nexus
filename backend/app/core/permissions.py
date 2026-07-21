@@ -162,16 +162,16 @@ def get_user_permissions(
 
     Returns an empty set if the user has no membership in this tournament.
     """
-    from app.models.models import Membership, Tournament
+    from app.models.models import TournamentMembership, Tournament
 
     if user.role == "admin":
         return set(ALL_PERMISSIONS)
 
     membership = (
-        db.query(Membership)
+        db.query(TournamentMembership)
         .filter(
-            Membership.user_id == user.id,
-            Membership.tournament_id == tournament_id,
+            TournamentMembership.user_id == user.id,
+            TournamentMembership.tournament_id == tournament_id,
         )
         .first()
     )
@@ -221,16 +221,16 @@ def has_any_membership(
     db: Session,
 ) -> bool:
     """Return True if the user has any membership in `tournament_id`."""
-    from app.models.models import Membership
+    from app.models.models import TournamentMembership
 
     if user.role == "admin":
         return True
 
     return (
-        db.query(Membership)
+        db.query(TournamentMembership)
         .filter(
-            Membership.user_id == user.id,
-            Membership.tournament_id == tournament_id,
+            TournamentMembership.user_id == user.id,
+            TournamentMembership.tournament_id == tournament_id,
         )
         .first()
     ) is not None

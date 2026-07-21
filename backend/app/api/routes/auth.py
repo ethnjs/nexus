@@ -112,6 +112,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     return user
 
 
+
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
@@ -119,13 +120,15 @@ def logout(response: Response):
     return {"detail": "Logged out"}
 
 
+@router.get("/auth/me/", response_model=UserMeSlimResponse)
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
     return response
 
 
-@router.post("/auth/register/", response_model=UserMeSlimResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     """
     Public route to create a new user account.
@@ -140,6 +143,8 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 
     return user
 
+
+
 @router.post("/admin/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
 def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """
@@ -149,6 +154,8 @@ def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _:
     check_if_email_exists(db, body.email)
 
     return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
+
+
 
 @router.get("/auth/verify-email/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
     responses={

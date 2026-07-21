@@ -407,11 +407,11 @@ def test_process_cell_string_parse_time_range_rule():
     assert result == [{"date": "2026-02-14", "start": "07:00", "end": "17:00"}]
 
 
-def test_process_cell_phone_formats_us_number():
+def test_process_cell_phone_normalizes_to_digits():
     t = _make_tournament(NATS_BLOCKS)
     mapping = {"field": "phone", "type": "string"}
-    assert _process_cell("9495551234", mapping, t) == "(949) 555-1234"
-    assert _process_cell("+1 (949) 555-1234", mapping, t) == "(949) 555-1234"
+    assert _process_cell("9495551234", mapping, t) == "9495551234"
+    assert _process_cell("+1 (949) 555-1234", mapping, t) == "9495551234"
 
 
 # ---------------------------------------------------------------------------

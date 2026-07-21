@@ -12,15 +12,15 @@ from app.core.permissions import (
     has_permission,
 )
 from app.db.session import get_db
-from app.models.models import Event, Tournament, User
-from backend.app.schemas.tournament_event import EventCreate, EventRead, EventUpdate
+from app.models.models import TournamentEvent, Tournament, User
+from app.schemas.tournament_event import EventCreate, EventRead, EventUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
 # tournament_id is always present in the path, which drives the permission check.
 router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["events"])
 
 
-def _serialize(event: Event) -> dict:
+def _serialize(event: TournamentEvent) -> dict:
     return {
         "id": event.id,
         "tournament_id": event.tournament_id,
@@ -38,12 +38,12 @@ def _serialize(event: Event) -> dict:
     }
 
 
-def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> Event:
+def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> TournamentEvent:
     """
     Fetch event by ID and validate it belongs to the given tournament.
     Returns 404 if not found or tournament mismatch — prevents cross-tournament access.
     """
-    event = db.query(Event).filter(Event.id == event_id).first()
+    event = db.query(TournamentEvent).filter(TournamentEvent.id == event_id).first()
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
     if event.tournament_id != tournament_id:
@@ -78,9 +78,9 @@ def list_events(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     events = (
-        db.query(Event)
-        .filter(Event.tournament_id == tournament_id)
-        .order_by(Event.division, Event.name)
+        db.query(TournamentEvent)
+        .filter(TournamentEvent.tournament_id == tournament_id)
+        .order_by(TournamentEvent.division, TournamentEvent.name)
         .all()
     )
     return [_serialize(e) for e in events]
@@ -122,10 +122,10 @@ def create_event(
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    existing = db.query(Event).filter(
-        Event.tournament_id == tournament_id,
-        Event.name == payload.name,
-        Event.division == payload.division,
+    existing = db.query(TournamentEvent).filter(
+        TournamentEvent.tournament_id == tournament_id,
+        TournamentEvent.name == payload.name,
+        TournamentEvent.division == payload.division,
     ).first()
     if existing:
         raise HTTPException(
@@ -133,7 +133,7 @@ def create_event(
             detail=f"Event '{payload.name}' division {payload.division} already exists in this tournament",
         )
 
-    event = Event(**payload.model_dump())
+    event = TournamentEvent(**payload.model_dump())
     db.add(event)
     db.commit()
     db.refresh(event)
