@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
 from pydantic import BaseModel, field_validator
 
 VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
@@ -46,7 +46,7 @@ class MembershipBase(BaseModel):
     availability: list[AvailabilitySlot] | None = None
 
     lunch_order: LunchOrderValue | None = None
-    notes: str | None = None
+    notes: Optional[str] = None
 
     # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
     # Anything tournament-specific that doesn't map to a standard field lives here —
@@ -71,12 +71,12 @@ class MembershipUpdate(BaseModel):
     assigned_event_id: int | None = None
     positions: list[str] | None = None
     schedule: list[ScheduleSlot] | None = None
-    status: str | None = None
+    status: Optional[str] = None
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None
     availability: list[AvailabilitySlot] | None = None
     lunch_order: LunchOrderValue | None = None
-    notes: str | None = None
+    notes: Optional[str] = None
     extra_data: dict | None = None
 
     @field_validator("status")
@@ -89,6 +89,10 @@ class MembershipUpdate(BaseModel):
 
 class MembershipRead(MembershipBase):
     id: int
+
+    is_over_18: Optional[bool] = None
+    is_over_21: Optional[bool] = None
+
     created_at: datetime
     updated_at: datetime
 
@@ -105,7 +109,7 @@ class MembershipReadFlat(MembershipRead):
     # page is built, the full user profile (beyond identity) should continue
     # to come from User, not Membership.
     """
-    first_name: str | None = None
-    last_name: str | None = None
-    email: str | None = None
-    phone: str | None = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
