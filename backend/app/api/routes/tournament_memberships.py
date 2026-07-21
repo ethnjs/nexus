@@ -11,7 +11,7 @@ from app.core.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import Event, Membership, Tournament, User
-from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
+from backend.app.schemas.tournament_membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])

@@ -6,8 +6,9 @@ from scalar_fastapi import get_scalar_api_reference
 from app.core.config import get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
-from app.api.routes import tournaments, sheets, events, users, memberships
+from app.api.routes import tournaments, sheets, events, users
 from app.api.routes import auth
+from backend.app.api.routes import tournament_memberships
 
 settings = get_settings()
 
@@ -52,7 +53,7 @@ api_key_dependency = Depends(verify_api_key)
 app.include_router(auth.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournaments.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router,      prefix="", dependencies=[api_key_dependency])
-app.include_router(memberships.router, prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_memberships.router, prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,      prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,       prefix="", dependencies=[api_key_dependency])
 
