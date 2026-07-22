@@ -12,10 +12,9 @@ from app.core.auth import (
 from app.core.config import get_settings
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.email_verification import generate_verification_token, verify_verification_token
-from app.core.profile_status import is_profile_complete
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.user import UserMeSlimResponse, UserSlimResponse
+from app.schemas.user import UserSlimResponse
 from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, MessageResponse
 from app.services.email_service import send_verification_email
 
@@ -118,13 +117,6 @@ def logout(response: Response):
     """Clear the auth cookie."""
     _clear_auth_cookie(response)
     return {"detail": "Logged out"}
-
-
-@router.get("/auth/me/", response_model=UserMeSlimResponse)
-def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    response = UserMeSlimResponse.model_validate(current_user)
-    response.is_profile_complete = is_profile_complete(current_user, db=db)
-    return response
 
 
 

@@ -1,13 +1,17 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from typing import Union
 
 from app.core.auth import get_current_user, require_admin
 from app.core.users import check_if_email_exists, find_user_by_id
-from app.core.profile_status import compute_missing_profile_fields
+from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.user import UserFullResponse, UserMeFullResponse, UserSlimResponse, UserUpdate, AdminUserUpdate
+from app.schemas.user import (
+    UserFullResponse, UserMeFullResponse, UserSlimResponse,
+    UserMeSlimResponse, UserUpdate, AdminUserUpdate
+)
 
 router = APIRouter(tags=["users"])
 
@@ -92,12 +96,28 @@ def admin_delete_user(
 
 
 # ---------------------------------------------------------------------------
-# GET /users/me/
+# GET /users/me/ — current user's own profile. ?full=true for full response
+# with experience lists eagerly loaded.
 # ---------------------------------------------------------------------------
-@router.get("/users/me/", response_model=UserMeFullResponse)
-def get_me(current_user: User = Depends(get_current_user)):
-    response = UserMeFullResponse.model_validate(current_user)
-    response.missing_profile_fields = compute_missing_profile_fields(current_user)
+@router.get("/users/me/", response_model=Union[UserMeFullResponse, UserMeSlimResponse])
+def get_me(
+    full: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if full:
+        user = (
+            db.query(User)
+            .options(selectinload(User.competition_experience), selectinload(User.volunteer_experience))
+            .filter(User.id == current_user.id)
+            .first()
+        )
+        response = UserMeFullResponse.model_validate(user)
+        response.missing_profile_fields = compute_missing_profile_fields(user)  # relationships loaded, no db needed
+        return response
+
+    response = UserMeSlimResponse.model_validate(current_user)
+    response.is_profile_complete = is_profile_complete(current_user, db=db)
     return response
 
 
