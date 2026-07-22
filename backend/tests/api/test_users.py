@@ -1,7 +1,9 @@
 """Tests for /admin/users and /users/me endpoints."""
 from tests.conftest import login
 from app.core.auth import hash_password
-from app.models.models import User
+from app.models.models import (
+    User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience,
+)
 
 
 VALID_PHONE = "9495551234"
@@ -155,7 +157,7 @@ class TestAdminDeleteUser:
 
 
 # ---------------------------------------------------------------------------
-# GET /users/me/ — authenticated user's own full profile
+# GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 
 class TestGetMe:
@@ -165,10 +167,67 @@ class TestGetMe:
         assert res.status_code == 200
         data = res.json()
         assert data["email"] == "td@test.com"
-        assert "missing_profile_fields" in data
+        assert "is_profile_complete" in data
+        # Slim shape — full-only fields must not be present.
+        assert "missing_profile_fields" not in data
+        assert "competition_experience" not in data
 
     def test_unauthenticated_forbidden(self, client):
         assert client.get("/users/me/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/?full=true — full shape with experience lists eagerly loaded
+# ---------------------------------------------------------------------------
+
+class TestGetMeFull:
+    def test_returns_full_shape(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get("/users/me/?full=true")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["email"] == "td@test.com"
+        assert "missing_profile_fields" in data
+        assert "competition_experience" in data
+        assert "volunteer_experience" in data
+        # Full shape — slim-only field must not be present.
+        assert "is_profile_complete" not in data
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/users/me/?full=true").status_code == 401
+
+    def test_competition_and_volunteer_experience_populated(self, client, td_user, db):
+        category = EventCategory(name="Chemistry")
+        db.add(category)
+        db.commit()
+        event = Event(name="Boomilever", category_id=category.id)
+        db.add(event)
+        db.commit()
+
+        db.add(UserCompetitionExperience(user_id=td_user.id, event_id=event.id, school="MIT"))
+        db.add(UserVolunteerExperience(
+            user_id=td_user.id, event_id=event.id,
+            tournament_name="Regionals", year=2025, role="Event Supervisor",
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        data = client.get("/users/me/?full=true").json()
+
+        assert len(data["competition_experience"]) == 1
+        assert data["competition_experience"][0]["school"] == "MIT"
+        assert data["competition_experience"][0]["event_id"] == event.id
+
+        assert len(data["volunteer_experience"]) == 1
+        assert data["volunteer_experience"][0]["tournament_name"] == "Regionals"
+        assert data["volunteer_experience"][0]["year"] == 2025
+        assert data["volunteer_experience"][0]["role"] == "Event Supervisor"
+
+    def test_no_experience_rows_returns_empty_lists(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        data = client.get("/users/me/?full=true").json()
+        assert data["competition_experience"] == []
+        assert data["volunteer_experience"] == []
 
 
 # ---------------------------------------------------------------------------
@@ -186,7 +245,7 @@ class TestUpdateMe:
         # exclude_unset=True — omitted fields must not overwrite existing data
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={"first_name": "Updated"})
-        assert client.get("/auth/me/").json()["last_name"] == "User"
+        assert client.get("/users/me/").json()["last_name"] == "User"
 
     def test_can_update_email(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -259,7 +318,7 @@ class TestMissingProfileFields:
     def test_fresh_user_has_missing_fields(self, client, td_user):
         # td_user has no profile data — phone and student_status should be missing
         login(client, "td@test.com", "tdpass")
-        missing = client.get("/users/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/?full=true").json()["missing_profile_fields"]
         assert "phone" in missing
         assert "student_status" in missing
 
@@ -276,7 +335,7 @@ class TestMissingProfileFields:
             "shirt_size": "M",
             "dietary_restriction": "None",
         })
-        assert client.get("/users/me/").json()["missing_profile_fields"] == []
+        assert client.get("/users/me/?full=true").json()["missing_profile_fields"] == []
 
     def test_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -294,13 +353,13 @@ class TestMissingProfileFields:
             "shirt_size": "L",
             "dietary_restriction": "None",
         })
-        assert client.get("/users/me/").json()["missing_profile_fields"] == []
+        assert client.get("/users/me/?full=true").json()["missing_profile_fields"] == []
 
     def test_student_missing_school_fields(self, client, td_user):
         # student_status answered but university/major not filled in yet
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={"phone": VALID_PHONE, "student_status": "Undergraduate"})
-        missing = client.get("/users/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/?full=true").json()["missing_profile_fields"]
         assert "university" in missing
         assert "major" in missing
 
@@ -317,19 +376,19 @@ class TestMissingProfileFields:
             "shirt_size": "M",
             "dietary_restriction": "None",
         })
-        missing = client.get("/users/me/").json()["missing_profile_fields"]
+        missing = client.get("/users/me/?full=true").json()["missing_profile_fields"]
         assert "university" not in missing
         assert "major" not in missing
 
 
 # ---------------------------------------------------------------------------
-# is_profile_complete — boolean field on UserMeSlimResponse (GET /auth/me/)
+# is_profile_complete — boolean field on UserMeSlimResponse (GET /users/me/)
 # ---------------------------------------------------------------------------
 
 class TestIsProfileComplete:
     def test_fresh_user_is_not_complete(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        assert client.get("/auth/me/").json()["is_profile_complete"] is False
+        assert client.get("/users/me/").json()["is_profile_complete"] is False
 
     def test_non_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -344,7 +403,7 @@ class TestIsProfileComplete:
             "shirt_size": "M",
             "dietary_restriction": "None",
         })
-        assert client.get("/auth/me/").json()["is_profile_complete"] is True
+        assert client.get("/users/me/").json()["is_profile_complete"] is True
 
     def test_student_complete_profile(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -362,15 +421,15 @@ class TestIsProfileComplete:
             "shirt_size": "L",
             "dietary_restriction": "None",
         })
-        assert client.get("/auth/me/").json()["is_profile_complete"] is True
+        assert client.get("/users/me/").json()["is_profile_complete"] is True
 
     def test_student_missing_school_fields_is_not_complete(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={"phone": VALID_PHONE, "student_status": "Undergraduate"})
-        assert client.get("/auth/me/").json()["is_profile_complete"] is False
+        assert client.get("/users/me/").json()["is_profile_complete"] is False
 
     def test_partial_update_does_not_flip_to_complete(self, client, td_user):
         # Only phone answered — plenty of other required fields still missing.
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={"phone": VALID_PHONE})
-        assert client.get("/auth/me/").json()["is_profile_complete"] is False
+        assert client.get("/users/me/").json()["is_profile_complete"] is False

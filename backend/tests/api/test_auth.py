@@ -87,30 +87,30 @@ class TestLogout:
     def test_cannot_access_me_after_logout(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         client.post("/auth/logout/")
-        assert client.get("/auth/me/").status_code == 401
+        assert client.get("/users/me/").status_code == 401
 
     def test_logout_without_session_still_succeeds(self, client):
         assert client.post("/auth/logout/").status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# GET /auth/me/
+# GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 
 class TestMe:
     def test_me_returns_current_user(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
         assert res.json()["role"] == "user"
 
     def test_me_unauthenticated(self, client):
-        assert client.get("/auth/me/").status_code == 401
+        assert client.get("/users/me/").status_code == 401
 
     def test_me_admin_role(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["role"] == "admin"
 
@@ -160,7 +160,7 @@ class TestRegister:
             "first_name": "New",
             "last_name": "User",
         })
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "new@test.com"
 

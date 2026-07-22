@@ -118,6 +118,9 @@ export interface AuthRegister {
 export const authApi = {
   login: (email: string, password: string) => api.post<User>('/auth/login/', { email, password }),
   logout: ()                               => api.post<void>('/auth/logout/', {}),
+  // TODO: /auth/me/ was removed from the backend — folded into GET /users/me/.
+  // Update this to call usersApi (or equivalent) and fix the callers in
+  // useAuth.tsx, sign-up/page.tsx, and verify-email/page.tsx.
   me: ()                                   => api.get<User>('/auth/me/'),
   register: (body: AuthRegister)           => api.post<User>('/auth/register/', body),
   verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
