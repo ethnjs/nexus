@@ -62,6 +62,9 @@ class TestAdminGetUser:
         login(client, "admin@test.com", "adminpass")
         assert client.get("/admin/users/9999/").status_code == 404
 
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/admin/users/1/").status_code == 401
+
 
 # ---------------------------------------------------------------------------
 # GET /admin/users/by-email/{email}/ — admin only
@@ -76,6 +79,15 @@ class TestAdminGetUserByEmail:
     def test_not_found(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         assert client.get("/admin/users/by-email/nobody@example.com/").status_code == 404
+
+    def test_non_admin_forbidden(self, client, td_user, db):
+        _db_user(db)
+        login(client, "td@test.com", "tdpass")
+        assert client.get("/admin/users/by-email/alice@example.com/").status_code == 403
+
+    def test_unauthenticated_forbidden(self, client, db):
+        _db_user(db)
+        assert client.get("/admin/users/by-email/alice@example.com/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +146,30 @@ class TestAdminDeleteUser:
         login(client, "td@test.com", "tdpass")
         assert client.delete("/admin/users/1/").status_code == 403
 
+    def test_not_found(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete("/admin/users/9999/").status_code == 404
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.delete("/admin/users/1/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/ — authenticated user's own full profile
+# ---------------------------------------------------------------------------
+
+class TestGetMe:
+    def test_returns_current_user(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get("/users/me/")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["email"] == "td@test.com"
+        assert "missing_profile_fields" in data
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/users/me/").status_code == 401
+
 
 # ---------------------------------------------------------------------------
 # PATCH /users/me/ — authenticated user updates own profile
@@ -161,6 +197,40 @@ class TestUpdateMe:
     def test_duplicate_email_rejected(self, client, td_user, admin_user):
         login(client, "td@test.com", "tdpass")
         assert client.patch("/users/me/", json={"email": "admin@test.com"}).status_code == 409
+
+    def test_duplicate_email_case_insensitive_rejected(self, client, td_user, admin_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.patch("/users/me/", json={"email": "ADMIN@TEST.COM"}).status_code == 409
+
+    def test_same_email_unchanged_not_rejected(self, client, td_user):
+        # Re-submitting your own current email should not conflict with yourself.
+        login(client, "td@test.com", "tdpass")
+        res = client.patch("/users/me/", json={"email": "td@test.com", "first_name": "Still TD"})
+        assert res.status_code == 200
+        assert res.json()["email"] == "td@test.com"
+
+    def test_null_clears_optional_field(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.patch("/users/me/", json={"pronouns": "she/her"})
+        res = client.patch("/users/me/", json={"pronouns": None})
+        assert res.status_code == 200
+        assert res.json()["pronouns"] is None
+
+    def test_null_first_name_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.patch("/users/me/", json={"first_name": None}).status_code == 422
+
+    def test_null_last_name_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.patch("/users/me/", json={"last_name": None}).status_code == 422
+
+    def test_null_email_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.patch("/users/me/", json={"email": None}).status_code == 422
+
+    def test_null_phone_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.patch("/users/me/", json={"phone": None}).status_code == 422
 
     def test_invalid_email_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")

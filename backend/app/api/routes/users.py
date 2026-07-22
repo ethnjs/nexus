@@ -117,7 +117,7 @@ def update_user_me(
     """
     for field, value in body.model_dump(exclude_unset=True).items():
         if field == "email":
-            check_if_email_exists(db, body.email)
+            check_if_email_exists(db, body.email, exclude_user_id=user.id)
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
