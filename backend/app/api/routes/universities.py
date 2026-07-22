@@ -37,7 +37,7 @@ def update_university(
     university = db.query(University).filter(University.id == university_id).first()
     if not university:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="University not found")
-    for field, value in payload.model_dump(exclude_unset=True).itmes():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(university, field, value)
     db.commit()
     db.refresh(university)
