@@ -12,6 +12,13 @@ def _has_competition_rows(user: User, db: Optional[Session]) -> bool:
 
 
 def _has_volunteer_rows(user: User, db: Optional[Session]) -> bool:
+    """
+    Manual entries ONLY — intentionally does not include NEXUS-synthesized rows
+    (from TournamentMembership, once that integration exists).
+    has_volunteer_experience reflects whether the user intends to log manual
+    entries, independent of any auto-populated tournament history. Do not change
+    this to query a merged/synthesized experience list.
+    """
     if db is not None:
         return db.query(
             db.query(UserVolunteerExperience).filter_by(user_id=user.id).exists()

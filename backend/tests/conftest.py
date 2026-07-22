@@ -34,7 +34,7 @@ from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.core.auth import hash_password
 from app.core.permissions import DEFAULT_POSITIONS
-from app.models.models import TournamentMembership, Tournament, User
+from app.models.models import TournamentMembership, Tournament, User, Event, EventCategory
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
@@ -163,6 +163,42 @@ def other_tournament(db, other_user):
     db.commit()
     db.refresh(tournament)
     return tournament
+
+
+# ---------------------------------------------------------------------------
+# Event / EventCategory fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def event_category_factory(db):
+    def _make(name="Chemistry"):
+        category = EventCategory(name=name)
+        db.add(category)
+        db.commit()
+        db.refresh(category)
+        return category
+    return _make
+
+
+@pytest.fixture
+def event_category(event_category_factory):
+    return event_category_factory()
+
+
+@pytest.fixture
+def event_factory(db):
+    def _make(category, name="Boomilever"):
+        event = Event(name=name, category_id=category.id)
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        return event
+    return _make
+
+
+@pytest.fixture
+def event(event_factory, event_category):
+    return event_factory(event_category)
 
 
 # ---------------------------------------------------------------------------
