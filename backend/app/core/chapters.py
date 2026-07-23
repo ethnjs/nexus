@@ -30,8 +30,8 @@ def check_if_chapter_exists(db: Session, university_id: int):
         )
 
 def require_lead(
+        chapter_id: int,
         db: Session = Depends(get_db),
-        chapter_id = int,
         current_user: User = Depends(get_current_user),
     ) -> User:
     lead = db.query(ChapterMembership).filter(
@@ -69,13 +69,30 @@ def require_chapter_lead_or_admin(
     return current_user
 
 def _assign_chapter_lead(
-        db: Session,
         chapter_id: int,
         user_id: int,
+        db: Session
     ) -> ChapterMembership:
-    assignee = db.query(ChapterMembership).filter(ChapterMembership.user_id == user_id).first()
-    if not assignee:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User is not a chapter member"
+    chapter_member = db.query(ChapterMembership).filter(ChapterMembership.user_id == user_id).first()
+    if chapter_member:
+        if chapter_member.chapter_id != chapter_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is in a different chapter"
+            )
+        if chapter_member.role == "lead":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="User is already a lead"
+            )
+        chapter_member.role = "lead"
+    else:
+        chapter_member = ChapterMembership(
+            chapter_id=chapter_id,
+            user_id=user_id,
+            role="lead"
         )
+        db.add(chapter_member)
+    db.commit()
+    db.refresh(chapter_member)
+    return chapter_member
