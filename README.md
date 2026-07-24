@@ -111,13 +111,8 @@ pnpm dev
 
 ## Running Tests
 
-Tests run against a dedicated `nexus_test` Postgres database on the same Docker container as dev — this keeps test transaction/rollback semantics identical to prod (SQLite doesn't support the savepoints the test fixtures rely on). Create it once:
+Tests run against a dedicated `nexus_test` Postgres database on the same Docker container as dev — this keeps test transaction/rollback semantics identical to prod (SQLite doesn't support the savepoints the test fixtures rely on). `nexus_test` is created automatically by `db-init/01-create-test-db.sql` the first time the container starts on a fresh `postgres_data` volume (Postgres's `docker-entrypoint-initdb.d` convention) — no manual step needed, including after `docker-compose down -v`.
 
-```bash
-docker exec backend-db-1 createdb -U nexus nexus_test
-```
-
-Then run:
 ```bash
 cd backend
 pytest
