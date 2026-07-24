@@ -9,6 +9,7 @@ import { ProfileHeader } from "@/components/profile/ProfileHeader";
 import type { UserMeFull } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
+import { EducationCareerSection } from "@/components/profile/EducationCareerSection";
 
 export default function ProfilePage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -60,9 +61,8 @@ export default function ProfilePage() {
         maxWidth: "800px", margin: "0 auto", padding: "32px 20px",
         display: "flex", flexDirection: "column", gap: "20px",
       }}>
-        <ProfileCard>
-          <ProfileHeader user={profile} />
-        </ProfileCard>
+        <ProfileCard><ProfileHeader user={profile} /></ProfileCard>
+        <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
 
         {/* Education/Career card next */}
         {/* Competition experience card next */}
