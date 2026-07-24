@@ -1,0 +1,74 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/useAuth";
+import { usersApi } from "@/lib/api";
+import { Spinner } from "@/components/ui/Spinner";
+import { ProfileHeader } from "@/components/profile/ProfileHeader";
+import type { UserMeFull } from "@/lib/api";
+import { Topbar } from "@/components/layout/Topbar";
+import { ProfileCard } from "@/components/profile/ProfileCard";
+
+export default function ProfilePage() {
+  const { user: currentUser, loading: authLoading } = useAuth();
+  const router = useRouter();
+  const params = useParams();
+  const profileId = params.id as string;
+
+  const [profile, setProfile] = useState<UserMeFull | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (authLoading) return; // wait for auth to resolve either way
+
+    if (!currentUser) {
+      router.replace("/"); // not logged in at all
+      return;
+    }
+
+    if (String(currentUser.id) !== String(profileId)) {
+      router.replace("/dashboard");
+      return;
+    }
+
+    usersApi.meFull()
+      .then(setProfile)
+      .catch(() => setError("Failed to load profile."));
+  }, [authLoading, currentUser, profileId, router]);
+
+  if (authLoading || (!profile && !error)) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  if (error || !profile) {
+    return (
+      <div style={{ padding: "40px", fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>
+        {error ?? "Profile not found."}
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
+      <Topbar showWordmark showAvatar />
+      <div style={{
+        maxWidth: "800px", margin: "0 auto", padding: "32px 20px",
+        display: "flex", flexDirection: "column", gap: "20px",
+      }}>
+        <ProfileCard>
+          <ProfileHeader user={profile} />
+        </ProfileCard>
+
+        {/* Education/Career card next */}
+        {/* Competition experience card next */}
+        {/* Volunteer experience card next */}
+        {/* Shirt size / dietary card next */}
+      </div>
+    </div>
+  );
+}
