@@ -17,6 +17,8 @@ interface ComboboxProps<T> {
   maxResults?:    number
 }
 
+const CUSTOM_THRESHOLD = 3
+
 export function Combobox<T>({
   options,
   getId,
@@ -36,6 +38,10 @@ export function Combobox<T>({
     ? options.filter(o => getLabel(o).toLowerCase().includes(query)).slice(0, maxResults)
     : []
 
+  const exactMatch = matches.some(o => getLabel(o).toLowerCase() === query)
+  const showCustomRow = allowFreeText && query.length > 0 && !exactMatch && matches.length < CUSTOM_THRESHOLD
+  const dropdownOpen = open && (matches.length > 0 || showCustomRow)
+
   function handleTextChange(text: string) {
     setMatched(null)
     onChange(text, null)
@@ -43,35 +49,40 @@ export function Combobox<T>({
   }
 
   function handleSelect(option: T) {
-    const label = getLabel(option)
+    const optLabel = getLabel(option)
     setMatched(option)
-    onChange(label, option)
+    onChange(optLabel, option)
     setOpen(false)
   }
 
-  const showHint = value.trim().length > 0 && matched === null
+  function handleSelectCustom() {
+    setOpen(false)
+  }
+
+  const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && matched === null
 
   return (
     <div style={{ position: 'relative' }}>
-      {label && (
-        <label style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-          {label}
-        </label>
-      )}
       <Input
+        label={label}
         type="text"
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={e => handleTextChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
+        error={showStrictHint ? "No matching option — select one from the list to continue." : undefined}
         fullWidth
       />
-      {open && matches.length > 0 && (
+      {dropdownOpen && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
-          background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-          borderRadius: '6px', marginTop: '2px', maxHeight: '180px', overflowY: 'auto',
+          background: 'var(--color-surface)',
+          border: '1px solid var(--color-border)',
+          borderTop: 'none',
+          borderRadius: '0 0 6px 6px',
+          maxHeight: '180px', overflowY: 'auto',
+          boxShadow: 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.12))',
         }}>
           {matches.map(option => (
             <div
@@ -82,12 +93,20 @@ export function Combobox<T>({
               {getLabel(option)}
             </div>
           ))}
+          {showCustomRow && (
+            <div
+              onMouseDown={handleSelectCustom}
+              style={{
+                padding: '8px 10px', cursor: 'pointer',
+                fontFamily: 'var(--font-sans)', fontSize: '14px',
+                color: 'var(--color-text-secondary)',
+                borderTop: matches.length > 0 ? '1px solid var(--color-border)' : undefined,
+              }}
+            >
+              Use &ldquo;{value.trim()}&rdquo;
+            </div>
+          )}
         </div>
-      )}
-      {showHint && (
-        <p style={{ fontSize: '12px', color: allowFreeText ? 'var(--color-text-secondary)' : 'var(--color-danger)', marginTop: '2px' }}>
-          {allowFreeText ? "No matching option — will be saved as custom text." : "No matching option — select one from the list to continue."}
-        </p>
       )}
     </div>
   )
