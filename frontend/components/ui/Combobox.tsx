@@ -15,6 +15,8 @@ interface ComboboxProps<T> {
   placeholder?:   string
   label?:         string
   maxResults?:    number
+  /** External error, takes priority over the internal strict-mode "no match" hint. */
+  error?: string
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -29,6 +31,7 @@ export function Combobox<T>({
   placeholder,
   label,
   maxResults = 8,
+  error,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
   const [matched, setMatched] = useState<T | null>(null)
@@ -60,6 +63,7 @@ export function Combobox<T>({
   }
 
   const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && matched === null
+  const displayedError = error ?? (showStrictHint ? "No matching option — select one from the list to continue." : undefined)
 
   return (
     <div style={{ position: 'relative' }}>
@@ -71,7 +75,7 @@ export function Combobox<T>({
         onChange={e => handleTextChange(e.target.value)}
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
-        error={showStrictHint ? "No matching option — select one from the list to continue." : undefined}
+        error={displayedError}
         fullWidth
       />
       {dropdownOpen && (

@@ -6,9 +6,10 @@ import {
   STUDENT_STATUS, SHIRT_SIZE, UserSlim, usersApi 
 } from "@/lib/api"
 import { useRouter } from "next/navigation"
-import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
+import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone, validateDateOfBirth } from "@/lib/auth"
 import { IconArrowLeft, IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { Input } from "@/components/ui/Input"
+import { Combobox } from "@/components/ui/Combobox"
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
 import { RadioGroup } from "@/components/ui/RadioGroup"
@@ -32,18 +33,22 @@ function clearCookie() {
 
 const STATE = {
   ACCOUNT: 1,
-  STUDENT_STATUS: 2,
-  UNIVERSITY: 3,
-  EMPLOYER: 4,
-  COMPETED_BEFORE: 5,
-  COMPETITION_EXP: 6,
-  VOLUNTEERED_BEFORE: 7,
-  VOLUNTEERING_EXP: 8,
-  SHIRT_SIZE: 9,
-  DIETARY_RESTRICTIONS: 10,
-  DIETARY_TEXT: 11,
-  COMPLETE: 12,
+  DATE_OF_BIRTH: 2,
+  PRONOUNS: 3,
+  STUDENT_STATUS: 4,
+  UNIVERSITY: 5,
+  EMPLOYER: 6,
+  COMPETED_BEFORE: 7,
+  COMPETITION_EXP: 8,
+  VOLUNTEERED_BEFORE: 9,
+  VOLUNTEERING_EXP: 10,
+  SHIRT_SIZE: 11,
+  DIETARY_RESTRICTIONS: 12,
+  DIETARY_TEXT: 13,
+  COMPLETE: 14,
 } as const
+
+const COMMON_PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns"]
 
 export default function SignUpPage() {
   // ── Sign-up step states ──────────────────────────────────────────────────
@@ -89,6 +94,9 @@ export default function SignUpPage() {
   const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   const [profileData, setProfileData] = useState<{
+    date_of_birth?: string
+    pronouns?: string
+
     student_status?: STUDENT_STATUS
     university?: string
     major?: string
@@ -120,6 +128,8 @@ export default function SignUpPage() {
     confirm_password?: string
     form1?: string
 
+    date_of_birth?: string
+    pronouns?: string
     student_status?: string
     university?: string
     major?: string
@@ -139,7 +149,7 @@ export default function SignUpPage() {
     usersApi.me().then(user => {
       if (document.cookie.includes("inSignUpFlow")) {
         setUser(user)
-        setState(STATE.STUDENT_STATUS)
+        setState(STATE.DATE_OF_BIRTH)
       } else {
         router.push('/dashboard')
       }
@@ -181,7 +191,7 @@ export default function SignUpPage() {
 
       authApi.sendEmailVerification().then(() => {
         setShowVerifyModal(true)
-      }).catch(() => {}).finally(() => setState(STATE.STUDENT_STATUS))
+      }).catch(() => {}).finally(() => setState(STATE.DATE_OF_BIRTH))
     } catch (error: unknown) {
       if (error instanceof ApiError) {
         setErrors({ form1: error.message })
@@ -225,6 +235,19 @@ export default function SignUpPage() {
 
     for (const key of Object.keys(cleaned)) {
       if (cleaned[key] === "") cleaned[key] = undefined
+    }
+
+    const dobErr = cleaned.date_of_birth ? validateDateOfBirth(cleaned.date_of_birth as string) : null
+    if (dobErr) {
+      setErrors(er => ({ ...er, date_of_birth: dobErr }))
+      setLoading(false)
+      return
+    }
+
+    if (cleaned.pronouns !== undefined && !(cleaned.pronouns as string).trim()) {
+      setErrors(er => ({ ...er, pronouns: "Cannot be empty." }))
+      setLoading(false)
+      return
     }
 
     if (cleaned.graduation_year && ((cleaned.graduation_year as number) < 1000 || (cleaned.graduation_year as number) > 9999)) {
@@ -412,7 +435,7 @@ export default function SignUpPage() {
         </section>
       )}
 
-      {state >= STATE.STUDENT_STATUS && (
+      {state >= STATE.DATE_OF_BIRTH && (
         <section style={{ maxWidth: '600px', width: '100%', margin: '20px 0px'}}>
           {showVerifyModal && <VerifyModal />}
 
@@ -435,28 +458,83 @@ export default function SignUpPage() {
 
           <form onSubmit={handleProfileSubmit} noValidate>
             <ProfileQuestion
-              question="What is your student status?"
-              onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
-              isActive={state === STATE.STUDENT_STATUS}
-            ><Select
-                value={profileData.student_status ?? ''}
-                onChange={v => {
-                  setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
-                  if (state >= (STATE.STUDENT_STATUS + 3)) return
-                  if (v === 'Undergraduate' || v === 'Graduate') {
-                    setState(STATE.UNIVERSITY)
-                  } else if (v === 'Non-Student') {
-                    setState(STATE.EMPLOYER)
-                  }
-                }}
-                options={[
-                  { value: "Undergraduate", label: "Undergraduate" },
-                  { value: "Graduate", label: "Graduate" },
-                  { value: "Non-Student", label: "Non-Student" }
-                ]}
-                fullWidth
+              question="What is your date of birth?"
+              onSkip={() => setState(STATE.PRONOUNS)}
+              onNext={() => {
+                const err = validateDateOfBirth(profileData.date_of_birth ?? '')
+                if (err) {
+                  setErrors(er => ({ ...er, date_of_birth: err }))
+                  return
+                }
+                setState(STATE.PRONOUNS)
+              }}
+              isActive={state === STATE.DATE_OF_BIRTH}
+            ><Input
+                  type="date"
+                  value={profileData.date_of_birth ?? ''}
+                  onChange={e => {
+                    setProfileData(d => ({ ...d, date_of_birth: e.target.value }))
+                    setErrors(er => ({ ...er, date_of_birth: undefined }))
+                  }}
+                  error={errors.date_of_birth}
+                  fullWidth
               />
             </ProfileQuestion>
+
+            {state >= STATE.PRONOUNS && (
+              <ProfileQuestion
+                question="What are your pronouns?"
+                onSkip={() => setState(STATE.STUDENT_STATUS)}
+                onNext={() => {
+                  if (!profileData.pronouns?.trim()) {
+                    setErrors(er => ({ ...er, pronouns: "Cannot be empty." }))
+                    return
+                  }
+                  setState(STATE.STUDENT_STATUS)
+                }}
+                isActive={state === STATE.PRONOUNS}
+              >
+                <Combobox
+                  options={COMMON_PRONOUNS}
+                  getId={p => p}
+                  getLabel={p => p}
+                  value={profileData.pronouns ?? ''}
+                  allowFreeText
+                  placeholder="Type your pronouns..."
+                  error={errors.pronouns}
+                  onChange={(text) => {
+                    setProfileData(d => ({ ...d, pronouns: text }))
+                    setErrors(er => ({ ...er, pronouns: undefined }))
+                  }}
+                />
+              </ProfileQuestion>
+            )}
+            
+            { state >= STATE.STUDENT_STATUS && (
+              <ProfileQuestion
+                question="What is your student status?"
+                onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
+                isActive={state === STATE.STUDENT_STATUS}
+              ><Select
+                  value={profileData.student_status ?? ''}
+                  onChange={v => {
+                    setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
+                    if (state >= (STATE.STUDENT_STATUS + 3)) return
+                    if (v === 'Undergraduate' || v === 'Graduate') {
+                      setState(STATE.UNIVERSITY)
+                    } else if (v === 'Non-Student') {
+                      setState(STATE.EMPLOYER)
+                    }
+                  }}
+                  options={[
+                    { value: "Undergraduate", label: "Undergraduate" },
+                    { value: "Graduate", label: "Graduate" },
+                    { value: "Non-Student", label: "Non-Student" }
+                  ]}
+                  fullWidth
+                />
+              </ProfileQuestion>
+            )}
 
             { state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
               <div>
