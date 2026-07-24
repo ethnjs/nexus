@@ -11,47 +11,7 @@ import { Select } from "@/components/ui/Select"
 import { RadioOption } from "@/components/ui/RadioOption"
 import { Textarea } from "@/components/ui/Textarea"
 import { Modal } from "@/components/ui/Modal"
-
-
-
-interface ProfileQuestionProps {
-  question: string
-  children: React.ReactNode
-  onSkip?: () => void
-  onNext?: () => void
-  isActive?: boolean
-}
-
-function ProfileQuestion({
-  question,
-  children,
-  onSkip = undefined,
-  onNext = undefined,
-  isActive = false
-}: ProfileQuestionProps) {
-  const showSkip = !!onSkip
-  const showNext = !!onNext
-  return (
-    <div style={{marginBottom: '20px'}}>
-      <p style={{ marginBottom: '5px', fontFamily: 'var(--font-sans)', fontSize: '18px', color: 'var(--color-text-primary)' }}>{question}</p>
-      {children}
-      {isActive && (showSkip || showNext) && (
-        <div style={{marginTop: '10px', justifyContent:'right', display: 'flex', gap: '5px'}}>
-          {showSkip && (<Button
-            type="button"
-            variant="secondary"
-            onClick={onSkip}
-          >Skip</Button>)}
-          {showNext && (<Button
-            type="button"
-            variant="primary"
-            onClick={onNext}
-          >Next</Button>)}
-        </div>
-      )}
-    </div>
-  )
-}
+import { useFormattedInputChange } from "@/lib/useFormattedInput"
 
 function setCookie() {
   document.cookie = "inSignUpFlow=true; path=/"
@@ -109,6 +69,13 @@ export default function SignUpPage() {
     symbol: boolean
     confirm: boolean
   }>({ length: false, upper: false, lower: false, number: false, symbol: false, confirm: false })
+
+  const handlePhoneChange = useFormattedInputChange(
+    phone,
+    setPhone,
+    formatPhone,
+    (v) => v.replace(/\D/g, '').slice(0, 10),
+  )
 
   const [showVerifyModal, setShowVerifyModal] = useState(false)
 
@@ -338,9 +305,8 @@ export default function SignUpPage() {
               type="tel"
               value={formatPhone(phone)}
               onChange={e => {
-                const raw = e.target.value.replace(/\D/g, '').slice(0, 10)
-                setPhone(raw);
-                setErrors(er => ({ ...er, phone: undefined }));
+                handlePhoneChange(e)
+                setErrors(er => ({ ...er, phone: undefined }))
               }}
               autoComplete="tel"
               error={errors.phone}
