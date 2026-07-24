@@ -14,7 +14,7 @@ from app.models.models import Event, TournamentMembership, Tournament, User
 from app.schemas.tournament_membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
-router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])
+router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
 
 
 def _serialize(m: TournamentMembership, include_user: bool = False) -> dict:

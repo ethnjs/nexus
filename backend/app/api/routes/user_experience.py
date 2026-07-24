@@ -11,7 +11,7 @@ from app.schemas.user_experience import (
 )
 
 
-router = APIRouter(tags=["user-exp"])
+router = APIRouter(tags=["users"])
 
 
 # ---------------------------------------------------------------------------

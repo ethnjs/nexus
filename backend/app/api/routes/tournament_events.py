@@ -17,7 +17,7 @@ from app.schemas.tournament_event import EventCreate, EventRead, EventUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
 # tournament_id is always present in the path, which drives the permission check.
-router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["events"])
+router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["tournaments"])
 
 
 def _serialize(event: TournamentEvent) -> dict:
