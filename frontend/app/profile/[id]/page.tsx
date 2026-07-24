@@ -5,12 +5,13 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { usersApi } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
-import { ProfileHeader } from "@/components/profile/ProfileHeader";
+import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import type { UserMeFull } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
-import { EducationCareerSection } from "@/components/profile/EducationCareerSection";
-import { CompetitionExperienceTableView, VolunteerExperienceTableView } from "@/components/profile/ExperienceTables";
+import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
+import { CompetitionExperienceSection, VolunteerExperienceSection } from "@/components/profile/sections/ExperienceSections";
+import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 
 export default function ProfilePage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -66,28 +67,16 @@ export default function ProfilePage() {
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
         {profile.has_competition_experience !== false && (
           <ProfileCard>
-            <h3 style={{
-              fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-              color: "var(--color-text-primary)", marginBottom: "16px",
-            }}>
-              Competition Experience
-            </h3>
-            <CompetitionExperienceTableView rows={profile.competition_experience} />
+            <CompetitionExperienceSection user={profile} />
           </ProfileCard>
         )}
 
         {profile.has_volunteer_experience !== false && (
           <ProfileCard>
-            <h3 style={{
-              fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-              color: "var(--color-text-primary)", marginBottom: "16px",
-            }}>
-              Volunteer Experience
-            </h3>
-            <VolunteerExperienceTableView rows={profile.volunteer_experience} />
+            <VolunteerExperienceSection user={profile} />
           </ProfileCard>
         )}
-        {/* Shirt size / dietary card next */}
+        <ProfileCard><LogisticsSection user={profile} /></ProfileCard>
       </div>
     </div>
   );
