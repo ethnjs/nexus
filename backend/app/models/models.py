@@ -145,7 +145,7 @@ class EventCategory(Base):
     __tablename__ = "event_categories"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(255), unique=True, nullable=False)
 
     events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
 
@@ -156,7 +156,7 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
+    name = Column(String(255), unique=True, nullable=False)
     category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
 
     category = relationship("EventCategory", back_populates="events")

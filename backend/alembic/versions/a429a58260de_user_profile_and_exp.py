@@ -41,7 +41,7 @@ def upgrade() -> None:
     op.create_table(
         'event_categories',
         sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('name', sa.String(length=255), unique=True, nullable=False),
         sa.PrimaryKeyConstraint('id'),
     )
     op.create_index('ix_event_categories_id', 'event_categories', ['id'], unique=False)
@@ -50,7 +50,7 @@ def upgrade() -> None:
     op.create_table(
         'events',
         sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('name', sa.String(length=255), nullable=False),
+        sa.Column('name', sa.String(length=255), unique=True, nullable=False),
         sa.Column('category_id', sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(['category_id'], ['event_categories.id']),
         sa.PrimaryKeyConstraint('id'),
