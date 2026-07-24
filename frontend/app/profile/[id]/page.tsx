@@ -10,6 +10,7 @@ import type { UserMeFull } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/EducationCareerSection";
+import { CompetitionExperienceTableView, VolunteerExperienceTableView } from "@/components/profile/ExperienceTables";
 
 export default function ProfilePage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -63,10 +64,29 @@ export default function ProfilePage() {
       }}>
         <ProfileCard><ProfileHeader user={profile} /></ProfileCard>
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
+        {profile.has_competition_experience !== false && (
+          <ProfileCard>
+            <h3 style={{
+              fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+              color: "var(--color-text-primary)", marginBottom: "16px",
+            }}>
+              Competition Experience
+            </h3>
+            <CompetitionExperienceTableView rows={profile.competition_experience} />
+          </ProfileCard>
+        )}
 
-        {/* Education/Career card next */}
-        {/* Competition experience card next */}
-        {/* Volunteer experience card next */}
+        {profile.has_volunteer_experience !== false && (
+          <ProfileCard>
+            <h3 style={{
+              fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+              color: "var(--color-text-primary)", marginBottom: "16px",
+            }}>
+              Volunteer Experience
+            </h3>
+            <VolunteerExperienceTableView rows={profile.volunteer_experience} />
+          </ProfileCard>
+        )}
         {/* Shirt size / dietary card next */}
       </div>
     </div>

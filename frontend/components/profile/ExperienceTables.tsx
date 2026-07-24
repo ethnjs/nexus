@@ -1,4 +1,3 @@
-// components/experience/ExperienceTables.tsx
 'use client'
 
 import { CanonicalEvent } from "@/lib/api"
@@ -8,7 +7,7 @@ import { Button } from "@/components/ui/Button"
 import { Combobox } from "@/components/ui/Combobox"
 
 // -------------------------------------------------------------------------
-// Competition experience
+// Competition experience — edit
 // -------------------------------------------------------------------------
 export interface CompetitionExperienceDraft {
   school:     string
@@ -58,7 +57,7 @@ export function CompetitionExperienceTable({ value, onChange, events }: Competit
 }
 
 // -------------------------------------------------------------------------
-// Volunteer experience
+// Volunteer experience — edit
 // -------------------------------------------------------------------------
 export interface VolunteerExperienceDraft {
   tournament_name: string
@@ -115,4 +114,142 @@ export function VolunteerExperienceTable({ value, onChange, events }: VolunteerE
       <Button type="button" variant="secondary" onClick={addRow}>+ Add volunteer experience</Button>
     </div>
   )
+}
+
+// -------------------------------------------------------------------------
+// Shared view-table cell style
+// -------------------------------------------------------------------------
+const viewCellStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+  color: "var(--color-text-primary)",
+  borderBottom: "1px solid var(--color-border)",
+  verticalAlign: "top",
+};
+
+const viewHeaderStyle: React.CSSProperties = {
+  textAlign: "left", padding: "8px 12px",
+  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.06em",
+  color: "var(--color-text-tertiary)",
+  borderBottom: "1px solid var(--color-border)",
+};
+
+function EmptyExperienceState() {
+  return (
+    <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+      No experience added yet
+    </p>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Competition experience — view
+// -------------------------------------------------------------------------
+interface CompetitionExperienceRow {
+  id: number;
+  event: { name: string };
+  school: string;
+  notes: string | null;
+}
+
+export function CompetitionExperienceTableView({ rows }: { rows: CompetitionExperienceRow[] }) {
+  if (rows.length === 0) return <EmptyExperienceState />;
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "35%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "45%" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            {["School", "Event", "Notes"].map((h) => (
+              <th key={h} style={viewHeaderStyle}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, i) => {
+            const isSameSchoolAsPrev = i > 0 && rows[i - 1].school === row.school;
+            if (isSameSchoolAsPrev) {
+              return (
+                <tr key={row.id}>
+                  <td style={viewCellStyle}>{row.event.name}</td>
+                  <td style={{ ...viewCellStyle, whiteSpace: "pre-wrap" }}>{row.notes ?? "—"}</td>
+                </tr>
+              );
+            }
+            // count how many consecutive rows share this school, for rowSpan
+            let span = 1;
+            while (i + span < rows.length && rows[i + span].school === row.school) span++;
+
+            return (
+              <tr key={row.id}>
+                <td style={viewCellStyle} rowSpan={span}>{row.school}</td>
+                <td style={viewCellStyle}>{row.event.name}</td>
+                <td style={{ ...viewCellStyle, whiteSpace: "pre-wrap" }}>{row.notes ?? "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------------------
+// Volunteer experience — view
+// -------------------------------------------------------------------------
+interface VolunteerExperienceRow {
+  id: number;
+  tournament_name: string;
+  role: string;
+  year: number;
+  event: { name: string } | null;
+  notes: { event?: string; other?: string } | null;
+}
+
+function volunteerEventDisplay(row: VolunteerExperienceRow): string {
+  if (row.event) return row.event.name;
+  if (row.notes?.event) return row.notes.event;
+  return "—";
+}
+
+export function VolunteerExperienceTableView({ rows }: { rows: VolunteerExperienceRow[] }) {
+  if (rows.length === 0) return <EmptyExperienceState />;
+
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <colgroup>
+          <col style={{ width: "10%" }} />
+          <col style={{ width: "20%" }} />
+          <col style={{ width: "18%" }} />
+          <col style={{ width: "14%" }} />
+          <col style={{ width: "38%" }} />
+        </colgroup>
+        <thead>
+          <tr>
+            {["Year", "Tournament", "Event", "Role", "Notes"].map((h) => (
+              <th key={h} style={viewHeaderStyle}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row) => (
+            <tr key={row.id}>
+              <td style={viewCellStyle}>{row.year}</td>
+              <td style={viewCellStyle}>{row.tournament_name}</td>
+              <td style={viewCellStyle}>{volunteerEventDisplay(row)}</td>
+              <td style={viewCellStyle}>{row.role}</td>
+              <td style={{ ...viewCellStyle, whiteSpace: "pre-wrap" }}>{row.notes?.other ?? "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
