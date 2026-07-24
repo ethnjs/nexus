@@ -19,22 +19,38 @@ export function ProfileQuestion({
 }: ProfileQuestionProps) {
   const showSkip = !!onSkip
   const showNext = !!onNext
+  const showActions = isActive && (showSkip || showNext)
+
   return (
-    <div style={{marginBottom: '20px'}}>
-      <p style={{ marginBottom: '5px', fontFamily: 'var(--font-sans)', fontSize: '18px', color: 'var(--color-text-primary)' }}>{question}</p>
+    <div style={{
+      padding: '18px 20px',
+      background: 'var(--color-bg)',
+      border: '1px solid var(--color-border)',
+      borderRadius: 'var(--radius-lg)',
+      marginBottom: '14px',
+    }}>
+      <label style={{
+        display: 'block', marginBottom: '10px',
+        fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600,
+        color: 'var(--color-text-secondary)',
+      }}>
+        {question}
+      </label>
+
       {children}
-      {isActive && (showSkip || showNext) && (
-        <div style={{marginTop: '10px', justifyContent:'right', display: 'flex', gap: '5px'}}>
-          {showSkip && (<Button
-            type="button"
-            variant="secondary"
-            onClick={onSkip}
-          >Skip</Button>)}
-          {showNext && (<Button
-            type="button"
-            variant="primary"
-            onClick={onNext}
-          >Next</Button>)}
+
+      {showActions && (
+        <div style={{
+          marginTop: '14px', paddingTop: '14px',
+          borderTop: '1px solid var(--color-border)',
+          display: 'flex', justifyContent: 'flex-end', gap: '8px',
+        }}>
+          {showSkip && (
+            <Button type="button" variant="secondary" onClick={onSkip}>Skip</Button>
+          )}
+          {showNext && (
+            <Button type="button" variant="primary" onClick={onNext}>Next</Button>
+          )}
         </div>
       )}
     </div>
