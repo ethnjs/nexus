@@ -7,7 +7,7 @@ from app.core.auth import get_current_user, require_admin
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
-from app.models.models import User
+from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event
 from app.schemas.user import (
     UserFullResponse, UserMeFullResponse, UserSlimResponse,
     UserMeSlimResponse, UserUpdate, AdminUserUpdate
@@ -108,12 +108,15 @@ def get_me(
     if full:
         user = (
             db.query(User)
-            .options(selectinload(User.competition_experience), selectinload(User.volunteer_experience))
+            .options(
+                selectinload(User.competition_experience).selectinload(UserCompetitionExperience.event).selectinload(Event.category),
+                selectinload(User.volunteer_experience).selectinload(UserVolunteerExperience.event).selectinload(Event.category),
+            )
             .filter(User.id == current_user.id)
             .first()
         )
         response = UserMeFullResponse.model_validate(user)
-        response.missing_profile_fields = compute_missing_profile_fields(user)  # relationships loaded, no db needed
+        response.missing_profile_fields = compute_missing_profile_fields(user)
         return response
 
     response = UserMeSlimResponse.model_validate(current_user)

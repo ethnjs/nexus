@@ -1,6 +1,8 @@
 from pydantic import BaseModel, model_validator
 from typing import Optional
 
+from app.schemas.event import EventResponse
+
 
 class CompetitionExperienceCreate(BaseModel):
     event_id: int
@@ -14,7 +16,7 @@ class CompetitionExperienceUpdate(BaseModel):
 
 class CompetitionExperienceResponse(BaseModel):
     id: int
-    event_id: int
+    event: EventResponse
     school: str
     notes: Optional[str] = None
 
@@ -50,7 +52,7 @@ class VolunteerExperienceResponse(BaseModel):
     
     tournament_name: str
     year: int
-    event_id: Optional[int] = None
+    event: Optional[EventResponse] = None
     role: str
 
     notes: Optional[VolunteerExperienceNotes] = None
