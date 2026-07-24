@@ -16,7 +16,7 @@ class TestCreateCompetitionExperience:
         })
         assert res.status_code == 201
         data = res.json()
-        assert data["event_id"] == event.id
+        assert data["event"]["id"] == event.id
         assert data["school"] == "MIT"
 
     def test_invalid_event_id_404(self, client, td_user):
@@ -49,7 +49,7 @@ class TestUpdateCompetitionExperience:
         assert res.status_code == 200
         data = res.json()
         assert data["school"] == "Caltech"
-        assert data["event_id"] == event.id  # untouched
+        assert data["event"]["id"] == event.id  # untouched
 
     def test_missing_entry_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -116,7 +116,7 @@ class TestCreateVolunteerExperience:
         assert data["tournament_name"] == "Regionals"
         assert data["year"] == 2025
         assert data["role"] == "Event Supervisor"
-        assert data["event_id"] is None
+        assert data["event"] is None
         assert data["notes"] is None
 
     def test_with_event_id_no_notes_event(self, client, td_user, event):
@@ -128,7 +128,7 @@ class TestCreateVolunteerExperience:
             "event_id": event.id,
         })
         assert res.status_code == 201
-        assert res.json()["event_id"] == event.id
+        assert res.json()["event"]["id"] == event.id
 
     def test_with_notes_event_no_event_id(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -140,7 +140,7 @@ class TestCreateVolunteerExperience:
         })
         assert res.status_code == 201
         data = res.json()
-        assert data["event_id"] is None
+        assert data["event"] is None
         assert data["notes"]["event"] == "Custom Event Name"
 
     def test_event_id_and_notes_event_mutually_exclusive(self, client, td_user, event):
