@@ -12,6 +12,35 @@ import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { CompetitionExperienceSection, VolunteerExperienceSection } from "@/components/profile/sections/ExperienceSections";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
+import Link from "next/link";
+import { IconEdit } from "@/components/ui/Icons";
+
+
+interface FloatingEditButtonProps {
+  profileId: string | number;
+}
+
+export function FloatingEditButton({ profileId }: FloatingEditButtonProps) {
+  return (
+    <Link
+      href={`/profile/${profileId}/edit`}
+      style={{
+        position: "fixed", bottom: "32px", right: "32px",
+        width: "52px", height: "52px", borderRadius: "50%",
+        background: "var(--color-accent)", color: "var(--color-text-inverse)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        boxShadow: "var(--shadow-lg)", textDecoration: "none",
+        transition: "transform 0.15s ease",
+        zIndex: 50,
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.06)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+    >
+      <IconEdit size={20} />
+    </Link>
+  );
+}
+
 
 export default function ProfilePage() {
   const { user: currentUser, loading: authLoading } = useAuth();
@@ -78,6 +107,9 @@ export default function ProfilePage() {
         )}
         <ProfileCard><LogisticsSection user={profile} /></ProfileCard>
       </div>
+      {currentUser?.id === profile.id && (
+        <FloatingEditButton profileId={profile.id} />
+      )}
     </div>
   );
 }
