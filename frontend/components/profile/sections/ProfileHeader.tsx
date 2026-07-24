@@ -1,17 +1,15 @@
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { formatPhone } from "@/lib/auth";
 
 interface ProfileHeaderUser {
   first_name?: string | null;
   last_name?: string | null;
   email: string;
+  phone: string | null;
   pronouns?: string | null;
 }
 
-interface ProfileHeaderProps {
-  user: ProfileHeaderUser;
-}
-
-export function ProfileHeader({ user }: ProfileHeaderProps) {
+export function ProfileHeader({ user }: { user: ProfileHeaderUser }) {
   const fullName =
     user.first_name && user.last_name
       ? `${user.first_name} ${user.last_name}`
@@ -35,6 +33,22 @@ export function ProfileHeader({ user }: ProfileHeaderProps) {
             {user.pronouns}
           </div>
         )}
+        <div style={{
+          display: "flex", flexDirection: "row", alignItems: "center", gap: "10px",
+          marginTop: "10px",
+        }}>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            {user.email}
+          </span>
+          {user.phone && (
+            <>
+              <span style={{ width: "1px", height: "12px", background: "var(--color-border)" }} />
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                {formatPhone(user.phone)}
+              </span>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
