@@ -19,9 +19,14 @@ settings = get_settings()
 async def lifespan(app: FastAPI):
     import os
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
+        from app.db.session import SessionLocal
+        from app.db.seed_canon_events import seed_events_and_categories
+
+        with SessionLocal() as db:
+            seed_events_and_categories(db)  # always — dev + prod
+
         if get_settings().app_env in ("development", "preview"):
             init_db()
-            from app.db.session import SessionLocal
             with SessionLocal() as db:
                 seed_dev_data(db)
     yield
