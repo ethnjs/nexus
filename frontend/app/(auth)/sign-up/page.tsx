@@ -19,8 +19,8 @@ import {
   EmployerField, YesNoField, ShirtSizeField, DietaryRestrictionField,
 } from "@/components/profile/ProfileFields"
 import { 
-  CompetitionExperienceTable, CompetitionExperienceDraft, isCompetitionRowValid,
-  VolunteerExperienceTable, VolunteerExperienceDraft, isVolunteerRowValid
+  CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, isCompetitionRowValid,
+  VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, isVolunteerRowValid
 } from "@/components/profile/ExperienceTables"
 import { useFormattedInputChange } from "@/lib/useFormattedInput"
 
@@ -418,7 +418,7 @@ export default function SignUpPage() {
       )}
 
       {state >= STATE.DATE_OF_BIRTH && (
-        <section style={{ maxWidth: '760px', width: '100%', margin: '20px 0px'}}>
+        <section style={{ maxWidth: '900px', width: '100%', margin: '20px 0px'}}>
           {showVerifyModal && <VerifyModal />}
           <ProfileCard>
             <div style={{ marginBottom: '10px', textAlign: 'center' }}>
@@ -627,7 +627,7 @@ export default function SignUpPage() {
                   }}
                   isActive={state === STATE.COMPETITION_EXP}
                 >
-                  <CompetitionExperienceTable value={competitionRows} onChange={setCompetitionRows} events={events} />
+                  <CompetitionExperienceSpreadsheet mode="edit" rows={competitionRows} onChange={setCompetitionRows} events={events} />
                   {errors.competition_exp && (
                     <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginTop: '6px' }}>
                       {errors.competition_exp}
@@ -673,7 +673,7 @@ export default function SignUpPage() {
                   }}
                   isActive={state === STATE.VOLUNTEERING_EXP}
                 >
-                  <VolunteerExperienceTable value={volunteerRows} onChange={setVolunteerRows} events={events} />
+                  <VolunteerExperienceSpreadsheet mode="edit" rows={volunteerRows} onChange={setVolunteerRows} events={events} />
                   {errors.volunteering_exp && (
                     <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginTop: '6px' }}>
                       {errors.volunteering_exp}

@@ -3,19 +3,15 @@
 import { forwardRef, InputHTMLAttributes, useId } from 'react'
 
 type InputFont = 'sans' | 'mono' | 'serif'
+type InputSize = 'sm' | 'md'
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?:     string
   error?:     string
   helper?:    string
   fullWidth?: boolean
-  /**
-   * Font family for the input field.
-   * "sans" (default) — var(--font-sans)
-   * "mono"           — var(--font-mono)
-   * "serif"          — var(--font-serif)
-   */
   font?:      InputFont
+  size?:      InputSize
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -24,10 +20,16 @@ const FONT_MAP: Record<InputFont, string> = {
   serif: 'var(--font-serif)',
 }
 
+const SIZE_MAP: Record<InputSize, { height: string; paddingX: string; fontSize: string }> = {
+  sm: { height: '32px', paddingX: '10px', fontSize: '13px' },
+  md: { height: '44px', paddingX: '16px', fontSize: '14px' },
+}
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', className = '', id, value, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', className = '', id, value, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
+    const sizing = SIZE_MAP[size]
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: fullWidth ? '100%' : undefined }}>
@@ -48,11 +50,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={inputId}
           style={{
-            height: '44px',
-            paddingLeft: '16px',
-            paddingRight: '16px',
+            height: sizing.height,
+            paddingLeft: sizing.paddingX,
+            paddingRight: sizing.paddingX,
             fontFamily: FONT_MAP[font],
-            fontSize: '14px',
+            fontSize: sizing.fontSize,
             background: 'var(--color-surface)',
             color: 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
