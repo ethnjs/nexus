@@ -1,5 +1,48 @@
 @import "tailwindcss";
 
+/* Tailwind v4 reads tokens from here (not tailwind.config.ts, which v4 never
+   auto-loads). @theme both generates the utility classes below AND publishes
+   these as real --color-* etc. CSS vars at :root, so existing inline
+   style={{ color: 'var(--color-success)' }} code keeps working unchanged. */
+@theme {
+  --color-surface:       #FFFFFF;
+  --color-border:        #E2E2DE;
+  --color-border-strong: #C8C8C2;
+
+  --color-accent:        #0A0A0A;
+  --color-accent-subtle: #F0F0EC;
+
+  --color-danger:        #E53E3E;
+  --color-danger-subtle: #FFF5F5;
+
+  --color-success:        #22C55E;
+  --color-success-subtle: #F0FDF4;
+
+  /* aliased, not literal — var(--color-text-*) is used directly in 30+
+     inline styles across the app, so that name has to keep existing */
+  --color-primary:   var(--color-text-primary);
+  --color-secondary: var(--color-text-secondary);
+  --color-tertiary:  var(--color-text-tertiary);
+  --color-inverse:   var(--color-text-inverse);
+
+  --font-sans:  'Geist', system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono:  'Geist Mono', 'Courier New', monospace;
+
+  --text-2xs:             11px;
+  --text-2xs--line-height: 16px;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
+  --shadow-md: 0 2px 8px 0 rgba(0,0,0,0.08), 0 1px 2px 0 rgba(0,0,0,0.04);
+  --shadow-lg: 0 8px 24px 0 rgba(0,0,0,0.10), 0 2px 4px 0 rgba(0,0,0,0.06);
+
+  --duration-base: 150ms;
+}
+
 /* Geist fonts via NPM-hosted CDN */
 @font-face {
   font-family: 'Geist';
@@ -91,27 +134,17 @@
    Design tokens
    ------------------------------------------------------------------------- */
 :root {
-  /* Colors */
-  --color-bg:            #F7F7F5;
-  --color-surface:       #FFFFFF;
-  --color-border:        #E2E2DE;
-  --color-border-strong: #C8C8C2;
+  /* Colors not consumed as Tailwind utility classes — see @theme above
+     for the ones that are (accent, border, success, danger, text-*, etc.) */
+  --color-bg:           #F7F7F5;
+  --color-accent-hover: #2A2A2A;
 
   --color-text-primary:   #0A0A0A;
   --color-text-secondary: #6B6B65;
   --color-text-tertiary:  #9B9B93;
   --color-text-inverse:   #FFFFFF;
 
-  --color-accent:        #0A0A0A;
-  --color-accent-hover:  #2A2A2A;
-  --color-accent-subtle: #F0F0EC;
-
-  --color-danger:              #E53E3E;
-  --color-danger-subtle:       #FFF5F5;
-  --color-danger-subtle-hover: #FEEAEA;
-  
-  --color-success:              #22C55E;
-  --color-success-subtle:       #F0FDF4;
+  --color-danger-subtle-hover:  #FEEAEA;
   --color-success-subtle-hover: #E6FAF0;
 
   --color-warning:              #EAB308;
@@ -125,15 +158,6 @@
   --color-status-assigned:   #1D4ED8;
   --color-status-removed:    #9B9B93;
 
-  /* Typography
-     --font-mono      → Geist Mono   (body text, inputs, data values, code)
-     --font-sans      → Geist Sans   (UI labels, buttons, nav, subheadings)
-     --font-serif     → Georgia      (h1, h2, hero, wordmarks)
-  */
-  --font-mono:  'Geist Mono', 'Courier New', monospace;
-  --font-sans:  'Geist', system-ui, sans-serif;
-  --font-serif: Georgia, serif;
-
   /* Spacing scale */
   --space-1:  4px;
   --space-2:  8px;
@@ -145,16 +169,6 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
-
-  /* Radius */
-  --radius-sm: 3px;
-  --radius-md: 6px;
-  --radius-lg: 10px;
-
-  /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,0.05);
-  --shadow-md: 0 2px 8px 0 rgba(0,0,0,0.08), 0 1px 2px 0 rgba(0,0,0,0.04);
-  --shadow-lg: 0 8px 24px 0 rgba(0,0,0,0.10), 0 2px 4px 0 rgba(0,0,0,0.06);
 
   /* Transitions */
   --transition-fast: 100ms ease;
@@ -169,10 +183,12 @@
 /* -------------------------------------------------------------------------
    Base reset & typography
    ------------------------------------------------------------------------- */
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
 }
 
 html {
@@ -247,8 +263,6 @@ input, textarea, select {
 .font-serif     { font-family: var(--font-serif); }
 .font-sans      { font-family: var(--font-sans); }
 .font-mono      { font-family: var(--font-mono); }
-.text-secondary { color: var(--color-text-secondary); }
-.text-tertiary  { color: var(--color-text-tertiary); }
 
 .divider {
   height: 1px;
