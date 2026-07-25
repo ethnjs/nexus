@@ -46,7 +46,7 @@ ACCESS_TOKEN_EXPIRE_DAYS = 7
 def create_access_token(user_id: int) -> str:
     settings = get_settings()
     expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(user_id), "exp": expire}
+    payload = {"sub": str(user_id), "exp": expire, "aud": "session"}
     return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
 
 
@@ -54,7 +54,7 @@ def decode_access_token(token: str) -> Optional[int]:
     """Returns user_id from a valid token, or None if invalid/expired."""
     settings = get_settings()
     try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM])
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM], audience="session")
         user_id = payload.get("sub")
         if user_id is None:
             return None
