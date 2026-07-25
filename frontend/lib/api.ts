@@ -95,6 +95,7 @@ interface UserBase {
 export interface User extends UserBase {
   id:                  number
   
+  email_verified:      boolean
   role:                ROLE
   is_active:           boolean
 
@@ -119,6 +120,8 @@ export const authApi = {
   logout: ()                               => api.post<void>('/auth/logout/', {}),
   me: ()                                   => api.get<User>('/auth/me/'),
   register: (body: AuthRegister)           => api.post<User>('/auth/register/', body),
+  verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
+  sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
 }
 
 

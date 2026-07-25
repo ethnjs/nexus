@@ -4,19 +4,12 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user, require_admin
 from app.core.permissions import MANAGE_TOURNAMENT, MANAGE_VOLUNTEERS, has_permission
-from app.core.users import check_if_email_exists
+from app.core.users import check_if_email_exists, find_user_by_id
 from app.db.session import get_db
 from app.models.models import Membership, User
 from app.schemas.user import UserResponse, UserUpdate, AdminUserUpdate
 
 router = APIRouter(tags=["users"])
-
-def _find_user_by_id(db: Session, id: int) -> User:
-    user = db.query(User).filter(User.id == id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
-
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +67,7 @@ def admin_update_user(
     _: User = Depends(require_admin)
 ):
     """Admin can only update a user's role and is_active status."""
-    user = _find_user_by_id(db, user_id)
+    user = find_user_by_id(db, user_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(user, field, value)
     db.commit()

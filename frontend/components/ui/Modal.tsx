@@ -3,7 +3,7 @@
 import { ReactNode, useEffect } from 'react'
 
 interface ModalProps {
-  title: string
+  title?: string
   onClose: () => void
   children: ReactNode
   width?: number
@@ -41,14 +41,16 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{
-          fontFamily: 'Georgia, serif',
-          fontSize: '22px',
-          color: 'var(--color-text-primary)',
-          marginBottom: '20px',
-        }}>
-          {title}
-        </h2>
+        {title && (
+          <h2 style={{
+            fontFamily: 'var(--font-serif)',
+            fontSize: '22px',
+            color: 'var(--color-text-primary)',
+            marginBottom: '20px',
+          }}>
+            {title}
+          </h2>
+        )}
         {children}
       </div>
     </div>

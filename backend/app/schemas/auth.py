@@ -76,3 +76,7 @@ class AdminRegisterRequest(BaseModel):
     first_name: str
     last_name: str
     role: Literal["admin", "user"]
+
+
+class MessageResponse(BaseModel):
+    detail: str

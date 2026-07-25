@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
 import { RadioOption } from "@/components/ui/RadioOption"
 import { Textarea } from "@/components/ui/Textarea"
+import { Modal } from "@/components/ui/Modal"
 
 
 
@@ -60,6 +61,20 @@ function clearCookie() {
   document.cookie = "inSignUpFlow=; path=/; max-age=0"
 }
 
+const STATE = {
+  ACCOUNT: 1,
+  STUDENT_STATUS: 2,
+  UNIVERSITY: 3,
+  EMPLOYER: 4,
+  COMPETED_BEFORE: 5,
+  COMPETITION_EXP: 6,
+  VOLUNTEERED_BEFORE: 7,
+  VOLUNTEERING_EXP: 8,
+  SHIRT_SIZE: 9,
+  DIETARY_RESTRICTIONS: 10,
+  DIETARY_TEXT: 11,
+  COMPLETE: 12,
+} as const
 
 export default function SignUpPage() {
   // ── Sign-up step states ──────────────────────────────────────────────────
@@ -76,7 +91,7 @@ export default function SignUpPage() {
   // 11  Dietary restriction text
   // 12  Complete button activated
   // ────────────────────────────────────────────────────────────────────────
-  const [state, setState] = useState(1)
+  const [state, setState] = useState<number>(STATE.ACCOUNT)
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -95,6 +110,7 @@ export default function SignUpPage() {
     confirm: boolean
   }>({ length: false, upper: false, lower: false, number: false, symbol: false, confirm: false })
 
+  const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   const [profileData, setProfileData] = useState<{
     student_status?: STUDENT_STATUS
@@ -144,7 +160,7 @@ export default function SignUpPage() {
     authApi.me().then(user => {
       if (document.cookie.includes("inSignUpFlow")) {
         setUser(user)
-        setState(2)
+        setState(STATE.STUDENT_STATUS)
       } else {
         router.push('/dashboard')
       }
@@ -182,7 +198,9 @@ export default function SignUpPage() {
 
       setCookie()
 
-      setState(2)
+      authApi.sendEmailVerification().then(() => {
+        setShowVerifyModal(true)
+      }).catch(() => {}).finally(() => setState(STATE.STUDENT_STATUS))
     } catch (error: unknown) {
       if (error instanceof ApiError) {
         setErrors({ form1: error.message })
@@ -192,6 +210,21 @@ export default function SignUpPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  function VerifyModal() {
+    return (
+      <Modal onClose={() => {}}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
+          <IconCheckCircleSolid style={{ color: 'var(--color-success)', marginBottom: '20px' }} size={72} />
+          <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '10px' }}>
+            Your account was created successfully
+          </h2>
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', marginBottom: '10px' }}>We sent a verification link to {user?.email ?? email}</p>
+          <Button fullWidth onClick={() => setShowVerifyModal(false)}>Got it!</Button>
+        </div>
+      </Modal>
+    )
   }
 
   async function handleProfileSubmit(e: React.SyntheticEvent) {
@@ -242,7 +275,7 @@ export default function SignUpPage() {
 
   return (
     <>
-      {state === 1 && (
+      {state === STATE.ACCOUNT && (
           <section style={{ maxWidth: '420px', width: '100%' }}>
           <div style={{ marginBottom: '5px' }}>
             <button onClick={() => router.push('/')} className="link-subtle" style={{
@@ -272,7 +305,7 @@ export default function SignUpPage() {
             }}>Sign Up</h2>
           </div>
 
-          <form onSubmit={handleRegisterSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <form onSubmit={handleRegisterSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
             <Input
               label="First Name"
               type="text"
@@ -365,11 +398,7 @@ export default function SignUpPage() {
 
             <div>
               {errors.form1 && (
-                <p style={{
-                  fontFamily: 'var(--font-sans)',
-                  fontSize: '14px',
-                  color: 'var(--color-danger)'
-                }}>
+                <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-danger)' }}>
                   {errors.form1}
                 </p>
               )}
@@ -378,8 +407,10 @@ export default function SignUpPage() {
         </section>
       )}
 
-      {state >= 2 && (
+      {state >= STATE.STUDENT_STATUS && (
         <section style={{ maxWidth: '600px', width: '100%', margin: '20px 0px'}}>
+          {showVerifyModal && <VerifyModal />}
+
           <div style={{ marginBottom: '10px' }}>
             <h1 style={{
               fontFamily: 'var(--font-serif)',
@@ -396,21 +427,21 @@ export default function SignUpPage() {
               color: 'var(--color-text-primary)'
             }}>Complete Your Profile</h2>
           </div>
-          
+
           <form onSubmit={handleProfileSubmit} noValidate>
             <ProfileQuestion
               question="What is your student status?"
-              onSkip={() => setState(5)}
-              isActive={state === 2}
+              onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
+              isActive={state === STATE.STUDENT_STATUS}
             ><Select
                 value={profileData.student_status ?? ''}
                 onChange={v => {
                   setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
-                  if (state >= 5) return
+                  if (state >= (STATE.STUDENT_STATUS + 3)) return
                   if (v === 'Undergraduate' || v === 'Graduate') {
-                    setState(3)
+                    setState(STATE.UNIVERSITY)
                   } else if (v === 'Non-Student') {
-                    setState(4)
+                    setState(STATE.EMPLOYER)
                   }
                 }}
                 options={[
@@ -421,8 +452,8 @@ export default function SignUpPage() {
                 fullWidth
               />
             </ProfileQuestion>
-            
-            { state >= 3 && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
+
+            { state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
               <div>
                 <ProfileQuestion question="What university do you attend?">
                   <Input
@@ -468,7 +499,7 @@ export default function SignUpPage() {
                   question="What is your projected graduation year?"
                   onSkip={() => {
                     setProfileData(d => ({...d, university: undefined, major: undefined, year_level: undefined, graduation_year: undefined}))
-                    setState(5)
+                    setState(STATE.UNIVERSITY + 2)
                   }}
                   onNext={() => {
                     const ers: typeof errors = {}
@@ -481,9 +512,9 @@ export default function SignUpPage() {
                     else if (profileData.graduation_year < 1000 || profileData.graduation_year > 9999)
                       ers.graduation_year = "Must be a valid year."
 
-                    Object.keys(ers).length > 0 ? setErrors(er => ({...er, ...ers})) : setState(5)
+                    Object.keys(ers).length > 0 ? setErrors(er => ({...er, ...ers})) : setState(STATE.UNIVERSITY + 2)
                   }}
-                  isActive={state === 3}
+                  isActive={state === STATE.UNIVERSITY}
                 ><Input
                       type="text"
                       value={profileData.graduation_year}
@@ -499,14 +530,14 @@ export default function SignUpPage() {
               </div>
             )}
 
-            {state >= 4 && profileData.student_status === "Non-Student" && (
+            {state >= STATE.EMPLOYER && profileData.student_status === "Non-Student" && (
               <ProfileQuestion
                 question="Who is your employer?"
-                onSkip={() => setState(5)}
+                onSkip={() => setState(STATE.COMPETED_BEFORE)}
                 onNext={() => {
-                  !profileData.employer ? setErrors(er => ({...er, employer: "Cannot be empty."})) : setState(5)
+                  !profileData.employer ? setErrors(er => ({...er, employer: "Cannot be empty."})) : setState(STATE.COMPETED_BEFORE)
                 }}
-                isActive={state === 4}
+                isActive={state === STATE.EMPLOYER}
               ><Input
                     type="text"
                     value={profileData.employer}
@@ -519,35 +550,35 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 5 && (
+            {state >= STATE.COMPETED_BEFORE && (
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
                 onSkip={() => {
-                  setState(7)
+                  setState(STATE.COMPETED_BEFORE + 2)
                 }}
-                isActive={state === 5}
+                isActive={state === STATE.COMPETED_BEFORE}
               ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption 
+                <RadioOption
                   name="competed"
                   value="yes"
                   checked={competedBefore === true}
                   onChange={() => {
                     setCompetedBefore(true)
-                    if (state >= 7) return
-                    setState(6)
+                    if (state >= STATE.COMPETED_BEFORE + 2) return
+                    setState(STATE.COMPETITION_EXP)
                   }}
                   label="Yes"
                   showCircle={false}
                   solid
                 />
-                <RadioOption 
+                <RadioOption
                   name="competed"
                   value="no"
                   checked={competedBefore === false}
-                  onChange={() => { 
+                  onChange={() => {
                     setCompetedBefore(false)
-                    if (state >= 7) return
-                    setState(7) 
+                    if (state >= STATE.COMPETED_BEFORE + 2) return
+                    setState(STATE.COMPETED_BEFORE + 2)
                   }}
                   label="No"
                   showCircle={false}
@@ -557,18 +588,18 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 6 && competedBefore && (
+            {state >= STATE.COMPETITION_EXP && competedBefore && (
               <ProfileQuestion
                 question="List your competition experience."
                 onSkip={() => {
                   setCompetedBefore(null)
-                  setState(7)
+                  setState(STATE.VOLUNTEERED_BEFORE)
                 }}
                 onNext={() => {
                   !profileData.competition_exp ? setErrors(er => ({...er, competition_exp: "Cannot be empty."}))
-                    : setState(7)
+                    : setState(STATE.VOLUNTEERED_BEFORE)
                 }}
-                isActive={state === 6}
+                isActive={state === STATE.COMPETITION_EXP}
               ><Textarea
                     value={profileData.competition_exp}
                     onChange={e => {
@@ -580,35 +611,35 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 7 && (
+            {state >= STATE.VOLUNTEERED_BEFORE && (
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
                 onSkip={() => {
-                  setState(9)
+                  setState(STATE.SHIRT_SIZE)
                 }}
-                isActive={state === 7}
+                isActive={state === STATE.VOLUNTEERED_BEFORE}
               ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption 
+                <RadioOption
                   name="volunteered"
                   value="yes"
                   checked={volunteeredBefore === true}
                   onChange={() => {
                     setVolunteeredBefore(true)
-                    if (state >= 9) return
-                    setState(8)
+                    if (state >= STATE.SHIRT_SIZE) return
+                    setState(STATE.VOLUNTEERING_EXP)
                   }}
                   label="Yes"
                   showCircle={false}
                   solid
                 />
-                <RadioOption 
+                <RadioOption
                   name="volunteered"
                   value="no"
                   checked={volunteeredBefore === false}
                   onChange={() => {
                     setVolunteeredBefore(false)
-                    if (state >= 9) return
-                    setState(9) 
+                    if (state >= STATE.SHIRT_SIZE) return
+                    setState(STATE.SHIRT_SIZE)
                   }}
                   label="No"
                   showCircle={false}
@@ -618,18 +649,18 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 8 && volunteeredBefore && (
+            {state >= STATE.VOLUNTEERING_EXP && volunteeredBefore && (
               <ProfileQuestion
                 question="List your volunteer experience."
                 onSkip={() => {
                   setVolunteeredBefore(null)
-                  setState(9)
+                  setState(STATE.SHIRT_SIZE)
                 }}
                 onNext={() => {
                   !profileData.volunteering_exp ? setErrors(er => ({...er, volunteering_exp: "Cannot be empty."}))
-                    : setState(9)
+                    : setState(STATE.SHIRT_SIZE)
                 }}
-                isActive={state === 8}
+                isActive={state === STATE.VOLUNTEERING_EXP}
               ><Textarea
                     value={profileData.volunteering_exp}
                     onChange={e => {
@@ -641,24 +672,24 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 9 && (
+            {state >= STATE.SHIRT_SIZE && (
               <ProfileQuestion
                 question="What is your shirt size?"
                 onSkip={() => {
                   setProfileData(d => ({...d, shirt_size: undefined}))
-                  setState(10)
+                  setState(STATE.DIETARY_RESTRICTIONS)
                 }}
-                isActive={state === 9}
+                isActive={state === STATE.SHIRT_SIZE}
               ><div style={{ display: 'flex', gap: '8px' }}>
                 {["XS", "S", "M", "L", "XL", "XXL"].map(size => (
-                  <RadioOption 
+                  <RadioOption
                     name="shirt"
                     value={size}
                     key={size}
                     checked={profileData.shirt_size === size}
                     onChange={() => {
                       setProfileData(d => ({...d, shirt_size: size as SHIRT_SIZE}))
-                      if (state === 9) setState(10)
+                      if (state === STATE.SHIRT_SIZE) setState(STATE.DIETARY_RESTRICTIONS)
                     }}
                     label={size}
                     showCircle={false}
@@ -669,35 +700,35 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 10 && (
+            {state >= STATE.DIETARY_RESTRICTIONS && (
               <ProfileQuestion
                 question="Do you have any dietary restrictions?"
                 onSkip={() => {
-                  setState(12)
+                  setState(STATE.COMPLETE)
                 }}
-                isActive={state === 10}
+                isActive={state === STATE.DIETARY_RESTRICTIONS}
               ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption 
+                <RadioOption
                   name="dietary"
                   value="yes"
                   checked={hasDietary === true}
                   onChange={() => {
                     setHasDietary(true)
-                    if (state >= 12) return
-                    setState(11)
+                    if (state >= STATE.COMPLETE) return
+                    setState(STATE.DIETARY_TEXT)
                   }}
                   label="Yes"
                   showCircle={false}
                   solid
                 />
-                <RadioOption 
+                <RadioOption
                   name="dietary"
                   value="no"
                   checked={hasDietary === false}
                   onChange={() => {
                     setHasDietary(false)
-                    if (state >= 12) return
-                    setState(12) 
+                    if (state >= STATE.COMPLETE) return
+                    setState(STATE.COMPLETE)
                   }}
                   label="No"
                   showCircle={false}
@@ -707,18 +738,18 @@ export default function SignUpPage() {
               </ProfileQuestion>
             )}
 
-            {state >= 11 && hasDietary && (
+            {state >= STATE.DIETARY_TEXT && hasDietary && (
               <ProfileQuestion
                 question="List your dietary restrictions."
                 onSkip={() => {
                   setHasDietary(null)
-                  setState(12)
+                  setState(STATE.COMPLETE)
                 }}
                 onNext={() => {
                   !profileData.dietary_restriction ? setErrors(er => ({...er, dietary_restriction: "Cannot be empty."}))
-                    : setState(12)
+                    : setState(STATE.COMPLETE)
                 }}
-                isActive={state === 11}
+                isActive={state === STATE.DIETARY_TEXT}
               ><Textarea
                     value={profileData.dietary_restriction}
                     onChange={e => {
@@ -742,7 +773,7 @@ export default function SignUpPage() {
                 type="submit"
                 variant="primary"
                 size="lg"
-                disabled={state !== 12}
+                disabled={state !== STATE.COMPLETE}
                 loading={loading}
                 fullWidth
               >Complete</Button>
