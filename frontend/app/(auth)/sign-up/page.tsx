@@ -149,7 +149,7 @@ export default function SignUpPage() {
         router.push('/dashboard')
       }
     }).catch(() => {})
-  })
+  }, [])
 
   async function handleRegisterSubmit(e: React.SyntheticEvent) {
     e.preventDefault()
