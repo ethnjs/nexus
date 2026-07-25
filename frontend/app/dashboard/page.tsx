@@ -1,28 +1,40 @@
-"use client";
+"use client"
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { tournamentsApi, eventsApi, membershipsApi, Tournament } from "@/lib/api";
-import { NewTournamentModal } from "@/components/ui/NewTournamentModal";
-import { Topbar } from "@/components/layout/Topbar";
-import { Button } from "@/components/ui/Button";
-import { IconPlus, IconCalendar, IconLocation } from "@/components/ui/Icons";
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { tournamentsApi, eventsApi, membershipsApi, Tournament, User, authApi, ApiError } from "@/lib/api"
+import { NewTournamentModal } from "@/components/ui/NewTournamentModal"
+import { Topbar } from "@/components/layout/Topbar"
+import { Banner, BannerProps } from "@/components/ui/Banner"
+import { Button } from "@/components/ui/Button"
+import { IconPlus, IconCalendar, IconLocation } from "@/components/ui/Icons"
+import { useAuth } from "@/lib/useAuth"
+import { Tooltip, TooltipStatus } from "@/components/ui/Tooltip"
+
+
+
+interface BannerRule extends Omit<BannerProps, 'onDismiss'> {
+  id: number
+  condition: (user: User) => boolean
+  snoozeDays: number
+}
+
 
 // ─── Tournament Card ──────────────────────────────────────────────────────────
 
-interface CardCounts { events: number | null; volunteers: number | null; }
+interface CardCounts { events: number | null; volunteers: number | null }
 
 function TournamentCard({ tournament, counts, onClick }: { tournament: Tournament; counts: CardCounts; onClick: () => void }) {
-  const [hovered, setHovered] = useState(false);
+  const [hovered, setHovered] = useState(false)
 
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 
   const dateRange = tournament.start_date
     ? tournament.end_date && tournament.end_date !== tournament.start_date
       ? `${fmt(tournament.start_date)} – ${fmt(tournament.end_date)}`
       : fmt(tournament.start_date)
-    : null;
+    : null
 
   return (
     <button
@@ -73,38 +85,103 @@ function TournamentCard({ tournament, counts, onClick }: { tournament: Tournamen
         </div>
       </div>
     </button>
-  );
+  )
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+
+
 export default function DashboardPage() {
-  const router = useRouter();
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [counts, setCounts]           = useState<Record<number, CardCounts>>({});
-  const [loading, setLoading]         = useState(true);
-  const [showModal, setShowModal]     = useState(false);
+  const router = useRouter()
+  const [tournaments, setTournaments] = useState<Tournament[]>([])
+  const [counts, setCounts]           = useState<Record<number, CardCounts>>({})
+  const [loading, setLoading]         = useState<Record<string, boolean>>({"page": true})
+  const [showModal, setShowModal]     = useState(false)
+
+  const [dismissedBanners, setDismissedBanners] = useState<Record<number, string>>(() => {
+    const dismissed = typeof window !== "undefined" ? localStorage.getItem("dismissedBanners") : "{}"
+    if (!dismissed) return {}
+    try {
+      return JSON.parse(dismissed)
+    } catch {
+      return {}
+    }
+  })
+
+  const [tooltipStatus, setTooltipStatus] = useState<Record<string, TooltipStatus>>({"resendEmail": 'idle'})
+  const [errors, setErrors] = useState<Record<string, string>>({})
+
+  const user = useAuth().user
+
+  const resendEmailTooltipMessages: Partial<Record<TooltipStatus, string | undefined>> = {
+    'success': "Email sent successfully. Please check your inbox.",
+    'error': errors["resendEmail"] ?? undefined
+  }
+
+  const bannerRules: BannerRule[] = [
+    {id: 1, variant: "warning", message: "Please verify your email address", 
+      condition: user => !user.email_verified, snoozeDays: 1,
+      action: <Tooltip
+        status={tooltipStatus["resendEmail"]}
+        message={resendEmailTooltipMessages}
+      ><Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            setLoading(l => ({...l, "verify-email": true}))
+            authApi.sendEmailVerification().then(() => setTooltipStatus(s => ({...s, "resendEmail": 'success'}))).catch(err => {
+              const message = err instanceof ApiError ? err.message : "Something went wrong"
+              setTooltipStatus(s => ({...s, "resendEmail": 'error'}))
+              setErrors({"resendEmail": message})
+            }).finally(() => setLoading(l => ({...l, "verify-email": false})))
+          }}
+          loading={loading["verify-email"]}
+        >Resend Email</Button>
+      </Tooltip>
+    },
+    {id: 2, variant: "warning", message: "Your profile is incomplete",
+      condition: user => user.missing_profile_fields.length > 0, snoozeDays: 3,
+      action: <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => router.push('/dashboard')} // temp for now, will push to profile later
+      >Complete Profile</Button>
+    }
+  ]
+
+  const activeBanners = bannerRules.filter(e => {
+    if (!user) return false
+    return e.condition(user) && (new Date(Date.now()).toISOString() >= (dismissedBanners[e.id] ?? ''))
+  })
+
+  
 
   useEffect(() => {
     tournamentsApi.list().then((data) => {
-      setTournaments(data);
-      setLoading(false);
+      setTournaments(data)
       data.forEach((t) => {
         Promise.all([
           eventsApi.listByTournament(t.id).then((e) => e.length).catch(() => 0),
           membershipsApi.listByTournament(t.id).then((m) => m.length).catch(() => 0),
         ]).then(([events, volunteers]) => {
-          setCounts((prev) => ({ ...prev, [t.id]: { events, volunteers } }));
-        });
-      });
-    }).catch(() => setLoading(false));
-  }, []);
+          setCounts((prev) => ({ ...prev, [t.id]: { events, volunteers } }))
+        })
+      })
+    }).catch(() => {}).finally(() => setLoading(l => ({...l, "page": false})))
+  }, [])
 
   function handleCreated(t: Tournament) {
-    setTournaments((prev) => [...prev, t]);
-    setCounts((prev) => ({ ...prev, [t.id]: { events: 0, volunteers: 0 } }));
-    setShowModal(false);
-    router.push(`/dashboard/${t.id}/overview`);
+    setTournaments((prev) => [...prev, t])
+    setCounts((prev) => ({ ...prev, [t.id]: { events: 0, volunteers: 0 } }))
+    setShowModal(false)
+    router.push(`/dashboard/${t.id}/overview`)
+  }
+
+  function dismissBanner(id: number, snoozeDays: number) {
+    const dismissed = {...dismissedBanners, [id]: new Date(Date.now() + snoozeDays * 24 * 60 * 60 * 1000).toISOString()}
+    setDismissedBanners(dismissed)
+    localStorage.setItem('dismissedBanners', JSON.stringify(dismissed))
   }
 
   return (
@@ -113,11 +190,25 @@ export default function DashboardPage() {
 
       <main style={{ flex: 1, overflowY: "auto", padding: "28px" }}>
         <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+          
+          {activeBanners.length > 0 && activeBanners.map(({ id, variant, message, action, snoozeDays }) => {
+            return (
+              <div key={id} style={{ marginBottom: '15px' }}>
+                <Banner
+                  variant={variant}
+                  message={message}
+                  action={action}
+                  onDismiss={() => dismissBanner(id, snoozeDays)}
+                />
+              </div>
+            )
+          })}
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
             <div>
               <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Tournaments</h1>
               <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)" }}>
-                {loading ? "" : tournaments.length === 0 ? "No tournaments yet" : `${tournaments.length} tournament${tournaments.length !== 1 ? "s" : ""}`}
+                {loading["page"] ? "" : tournaments.length === 0 ? "No tournaments yet" : `${tournaments.length} tournament${tournaments.length !== 1 ? "s" : ""}`}
               </p>
             </div>
             <Button variant="primary" size="md" onClick={() => setShowModal(true)}>
@@ -126,7 +217,7 @@ export default function DashboardPage() {
             </Button>
           </div>
 
-          {loading ? (
+          {loading["page"] ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
               {[1, 2, 3].map((i) => (
                 <div key={i} style={{ height: "180px", background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", opacity: 0.5 }} />
@@ -159,5 +250,5 @@ export default function DashboardPage() {
         <NewTournamentModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
       )}
     </div>
-  );
+  )
 }

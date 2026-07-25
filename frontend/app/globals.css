@@ -106,14 +106,17 @@
   --color-accent-hover:  #2A2A2A;
   --color-accent-subtle: #F0F0EC;
 
-  --color-danger:         #E53E3E;
-  --color-danger-subtle:  #FFF5F5;
+  --color-danger:              #E53E3E;
+  --color-danger-subtle:       #FFF5F5;
+  --color-danger-subtle-hover: #FEEAEA;
+  
+  --color-success:              #22C55E;
+  --color-success-subtle:       #F0FDF4;
+  --color-success-subtle-hover: #E6FAF0;
 
-  --color-success:        #22C55E;
-  --color-success-subtle: #F0FDF4;
-
-  --color-warning:        #EAB308;
-  --color-warning-subtle: #FEFCE8;
+  --color-warning:              #EAB308;
+  --color-warning-subtle:       #FEFCE8;
+  --color-warning-subtle-hover: #FDF8D0;
 
   /* Status badge colors — muted, desaturated */
   --color-status-interested: #6B6B65;

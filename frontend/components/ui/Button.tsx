@@ -68,8 +68,8 @@ const variantHoverBorderColor: Record<Variant, string | null> = {
 }
 
 const sizeStyles: Record<Size, React.CSSProperties> = {
-  sm: { height: '36px', padding: '0 14px', fontSize: '13px', gap: '7px' },
-  md: { height: '38px', padding: '0 16px', fontSize: '14px', gap: '8px' },
+  sm: { height: '28px', padding: '0 14px', fontSize: '12px', gap: '6px' },
+  md: { height: '36px', padding: '0 16px', fontSize: '14px', gap: '8px' },
   lg: { height: '48px', padding: '0 20px', fontSize: '15px', gap: '8px' },
 }
 

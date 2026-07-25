@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { User, STUDENT_STATUS, authApi, ApiError, SHIRT_SIZE, usersApi } from "@/lib/api"
 import { useRouter } from "next/navigation"
 import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
-import { IconArrowLeft, IconCheckCircleSolid, IconXCircleSolid } from "@/components/ui/Icons"
+import { IconArrowLeft, IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
@@ -216,7 +216,7 @@ export default function SignUpPage() {
     return (
       <Modal onClose={() => {}}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-          <IconCheckCircleSolid style={{ color: 'var(--color-success)', marginBottom: '20px' }} size={72} />
+          <IconCheckCircle style={{ color: 'var(--color-success)', marginBottom: '20px' }} size={72} />
           <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '10px' }}>
             Your account was created successfully
           </h2>
@@ -383,8 +383,8 @@ export default function SignUpPage() {
               ].map(({ key, label}) => (
                 <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {passwordChecks[key as keyof typeof passwordChecks]
-                    ? <IconCheckCircleSolid style={{ color: 'var(--color-success)' }} />
-                    : <IconXCircleSolid style={{ color: 'var(--color-danger)' }} />
+                    ? <IconCheckCircle style={{ color: 'var(--color-success)' }} />
+                    : <IconXCircle style={{ color: 'var(--color-danger)' }} />
                   }
                   <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px'}}>{label}</span>
                 </div>

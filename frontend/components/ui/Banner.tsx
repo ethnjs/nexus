@@ -1,11 +1,11 @@
 'use client'
 
 import { ReactNode } from 'react'
-import { IconErrorCircle, IconWarningBanner, IconCheckCircle } from '@/components/ui/Icons'
+import { IconXCircle, IconWarning, IconCheckCircle, IconInfo, IconX } from '@/components/ui/Icons'
 
 type BannerVariant = 'success' | 'error' | 'warning' | 'info'
 
-interface BannerProps {
+export interface BannerProps {
   variant: BannerVariant
   message: string
   /** Optional ReactNode rendered to the right of the message — e.g. a Button */
@@ -15,32 +15,35 @@ interface BannerProps {
 }
 
 const variantTokens: Record<BannerVariant, {
-  bg: string; border: string; iconColor: string; icon: ReactNode
+  bg: string; border: string; iconColor: string; icon: ReactNode; dismissHoverBg: string
 }> = {
   success: {
-    bg:        'var(--color-surface)',
-    border:    'var(--color-success)',
-    iconColor: 'var(--color-success)',
-    icon:      <IconCheckCircle size={15} />,
+    bg:             'var(--color-surface)',
+    border:         'var(--color-success)',
+    iconColor:      'var(--color-success)',
+    icon:           <IconCheckCircle size={20} />,
+    dismissHoverBg: 'rgba(34,197,94,0.12)',
   },
   error: {
-    bg:        'var(--color-danger-subtle)',
-    border:    'var(--color-danger)',
-    iconColor: 'var(--color-danger)',
-    icon:      <IconErrorCircle size={15} />,
+    bg:             'var(--color-danger-subtle)',
+    border:         'var(--color-danger)',
+    iconColor:      'var(--color-danger)',
+    icon:           <IconXCircle size={20} />,
+    dismissHoverBg: 'rgba(229,62,62,0.12)',
   },
   warning: {
-    bg:        'var(--color-warning-subtle)',
-    border:    'var(--color-warning)',
-    iconColor: 'var(--color-warning)',
-    icon:      <IconWarningBanner size={17} />,
+    bg:             'var(--color-warning-subtle)',
+    border:         'var(--color-warning)',
+    iconColor:      'var(--color-warning)',
+    icon:           <IconWarning size={20} />,
+    dismissHoverBg: 'rgba(234,179,8,0.12)',
   },
   info: {
-    bg:        'var(--color-surface)',
-    border:    'var(--color-border-strong)',
-    iconColor: 'var(--color-text-secondary)',
-    // info keeps a simple character since it's rarely used
-    icon:      <span style={{ fontSize: '13px', fontWeight: 700, lineHeight: 1 }}>ℹ</span>,
+    bg:             'var(--color-surface)',
+    border:         'var(--color-border-strong)',
+    iconColor:      'var(--color-text-secondary)',
+    icon:           <IconInfo size={20} />,
+    dismissHoverBg: 'rgba(0,0,0,0.06)',
   },
 }
 
@@ -66,7 +69,7 @@ export function Banner({ variant, message, action, onDismiss }: BannerProps) {
       {/* Message */}
       <span style={{
         fontFamily: 'var(--font-sans)',
-        fontSize:   '13px',
+        fontSize:   '14px',
         color:      'var(--color-text-primary)',
         flex:       1,
       }}>
@@ -85,20 +88,29 @@ export function Banner({ variant, message, action, onDismiss }: BannerProps) {
         <button
           onClick={onDismiss}
           style={{
-            background:  'none',
-            border:      'none',
-            cursor:      'pointer',
-            fontFamily:  'var(--font-sans)',
-            fontSize:    '12px',
-            color:       'var(--color-text-tertiary)',
-            padding:     '0 2px',
-            lineHeight:  1,
-            flexShrink:  0,
+            background:   'none',
+            border:       'none',
+            cursor:       'pointer',
+            color:        'var(--color-text-tertiary)',
+            width:        '28px',
+            height:       '28px',
+            padding:      '0',
+            borderRadius: 'var(--radius-sm)',
+            flexShrink:   0,
+            display:      'flex',
+            alignItems:   'center',
+            justifyContent: 'center',
           }}
-          onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)'; }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.color = 'var(--color-text-primary)';
+            e.currentTarget.style.background = t.dismissHoverBg;
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.color = 'var(--color-text-tertiary)';
+            e.currentTarget.style.background = 'none';
+          }}
         >
-          ✕
+          <IconX />
         </button>
       )}
     </div>
