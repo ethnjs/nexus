@@ -160,9 +160,10 @@ interface YesNoFieldProps {
   name: string
   value: boolean | null
   onChange: (value: boolean) => void
+  disabled?: boolean
 }
 
-export function YesNoField({ name, value, onChange }: YesNoFieldProps) {
+export function YesNoField({ name, value, onChange, disabled }: YesNoFieldProps) {
   return (
     <RadioGroup
       name={name}
@@ -174,6 +175,7 @@ export function YesNoField({ name, value, onChange }: YesNoFieldProps) {
       ]}
       showCircle={false}
       solid
+      disabled={disabled}
     />
   )
 }
