@@ -261,3 +261,12 @@ input, textarea, select {
   pointer-events: none;
   border-radius: inherit;
 }
+
+.link-subtle {
+  color: var(--color-text-secondary);
+  transition: color 150ms ease;
+}
+
+.link-subtle:hover {
+  color: var(--color-text-primary)
+}

@@ -39,7 +39,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       const data = await res.json()
       detail = data.detail ?? detail
     } catch {}
-    const message = typeof detail === 'string' ? detail : `HTTP ${res.status}`
+    
+    let message: string = `HTTP ${res.status}`
+
+    if (typeof detail === 'string') {
+      message = detail
+    } else if (Array.isArray(detail)) {
+      message = detail[0]["ctx"]?.reason ?? detail[0]["msg"]
+    }
+
     throw new ApiError(res.status, message, detail)
   }
 
@@ -53,35 +61,81 @@ export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
-  delete: <T>(path: string)               => request<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string)                => request<T>(path, { method: 'DELETE' }),
 }
 
 // -------------------------------------------------------------------------
 // Auth
 // -------------------------------------------------------------------------
-export interface AuthUser {
-  id:         number
+export type ROLE = "admin" | "user"
+export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
+export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
+
+interface UserBase {
+  email:               string
+  first_name:          string
+  last_name:           string
+  phone:               string | null
+
+  student_status:      STUDENT_STATUS | null
+  university:          string | null
+  major:               string | null
+  year_level:          number | null
+  graduation_year:     number | null
+
+  employer:            string | null
+
+  competition_exp:     string | null
+  volunteering_exp:    string | null
+
+  shirt_size:          SHIRT_SIZE | null
+  dietary_restriction: string | null
+}
+
+export interface User extends UserBase {
+  id:                  number
+  
+  role:                ROLE
+  is_active:           boolean
+
+  created_at:          string
+  updated_at:          string
+
+  missing_profile_fields: string[]
+}
+
+interface UserUpdate extends UserBase {}
+
+export interface AuthRegister {
   email:      string
-  first_name: string | null
-  last_name:  string | null
-  role:       'admin' | 'user'
-  is_active:  boolean
-  created_at: string
+  phone:      string
+  password:   string
+  first_name: string
+  last_name:  string
 }
 
 export const authApi = {
-  login: (email: string, password: string) =>
-    api.post<AuthUser>('/auth/login/', { email, password }),
-
-  logout: () =>
-    api.post<void>('/auth/logout/', {}),
-
-  me: () =>
-    api.get<AuthUser>('/auth/me/'),
-
-  register: (body: { email: string; password: string; first_name?: string; last_name?: string }) =>
-    api.post<AuthUser>('/auth/register/', body),
+  login: (email: string, password: string) => api.post<User>('/auth/login/', { email, password }),
+  logout: ()                               => api.post<void>('/auth/logout/', {}),
+  me: ()                                   => api.get<User>('/auth/me/'),
+  register: (body: AuthRegister)           => api.post<User>('/auth/register/', body),
 }
+
+
+// -------------------------------------------------------------------------
+// Users
+// -------------------------------------------------------------------------
+export const usersApi = {
+  list:       ()                                       => api.get<User[]>('/users/'),
+  get:        (id: number)                             => api.get<User>(`/users/${id}/`),
+  getByEmail: (email: string)                          => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
+  update:     (id: number, body: Partial<UserUpdate>)  => api.patch<User>(`/users/${id}/`, body),
+  updateMe:   (body: Partial<UserUpdate>)              => api.patch<User>('/users/me/', body),
+  delete:     (id: number)                             => api.delete<void>(`/users/${id}/`),
+  getForTournament: (tournamentId: number, userId: number) =>
+    api.get<User>(`/tournaments/${tournamentId}/users/${userId}/`),
+}
+
 
 // -------------------------------------------------------------------------
 // Tournaments
@@ -133,6 +187,7 @@ export const tournamentsApi = {
   delete: (id: number)                            => api.delete<void>(`/tournaments/${id}/`),
 }
 
+
 // -------------------------------------------------------------------------
 // Events — nested under /tournaments/{id}/events/
 // -------------------------------------------------------------------------
@@ -163,39 +218,6 @@ export const eventsApi = {
     api.patch<Event>(`/tournaments/${tournamentId}/events/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
-}
-
-// -------------------------------------------------------------------------
-// Users
-// -------------------------------------------------------------------------
-export interface User {
-  id:                  number
-  email:               string
-  first_name:          string | null
-  last_name:           string | null
-  phone:               string | null
-  shirt_size:          string | null
-  dietary_restriction: string | null
-  university:          string | null
-  major:               string | null
-  employer:            string | null
-  student_status:      string | null
-  competition_exp:     string | null
-  volunteering_exp:    string | null
-  role:                'admin' | 'user'
-  is_active:           boolean
-  created_at:          string
-  updated_at:          string
-}
-
-export const usersApi = {
-  list:       ()                                 => api.get<User[]>('/users/'),
-  get:        (id: number)                       => api.get<User>(`/users/${id}/`),
-  getByEmail: (email: string)                    => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
-  update:     (id: number, body: Partial<User>)  => api.patch<User>(`/users/${id}/`, body),
-  delete:     (id: number)                       => api.delete<void>(`/users/${id}/`),
-  getForTournament: (tournamentId: number, userId: number) =>
-    api.get<User>(`/tournaments/${tournamentId}/users/${userId}/`),
 }
 
 // -------------------------------------------------------------------------

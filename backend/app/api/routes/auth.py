@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
+from typing import Optional
 
 from app.core.auth import (
     create_access_token,
@@ -9,11 +10,13 @@ from app.core.auth import (
     require_admin,
 )
 from app.core.config import get_settings
+from app.core.users import check_if_email_exists
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.auth import LoginRequest, RegisterRequest, UserResponse
+from app.schemas.user import UserResponse
+from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter( tags=["auth"])
 
 COOKIE_NAME = "access_token"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
@@ -44,8 +47,33 @@ def _clear_auth_cookie(response: Response) -> None:
         domain=".ethanshih.com" if is_prod else None,
     )
 
+def _create_user(
+        db: Session,
+        email: str,
+        first_name: str,
+        last_name: str,
+        role: str,
+        phone: Optional[str] = None,
+        password: Optional[str] = None,
+        is_active: bool = True
+    ) -> User:
 
-@router.post("/login/", response_model=UserResponse)
+    user = User(
+        email=email.lower(),
+        phone=phone,
+        hashed_password=hash_password(password) if password else None,
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        is_active=is_active,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+    
+
+@router.post("/auth/login/", response_model=UserResponse)
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
@@ -74,47 +102,40 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     return user
 
 
-@router.post("/logout/", status_code=status.HTTP_200_OK)
+@router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
     _clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
 
-@router.get("/me/", response_model=UserResponse)
+@router.get("/auth/me/", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user)):
     """Return the currently authenticated user."""
     return current_user
 
 
-@router.post("/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(
-    body: RegisterRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
-):
+@router.post("/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
     """
-    Create a new user account.
-    Admin-only. All registered users get role="user".
-    Admin accounts are created directly in the DB or via a future
-    admin-promotion endpoint.
+    Public route to create a new user account.
+    All registered users get role="user".
     """
-    existing = db.query(User).filter(User.email == body.email.lower()).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Email already registered",
-        )
+    check_if_email_exists(db, body.email)
 
-    user = User(
-        email=body.email.lower(),
-        hashed_password=hash_password(body.password),
-        first_name=body.first_name,
-        last_name=body.last_name,
-        role="user",
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    user = _create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
+
+    token = create_access_token(user.id)
+    _set_auth_cookie(response, token)
+
     return user
+
+@router.post("/admin/auth/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
+    """
+    Admin only. Can create normal users and admin users. Password is excluded to allow the newly created user
+    to set their own.
+    """
+    check_if_email_exists(db, body.email)
+
+    return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)

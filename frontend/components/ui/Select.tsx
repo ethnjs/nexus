@@ -10,6 +10,9 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+// TODO(decision): SelectOption.value is string-only. Accepting string | number would require
+// changing SelectProps.value and onChange signature, propagating to all call sites.
+// Current workaround: convert numbers to string at the call site with String().
 export interface SelectOption {
   value:     string
   label:     string
@@ -39,6 +42,7 @@ interface SelectProps {
   options:      SelectItem[]
   label?:       string
   placeholder?: string
+  error?:       string
   disabled?:    boolean
   fullWidth?:   boolean
   /**
@@ -84,7 +88,8 @@ export function Select({
   onChange,
   options,
   label,
-  placeholder = 'Select…',
+  placeholder = 'Select...',
+  error,
   disabled = false,
   fullWidth = false,
   size = 'md',
@@ -216,7 +221,8 @@ export function Select({
 
   // ── Render ────────────────────────────────────────────────────────────────
 
-  const borderColor = focused && !open
+  // TODO: color-border-strong is too similar to color-border — focused state is barely visible
+  const borderColor = error ? 'var(--color-danger)' : focused && !open
     ? 'var(--color-border-strong)'
     : 'var(--color-border)'
 
@@ -254,7 +260,7 @@ export function Select({
             minWidth:       minWidth ? `${minWidth}px` : undefined,
             height:         `${height}px`,
             padding:        '0 10px',
-            fontFamily:     'var(--font-sans)',
+            fontFamily:     'var(--font-mono)',
             fontSize:       fontSize,
             color:          selected ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
             background:     triggerBg,
@@ -309,7 +315,7 @@ export function Select({
                     )}
                     <div style={{
                       padding:       '5px 10px 3px',
-                      fontFamily:    'var(--font-sans)',
+                      fontFamily:    'var(--font-mono)',
                       fontSize:      '10px',
                       fontWeight:    700,
                       textTransform: 'uppercase',
@@ -331,6 +337,12 @@ export function Select({
               )
             })}
           </div>
+        )}
+
+        {error && (
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
+            {error}
+          </p>
         )}
       </div>
     </div>
@@ -369,7 +381,7 @@ function OptionRow({
         justifyContent: 'space-between',
         padding,
         borderRadius:   'var(--radius-sm)',
-        fontFamily:     'var(--font-sans)',
+        fontFamily:     'var(--font-mono)',
         fontSize,
         color:          'var(--color-text-primary)',
         background:     isActive && !opt.disabled ? 'var(--color-bg)' : 'transparent',

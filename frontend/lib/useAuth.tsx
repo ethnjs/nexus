@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
-import { authApi, AuthUser, ApiError } from '@/lib/api'
+import { authApi, User, ApiError } from '@/lib/api'
 
 // -------------------------------------------------------------------------
 // Context
 // -------------------------------------------------------------------------
 interface AuthState {
-  user:    AuthUser | null
+  user:    User | null
   loading: boolean
   logout:  () => Promise<void>
 }
@@ -22,7 +22,7 @@ const AuthContext = createContext<AuthState>({
 // Provider — wrap the dashboard layout with this
 // -------------------------------------------------------------------------
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]       = useState<AuthUser | null>(null)
+  const [user, setUser]       = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {

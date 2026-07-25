@@ -1,21 +1,15 @@
 'use client'
 
-import { forwardRef, InputHTMLAttributes, useId } from 'react'
+import { forwardRef, TextareaHTMLAttributes, useId } from "react"
 
 type InputFont = 'sans' | 'mono' | 'serif'
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
-  label?:     string
-  error?:     string
-  helper?:    string
+interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
+  label?: string
+  error?: string
   fullWidth?: boolean
-  /**
-   * Font family for the input field.
-   * "sans" (default) — var(--font-sans)
-   * "mono"           — var(--font-mono)
-   * "serif"          — var(--font-serif)
-   */
-  font?:      InputFont
+  rows?: number
+  font?: InputFont
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -24,8 +18,8 @@ const FONT_MAP: Record<InputFont, string> = {
   serif: 'var(--font-serif)',
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', className = '', id, value, ...props }, ref) => {
+export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
+  ({ label, error, fullWidth, rows = 4, font='mono', className='', id, value, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
 
@@ -34,23 +28,15 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         {label && (
           <label
             htmlFor={inputId}
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: '13px',
-              fontWeight: 400,
-              color: 'var(--color-text-secondary)',
-            }}
-          >
-            {label}
-          </label>
+            style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 400, color: 'var(--color-text-secondary)'}}
+          >{label}</label>
         )}
-        <input
+        <textarea
           ref={ref}
           id={inputId}
+          rows={rows}
           style={{
-            height: '44px',
-            paddingLeft: '16px',
-            paddingRight: '16px',
+            padding: '16px',
             fontFamily: FONT_MAP[font],
             fontSize: '14px',
             background: 'var(--color-surface)',
@@ -76,14 +62,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {error}
           </p>
         )}
-        {helper && !error && (
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
-            {helper}
-          </p>
-        )}
       </div>
     )
   }
 )
-
-Input.displayName = 'Input'
