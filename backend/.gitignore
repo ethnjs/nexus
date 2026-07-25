@@ -16,6 +16,8 @@ credentials.json
 # Database
 *.db
 *.sqlite
+*.dump
+.db-backup/
 
 # Testing
 .pytest_cache/

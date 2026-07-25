@@ -18,6 +18,7 @@ interface RadioGroupProps {
   solid?:     boolean
   direction?: 'row' | 'column'
   gap?:       string
+  disabled?:  boolean
 }
 
 export function RadioGroup({
@@ -30,6 +31,7 @@ export function RadioGroup({
   solid,
   direction = 'row',
   gap = '8px',
+  disabled = false,
 }: RadioGroupProps) {
   return (
     <div style={{ display: 'flex', flexDirection: direction, gap }}>
@@ -45,6 +47,7 @@ export function RadioGroup({
           mono={mono}
           showCircle={showCircle}
           solid={solid}
+          disabled={disabled}
         />
       ))}
     </div>

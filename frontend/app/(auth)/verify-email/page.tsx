@@ -3,7 +3,8 @@
 import { Button } from "@/components/ui/Button"
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { Spinner } from "@/components/ui/Spinner"
-import { ApiError, authApi, User } from "@/lib/api"
+import { ApiError, authApi } from "@/lib/api"
+import { useAuth } from "@/lib/useAuth"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Suspense, useEffect, useState } from "react"
 
@@ -23,7 +24,7 @@ function VerifyEmailContent() {
   //  3  Error
   // ────────────────────────────────────────────────────────────────────────
   const [state, setState] = useState<number>(1)
-  const [user, setUser] = useState<User | null>(null)
+  const { user } = useAuth()
   const [sendEmailSuccess, setSendEmailSuccess] = useState<boolean>(false)
   const [loading, setLoading] = useState<boolean>(false)
   const [errors, setErrors] = useState<{
@@ -37,8 +38,6 @@ function VerifyEmailContent() {
   const router = useRouter()
 
   useEffect(() => {
-    
-    authApi.me().then(u => setUser(u)).catch(() => {})
 
     authApi.verifyEmail(token ?? '').then(() => setState(2)).catch(err => {
       const message = err instanceof ApiError ? err.message : "Something went wrong"

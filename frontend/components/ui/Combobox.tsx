@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { Input } from "@/components/ui/Input"
 
+type ComboboxSize = 'sm' | 'md'
+
 interface ComboboxProps<T> {
   options:  T[]
   getId:    (option: T) => string | number
@@ -15,8 +17,8 @@ interface ComboboxProps<T> {
   placeholder?:   string
   label?:         string
   maxResults?:    number
-  /** External error, takes priority over the internal strict-mode "no match" hint. */
   error?: string
+  size?: ComboboxSize
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -32,9 +34,9 @@ export function Combobox<T>({
   label,
   maxResults = 8,
   error,
+  size = 'md',
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
-  const [matched, setMatched] = useState<T | null>(null)
 
   const query = value.trim().toLowerCase()
   const matches = query
@@ -46,15 +48,14 @@ export function Combobox<T>({
   const dropdownOpen = open && (matches.length > 0 || showCustomRow)
 
   function handleTextChange(text: string) {
-    setMatched(null)
-    onChange(text, null)
+    const t = text.trim().toLowerCase()
+    const match = t ? options.find(o => getLabel(o).toLowerCase() === t) ?? null : null
+    onChange(text, match)
     setOpen(true)
   }
 
   function handleSelect(option: T) {
-    const optLabel = getLabel(option)
-    setMatched(option)
-    onChange(optLabel, option)
+    onChange(getLabel(option), option)
     setOpen(false)
   }
 
@@ -62,7 +63,7 @@ export function Combobox<T>({
     setOpen(false)
   }
 
-  const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && matched === null
+  const showStrictHint = !open && !allowFreeText && value.trim().length > 0 && !exactMatch
   const displayedError = error ?? (showStrictHint ? "No matching option — select one from the list to continue." : undefined)
 
   return (
@@ -76,6 +77,7 @@ export function Combobox<T>({
         onFocus={() => setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         error={displayedError}
+        size={size}
         fullWidth
       />
       {dropdownOpen && (

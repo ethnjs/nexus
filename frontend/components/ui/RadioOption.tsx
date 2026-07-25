@@ -8,20 +8,22 @@ interface RadioOptionProps {
   mono?: boolean
   showCircle?: boolean
   solid?: boolean
+  disabled?: boolean
 }
 
-export function RadioOption({ name, value, checked, onChange, label, description, mono = true, showCircle = true, solid = false }: RadioOptionProps) {
+export function RadioOption({ name, value, checked, onChange, label, description, mono = true, showCircle = true, solid = false, disabled = false }: RadioOptionProps) {
   const bg    = checked ? (solid ? 'var(--color-accent)' : 'var(--color-accent-subtle)') : 'var(--color-surface)'
   const color = checked && solid ? '#fff' : 'var(--color-text-primary)'
 
   return (
-    <label onClick={() => onChange(value)} style={{
+    <label onClick={() => { if (!disabled) onChange(value) }} style={{
       display: 'flex', alignItems: 'center', gap: '10px',
       padding: '10px 12px',
       border: `1px solid ${checked ? 'var(--color-accent)' : 'var(--color-border)'}`,
       borderRadius: 'var(--radius-sm)',
       background: bg,
-      cursor: 'pointer',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.5 : 1,
       transition: 'color 120ms ease, border-color 120ms ease, background 120ms ease',
     }}>
       <input
@@ -29,7 +31,8 @@ export function RadioOption({ name, value, checked, onChange, label, description
         name={name}
         value={value}
         checked={checked}
-        onChange={() => onChange(value)}
+        disabled={disabled}
+        onChange={() => { if (!disabled) onChange(value) }}
         style={showCircle
           ? { accentColor: 'var(--color-accent)', flexShrink: 0 }
           : { position: 'absolute', opacity: 0, width: 0, height: 0, pointerEvents: 'none'}

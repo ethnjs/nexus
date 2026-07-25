@@ -3,6 +3,7 @@
 import { forwardRef, TextareaHTMLAttributes, useId } from "react"
 
 type InputFont = 'sans' | 'mono' | 'serif'
+type InputSize = 'sm' | 'md'
 
 interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
@@ -10,6 +11,7 @@ interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   fullWidth?: boolean
   rows?: number
   font?: InputFont
+  size?: InputSize
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -18,10 +20,16 @@ const FONT_MAP: Record<InputFont, string> = {
   serif: 'var(--font-serif)',
 }
 
+const SIZE_MAP: Record<InputSize, { padding: string; fontSize: string }> = {
+  sm: { padding: '8px 10px', fontSize: '13px' },
+  md: { padding: '16px', fontSize: '14px' },
+}
+
 export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
-  ({ label, error, fullWidth, rows = 4, font='mono', className='', id, value, ...props }, ref) => {
+  ({ label, error, fullWidth, rows = 4, font='mono', size = 'md', className='', id, value, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
+    const sizing = SIZE_MAP[size]
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: fullWidth ? '100%' : undefined }}>
@@ -36,9 +44,9 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
           id={inputId}
           rows={rows}
           style={{
-            padding: '16px',
+            padding: sizing.padding,
             fontFamily: FONT_MAP[font],
-            fontSize: '14px',
+            fontSize: sizing.fontSize,
             background: 'var(--color-surface)',
             color: 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,

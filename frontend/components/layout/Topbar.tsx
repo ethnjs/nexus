@@ -7,6 +7,7 @@ import { NewTournamentModal } from "@/components/ui/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import Link from "next/link";
 
 interface TopbarProps {
   showWordmark?: boolean;
@@ -158,14 +159,17 @@ export function Topbar({
       flexShrink: 0,
     }}>
       {showWordmark && (
-        <span style={{
-          fontFamily: "Georgia, serif", fontSize: "15px",
-          letterSpacing: "0.18em", textTransform: "uppercase",
-          color: "var(--color-text-primary)", userSelect: "none",
-          paddingLeft: "8px",
-        }}>
+        <Link
+          href="/dashboard"
+          style={{
+            fontFamily: "Georgia, serif", fontSize: "15px",
+            letterSpacing: "0.18em", textTransform: "uppercase",
+            color: "var(--color-text-primary)", userSelect: "none",
+            paddingLeft: "8px", textDecoration: "none",
+          }}
+        >
           NEXUS
-        </span>
+        </Link>
       )}
 
       {showDropdown && <TournamentDropdown tournamentId={tournamentId} />}

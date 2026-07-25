@@ -2,7 +2,9 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
-import { IconLogout } from "@/components/ui/Icons";
+import { IconLogout, IconUser } from "@/components/ui/Icons";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import Link from "next/link";
 
 export function UserAvatar() {
   const { user, logout } = useAuth();
@@ -17,23 +19,15 @@ export function UserAvatar() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
-  const initials = user
-    ? (`${user.first_name?.[0] ?? ""}${user.last_name?.[0] ?? ""}`).toUpperCase() || user.email[0].toUpperCase()
-    : "?";
+  if (!user) return null;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
       <button
         onClick={() => setOpen((v) => !v)}
-        style={{
-          width: "32px", height: "32px", borderRadius: "50%",
-          background: "var(--color-accent)", color: "var(--color-text-inverse)",
-          border: "none", fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 700,
-          letterSpacing: "0.05em", display: "flex", alignItems: "center", justifyContent: "center",
-          cursor: "pointer",
-        }}
+        style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }}
       >
-        {initials}
+        <AvatarCircle user={user} size={32} />
       </button>
 
       {open && (
@@ -45,12 +39,10 @@ export function UserAvatar() {
         }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
             <div style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-              {user?.first_name && user?.last_name
-                ? `${user.first_name} ${user.last_name}`
-                : user?.email}
+              {user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.email}
             </div>
             <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
-              {user?.email}
+              {user.email}
             </div>
             <div style={{ marginTop: "8px" }}>
               <span style={{
@@ -59,10 +51,26 @@ export function UserAvatar() {
                 color: "var(--color-text-secondary)", background: "var(--color-accent-subtle)",
                 padding: "2px 7px", borderRadius: "var(--radius-sm)",
               }}>
-                {user?.role}
+                {user.role}
               </span>
             </div>
           </div>
+          <Link
+            href={`/profile/${user.id}`}
+            onClick={() => setOpen(false)}
+            style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              width: "100%", padding: "11px 16px",
+              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+              color: "var(--color-text-primary)", textDecoration: "none",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <IconUser size={16}/>
+            Profile
+          </Link>
           <button
             onClick={() => { setOpen(false); logout(); }}
             style={{

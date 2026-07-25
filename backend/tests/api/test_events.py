@@ -32,7 +32,7 @@ class TestCreateEvent:
         assert res.status_code == 201
         data = res.json()
         assert data["name"] == "Boomilever"
-        assert data["category_id"] == event_category.id
+        assert data["category"]["id"] == event_category.id
 
     def test_non_admin_forbidden(self, client, td_user, event_category):
         login(client, "td@test.com", "tdpass")
@@ -67,7 +67,7 @@ class TestUpdateEvent:
         login(client, "admin@test.com", "adminpass")
         res = client.patch(f"/events/{event.id}/", json={"category_id": other_category.id})
         assert res.status_code == 200
-        assert res.json()["category_id"] == other_category.id
+        assert res.json()["category"]["id"] == other_category.id
 
     def test_missing_event_404(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")

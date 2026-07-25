@@ -27,7 +27,7 @@ def _has_volunteer_rows(user: User, db: Optional[Session]) -> bool:
 
 
 def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) -> list[str]:
-    always_required = ["phone", "date_of_birth", "pronouns", "shirt_size", "dietary_restriction"]
+    always_required = ["phone", "date_of_birth", "shirt_size", "dietary_restriction"]
     missing = [f for f in always_required if not getattr(user, f)]
 
     if not user.student_status:

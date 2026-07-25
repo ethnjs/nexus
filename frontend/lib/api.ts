@@ -75,7 +75,7 @@ export interface EventCategory {
 export interface CanonicalEvent {
   id:          number
   name:        string
-  category_id: number
+  category:    EventCategory
 }
 
 export const eventCategoriesApi = {
@@ -101,10 +101,10 @@ export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
 export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
 
 export interface CompetitionExperience {
-  id:       number
-  event_id: number
-  school:   string
-  notes:    string | null
+  id:         number
+  event:      CanonicalEvent
+  school:     string
+  notes:      string | null
 }
 
 export interface VolunteerExperienceNotes {
@@ -116,7 +116,7 @@ export interface VolunteerExperience {
   id:              number
   tournament_name: string
   year:            number
-  event_id:        number | null
+  event:           CanonicalEvent | null
   role:            string
   notes:           VolunteerExperienceNotes | null
 }

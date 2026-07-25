@@ -21,7 +21,7 @@ class EventCategoryUpdate(BaseModel):
 class EventResponse(BaseModel):
     id: int
     name: str
-    category_id: int
+    category: EventCategoryResponse
 
     model_config = {"from_attributes": True}
 

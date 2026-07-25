@@ -216,7 +216,7 @@ class TestGetMeFull:
 
         assert len(data["competition_experience"]) == 1
         assert data["competition_experience"][0]["school"] == "MIT"
-        assert data["competition_experience"][0]["event_id"] == event.id
+        assert data["competition_experience"][0]["event"]["id"] == event.id
 
         assert len(data["volunteer_experience"]) == 1
         assert data["volunteer_experience"][0]["tournament_name"] == "Regionals"
