@@ -180,7 +180,7 @@ export default function ProfilePage() {
         maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
         display: "flex", flexDirection: "column", gap: "20px",
       }}>
-        <ProfileCard><ProfileHeader user={profile} /></ProfileCard>
+        <ProfileCard><ProfileHeader user={profile} showEditButton={isOwnProfile} /></ProfileCard>
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
         {profile.has_competition_experience !== false && (
           <ProfileCard>

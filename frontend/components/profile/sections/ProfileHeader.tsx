@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { formatPhone } from "@/lib/auth";
+import { IconEdit } from "@/components/ui/Icons";
 
 interface ProfileHeaderUser {
   first_name?: string | null;
@@ -9,14 +11,19 @@ interface ProfileHeaderUser {
   pronouns?: string | null;
 }
 
-export function ProfileHeader({ user }: { user: ProfileHeaderUser }) {
+interface ProfileHeaderProps {
+  user: ProfileHeaderUser;
+  showEditButton?: boolean;
+}
+
+export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderProps) {
   const fullName =
     user.first_name && user.last_name
       ? `${user.first_name} ${user.last_name}`
       : user.email;
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: "20px" }}>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "20px", position: "relative" }}>
       <AvatarCircle user={user} size={96} />
       <div>
         <div style={{
@@ -50,6 +57,22 @@ export function ProfileHeader({ user }: { user: ProfileHeaderUser }) {
           )}
         </div>
       </div>
+
+      {showEditButton && (
+        <Link
+          href="/account-settings"
+          title="Edit account settings"
+          style={{
+            position: "absolute", top: 0, right: 0,
+            width: "30px", height: "30px", borderRadius: "50%",
+            border: "1px solid var(--color-border)", background: "var(--color-surface)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "var(--color-text-secondary)", textDecoration: "none",
+          }}
+        >
+          <IconEdit size={13} />
+        </Link>
+      )}
     </div>
   );
 }
