@@ -33,7 +33,7 @@ def seed_dev_data(db: Session) -> None:
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import Membership, Tournament, User
+    from app.models.models import TournamentMembership, Tournament, User
     from app.core.auth import hash_password
     from app.core.permissions import DEFAULT_POSITIONS
     from datetime import datetime
@@ -94,7 +94,7 @@ def seed_dev_data(db: Session) -> None:
     db.flush()  # get tournament.id before creating memberships
 
     # TD membership for the regular user — full manage_tournament access
-    td_membership = Membership(
+    td_membership = TournamentMembership(
         user_id=td.id,
         tournament_id=tournament.id,
         positions=["tournament_director"],
@@ -104,7 +104,7 @@ def seed_dev_data(db: Session) -> None:
 
     # Volunteer membership for admin — demonstrates cross-role scenario:
     # admin has site-wide access AND a volunteer-level membership here
-    admin_membership = Membership(
+    admin_membership = TournamentMembership(
         user_id=admin.id,
         tournament_id=tournament.id,
         positions=["event_supervisor"],

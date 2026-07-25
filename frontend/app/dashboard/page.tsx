@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { tournamentsApi, eventsApi, membershipsApi, Tournament, User, authApi, ApiError } from "@/lib/api"
+import { tournamentsApi, tournamentEventsApi, membershipsApi, Tournament, UserMeSlim, authApi, ApiError } from "@/lib/api"
 import { NewTournamentModal } from "@/components/ui/NewTournamentModal"
 import { Topbar } from "@/components/layout/Topbar"
 import { Banner, BannerProps } from "@/components/ui/Banner"
@@ -15,7 +15,7 @@ import { Tooltip, TooltipStatus } from "@/components/ui/Tooltip"
 
 interface BannerRule extends Omit<BannerProps, 'onDismiss'> {
   id: number
-  condition: (user: User) => boolean
+  condition: (user: UserMeSlim) => boolean
   snoozeDays: number
 }
 
@@ -141,11 +141,11 @@ export default function DashboardPage() {
       </Tooltip>
     },
     {id: 2, variant: "warning", message: "Your profile is incomplete",
-      condition: user => user.missing_profile_fields.length > 0, snoozeDays: 3,
+      condition: user => !user.is_profile_complete, snoozeDays: 3,
       action: <Button
         variant="secondary"
         size="sm"
-        onClick={() => router.push('/dashboard')} // temp for now, will push to profile later
+        onClick={() => router.push('/dashboard')} // TODO: push to /user/[id]/edit once that page exists
       >Complete Profile</Button>
     }
   ]
@@ -162,7 +162,7 @@ export default function DashboardPage() {
       setTournaments(data)
       data.forEach((t) => {
         Promise.all([
-          eventsApi.listByTournament(t.id).then((e) => e.length).catch(() => 0),
+          tournamentEventsApi.listByTournament(t.id).then((e) => e.length).catch(() => 0),
           membershipsApi.listByTournament(t.id).then((m) => m.length).catch(() => 0),
         ]).then(([events, volunteers]) => {
           setCounts((prev) => ({ ...prev, [t.id]: { events, volunteers } }))

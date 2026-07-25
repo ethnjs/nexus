@@ -65,18 +65,86 @@ export const api = {
 }
 
 // -------------------------------------------------------------------------
-// Auth
+// Canonical Events & Categories — global list, admin-managed
+// -------------------------------------------------------------------------
+export interface EventCategory {
+  id:   number
+  name: string
+}
+
+export interface CanonicalEvent {
+  id:          number
+  name:        string
+  category_id: number
+}
+
+export const eventCategoriesApi = {
+  list:   ()                                    => api.get<EventCategory[]>('/event-categories/'),
+  create: (body: { name: string })              => api.post<EventCategory>('/event-categories/', body),
+  update: (id: number, body: { name: string })  => api.patch<EventCategory>(`/event-categories/${id}/`, body),
+  delete: (id: number)                          => api.delete<void>(`/event-categories/${id}/`),
+}
+
+export const canonicalEventsApi = {
+  list:   ()                                              => api.get<CanonicalEvent[]>('/events/'),
+  create: (body: { name: string; category_id: number })   => api.post<CanonicalEvent>('/events/', body),
+  update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
+    api.patch<CanonicalEvent>(`/events/${id}/`, body),
+  delete: (id: number)                                    => api.delete<void>(`/events/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Auth / Users
 // -------------------------------------------------------------------------
 export type ROLE = "admin" | "user"
 export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
 export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
 
-interface UserBase {
-  email:               string
-  first_name:          string
-  last_name:           string
-  phone:               string | null
+export interface CompetitionExperience {
+  id:       number
+  event_id: number
+  school:   string
+  notes:    string | null
+}
 
+export interface VolunteerExperienceNotes {
+  event?: string
+  other?: string
+}
+
+export interface VolunteerExperience {
+  id:              number
+  tournament_name: string
+  year:            number
+  event_id:        number | null
+  role:            string
+  notes:           VolunteerExperienceNotes | null
+}
+
+// Matches UserSlimResponse — no student/employer/experience/shirt/dietary fields
+export interface UserSlim {
+  id:             number
+  first_name:     string
+  last_name:      string
+  email:          string
+  phone:          string | null
+  pronouns:       string | null
+
+  email_verified: boolean
+  role:           ROLE
+  is_active:      boolean
+
+  created_at:     string
+  updated_at:     string
+}
+
+// GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
+export interface UserMeSlim extends UserSlim {
+  is_profile_complete: boolean
+}
+
+// Matches UserFullResponse — adds the profile fields, no date_of_birth
+export interface UserFull extends UserSlim {
   student_status:      STUDENT_STATUS | null
   university:          string | null
   major:               string | null
@@ -85,28 +153,44 @@ interface UserBase {
 
   employer:            string | null
 
-  competition_exp:     string | null
-  volunteering_exp:    string | null
+  has_competition_experience: boolean | null
+  has_volunteer_experience:   boolean | null
 
-  shirt_size:          SHIRT_SIZE | null
-  dietary_restriction: string | null
+  competition_experience: CompetitionExperience[]
+  volunteer_experience:   VolunteerExperience[]
+
+  shirt_size:           SHIRT_SIZE | null
+  dietary_restriction:  string | null
 }
 
-export interface User extends UserBase {
-  id:                  number
-  
-  email_verified:      boolean
-  role:                ROLE
-  is_active:           boolean
-
-  created_at:          string
-  updated_at:          string
-
+// GET /users/me/?full=true — matches UserMeFullResponse
+export interface UserMeFull extends UserFull {
+  date_of_birth:          string | null
   missing_profile_fields: string[]
 }
 
-interface UserUpdate extends UserBase {}
+interface UserUpdate {
+  first_name?:          string
+  last_name?:           string
+  email?:                string
+  phone?:               string | null
+  date_of_birth?:       string | null
+  pronouns?:            string | null
+  student_status?:      STUDENT_STATUS | null
+  university?:          string | null
+  major?:               string | null
+  year_level?:          number | null
+  graduation_year?:     number | null
+  employer?:            string | null
+  has_competition_experience?: boolean | null
+  has_volunteer_experience?:   boolean | null
+  shirt_size?:          SHIRT_SIZE | null
+  dietary_restriction?: string | null
+}
 
+// -------------------------------------------------------------------------
+// Auth
+// -------------------------------------------------------------------------
 export interface AuthRegister {
   email:      string
   phone:      string
@@ -116,27 +200,66 @@ export interface AuthRegister {
 }
 
 export const authApi = {
-  login: (email: string, password: string) => api.post<User>('/auth/login/', { email, password }),
+  login: (email: string, password: string) => api.post<UserSlim>('/auth/login/', { email, password }),
   logout: ()                               => api.post<void>('/auth/logout/', {}),
-  me: ()                                   => api.get<User>('/auth/me/'),
-  register: (body: AuthRegister)           => api.post<User>('/auth/register/', body),
+  register: (body: AuthRegister)           => api.post<UserSlim>('/auth/register/', body),
   verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
   sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
 }
-
 
 // -------------------------------------------------------------------------
 // Users
 // -------------------------------------------------------------------------
 export const usersApi = {
-  list:       ()                                       => api.get<User[]>('/users/'),
-  get:        (id: number)                             => api.get<User>(`/users/${id}/`),
-  getByEmail: (email: string)                          => api.get<User>(`/users/by-email/${encodeURIComponent(email)}/`),
-  update:     (id: number, body: Partial<UserUpdate>)  => api.patch<User>(`/users/${id}/`, body),
-  updateMe:   (body: Partial<UserUpdate>)              => api.patch<User>('/users/me/', body),
-  delete:     (id: number)                             => api.delete<void>(`/users/${id}/`),
+  // GET /users/me/ (default) — matches UserMeSlimResponse
+  me:       ()                          => api.get<UserMeSlim>('/users/me/'),
+  // GET /users/me/?full=true — matches UserMeFullResponse
+  meFull:   ()                          => api.get<UserMeFull>('/users/me/?full=true'),
+  // PATCH /users/me/ — matches UserMeFullResponse
+  updateMe: (body: Partial<UserUpdate>) => api.patch<UserMeFull>('/users/me/', body),
+
+  addCompetitionExperience: (body: { event_id: number; school: string; notes?: string | null }) =>
+    api.post<CompetitionExperience>('/users/me/competition-experience/', body),
+  updateCompetitionExperience: (id: number, body: Partial<{ event_id: number; school: string; notes: string | null }>) =>
+    api.patch<CompetitionExperience>(`/users/me/competition-experience/${id}/`, body),
+  deleteCompetitionExperience: (id: number) =>
+    api.delete<void>(`/users/me/competition-experience/${id}/`),
+
+  addVolunteerExperience: (body: {
+    tournament_name: string
+    year: number
+    role: string
+    event_id?: number | null
+    notes?: VolunteerExperienceNotes | null
+  }) => api.post<VolunteerExperience>('/users/me/volunteer-experience/', body),
+  updateVolunteerExperience: (id: number, body: Partial<{
+    tournament_name: string
+    year: number
+    role: string
+    event_id: number | null
+    notes: VolunteerExperienceNotes | null
+  }>) => api.patch<VolunteerExperience>(`/users/me/volunteer-experience/${id}/`, body),
+  deleteVolunteerExperience: (id: number) =>
+    api.delete<void>(`/users/me/volunteer-experience/${id}/`),
+
   getForTournament: (tournamentId: number, userId: number) =>
-    api.get<User>(`/tournaments/${tournamentId}/users/${userId}/`),
+    api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),
+}
+
+// -------------------------------------------------------------------------
+// Admin — Users
+// -------------------------------------------------------------------------
+interface AdminUserUpdate {
+  role?:      ROLE
+  is_active?: boolean
+}
+
+export const adminUsersApi = {
+  list:       ()                                   => api.get<UserSlim[]>('/admin/users/'),
+  get:        (id: number)                         => api.get<UserFull>(`/admin/users/${id}/`),
+  getByEmail: (email: string)                      => api.get<UserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
+  updateRole: (id: number, body: AdminUserUpdate)  => api.patch<UserSlim>(`/admin/users/${id}/`, body),
+  delete:     (id: number)                         => api.delete<void>(`/admin/users/${id}/`),
 }
 
 
@@ -192,9 +315,9 @@ export const tournamentsApi = {
 
 
 // -------------------------------------------------------------------------
-// Events — nested under /tournaments/{id}/events/
+// Tournament Events — nested under /tournaments/{id}/events/
 // -------------------------------------------------------------------------
-export interface Event {
+export interface TournamentEvent {
   id:                number
   tournament_id:     number
   name:              string
@@ -210,15 +333,15 @@ export interface Event {
   updated_at:        string
 }
 
-export const eventsApi = {
+export const tournamentEventsApi = {
   listByTournament: (tournamentId: number) =>
-    api.get<Event[]>(`/tournaments/${tournamentId}/events/`),
+    api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
   get:    (tournamentId: number, id: number) =>
-    api.get<Event>(`/tournaments/${tournamentId}/events/${id}/`),
-  create: (tournamentId: number, body: Partial<Event>) =>
-    api.post<Event>(`/tournaments/${tournamentId}/events/`, body),
-  update: (tournamentId: number, id: number, body: Partial<Event>) =>
-    api.patch<Event>(`/tournaments/${tournamentId}/events/${id}/`, body),
+    api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
+  create: (tournamentId: number, body: Partial<TournamentEvent>) =>
+    api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
+  update: (tournamentId: number, id: number, body: Partial<TournamentEvent>) =>
+    api.patch<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
 }

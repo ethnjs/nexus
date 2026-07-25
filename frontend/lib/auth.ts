@@ -77,3 +77,14 @@ export function validatePassword(password: string): string | null {
 
     return null
 }
+
+export function validateDateOfBirth(value: string): string | null {
+  if (!value) return "Cannot be empty."
+
+  const date = new Date(value + "T00:00:00")
+  if (isNaN(date.getTime())) return "Must be a valid date."
+
+  if (date.getTime() > Date.now()) return "Cannot be in the future."
+
+  return null
+}

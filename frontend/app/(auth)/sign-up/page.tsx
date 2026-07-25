@@ -1,57 +1,27 @@
 'use client'
 
 import { useEffect, useState } from "react"
-import { User, STUDENT_STATUS, authApi, ApiError, SHIRT_SIZE, usersApi } from "@/lib/api"
+import { 
+  authApi, ApiError, CanonicalEvent, canonicalEventsApi,
+  STUDENT_STATUS, SHIRT_SIZE, UserSlim, usersApi 
+} from "@/lib/api"
 import { useRouter } from "next/navigation"
-import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone } from "@/lib/auth"
+import { checkPassword, formatPhone, validateEmail, validatePassword, validatePhone, validateDateOfBirth } from "@/lib/auth"
 import { IconArrowLeft, IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
 import { Input } from "@/components/ui/Input"
+import { Combobox } from "@/components/ui/Combobox"
 import { Button } from "@/components/ui/Button"
 import { Select } from "@/components/ui/Select"
-import { RadioOption } from "@/components/ui/RadioOption"
+import { RadioGroup } from "@/components/ui/RadioGroup"
 import { Textarea } from "@/components/ui/Textarea"
 import { Modal } from "@/components/ui/Modal"
+import { 
+  CompetitionExperienceTable, CompetitionExperienceDraft, isCompetitionRowValid,
+  VolunteerExperienceTable, VolunteerExperienceDraft, isVolunteerRowValid
+} from "@/components/profile/ExperienceTables"
+import { ProfileQuestion } from "@/components/profile/ProfileQuestion"
+import { useFormattedInputChange } from "@/lib/useFormattedInput"
 
-
-
-interface ProfileQuestionProps {
-  question: string
-  children: React.ReactNode
-  onSkip?: () => void
-  onNext?: () => void
-  isActive?: boolean
-}
-
-function ProfileQuestion({
-  question,
-  children,
-  onSkip = undefined,
-  onNext = undefined,
-  isActive = false
-}: ProfileQuestionProps) {
-  const showSkip = !!onSkip
-  const showNext = !!onNext
-  return (
-    <div style={{marginBottom: '20px'}}>
-      <p style={{ marginBottom: '5px', fontFamily: 'var(--font-sans)', fontSize: '18px', color: 'var(--color-text-primary)' }}>{question}</p>
-      {children}
-      {isActive && (showSkip || showNext) && (
-        <div style={{marginTop: '10px', justifyContent:'right', display: 'flex', gap: '5px'}}>
-          {showSkip && (<Button
-            type="button"
-            variant="secondary"
-            onClick={onSkip}
-          >Skip</Button>)}
-          {showNext && (<Button
-            type="button"
-            variant="primary"
-            onClick={onNext}
-          >Next</Button>)}
-        </div>
-      )}
-    </div>
-  )
-}
 
 function setCookie() {
   document.cookie = "inSignUpFlow=true; path=/"
@@ -63,18 +33,22 @@ function clearCookie() {
 
 const STATE = {
   ACCOUNT: 1,
-  STUDENT_STATUS: 2,
-  UNIVERSITY: 3,
-  EMPLOYER: 4,
-  COMPETED_BEFORE: 5,
-  COMPETITION_EXP: 6,
-  VOLUNTEERED_BEFORE: 7,
-  VOLUNTEERING_EXP: 8,
-  SHIRT_SIZE: 9,
-  DIETARY_RESTRICTIONS: 10,
-  DIETARY_TEXT: 11,
-  COMPLETE: 12,
+  DATE_OF_BIRTH: 2,
+  PRONOUNS: 3,
+  STUDENT_STATUS: 4,
+  UNIVERSITY: 5,
+  EMPLOYER: 6,
+  COMPETED_BEFORE: 7,
+  COMPETITION_EXP: 8,
+  VOLUNTEERED_BEFORE: 9,
+  VOLUNTEERING_EXP: 10,
+  SHIRT_SIZE: 11,
+  DIETARY_RESTRICTIONS: 12,
+  DIETARY_TEXT: 13,
+  COMPLETE: 14,
 } as const
+
+const COMMON_PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns"]
 
 export default function SignUpPage() {
   // ── Sign-up step states ──────────────────────────────────────────────────
@@ -92,7 +66,7 @@ export default function SignUpPage() {
   // 12  Complete button activated
   // ────────────────────────────────────────────────────────────────────────
   const [state, setState] = useState<number>(STATE.ACCOUNT)
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserSlim | null>(null)
   const [loading, setLoading] = useState(false)
 
 
@@ -110,9 +84,19 @@ export default function SignUpPage() {
     confirm: boolean
   }>({ length: false, upper: false, lower: false, number: false, symbol: false, confirm: false })
 
+  const handlePhoneChange = useFormattedInputChange(
+    phone,
+    setPhone,
+    formatPhone,
+    (v) => v.replace(/\D/g, '').slice(0, 10),
+  )
+
   const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   const [profileData, setProfileData] = useState<{
+    date_of_birth?: string
+    pronouns?: string
+
     student_status?: STUDENT_STATUS
     university?: string
     major?: string
@@ -121,14 +105,17 @@ export default function SignUpPage() {
 
     employer?: string
 
-    competition_exp?: string
-    volunteering_exp?: string
+    has_competition_experience?: boolean
+    has_volunteer_experience?: boolean
 
     shirt_size?: SHIRT_SIZE
     dietary_restriction?: string
   }>({})
-  const [competedBefore, setCompetedBefore] = useState<boolean | null>(null)
-  const [volunteeredBefore, setVolunteeredBefore] = useState<boolean | null> (null)
+  
+  const [events, setEvents] = useState<CanonicalEvent[]>([])
+  const [competitionRows, setCompetitionRows] = useState<CompetitionExperienceDraft[]>([])
+  const [volunteerRows, setVolunteerRows] = useState<VolunteerExperienceDraft[]>([])
+  
   const [hasDietary, setHasDietary] = useState<boolean | null>(null)
 
 
@@ -141,6 +128,8 @@ export default function SignUpPage() {
     confirm_password?: string
     form1?: string
 
+    date_of_birth?: string
+    pronouns?: string
     student_status?: string
     university?: string
     major?: string
@@ -157,14 +146,16 @@ export default function SignUpPage() {
   const router = useRouter()
 
   useEffect(() => {
-    authApi.me().then(user => {
+    usersApi.me().then(user => {
       if (document.cookie.includes("inSignUpFlow")) {
         setUser(user)
-        setState(STATE.STUDENT_STATUS)
+        setState(STATE.DATE_OF_BIRTH)
       } else {
         router.push('/dashboard')
       }
     }).catch(() => {})
+
+    canonicalEventsApi.list().then(setEvents).catch(() => {})
   }, [])
 
   async function handleRegisterSubmit(e: React.SyntheticEvent) {
@@ -200,7 +191,7 @@ export default function SignUpPage() {
 
       authApi.sendEmailVerification().then(() => {
         setShowVerifyModal(true)
-      }).catch(() => {}).finally(() => setState(STATE.STUDENT_STATUS))
+      }).catch(() => {}).finally(() => setState(STATE.DATE_OF_BIRTH))
     } catch (error: unknown) {
       if (error instanceof ApiError) {
         setErrors({ form1: error.message })
@@ -232,7 +223,7 @@ export default function SignUpPage() {
     setLoading(true)
     setErrors({})
 
-    const cleaned = { ...profileData }
+    const cleaned: Record<string, unknown> = { ...profileData }
 
     if (cleaned.student_status === 'Undergraduate' || cleaned.student_status === 'Graduate') {
       cleaned.employer = undefined
@@ -242,23 +233,61 @@ export default function SignUpPage() {
       cleaned.student_status = cleaned.employer = cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined
     }
 
-    cleaned.competition_exp  = competedBefore === false ? "No competition experience."  : competedBefore === null  ? undefined : cleaned.competition_exp
-    cleaned.volunteering_exp = volunteeredBefore === false ? "No volunteer experience." : volunteeredBefore === null ? undefined : cleaned.volunteering_exp
-
     for (const key of Object.keys(cleaned)) {
-      if (cleaned[key as keyof typeof cleaned] === "") {
-        (cleaned as Record<string, unknown>)[key] = undefined
-      }
+      if (cleaned[key] === "") cleaned[key] = undefined
     }
 
-    if (cleaned.graduation_year && (cleaned.graduation_year < 1000 || cleaned.graduation_year > 9999)) {
-      setErrors(er => ({...er, graduation_year: "Must be a valid year."}))
+    const dobErr = cleaned.date_of_birth ? validateDateOfBirth(cleaned.date_of_birth as string) : null
+    if (dobErr) {
+      setErrors(er => ({ ...er, date_of_birth: dobErr }))
       setLoading(false)
       return
     }
 
+    if (cleaned.pronouns !== undefined && !(cleaned.pronouns as string).trim()) {
+      setErrors(er => ({ ...er, pronouns: "Cannot be empty." }))
+      setLoading(false)
+      return
+    }
+
+    if (cleaned.graduation_year && ((cleaned.graduation_year as number) < 1000 || (cleaned.graduation_year as number) > 9999)) {
+      setErrors(er => ({ ...er, graduation_year: "Must be a valid year." }))
+      setLoading(false)
+      return
+    }
+
+    // TODO: decide partial-save recovery behavior — if updateMe() succeeds but a
+    // competition/volunteer experience POST fails mid-loop, flags are saved but
+    // rows may be incomplete. For now: surface the error, don't redirect.
     try {
       await usersApi.updateMe(cleaned)
+
+      if (profileData.has_competition_experience) {
+        await Promise.all(competitionRows.map(row =>
+          usersApi.addCompetitionExperience({
+            event_id: row.event_id as number,
+            school: row.school,
+            notes: row.notes || null,
+          })
+        ))
+      }
+
+      if (profileData.has_volunteer_experience) {
+        await Promise.all(volunteerRows.map(row =>
+          usersApi.addVolunteerExperience({
+            tournament_name: row.tournament_name,
+            year: Number(row.year),
+            role: row.role,
+            event_id: row.event_id ?? undefined,
+            notes: (row.event_id === null && row.event_name.trim()) || row.notes_other.trim()
+              ? {
+                  ...(row.event_id === null && row.event_name.trim() ? { event: row.event_name.trim() } : {}),
+                  ...(row.notes_other.trim() ? { other: row.notes_other.trim() } : {}),
+                }
+              : undefined,
+          })
+        ))
+      }
 
       clearCookie()
       router.push("/dashboard")
@@ -338,9 +367,8 @@ export default function SignUpPage() {
               type="tel"
               value={formatPhone(phone)}
               onChange={e => {
-                const raw = e.target.value.replace(/\D/g, '').slice(0, 10)
-                setPhone(raw);
-                setErrors(er => ({ ...er, phone: undefined }));
+                handlePhoneChange(e)
+                setErrors(er => ({ ...er, phone: undefined }))
               }}
               autoComplete="tel"
               error={errors.phone}
@@ -407,7 +435,7 @@ export default function SignUpPage() {
         </section>
       )}
 
-      {state >= STATE.STUDENT_STATUS && (
+      {state >= STATE.DATE_OF_BIRTH && (
         <section style={{ maxWidth: '600px', width: '100%', margin: '20px 0px'}}>
           {showVerifyModal && <VerifyModal />}
 
@@ -430,28 +458,83 @@ export default function SignUpPage() {
 
           <form onSubmit={handleProfileSubmit} noValidate>
             <ProfileQuestion
-              question="What is your student status?"
-              onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
-              isActive={state === STATE.STUDENT_STATUS}
-            ><Select
-                value={profileData.student_status ?? ''}
-                onChange={v => {
-                  setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
-                  if (state >= (STATE.STUDENT_STATUS + 3)) return
-                  if (v === 'Undergraduate' || v === 'Graduate') {
-                    setState(STATE.UNIVERSITY)
-                  } else if (v === 'Non-Student') {
-                    setState(STATE.EMPLOYER)
-                  }
-                }}
-                options={[
-                  { value: "Undergraduate", label: "Undergraduate" },
-                  { value: "Graduate", label: "Graduate" },
-                  { value: "Non-Student", label: "Non-Student" }
-                ]}
-                fullWidth
+              question="What is your date of birth?"
+              onSkip={() => setState(STATE.PRONOUNS)}
+              onNext={() => {
+                const err = validateDateOfBirth(profileData.date_of_birth ?? '')
+                if (err) {
+                  setErrors(er => ({ ...er, date_of_birth: err }))
+                  return
+                }
+                setState(STATE.PRONOUNS)
+              }}
+              isActive={state === STATE.DATE_OF_BIRTH}
+            ><Input
+                  type="date"
+                  value={profileData.date_of_birth ?? ''}
+                  onChange={e => {
+                    setProfileData(d => ({ ...d, date_of_birth: e.target.value }))
+                    setErrors(er => ({ ...er, date_of_birth: undefined }))
+                  }}
+                  error={errors.date_of_birth}
+                  fullWidth
               />
             </ProfileQuestion>
+
+            {state >= STATE.PRONOUNS && (
+              <ProfileQuestion
+                question="What are your pronouns?"
+                onSkip={() => setState(STATE.STUDENT_STATUS)}
+                onNext={() => {
+                  if (!profileData.pronouns?.trim()) {
+                    setErrors(er => ({ ...er, pronouns: "Cannot be empty." }))
+                    return
+                  }
+                  setState(STATE.STUDENT_STATUS)
+                }}
+                isActive={state === STATE.PRONOUNS}
+              >
+                <Combobox
+                  options={COMMON_PRONOUNS}
+                  getId={p => p}
+                  getLabel={p => p}
+                  value={profileData.pronouns ?? ''}
+                  allowFreeText
+                  placeholder="Type your pronouns..."
+                  error={errors.pronouns}
+                  onChange={(text) => {
+                    setProfileData(d => ({ ...d, pronouns: text }))
+                    setErrors(er => ({ ...er, pronouns: undefined }))
+                  }}
+                />
+              </ProfileQuestion>
+            )}
+            
+            { state >= STATE.STUDENT_STATUS && (
+              <ProfileQuestion
+                question="What is your student status?"
+                onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
+                isActive={state === STATE.STUDENT_STATUS}
+              ><Select
+                  value={profileData.student_status ?? ''}
+                  onChange={v => {
+                    setProfileData(d => ({...d, student_status: v as STUDENT_STATUS}))
+                    if (state >= (STATE.STUDENT_STATUS + 3)) return
+                    if (v === 'Undergraduate' || v === 'Graduate') {
+                      setState(STATE.UNIVERSITY)
+                    } else if (v === 'Non-Student') {
+                      setState(STATE.EMPLOYER)
+                    }
+                  }}
+                  options={[
+                    { value: "Undergraduate", label: "Undergraduate" },
+                    { value: "Graduate", label: "Graduate" },
+                    { value: "Non-Student", label: "Non-Student" }
+                  ]}
+                  fullWidth
+                />
+              </ProfileQuestion>
+            )}
 
             { state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
               <div>
@@ -557,57 +640,49 @@ export default function SignUpPage() {
                   setState(STATE.COMPETED_BEFORE + 2)
                 }}
                 isActive={state === STATE.COMPETED_BEFORE}
-              ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption
+              >
+                <RadioGroup
                   name="competed"
-                  value="yes"
-                  checked={competedBefore === true}
-                  onChange={() => {
-                    setCompetedBefore(true)
+                  value={profileData.has_competition_experience === true ? "yes" : profileData.has_competition_experience === false ? "no" : null}
+                  onChange={v => {
+                    const val = v === "yes"
+                    setProfileData(d => ({ ...d, has_competition_experience: val }))
                     if (state >= STATE.COMPETED_BEFORE + 2) return
-                    setState(STATE.COMPETITION_EXP)
+                    setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2)
                   }}
-                  label="Yes"
+                  options={[
+                    { value: "yes", label: "Yes" },
+                    { value: "no", label: "No" },
+                  ]}
                   showCircle={false}
                   solid
                 />
-                <RadioOption
-                  name="competed"
-                  value="no"
-                  checked={competedBefore === false}
-                  onChange={() => {
-                    setCompetedBefore(false)
-                    if (state >= STATE.COMPETED_BEFORE + 2) return
-                    setState(STATE.COMPETED_BEFORE + 2)
-                  }}
-                  label="No"
-                  showCircle={false}
-                  solid
-                />
-              </div>
               </ProfileQuestion>
             )}
 
-            {state >= STATE.COMPETITION_EXP && competedBefore && (
+            {state >= STATE.COMPETITION_EXP && profileData.has_competition_experience && (
               <ProfileQuestion
-                question="List your competition experience."
+                question="Add your competition experience."
                 onSkip={() => {
-                  setCompetedBefore(null)
+                  setProfileData(d => ({ ...d, has_competition_experience: undefined }))
+                  setCompetitionRows([])
                   setState(STATE.VOLUNTEERED_BEFORE)
                 }}
                 onNext={() => {
-                  !profileData.competition_exp ? setErrors(er => ({...er, competition_exp: "Cannot be empty."}))
-                    : setState(STATE.VOLUNTEERED_BEFORE)
+                  if (competitionRows.length === 0 || !competitionRows.every(isCompetitionRowValid)) {
+                    setErrors(er => ({ ...er, competition_exp: "Each entry needs a school and a matched event." }))
+                    return
+                  }
+                  setState(STATE.VOLUNTEERED_BEFORE)
                 }}
                 isActive={state === STATE.COMPETITION_EXP}
-              ><Textarea
-                    value={profileData.competition_exp}
-                    onChange={e => {
-                      setProfileData(d => ({...d, competition_exp: e.target.value}))
-                      setErrors(er => ({...er, competition_exp: undefined}))
-                    }}
-                    error={errors.competition_exp}
-                />
+              >
+                <CompetitionExperienceTable value={competitionRows} onChange={setCompetitionRows} events={events} />
+                {errors.competition_exp && (
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginTop: '6px' }}>
+                    {errors.competition_exp}
+                  </p>
+                )}
               </ProfileQuestion>
             )}
 
@@ -618,57 +693,49 @@ export default function SignUpPage() {
                   setState(STATE.SHIRT_SIZE)
                 }}
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
-              ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption
+              >
+                <RadioGroup
                   name="volunteered"
-                  value="yes"
-                  checked={volunteeredBefore === true}
-                  onChange={() => {
-                    setVolunteeredBefore(true)
+                  value={profileData.has_volunteer_experience === true ? "yes" : profileData.has_volunteer_experience === false ? "no" : null}
+                  onChange={v => {
+                    const val = v === "yes"
+                    setProfileData(d => ({ ...d, has_volunteer_experience: val }))
                     if (state >= STATE.SHIRT_SIZE) return
-                    setState(STATE.VOLUNTEERING_EXP)
+                    setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE)
                   }}
-                  label="Yes"
+                  options={[
+                    { value: "yes", label: "Yes" },
+                    { value: "no", label: "No" },
+                  ]}
                   showCircle={false}
                   solid
                 />
-                <RadioOption
-                  name="volunteered"
-                  value="no"
-                  checked={volunteeredBefore === false}
-                  onChange={() => {
-                    setVolunteeredBefore(false)
-                    if (state >= STATE.SHIRT_SIZE) return
-                    setState(STATE.SHIRT_SIZE)
-                  }}
-                  label="No"
-                  showCircle={false}
-                  solid
-                />
-              </div>
               </ProfileQuestion>
             )}
 
-            {state >= STATE.VOLUNTEERING_EXP && volunteeredBefore && (
+            {state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience && (
               <ProfileQuestion
-                question="List your volunteer experience."
+                question="Add your volunteer experience."
                 onSkip={() => {
-                  setVolunteeredBefore(null)
+                  setProfileData(d => ({ ...d, has_volunteer_experience: undefined }))
+                  setVolunteerRows([])
                   setState(STATE.SHIRT_SIZE)
                 }}
                 onNext={() => {
-                  !profileData.volunteering_exp ? setErrors(er => ({...er, volunteering_exp: "Cannot be empty."}))
-                    : setState(STATE.SHIRT_SIZE)
+                  if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
+                    setErrors(er => ({ ...er, volunteering_exp: "Each entry needs a tournament name, a 4-digit year, and a role." }))
+                    return
+                  }
+                  setState(STATE.SHIRT_SIZE)
                 }}
                 isActive={state === STATE.VOLUNTEERING_EXP}
-              ><Textarea
-                    value={profileData.volunteering_exp}
-                    onChange={e => {
-                      setProfileData(d => ({...d, volunteering_exp: e.target.value}))
-                      setErrors(er => ({...er, volunteering_exp: undefined}))
-                    }}
-                    error={errors.volunteering_exp}
-                />
+              >
+                <VolunteerExperienceTable value={volunteerRows} onChange={setVolunteerRows} events={events} />
+                {errors.volunteering_exp && (
+                  <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)', marginTop: '6px' }}>
+                    {errors.volunteering_exp}
+                  </p>
+                )}
               </ProfileQuestion>
             )}
 
@@ -676,27 +743,22 @@ export default function SignUpPage() {
               <ProfileQuestion
                 question="What is your shirt size?"
                 onSkip={() => {
-                  setProfileData(d => ({...d, shirt_size: undefined}))
+                  setProfileData(d => ({ ...d, shirt_size: undefined }))
                   setState(STATE.DIETARY_RESTRICTIONS)
                 }}
                 isActive={state === STATE.SHIRT_SIZE}
-              ><div style={{ display: 'flex', gap: '8px' }}>
-                {["XS", "S", "M", "L", "XL", "XXL"].map(size => (
-                  <RadioOption
-                    name="shirt"
-                    value={size}
-                    key={size}
-                    checked={profileData.shirt_size === size}
-                    onChange={() => {
-                      setProfileData(d => ({...d, shirt_size: size as SHIRT_SIZE}))
-                      if (state === STATE.SHIRT_SIZE) setState(STATE.DIETARY_RESTRICTIONS)
-                    }}
-                    label={size}
-                    showCircle={false}
-                    solid
-                  />
-                ))}
-              </div>
+              >
+                <RadioGroup
+                  name="shirt"
+                  value={profileData.shirt_size ?? null}
+                  onChange={v => {
+                    setProfileData(d => ({ ...d, shirt_size: v as SHIRT_SIZE }))
+                    if (state === STATE.SHIRT_SIZE) setState(STATE.DIETARY_RESTRICTIONS)
+                  }}
+                  options={["XS", "S", "M", "L", "XL", "XXL"].map(size => ({ value: size, label: size }))}
+                  showCircle={false}
+                  solid
+                />
               </ProfileQuestion>
             )}
 
@@ -707,34 +769,23 @@ export default function SignUpPage() {
                   setState(STATE.COMPLETE)
                 }}
                 isActive={state === STATE.DIETARY_RESTRICTIONS}
-              ><div style={{ display: 'flex', gap: '8px' }}>
-                <RadioOption
+              >
+                <RadioGroup
                   name="dietary"
-                  value="yes"
-                  checked={hasDietary === true}
-                  onChange={() => {
-                    setHasDietary(true)
+                  value={hasDietary === true ? "yes" : hasDietary === false ? "no" : null}
+                  onChange={v => {
+                    const val = v === "yes"
+                    setHasDietary(val)
                     if (state >= STATE.COMPLETE) return
-                    setState(STATE.DIETARY_TEXT)
+                    setState(val ? STATE.DIETARY_TEXT : STATE.COMPLETE)
                   }}
-                  label="Yes"
+                  options={[
+                    { value: "yes", label: "Yes" },
+                    { value: "no", label: "No" },
+                  ]}
                   showCircle={false}
                   solid
                 />
-                <RadioOption
-                  name="dietary"
-                  value="no"
-                  checked={hasDietary === false}
-                  onChange={() => {
-                    setHasDietary(false)
-                    if (state >= STATE.COMPLETE) return
-                    setState(STATE.COMPLETE)
-                  }}
-                  label="No"
-                  showCircle={false}
-                  solid
-                />
-              </div>
               </ProfileQuestion>
             )}
 

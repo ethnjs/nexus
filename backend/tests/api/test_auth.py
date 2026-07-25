@@ -3,6 +3,7 @@ import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
 from app.core.auth import hash_password
+from app.core.email_verification import generate_verification_token
 from app.models.models import User
 
 
@@ -11,6 +12,8 @@ def inactive_user(db):
     user = User(
         email="inactive@test.com",
         hashed_password=hash_password("pass"),
+        first_name="Inactive",
+        last_name="User",
         role="user",
         is_active=False,
     )
@@ -22,7 +25,13 @@ def inactive_user(db):
 
 @pytest.fixture
 def volunteer_no_password(db):
-    user = User(email="vol@test.com", role="user", is_active=True)
+    user = User(
+        email="vol@test.com",
+        first_name="Volunteer",
+        last_name="NoPassword",
+        role="user",
+        is_active=True,
+    )
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -78,27 +87,30 @@ class TestLogout:
     def test_cannot_access_me_after_logout(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         client.post("/auth/logout/")
-        assert client.get("/auth/me/").status_code == 401
+        assert client.get("/users/me/").status_code == 401
+
+    def test_logout_without_session_still_succeeds(self, client):
+        assert client.post("/auth/logout/").status_code == 200
 
 
 # ---------------------------------------------------------------------------
-# GET /auth/me/
+# GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 
 class TestMe:
     def test_me_returns_current_user(self, client, td_user):
         login(client, "td@test.com", "tdpass")
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
         assert res.json()["role"] == "user"
 
     def test_me_unauthenticated(self, client):
-        assert client.get("/auth/me/").status_code == 401
+        assert client.get("/users/me/").status_code == 401
 
     def test_me_admin_role(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["role"] == "admin"
 
@@ -148,7 +160,7 @@ class TestRegister:
             "first_name": "New",
             "last_name": "User",
         })
-        res = client.get("/auth/me/")
+        res = client.get("/users/me/")
         assert res.status_code == 200
         assert res.json()["email"] == "new@test.com"
 
@@ -171,6 +183,24 @@ class TestRegister:
             "first_name": "New",
             "last_name": "User",
         }).status_code == 409
+
+    def test_register_duplicate_email_case_insensitive_rejected(self, client, td_user):
+        assert client.post("/auth/register/", json={
+            "email": "TD@TEST.COM",
+            "phone": VALID_PHONE,
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
+        }).status_code == 409
+
+    def test_register_invalid_phone_rejected(self, client):
+        assert client.post("/auth/register/", json={
+            "email": "new@test.com",
+            "phone": "notaphone",
+            "password": VALID_PASSWORD,
+            "first_name": "New",
+            "last_name": "User",
+        }).status_code == 422
 
     def test_register_can_login_with_new_credentials(self, client):
         # Confirms the password was hashed and stored correctly
@@ -310,3 +340,43 @@ class TestAdminRegister:
             "last_name": "User",
             "role": "superuser",
         }).status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/verify-email/
+# ---------------------------------------------------------------------------
+
+class TestVerifyEmail:
+    def test_valid_token_verifies_email(self, client, td_user, db):
+        assert td_user.email_verified is False
+        token = generate_verification_token(td_user.id)
+        res = client.get(f"/auth/verify-email/?token={token}")
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.email_verified is True
+
+    def test_invalid_token_rejected(self, client):
+        assert client.get("/auth/verify-email/?token=garbage").status_code == 400
+
+    def test_token_for_nonexistent_user_not_found(self, client):
+        token = generate_verification_token(9999)
+        assert client.get(f"/auth/verify-email/?token={token}").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/send-email-verification/
+# ---------------------------------------------------------------------------
+
+class TestSendEmailVerification:
+    def test_unverified_user_can_request(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/send-email-verification/").status_code == 200
+
+    def test_already_verified_rejected(self, client, td_user, db):
+        td_user.email_verified = True
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/auth/send-email-verification/").status_code == 400
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/auth/send-email-verification/").status_code == 401

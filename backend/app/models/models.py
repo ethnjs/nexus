@@ -3,19 +3,19 @@ SQLAlchemy ORM models.
 
 NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
 with SQLAlchemy 2.0.36 + Python 3.13.
-
-STATUS LEGEND:
-  [ACTIVE] — built and in use
-  [FUTURE] — planned, not yet implemented
 """
 
 from datetime import datetime, timezone
 from sqlalchemy import (
-    Integer, String, Text, Boolean, DateTime, JSON,
+    Integer, String, Text, Boolean, Date, DateTime, JSON,
     ForeignKey, UniqueConstraint, Column,
 )
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
+from typing import Optional
+
 from app.db.session import Base
+from app.core.age import meets_age_requirement
 
 
 def utcnow():
@@ -24,7 +24,158 @@ def utcnow():
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] Tournament
+# User
+# Core identity — volunteers, TDs, and admins all live here.
+#
+# role = "admin" | "user"
+#   "admin" — superuser, bypasses all tournament-level permission checks.
+#             Used for testing and platform management. Can still hold
+#             memberships in tournaments like any other user.
+#   "user"  — everyone else. Tournament-level access is determined entirely
+#             by Membership.positions and the permissions defined in that
+#             tournament's volunteer_schema.
+#
+# Volunteers synced from sheets have hashed_password=None and cannot log in
+# until the volunteer login phase is built.
+# ---------------------------------------------------------------------------
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    email = Column(String(255), unique=True, index=True, nullable=False)
+    phone = Column(String(32), nullable=True)
+    date_of_birth = Column(Date, nullable=True)
+    pronouns = Column(String(100), nullable=True)
+
+    # Auth fields
+    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
+    email_verified = Column(Boolean, nullable=False, default=False)
+    role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
+    is_active = Column(Boolean, nullable=False, default=True)
+    
+    # if a student
+    university = Column(String(255), nullable=True)
+    major = Column(String(255), nullable=True)
+    student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
+    year_level = Column(Integer, nullable=True)
+    graduation_year = Column(Integer, nullable=True)
+
+    # if not a student
+    employer = Column(String(255), nullable=True)
+    
+    has_competition_experience = Column(Boolean, nullable=True)
+    has_volunteer_experience = Column(Boolean, nullable=True)
+    # has_stem_experience = Column(Boolean, nullable=True)        # debatable
+
+    shirt_size = Column(String(16), nullable=True)
+    dietary_restriction = Column(String(255), nullable=True)
+    
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    memberships = relationship(
+        "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
+    )
+    tournaments = relationship(
+        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
+    )
+    competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="user",
+        foreign_keys="UserCompetitionExperience.user_id",
+        cascade="all, delete-orphan"
+    )
+    volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="user",
+        foreign_keys="UserVolunteerExperience.user_id",
+        cascade="all, delete-orphan"
+    )
+
+# ---------------------------------------------------------------------------
+# Competition Experience
+# ---------------------------------------------------------------------------
+class UserCompetitionExperience(Base):
+    __tablename__ = "user_competition_experience"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=False)
+    school = Column(String(255), nullable=False)
+    notes = Column(Text, nullable=True)
+
+    user = relationship("User", back_populates="competition_experience")
+    event = relationship("Event", back_populates="user_competition_experience")
+
+
+
+# ---------------------------------------------------------------------------
+# Volunteer Experience
+# 
+# NOTE: manual entry only, auto-populate NEXUS tournament history onto user's profile
+# ---------------------------------------------------------------------------
+class UserVolunteerExperience(Base):
+    __tablename__ = "user_volunteer_experience"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
+    
+    # manual add by the user
+    tournament_name = Column(String(255), nullable=False)
+    year = Column(Integer, nullable=False)
+    event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
+    role = Column(String(63), nullable=False)
+    
+    # keys: "event", "other"
+    #   - "event" only on manual add, for custom event names (doesn't exist in cannonical list)
+    #   - "other" extra notes from user on their experience
+    notes = Column(JSON, nullable=True)
+
+    user = relationship("User", back_populates="volunteer_experience")
+    event = relationship("Event", back_populates="user_volunteer_experience")
+
+    
+
+# ---------------------------------------------------------------------------
+# Event Category
+# ---------------------------------------------------------------------------
+class EventCategory(Base):
+    __tablename__ = "event_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+
+    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
+
+# ---------------------------------------------------------------------------
+# Event
+# ---------------------------------------------------------------------------
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+
+    category = relationship("EventCategory", back_populates="events")
+    user_competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="event",
+        foreign_keys="UserCompetitionExperience.event_id",
+        passive_deletes=True,
+    )
+    user_volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="event",
+        foreign_keys="UserVolunteerExperience.event_id",
+        passive_deletes=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tournament
 # ---------------------------------------------------------------------------
 class Tournament(Base):
     __tablename__ = "tournaments"
@@ -58,72 +209,14 @@ class Tournament(Base):
         "SheetConfig", back_populates="tournament", cascade="all, delete-orphan"
     )
     events = relationship(
-        "Event", back_populates="tournament", cascade="all, delete-orphan"
+        "TournamentEvent", back_populates="tournament", cascade="all, delete-orphan"
     )
     memberships = relationship(
-        "Membership", back_populates="tournament", cascade="all, delete-orphan"
+        "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
 
-
 # ---------------------------------------------------------------------------
-# [ACTIVE] User
-# Core identity — volunteers, TDs, and admins all live here.
-#
-# role = "admin" | "user"
-#   "admin" — superuser, bypasses all tournament-level permission checks.
-#             Used for testing and platform management. Can still hold
-#             memberships in tournaments like any other user.
-#   "user"  — everyone else. Tournament-level access is determined entirely
-#             by Membership.positions and the permissions defined in that
-#             tournament's volunteer_schema.
-#
-# Volunteers synced from sheets have hashed_password=None and cannot log in
-# until the volunteer login phase is built.
-# ---------------------------------------------------------------------------
-class User(Base):
-    __tablename__ = "users"
-
-    id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
-    email = Column(String(255), unique=True, index=True, nullable=False)
-    phone = Column(String(32), nullable=True)
-
-    # Auth fields
-    hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
-    email_verified = Column(Boolean, nullable=False, default=False)
-    role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
-    is_active = Column(Boolean, nullable=False, default=True)
-    
-    # if a student
-    university = Column(String(255), nullable=True)
-    major = Column(String(255), nullable=True)
-    student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
-    year_level = Column(Integer, nullable=True)
-    graduation_year = Column(Integer, nullable=True)
-
-    # if not a student
-    employer = Column(String(255), nullable=True)
-    
-    competition_exp = Column(Text, nullable=True)             # free-form competition experience
-    volunteering_exp = Column(Text, nullable=True)            # free-form volunteering experience
-
-    shirt_size = Column(String(16), nullable=True)
-    dietary_restriction = Column(String(255), nullable=True)
-    
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-    memberships = relationship(
-        "Membership", back_populates="user", cascade="all, delete-orphan"
-    )
-    tournaments = relationship(
-        "Tournament", back_populates="owner", foreign_keys="Tournament.owner_id"
-    )
-
-
-# ---------------------------------------------------------------------------
-# [ACTIVE] Membership
+# Tournament Membership
 # Links a User to a Tournament — their full volunteer record for that event.
 #
 # positions: list of position keys (e.g. ["tournament_director", "test_writer"])
@@ -141,8 +234,8 @@ class User(Base):
 # are defined per-tournament in Tournament.volunteer_schema["custom_fields"], making
 # the system flexible for any tournament's arbitrary form data.
 # ---------------------------------------------------------------------------
-class Membership(Base):
-    __tablename__ = "memberships"
+class TournamentMembership(Base):
+    __tablename__ = "tournament_memberships"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(
@@ -152,7 +245,7 @@ class Membership(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
     assigned_event_id = Column(
-        Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
     )
 
     # Title(s) + permission level within this tournament.
@@ -198,26 +291,35 @@ class Membership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("Event", back_populates="memberships")
+    assigned_event = relationship("TournamentEvent", back_populates="memberships")
+
+    @hybrid_property
+    def is_over_18(self) -> Optional[bool]:
+        if self.user.date_of_birth is None:
+            return None
+        
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 18)
+    
+    @hybrid_property
+    def is_over_21(self) -> Optional[bool]:
+        if self.user.date_of_birth is None:
+            return None
+        
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 21)
+    
+    # TODO: Add @is_over_18.expression / @is_over_21.expression using date-arithmetic
+    # (dob + interval '18 years' <= tournament.start_date) so tournament directors can
+    # filter registrations server-side instead of client-side. Needed once dashboard
+    # moves age filtering to backend / registration lists get large enough to paginate.
 
     __table_args__ = (
         # One membership per user per tournament
         UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
     )
 
-    # TODO(temp): remove when user account self-management is implemented
-    shirt_size           = Column(String(16),  nullable=True)
-    dietary_restriction  = Column(String(255), nullable=True)
-    university           = Column(String(255), nullable=True)
-    major                = Column(String(255), nullable=True)
-    employer             = Column(String(255), nullable=True)
-    student_status       = Column(String(100), nullable=True)
-    competition_exp      = Column(Text,        nullable=True)
-    volunteering_exp     = Column(Text,        nullable=True)
-
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] SheetConfig
+# SheetConfig
 # ---------------------------------------------------------------------------
 class SheetConfig(Base):
     __tablename__ = "sheet_configs"
@@ -241,29 +343,34 @@ class SheetConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] Event
+# Tournament Event
 # ---------------------------------------------------------------------------
-class Event(Base):
-    __tablename__ = "events"
+class TournamentEvent(Base):
+    __tablename__ = "tournament_events"
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
+    
     name = Column(String(255), nullable=False)
     division = Column(String(4), nullable=False)           # "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
     category = Column(String(255), nullable=True)
+    
     building = Column(String(255), nullable=True)
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
+    
     volunteers_needed = Column(Integer, nullable=False, default=2)
+    
     blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
+    
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
-    memberships = relationship("Membership", back_populates="assigned_event")
+    memberships = relationship("TournamentMembership", back_populates="assigned_event")
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),

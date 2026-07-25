@@ -23,11 +23,11 @@ Tournament directors use NEXUS to:
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.13, FastAPI, SQLAlchemy, Alembic |
-| Database | SQLite (dev), PostgreSQL (prod) |
+| Database | PostgreSQL (dev via Docker, prod via Neon) |
 | Frontend | Next.js 15, React, TypeScript, TailwindCSS |
 | Auth | JWT (httpOnly cookie) + API key |
 | Integrations | Google Sheets API (service account) |
-| Hosting | Railway (backend), Vercel (frontend) |
+| Hosting | Render (backend), Vercel (frontend) |
 
 ---
 
@@ -37,7 +37,7 @@ Tournament directors use NEXUS to:
 nexus/
 ├── backend/        # FastAPI app
 │   ├── app/
-│   │   ├── api/routes/     # Auth, tournaments, events, memberships, sheets
+│   │   ├── api/routes/     # Auth, users, tournaments, events, event categories, sheets
 │   │   ├── core/           # Config, auth, permissions
 │   │   ├── db/             # Session, migrations
 │   │   ├── models/         # SQLAlchemy ORM models
@@ -57,19 +57,20 @@ nexus/
 
 ### Backend
 
-**Requirements:** Python 3.13, a Google service account credentials file
+**Requirements:** Python 3.13, Docker, a Google service account credentials file
 
 ```bash
 cd backend
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
+docker-compose up -d
 ```
 
 Create a `.env` file:
 ```
 APP_ENV=development
-DATABASE_URL=sqlite:///./nexus.db
+DATABASE_URL=postgresql://nexus:nexus@127.0.0.1:5432/nexus
 GOOGLE_SERVICE_ACCOUNT_FILE=./credentials.json
 API_KEY=
 JWT_SECRET=dev-secret-change-in-production
@@ -77,6 +78,7 @@ JWT_SECRET=dev-secret-change-in-production
 
 Run the server:
 ```bash
+alembic upgrade head
 uvicorn app.main:app --reload --port 8001
 ```
 
@@ -109,12 +111,19 @@ pnpm dev
 
 ## Running Tests
 
+Tests run against a dedicated `nexus_test` Postgres database on the same Docker container as dev — this keeps test transaction/rollback semantics identical to prod (SQLite doesn't support the savepoints the test fixtures rely on). Create it once:
+
+```bash
+docker exec backend-db-1 createdb -U nexus nexus_test
+```
+
+Then run:
 ```bash
 cd backend
 pytest
 ```
 
-Tests use an in-memory SQLite database and mock out the Google Sheets API — no external services required.
+Each test runs inside a transaction that's rolled back at teardown, so the test DB never accumulates data. Override the target with `TEST_DATABASE_URL` if needed. The Google Sheets and Forms APIs are mocked — no external services required.
 
 ---
 
@@ -170,9 +179,10 @@ git checkout -b feature/your-feature
 
 ### Deployment
 
-**Backend (Railway)**
+**Backend (Render)**
 - Root directory: `backend`
 - Start command defined in `Procfile`
+- `DATABASE_URL` points at the Neon Postgres instance
 - Required env vars: `APP_ENV`, `DATABASE_URL`, `API_KEY`, `JWT_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 **Frontend (Vercel)**
@@ -185,7 +195,7 @@ git checkout -b feature/your-feature
 
 ## Architecture Notes
 
-**Permissions** are membership-based, not role-based. A user can be a tournament director for one tournament and a volunteer in another simultaneously. Access within a tournament is determined by `Membership.positions` (e.g. `tournament_director`, `lead_event_supervisor`) which map to permission keys like `manage_volunteers` and `view_events`.
+**Permissions** are membership-based, not role-based. A user can be a tournament director for one tournament and a volunteer in another simultaneously. Access within a tournament is determined by `TournamentMembership.positions` (e.g. `tournament_director`, `lead_event_supervisor`) which map to permission keys like `manage_volunteers` and `view_events`.
 
 **Sheet sync** upserts users and memberships by email. Contiguous availability slots are merged automatically. Synced volunteers start with no system permissions — TDs assign positions manually.
 

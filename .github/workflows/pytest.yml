@@ -10,6 +10,21 @@ jobs:
   test:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nexus
+          POSTGRES_PASSWORD: nexus
+          POSTGRES_DB: nexus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     defaults:
       run:
         working-directory: backend
@@ -32,5 +47,5 @@ jobs:
           APP_ENV: test
           API_KEY: ""
           JWT_SECRET: test-secret
-          DATABASE_URL: ""   # your conftest uses SQLite in-memory, so this can be blank
+          TEST_DATABASE_URL: postgresql://nexus:nexus@127.0.0.1:5432/nexus_test
         run: pytest

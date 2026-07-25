@@ -10,14 +10,14 @@ from app.core.permissions import (
     require_permission,
 )
 from app.db.session import get_db
-from app.models.models import Event, Membership, Tournament, User
-from app.schemas.membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
+from app.models.models import Event, TournamentMembership, Tournament, User
+from app.schemas.tournament_membership import MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
-router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["memberships"])
+router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
 
 
-def _serialize(m: Membership, include_user: bool = False) -> dict:
+def _serialize(m: TournamentMembership, include_user: bool = False) -> dict:
     """Serialize membership, converting availability and schedule slots to dicts.
 
     Pass include_user=True in list views to embed user name/email inline,
@@ -83,9 +83,9 @@ def _require_write_permission(user: User, tournament_id: int, db: Session) -> No
         )
 
 
-def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) -> Membership:
+def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) -> TournamentMembership:
     """Fetch membership and validate it belongs to the given tournament."""
-    m = db.query(Membership).filter(Membership.id == membership_id).first()
+    m = db.query(TournamentMembership).filter(TournamentMembership.id == membership_id).first()
     if not m:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
     if m.tournament_id != tournament_id:
@@ -117,19 +117,19 @@ def list_memberships(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     query = (
-        db.query(Membership)
-        .options(joinedload(Membership.user))
-        .filter(Membership.tournament_id == tournament_id)
+        db.query(TournamentMembership)
+        .options(joinedload(TournamentMembership.user))
+        .filter(TournamentMembership.tournament_id == tournament_id)
     )
     if status_filter:
-        query = query.filter(Membership.status == status_filter)
+        query = query.filter(TournamentMembership.status == status_filter)
 
     results = []
-    for m in query.order_by(Membership.id).all():
+    for m in query.order_by(TournamentMembership.id).all():
         data = _serialize(m)
         # TODO(temp): these fields are sourced from User — when the user profile
         # page is built, the full user profile (beyond identity) should continue
-        # to come from User, not Membership.
+        # to come from User, not TournamentMembership.
         data["first_name"] = m.user.first_name if m.user else None
         data["last_name"] = m.user.last_name if m.user else None
         data["email"] = m.user.email if m.user else None
@@ -188,9 +188,9 @@ def create_membership(
         if not event:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
 
-    existing = db.query(Membership).filter(
-        Membership.user_id == payload.user_id,
-        Membership.tournament_id == tournament_id,
+    existing = db.query(TournamentMembership).filter(
+        TournamentMembership.user_id == payload.user_id,
+        TournamentMembership.tournament_id == tournament_id,
     ).first()
     if existing:
         raise HTTPException(
@@ -204,7 +204,7 @@ def create_membership(
     if data.get("schedule"):
         data["schedule"] = [s.model_dump() for s in payload.schedule]
 
-    membership = Membership(**data)
+    membership = TournamentMembership(**data)
     db.add(membership)
     db.commit()
     db.refresh(membership)

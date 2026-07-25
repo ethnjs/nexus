@@ -1,13 +1,13 @@
 'use client'
 
 import { useState, useEffect, createContext, useContext, ReactNode } from 'react'
-import { authApi, User, ApiError } from '@/lib/api'
+import { authApi, usersApi, UserMeSlim, ApiError } from '@/lib/api'
 
 // -------------------------------------------------------------------------
 // Context
 // -------------------------------------------------------------------------
 interface AuthState {
-  user:    User | null
+  user:    UserMeSlim | null
   loading: boolean
   logout:  () => Promise<void>
 }
@@ -22,12 +22,12 @@ const AuthContext = createContext<AuthState>({
 // Provider — wrap the dashboard layout with this
 // -------------------------------------------------------------------------
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser]       = useState<User | null>(null)
+  const [user, setUser]       = useState<UserMeSlim | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Calls GET /auth/me/ — returns current user or 401
-    authApi.me()
+    // Calls GET /users/me/ — returns current user or 401
+    usersApi.me()
       .then(setUser)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 401) {
