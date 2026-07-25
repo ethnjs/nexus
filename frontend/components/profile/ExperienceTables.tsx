@@ -305,8 +305,13 @@ export function CompetitionExperienceSpreadsheet({
 
           {!editModeFull && (
             <div style={{
-              position: "absolute", right: "-70px", top: "8px",
+              position: "absolute", right: "-74px", top: "6px",
               display: "flex", gap: "4px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "8px",
+              padding: "4px",
+              boxShadow: "var(--shadow-sm)",
             }}>
               <Tooltip variant="error" message={saveError ?? ""} showIcon={false}>
                 <button
@@ -314,9 +319,20 @@ export function CompetitionExperienceSpreadsheet({
                   onClick={confirmEdit}
                   disabled={saving}
                   title="Save"
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", lineHeight: 0 }}
+                  style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
                 >
-                  <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
+                  {saving ? (
+                    <span style={{
+                      width: "22px", height: "22px",
+                      border: "2px solid var(--color-border)",
+                      borderTopColor: "var(--color-text-tertiary)",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                      animation: "btn-spin 600ms linear infinite",
+                    }} />
+                  ) : (
+                    <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
+                  )}
                 </button>
               </Tooltip>
               <button
@@ -324,9 +340,9 @@ export function CompetitionExperienceSpreadsheet({
                 onClick={cancelEdit}
                 disabled={saving}
                 title="Cancel"
-                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", lineHeight: 0 }}
+                style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
               >
-                <IconXCircle size={22} style={{ color: "var(--color-danger)" }} />
+                <IconXCircle size={22} style={{ color: saving ? "var(--color-text-tertiary)" : "var(--color-danger)" }} />
               </button>
             </div>
           )}
@@ -359,6 +375,7 @@ export function CompetitionExperienceSpreadsheet({
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right {
           opacity: 1 !important;
         }
+        @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div style={{ overflowX: "visible" }}>
@@ -705,8 +722,13 @@ export function VolunteerExperienceSpreadsheet({
 
           {!editModeFull && (
             <div style={{
-              position: "absolute", right: "-70px", top: "8px",
+              position: "absolute", right: "-74px", top: "6px",
               display: "flex", gap: "4px",
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "8px",
+              padding: "4px",
+              boxShadow: "var(--shadow-sm)",
             }}>
               <Tooltip variant="error" message={saveError ?? ""} showIcon={false}>
                 <button
@@ -714,9 +736,20 @@ export function VolunteerExperienceSpreadsheet({
                   onClick={confirmEdit}
                   disabled={saving}
                   title="Save"
-                  style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", lineHeight: 0 }}
+                  style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
                 >
-                  <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
+                  {saving ? (
+                    <span style={{
+                      width: "22px", height: "22px",
+                      border: "2px solid var(--color-border)",
+                      borderTopColor: "var(--color-text-tertiary)",
+                      borderRadius: "50%",
+                      display: "inline-block",
+                      animation: "btn-spin 600ms linear infinite",
+                    }} />
+                  ) : (
+                    <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
+                  )}
                 </button>
               </Tooltip>
               <button
@@ -724,9 +757,9 @@ export function VolunteerExperienceSpreadsheet({
                 onClick={cancelEdit}
                 disabled={saving}
                 title="Cancel"
-                style={{ background: "none", border: "none", cursor: "pointer", padding: "2px", lineHeight: 0 }}
+                style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
               >
-                <IconXCircle size={22} style={{ color: "var(--color-danger)" }} />
+                <IconXCircle size={22} style={{ color: saving ? "var(--color-text-tertiary)" : "var(--color-danger)" }} />
               </button>
             </div>
           )}
@@ -760,6 +793,7 @@ export function VolunteerExperienceSpreadsheet({
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right {
           opacity: 1 !important;
         }
+        @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
       <div style={{ overflowX: "visible" }}>
