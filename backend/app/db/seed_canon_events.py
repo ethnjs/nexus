@@ -94,7 +94,6 @@ EVENTS = {
     "Green Generation": "Life, Personal & Social Science",
     "Health Science": "Life, Personal & Social Science",
     "Helicopter": "Technology & Engineering",
-    "Helicopters": "Technology & Engineering",
     "Heredity": "Life, Personal & Social Science",
     "Herpetology": "Life, Personal & Social Science",
     "Hot House": "Earth & Space Science",

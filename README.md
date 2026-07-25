@@ -23,11 +23,11 @@ Tournament directors use NEXUS to:
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.13, FastAPI, SQLAlchemy, Alembic |
-| Database | PostgreSQL (dev via Docker, prod via Neon) |
+| Database | PostgreSQL (dev via Docker, prod via Railway) |
 | Frontend | Next.js 15, React, TypeScript, TailwindCSS |
 | Auth | JWT (httpOnly cookie) + API key |
 | Integrations | Google Sheets API (service account) |
-| Hosting | Render (backend), Vercel (frontend) |
+| Hosting | Railway (backend), Vercel (frontend) |
 
 ---
 
@@ -174,10 +174,10 @@ git checkout -b feature/your-feature
 
 ### Deployment
 
-**Backend (Render)**
+**Backend (Railway)**
 - Root directory: `backend`
 - Start command defined in `Procfile`
-- `DATABASE_URL` points at the Neon Postgres instance
+- `DATABASE_URL` points at the Railway Postgres instance
 - Required env vars: `APP_ENV`, `DATABASE_URL`, `API_KEY`, `JWT_SECRET`, `GOOGLE_SERVICE_ACCOUNT_JSON`
 
 **Frontend (Vercel)**
