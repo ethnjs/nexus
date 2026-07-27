@@ -2,7 +2,7 @@
 Core auth utilities.
 
 - Password hashing via bcrypt (passlib)
-- JWT creation/decoding via python-jose
+- Sessions (opaque DB-backed tokens, replacing the previous JWT scheme)
 - Verification tokens (signup verify / email change / password reset)
 - FastAPI dependencies: get_current_user, require_admin
 
