@@ -248,6 +248,56 @@ class TestDeleteMe:
 
 
 # ---------------------------------------------------------------------------
+# GET /users/me/sessions/ — list active sessions
+# ---------------------------------------------------------------------------
+
+class TestListMySessions:
+    def test_lists_active_session_with_current_flag(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get("/users/me/sessions/")
+        assert res.status_code == 200
+        sessions = res.json()
+        assert len(sessions) == 1
+        assert sessions[0]["is_current"] is True
+
+    def test_second_login_creates_separate_session(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        login(client, "td@test.com", "tdpass")  # simulates a second device
+        res = client.get("/users/me/sessions/")
+        sessions = res.json()
+        assert len(sessions) == 2
+        assert sum(s["is_current"] for s in sessions) == 1
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/users/me/sessions/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/sessions/logout-others/ — "log out everywhere" except here
+# ---------------------------------------------------------------------------
+
+class TestLogoutOtherSessions:
+    def test_revokes_other_sessions_keeps_current(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        first_cookie = client.cookies.get("access_token")
+
+        login(client, "td@test.com", "tdpass")  # second device, now current
+        second_cookie = client.cookies.get("access_token")
+
+        res = client.post("/users/me/sessions/logout-others/")
+        assert res.status_code == 200
+
+        client.cookies.set("access_token", first_cookie)
+        assert client.get("/users/me/").status_code == 401
+
+        client.cookies.set("access_token", second_cookie)
+        assert client.get("/users/me/").status_code == 200
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/users/me/sessions/logout-others/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 

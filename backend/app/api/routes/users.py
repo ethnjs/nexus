@@ -1,18 +1,23 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 from typing import Union
 
-from app.core.auth import get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie
+from app.core.auth import (
+    get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
+    get_current_session, revoke_all_other_sessions,
+)
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
-from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event
+from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
 from app.schemas.user import (
     UserFullResponse, UserMeFullResponse, UserSlimResponse,
     UserMeSlimResponse, UserUpdate, AdminUserUpdate
 )
 from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
+from app.schemas.session import SessionResponse
 
 router = APIRouter(tags=["users"])
 
@@ -214,3 +219,52 @@ def delete_me(
 
     clear_auth_cookie(response)
     return {"detail": "Account successfully deleted"}
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/sessions/ — list the current user's active sessions
+# ---------------------------------------------------------------------------
+@router.get("/users/me/sessions/", response_model=list[SessionResponse])
+def list_my_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_session: UserSession = Depends(get_current_session),
+):
+    """Lists active (not revoked, not expired) sessions, most recently active first."""
+    now = datetime.now(timezone.utc)
+    sessions = (
+        db.query(UserSession)
+        .filter(
+            UserSession.user_id == user.id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .order_by(UserSession.last_active_at.desc())
+        .all()
+    )
+
+    return [
+        SessionResponse(
+            id=s.id,
+            user_agent=s.user_agent,
+            ip_address=s.ip_address,
+            created_at=s.created_at,
+            last_active_at=s.last_active_at,
+            is_current=(s.id == current_session.id),
+        )
+        for s in sessions
+    ]
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/sessions/logout-others/ — "log out everywhere" except here
+# ---------------------------------------------------------------------------
+@router.post("/users/me/sessions/logout-others/", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+def logout_other_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_session: UserSession = Depends(get_current_session),
+):
+    """Revokes every session for the user except the one making this request."""
+    revoke_all_other_sessions(db, user.id, current_session.id)
+    return {"detail": "Logged out of all other sessions"}
