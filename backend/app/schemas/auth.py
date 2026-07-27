@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from typing import Optional, Literal
 from datetime import datetime
 
@@ -18,6 +18,46 @@ PASSWORD_ERROR_MSG: dict[str, str] = {
     "valid": "Password contains an invalid character.\n"
 }
 
+
+def validate_password_strength(password: str) -> str:
+    """
+    Shared password strength check — used by RegisterRequest, PasswordChangeRequest,
+    and PasswordResetConfirm. Raises ValueError with the same messages as before
+    if any check fails.
+    """
+    # must be all true to pass
+    checks: dict[str, bool] = {"length": False, "upper": False, "lower": False, "number": False, "symbol": False, "valid": True}
+    if len(password) >= 8:
+        checks["length"] = True
+
+    for c in password:
+        value = ord(c)
+        if not checks["number"] and c.isdigit():
+            checks["number"] = True
+            continue
+        if not checks["upper"] and c.isupper():
+            checks["upper"] = True
+            continue
+        if not checks["lower"] and c.islower():
+            checks["lower"] = True
+            continue
+        if not checks["symbol"] and (33 <= value <= 47 or 58 <= value <= 64 or 91 <= value <= 96 or 123 <= value <= 126):
+            checks["symbol"] = True
+            continue
+        if value <= 32 or value >= 127:
+            checks["valid"] = False
+
+    if any(not value for value in checks.values()):
+        msg = ""
+        for key, value in checks.items():
+            if not value:
+                msg += PASSWORD_ERROR_MSG[key]
+
+        raise ValueError(msg)
+
+    return password
+
+
 class RegisterRequest(BaseModel):
     email: EmailStr
     phone: str
@@ -31,42 +71,10 @@ class RegisterRequest(BaseModel):
     def normalize_phone(cls, phone: str) -> str:
         return _normalize_phone(phone)
 
-
     @field_validator("password")
     @classmethod
     def check_password(cls, password: str) -> str:
-        # must be all true to pass
-        checks: dict[str, bool] = {"length": False, "upper": False, "lower": False, "number": False, "symbol": False, "valid": True}
-        if len(password) >= 8:
-            checks["length"] = True
-        
-        for c in password:
-            value = ord(c)
-            if not checks["number"] and c.isdigit():
-                checks["number"] = True
-                continue
-            if not checks["upper"] and c.isupper():
-                checks["upper"] = True
-                continue
-            if not checks["lower"] and c.islower():
-                checks["lower"] = True
-                continue
-            if not checks["symbol"] and (33 <= value <= 47 or 58 <= value <= 64 or 91 <= value <= 96 or 123 <= value <= 126):
-                checks["symbol"] = True
-                continue
-            if value <= 32 or value >= 127:
-                checks["valid"] = False
-        
-        if any(not value for value in checks.values()):
-            msg = ""
-            for key, value in checks.items():
-                if not value:
-                    msg += PASSWORD_ERROR_MSG[key]
-            
-            raise ValueError(msg)
-        
-        return password
-                    
+        return validate_password_strength(password)
 
 
 class AdminRegisterRequest(BaseModel):
@@ -80,3 +88,45 @@ class AdminRegisterRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     detail: str
+
+
+# ---------------------------------------------------------------------------
+# Account settings — email change, password change, password reset
+# ---------------------------------------------------------------------------
+
+class EmailChangeRequest(BaseModel):
+    """POST /auth/email/request-change — authenticated."""
+    new_email: EmailStr
+
+
+class PasswordChangeRequest(BaseModel):
+    """POST /auth/password/change — authenticated."""
+    current_password: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, password: str) -> str:
+        return validate_password_strength(password)
+
+    @model_validator(mode="after")
+    def check_new_differs_from_current(self) -> "PasswordChangeRequest":
+        if self.current_password == self.new_password:
+            raise ValueError("New password must be different from current password.")
+        return self
+
+
+class PasswordResetRequest(BaseModel):
+    """POST /auth/password/reset/request — logged out, by email."""
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    """POST /auth/password/reset/confirm — logged out, token + new password."""
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, password: str) -> str:
+        return validate_password_strength(password)
