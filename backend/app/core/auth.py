@@ -343,12 +343,7 @@ def get_current_user(
 ) -> User:
     """
     Resolves the current session to its User.
-    Raises 401 if the user no longer exists or is inactive.
-
-    NOTE: the is_active check here will need updating once the planned
-    status field (active/invited/deactivated/locked) replaces the boolean —
-    deliberately not doing that in this pass to keep the session-auth
-    migration and the status-field migration as separate, reviewable steps.
+    Raises 401 if the user no longer exists or isn't active.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -357,7 +352,7 @@ def get_current_user(
 
     user = db.query(User).filter(
         User.id == session_row.user_id,
-        User.is_active == True,
+        User.status == "active",
     ).first()
     if user is None:
         raise credentials_exception

@@ -17,7 +17,7 @@ def _db_user(db, email="alice@example.com", **kwargs):
         "email": email,
         "hashed_password": hash_password("Password@1"),
         "role": "user",
-        "is_active": True,
+        "status": "active",
     }
     defaults.update(kwargs)
     user = User(**defaults)
@@ -93,7 +93,7 @@ class TestAdminGetUserByEmail:
 
 
 # ---------------------------------------------------------------------------
-# PATCH /admin/users/{id} — admin only, role + is_active only
+# PATCH /admin/users/{id} — admin only, role + status only
 # ---------------------------------------------------------------------------
 
 class TestAdminUpdateUser:
@@ -107,15 +107,15 @@ class TestAdminUpdateUser:
     def test_admin_can_disable_user(self, client, admin_user, db):
         alice = _db_user(db)
         login(client, "admin@test.com", "adminpass")
-        res = client.patch(f"/admin/users/{alice.id}/", json={"is_active": False})
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"})
         assert res.status_code == 200
-        assert res.json()["is_active"] == False
+        assert res.json()["status"] == "deactivated"
 
     def test_disabled_user_cannot_login(self, client, admin_user, db):
         # Confirms disabling actually revokes access, not just flips a flag
         alice = _db_user(db, email="alice@example.com")
         login(client, "admin@test.com", "adminpass")
-        client.patch(f"/admin/users/{alice.id}/", json={"is_active": False})
+        client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"})
         assert login(client, "alice@example.com", "Password@1").status_code == 401
 
     def test_invalid_role_rejected(self, client, admin_user, db):

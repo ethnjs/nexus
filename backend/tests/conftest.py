@@ -79,7 +79,7 @@ def admin_user(db):
         first_name="Admin",
         last_name="User",
         role="admin",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -95,7 +95,7 @@ def td_user(db):
         first_name="TD",
         last_name="User",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -111,7 +111,7 @@ def other_user(db):
         first_name="Other",
         last_name="User",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()

@@ -14,7 +14,7 @@ def inactive_user(db):
         first_name="Inactive",
         last_name="User",
         role="user",
-        is_active=False,
+        status="deactivated",
     )
     db.add(user)
     db.commit()
@@ -29,7 +29,7 @@ def volunteer_no_password(db):
         first_name="Volunteer",
         last_name="NoPassword",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -135,7 +135,7 @@ class TestRegister:
         data = res.json()
         assert data["email"] == "new@test.com"
         assert data["role"] == "user"
-        assert data["is_active"] == True
+        assert data["status"] == "active"
         assert "hashed_password" not in data
 
     def test_register_sets_cookie(self, client):
@@ -281,7 +281,7 @@ class TestAdminRegister:
         assert res.json()["role"] == "admin"
 
     def test_admin_created_user_is_inactive(self, client, admin_user):
-        # Accounts created by admin are inactive until the user activates via email
+        # Accounts created by admin are "invited" until the user activates via email
         login(client, "admin@test.com", "adminpass")
         res = client.post("/admin/auth/register/", json={
             "email": "newuser@test.com",
@@ -290,7 +290,7 @@ class TestAdminRegister:
             "role": "user",
         })
         assert res.status_code == 201
-        assert res.json()["is_active"] == False
+        assert res.json()["status"] == "invited"
 
     def test_admin_created_user_cannot_login(self, client, admin_user):
         # Inactive + no password — login must be blocked

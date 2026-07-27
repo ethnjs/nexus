@@ -32,7 +32,7 @@ def create_user(
     role: str,
     phone: Optional[str] = None,
     password: Optional[str] = None,
-    is_active: bool = True,
+    status: str = "active",
 ) -> User:
     user = User(
         email=email.lower(),
@@ -41,7 +41,7 @@ def create_user(
         first_name=first_name,
         last_name=last_name,
         role=role,
-        is_active=is_active,
+        status=status,
     )
     db.add(user)
     db.commit()

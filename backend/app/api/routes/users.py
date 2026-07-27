@@ -70,7 +70,7 @@ def admin_update_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin)
 ):
-    """Admin can only update a user's role and is_active status."""
+    """Admin can only update a user's role and status."""
     user = find_user_by_id(db, user_id)
     for field, value in body.model_dump(exclude_unset=True).items():
         setattr(user, field, value)

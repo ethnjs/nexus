@@ -115,7 +115,7 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
-    is_active = Column(Boolean, nullable=False, default=True)
+    status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
     
     # if a student
     university = Column(String(255), nullable=True)

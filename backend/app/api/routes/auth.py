@@ -56,7 +56,7 @@ def login(body: LoginRequest, request: Request, response: Response, db: Session 
     """
     user = db.query(User).filter(
         User.email == body.email.lower(),
-        User.is_active == True,
+        User.status == "active",
     ).first()
 
     # Deliberate: same error whether email or password is wrong — prevents enumeration
@@ -135,7 +135,7 @@ async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_d
     """
     check_if_email_exists(db, body.email)
 
-    user = create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
+    user = create_user(db, body.email, body.first_name, body.last_name, body.role, status="invited")
     await send_account_setup_invite_email(db, user.id, user.email)
 
     return user
@@ -271,7 +271,7 @@ async def request_password_reset(body: PasswordResetRequest, db: Session = Depen
     """
     user = db.query(User).filter(
         User.email == body.email.lower(),
-        User.is_active == True,
+        User.status == "active",
     ).first()
 
     if user and user.hashed_password:
@@ -339,7 +339,7 @@ async def confirm_account_setup(
         user.first_name = body.first_name
     if body.last_name is not None:
         user.last_name = body.last_name
-    user.is_active = True
+    user.status = "active"
     db.commit()
     db.refresh(user)
 
@@ -368,7 +368,7 @@ async def resend_account_setup(
     """Admin-only — resends the account-setup invite for a pending (not yet activated) user."""
     user = find_user_by_id(db, body.user_id)
 
-    if user.is_active or user.hashed_password:
+    if user.status != "invited":
         raise HTTPException(400, "Account setup already completed")
 
     await send_account_setup_invite_email(db, user.id, user.email)

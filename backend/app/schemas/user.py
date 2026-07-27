@@ -8,6 +8,7 @@ from app.schemas.user_experience import CompetitionExperienceResponse, Volunteer
 
 
 ROLE = Literal["admin", "user"]
+USER_STATUS = Literal["active", "invited", "deactivated", "locked"]
 STUDENT_STATUS = Literal["Undergraduate", "Graduate", "Non-Student"]
 
 
@@ -48,7 +49,7 @@ class UserUpdate(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     role: Optional[Literal["user", "admin"]] = None
-    is_active: Optional[bool] = None
+    status: Optional[USER_STATUS] = None
 
     
 
@@ -62,7 +63,7 @@ class UserSlimResponse(BaseModel):
 
     email_verified: bool
     role: ROLE
-    is_active: bool
+    status: USER_STATUS
 
     created_at: datetime
     updated_at: datetime
