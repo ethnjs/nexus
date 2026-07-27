@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from typing import Optional
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import (
-    create_access_token,
+    create_session,
+    get_active_session,
+    get_client_ip,
+    revoke_session,
     hash_password,
     verify_password,
     get_current_user,
@@ -44,10 +49,10 @@ router = APIRouter(tags=["auth"])
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/login/", response_model=UserSlimResponse)
-def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)):
+def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
-    Sets an httpOnly JWT cookie on success.
+    Sets an httpOnly session cookie on success.
     """
     user = db.query(User).filter(
         User.email == body.email.lower(),
@@ -67,15 +72,31 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
             detail="Invalid email or password",
         )
 
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    raw_token = create_session(
+        db, user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=get_client_ip(request),
+    )
+    set_auth_cookie(response, raw_token)
     return user
 
 
 
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
-def logout(response: Response):
-    """Clear the auth cookie."""
+def logout(
+    response: Response,
+    access_token: Optional[str] = Cookie(default=None),
+    db: Session = Depends(get_db),
+):
+    """
+    Revokes the current session (if the cookie still resolves to a valid
+    one) and clears the cookie either way — logout should never error just
+    because the session was already gone.
+    """
+    if access_token:
+        session_row = get_active_session(db, access_token)
+        if session_row is not None:
+            revoke_session(db, session_row)
     clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
@@ -86,7 +107,7 @@ def logout(response: Response):
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterRequest, response: Response, db: Session = Depends(get_db)):
+def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Public route to create a new user account.
     All registered users get role="user".
@@ -95,8 +116,12 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
 
     user = create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
 
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    raw_token = create_session(
+        db, user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=get_client_ip(request),
+    )
+    set_auth_cookie(response, raw_token)
 
     return user
 
@@ -292,6 +317,7 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
 )
 async def confirm_account_setup(
     body: AccountSetupConfirm,
+    request: Request,
     response: Response,
     db: Session = Depends(get_db),
 ):
@@ -317,8 +343,12 @@ async def confirm_account_setup(
     db.commit()
     db.refresh(user)
 
-    token = create_access_token(user.id)
-    set_auth_cookie(response, token)
+    raw_token = create_session(
+        db, user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=get_client_ip(request),
+    )
+    set_auth_cookie(response, raw_token)
 
     return user
 
