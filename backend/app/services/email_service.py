@@ -300,7 +300,7 @@ async def send_account_setup_email(to: str, token: str) -> None:
         ],
         cta_label="Set up account",
         cta_url=url,
-        footnote="This link expires in 7 days. If you weren't expecting this, contact your tournament administrator.",
+        footnote="This link expires in 7 days. If you weren't expecting this, contact support.",
     )
     await _send(to, "You've been added to NEXUS", f"Set up your account: {url}", html)
 

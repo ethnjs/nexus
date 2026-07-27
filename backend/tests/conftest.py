@@ -223,12 +223,13 @@ def mock_forms_service() -> MagicMock:
 def mock_send_email(monkeypatch):
     """
     Stubs the actual Resend call so no test run consumes real email quota.
-    Patched at the source (email_service.send_verification_email) so every
-    higher-level sender (signup verify, email change, password reset,
-    account setup) is covered without needing its own mock.
+    Patched at _send() — the one low-level function every sender (signup
+    verify, email change, password reset, account setup, etc.) funnels
+    through — so new senders are covered automatically without needing
+    their own mock.
     """
     mock = AsyncMock()
-    monkeypatch.setattr("app.services.email_service.send_verification_email", mock)
+    monkeypatch.setattr("app.services.email_service._send", mock)
     return mock
 
 
