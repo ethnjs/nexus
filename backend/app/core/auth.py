@@ -9,18 +9,18 @@ Core auth utilities.
 Tournament-level permission checking lives in app/core/permissions.py.
 """
 
+import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal
 
-from fastapi import Cookie, Depends, HTTPException, status
-from jose import JWTError, jwt
+from fastapi import Cookie, Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.models import User, VerificationToken
+from app.models.models import User, VerificationToken, UserSession
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -38,31 +38,125 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# JWT
+# Sessions
+# Replaces the previous stateless JWT — the access_token cookie now holds
+# a random opaque session token (not a JWT). This trades a small amount of
+# stateless-JWT convenience for the ability to actually revoke access in
+# real time (a JWT stays valid until it naturally expires; nothing short
+# of a DB-backed check can kill it early).
+#
+# token_hash uses SHA-256, not bcrypt — this gets checked on every single
+# authenticated request, and the raw token is already high-entropy random,
+# so slow adaptive hashing isn't needed and would add real per-request
+# latency. Lookup is a direct indexed equality match, unlike
+# consume_verification_token's loop-and-bcrypt-verify (fine there since
+# verification tokens are rare; wrong here since sessions are constant).
 # ---------------------------------------------------------------------------
 
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_DAYS = 7
+SESSION_EXPIRE_DAYS = 7  # fixed from creation — no sliding renewal
+SESSION_ACTIVITY_THROTTLE = timedelta(minutes=15)  # last_active_at update granularity
 
 
-def create_access_token(user_id: int) -> str:
-    settings = get_settings()
-    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    payload = {"sub": str(user_id), "exp": expire, "aud": "session"}
-    return jwt.encode(payload, settings.jwt_secret, algorithm=ALGORITHM)
+def _hash_session_token(raw_token: str) -> str:
+    return hashlib.sha256(raw_token.encode()).hexdigest()
 
 
-def decode_access_token(token: str) -> Optional[int]:
-    """Returns user_id from a valid token, or None if invalid/expired."""
-    settings = get_settings()
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=[ALGORITHM], audience="session")
-        user_id = payload.get("sub")
-        if user_id is None:
-            return None
-        return int(user_id)
-    except JWTError:
+def get_client_ip(request: Request) -> Optional[str]:
+    """
+    Prefers X-Forwarded-For (Render sits in front of the app), falls back
+    to the direct connection IP. Takes the first entry — the original
+    client — since X-Forwarded-For can be a comma-separated chain of proxies.
+    """
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else None
+
+
+def create_session(
+    db: Session,
+    user_id: int,
+    user_agent: Optional[str] = None,
+    ip_address: Optional[str] = None,
+) -> str:
+    """
+    Creates a new session and returns the raw token — this is the only
+    time it exists in plaintext; only its SHA-256 hash is persisted.
+    """
+    now = datetime.now(timezone.utc)
+    raw_token = secrets.token_urlsafe(32)
+
+    session_row = UserSession(
+        user_id=user_id,
+        token_hash=_hash_session_token(raw_token),
+        user_agent=user_agent,
+        ip_address=ip_address,
+        expires_at=now + timedelta(days=SESSION_EXPIRE_DAYS),
+    )
+    db.add(session_row)
+    db.commit()
+
+    return raw_token
+
+
+def get_active_session(db: Session, raw_token: str) -> Optional[UserSession]:
+    """
+    Looks up a session by its raw token. Returns the row if valid (not
+    revoked, not expired), else None.
+
+    Updates last_active_at, but only if it's stale by
+    SESSION_ACTIVITY_THROTTLE or more — this field is display-only (the
+    settings device list's "active Xh ago"), not part of any validity
+    check, so it doesn't need writing on every request.
+    """
+    now = datetime.now(timezone.utc)
+    token_hash = _hash_session_token(raw_token)
+
+    session_row = db.query(UserSession).filter(
+        UserSession.token_hash == token_hash,
+        UserSession.revoked_at.is_(None),
+        UserSession.expires_at > now,
+    ).first()
+
+    if session_row is None:
         return None
+
+    if session_row.last_active_at is None or (now - session_row.last_active_at) >= SESSION_ACTIVITY_THROTTLE:
+        session_row.last_active_at = now
+        db.commit()
+
+    return session_row
+
+
+def revoke_session(db: Session, session_row: UserSession) -> None:
+    """Revokes a single session — e.g. explicit logout of just this device."""
+    session_row.revoked_at = datetime.now(timezone.utc)
+    db.commit()
+
+
+def revoke_all_other_sessions(db: Session, user_id: int, keep_session_id: int) -> None:
+    """'Log out everywhere' — revokes every session for the user except the current one."""
+    now = datetime.now(timezone.utc)
+    db.query(UserSession).filter(
+        UserSession.user_id == user_id,
+        UserSession.id != keep_session_id,
+        UserSession.revoked_at.is_(None),
+    ).update({"revoked_at": now}, synchronize_session=False)
+    db.commit()
+
+
+def revoke_all_sessions(db: Session, user_id: int) -> None:
+    """
+    Revokes EVERY session for the user, including whatever's currently
+    active — used for admin account-locking, where the point is immediate
+    total lockout, not preserving anyone's current session.
+    """
+    now = datetime.now(timezone.utc)
+    db.query(UserSession).filter(
+        UserSession.user_id == user_id,
+        UserSession.revoked_at.is_(None),
+    ).update({"revoked_at": now}, synchronize_session=False)
+    db.commit()
 
 
 # ---------------------------------------------------------------------------
@@ -73,7 +167,7 @@ COOKIE_NAME = "access_token"
 COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
 
 
-def set_auth_cookie(response, token: str) -> None:
+def set_auth_cookie(response: Response, token: str) -> None:
     settings = get_settings()
     is_prod = settings.app_env == "production"
     is_preview = settings.app_env == "preview"
@@ -89,7 +183,7 @@ def set_auth_cookie(response, token: str) -> None:
     )
 
 
-def clear_auth_cookie(response) -> None:
+def clear_auth_cookie(response: Response) -> None:
     settings = get_settings()
     is_prod = settings.app_env == "production"
     response.delete_cookie(
@@ -97,6 +191,7 @@ def clear_auth_cookie(response) -> None:
         path="/",
         domain=".ethanshih.com" if is_prod else None,
     )
+
 
 # ---------------------------------------------------------------------------
 # Verification tokens
@@ -214,13 +309,19 @@ def consume_verification_token(
 # FastAPI dependencies
 # ---------------------------------------------------------------------------
 
-def get_current_user(
+def get_current_session(
     access_token: Optional[str] = Cookie(default=None),
     db: Session = Depends(get_db),
-) -> User:
+) -> UserSession:
     """
-    Reads JWT from the httpOnly 'access_token' cookie.
-    Raises 401 if missing, invalid, expired, or user inactive.
+    Reads the opaque session token from the httpOnly 'access_token' cookie
+    and resolves it to an active UserSession row.
+    Raises 401 if missing, invalid, expired, or revoked.
+
+    Split out from get_current_user so routes that need the session itself
+    (e.g. "log out everywhere" needs to exclude the current session, the
+    settings device list needs to mark which one is current) can depend on
+    this directly instead of re-deriving it from the user.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -229,12 +330,33 @@ def get_current_user(
     if not access_token:
         raise credentials_exception
 
-    user_id = decode_access_token(access_token)
-    if user_id is None:
+    session_row = get_active_session(db, access_token)
+    if session_row is None:
         raise credentials_exception
 
+    return session_row
+
+
+def get_current_user(
+    session_row: UserSession = Depends(get_current_session),
+    db: Session = Depends(get_db),
+) -> User:
+    """
+    Resolves the current session to its User.
+    Raises 401 if the user no longer exists or is inactive.
+
+    NOTE: the is_active check here will need updating once the planned
+    status field (active/invited/deactivated/locked) replaces the boolean —
+    deliberately not doing that in this pass to keep the session-auth
+    migration and the status-field migration as separate, reviewable steps.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+    )
+
     user = db.query(User).filter(
-        User.id == user_id,
+        User.id == session_row.user_id,
         User.is_active == True,
     ).first()
     if user is None:
