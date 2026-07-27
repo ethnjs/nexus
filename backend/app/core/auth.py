@@ -66,51 +66,19 @@ def decode_access_token(token: str) -> Optional[int]:
 
 
 # ---------------------------------------------------------------------------
-# Auth cookie
-# ---------------------------------------------------------------------------
-
-COOKIE_NAME = "access_token"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
-
-
-def set_auth_cookie(response, token: str) -> None:
-    settings = get_settings()
-    is_prod = settings.app_env == "production"
-    is_preview = settings.app_env == "preview"
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=is_prod or is_preview,
-        samesite="none" if (is_prod or is_preview) else "lax",
-        max_age=COOKIE_MAX_AGE,
-        path="/",
-        domain=".ethanshih.com" if is_prod else None,
-    )
-
-
-def clear_auth_cookie(response) -> None:
-    settings = get_settings()
-    is_prod = settings.app_env == "production"
-    response.delete_cookie(
-        key=COOKIE_NAME,
-        path="/",
-        domain=".ethanshih.com" if is_prod else None,
-    )
-
-# ---------------------------------------------------------------------------
 # Verification tokens
 # Backs signup email verification, email-change, and password reset.
 # Raw token is emailed to the user; only its hash is ever persisted
 # (VerificationToken.token_hash, via the same bcrypt context as passwords).
 # ---------------------------------------------------------------------------
 
-Purpose = Literal["signup_verify", "email_change", "password_reset"]
+Purpose = Literal["signup_verify", "email_change", "password_reset", "account_setup"]
 
 TOKEN_TTL: dict[Purpose, timedelta] = {
     "signup_verify": timedelta(hours=24),
     "email_change": timedelta(hours=24),
     "password_reset": timedelta(hours=1),
+    "account_setup": timedelta(days=7),  # admin invites sit longer before expiring
 }
 
 RATE_LIMIT_WINDOW = timedelta(seconds=60)
