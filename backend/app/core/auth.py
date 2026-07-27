@@ -3,13 +3,15 @@ Core auth utilities.
 
 - Password hashing via bcrypt (passlib)
 - JWT creation/decoding via python-jose
+- Verification tokens (signup verify / email change / password reset)
 - FastAPI dependencies: get_current_user, require_admin
 
 Tournament-level permission checking lives in app/core/permissions.py.
 """
 
+import secrets
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Literal
 
 from fastapi import Cookie, Depends, HTTPException, status
 from jose import JWTError, jwt
@@ -18,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.models.models import User
+from app.models.models import User, VerificationToken
 
 # ---------------------------------------------------------------------------
 # Password hashing
@@ -61,6 +63,117 @@ def decode_access_token(token: str) -> Optional[int]:
         return int(user_id)
     except JWTError:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Verification tokens
+# Backs signup email verification, email-change, and password reset.
+# Raw token is emailed to the user; only its hash is ever persisted
+# (VerificationToken.token_hash, via the same bcrypt context as passwords).
+# ---------------------------------------------------------------------------
+
+Purpose = Literal["signup_verify", "email_change", "password_reset"]
+
+TOKEN_TTL: dict[Purpose, timedelta] = {
+    "signup_verify": timedelta(hours=24),
+    "email_change": timedelta(hours=24),
+    "password_reset": timedelta(hours=1),
+}
+
+RATE_LIMIT_WINDOW = timedelta(seconds=60)
+
+
+class RateLimitedError(Exception):
+    """Raised when a new token is requested too soon after a prior one."""
+    pass
+
+
+def create_verification_token(
+    db: Session,
+    user_id: int,
+    purpose: Purpose,
+    new_email: Optional[str] = None,
+) -> str:
+    """
+    Creates a new verification token for the given user + purpose.
+
+    - Rate limits: raises RateLimitedError if an unconsumed, unexpired token
+      for this (user_id, purpose) was created within RATE_LIMIT_WINDOW.
+    - Stale-token guarding: invalidates (marks used_at) any other unconsumed
+      tokens for this (user_id, purpose) before issuing the new one, so only
+      the most recently issued link is ever valid.
+
+    Returns the raw token — this is the only time it exists in plaintext.
+    """
+    now = datetime.now(timezone.utc)
+
+    existing = (
+        db.query(VerificationToken)
+        .filter(
+            VerificationToken.user_id == user_id,
+            VerificationToken.purpose == purpose,
+            VerificationToken.used_at.is_(None),
+            VerificationToken.expires_at > now,
+        )
+        .all()
+    )
+
+    for row in existing:
+        if row.created_at is not None and (now - row.created_at) < RATE_LIMIT_WINDOW:
+            raise RateLimitedError(
+                f"A {purpose} request was already made recently. Please wait before retrying."
+            )
+
+    # Stale-token guarding — invalidate any other pending tokens for this purpose
+    for row in existing:
+        row.used_at = now
+
+    raw_token = secrets.token_urlsafe(32)
+
+    token_row = VerificationToken(
+        user_id=user_id,
+        token_hash=hash_password(raw_token),
+        purpose=purpose,
+        new_email=new_email,
+        expires_at=now + TOKEN_TTL[purpose],
+    )
+    db.add(token_row)
+    db.commit()
+
+    return raw_token
+
+
+def consume_verification_token(
+    db: Session,
+    raw_token: str,
+    expected_purpose: Purpose,
+) -> Optional[VerificationToken]:
+    """
+    Validates and consumes a raw token for the given purpose.
+
+    Returns the VerificationToken row (with .user_id / .new_email available)
+    on success, or None if no matching, unexpired, unconsumed token is found.
+    Marks the row used_at on success — tokens are single-use.
+    """
+    now = datetime.now(timezone.utc)
+
+    candidates = (
+        db.query(VerificationToken)
+        .filter(
+            VerificationToken.purpose == expected_purpose,
+            VerificationToken.used_at.is_(None),
+            VerificationToken.expires_at > now,
+        )
+        .all()
+    )
+
+    for row in candidates:
+        if verify_password(raw_token, row.token_hash):
+            row.used_at = now
+            db.commit()
+            return row
+
+    return None
 
 
 # ---------------------------------------------------------------------------
