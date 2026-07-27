@@ -24,6 +24,68 @@ def utcnow():
 
 
 # ---------------------------------------------------------------------------
+# UserSession
+# Backs authentication — replaces the previous stateless JWT so sessions can
+# be listed and individually or collectively revoked (e.g. "log out
+# everywhere" in account settings).
+#
+# token_hash uses a fast hash (SHA-256), not bcrypt — unlike VerificationToken,
+# this gets checked on every authenticated request. The raw token is already
+# high-entropy random, so slow adaptive hashing isn't needed here and would
+# add unacceptable per-request latency. Lookup is a direct indexed equality
+# match, not a loop-and-verify like consume_verification_token.
+#
+# Fixed 7-day expiration from creation — no sliding renewal. last_active_at
+# is updated on a throttle (not every request), purely for the "active Xh
+# ago" display in the settings device list — it's not used in expiration
+# or validity checks, only revoked_at + expires_at are.
+# ---------------------------------------------------------------------------
+class UserSession(Base):
+    __tablename__ = "sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)  # SHA-256 hex digest
+
+    user_agent = Column(String(255), nullable=True)
+    ip_address = Column(String(45), nullable=True)  # long enough for IPv6
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    last_active_at = Column(DateTime(timezone=True), default=utcnow)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")
+
+# ---------------------------------------------------------------------------
+# Verification Token
+# Backs signup email verification, email-change, and password reset.
+# One raw token is emailed to the user; only its hash is stored here.
+#
+# purpose: "signup_verify" | "email_change" | "password_reset"
+#   new_email is only ever set for "email_change" rows.
+#
+# On create, any prior unconsumed row for the same (user_id, purpose) is
+# marked used_at (stale-token guarding) — see app/core/verification_tokens.py.
+# ---------------------------------------------------------------------------
+class VerificationToken(Base):
+    __tablename__ = "verification_tokens"
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+ 
+    token_hash = Column(String(255), nullable=False, index=True, unique=True)
+    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset"
+    new_email = Column(String(255), nullable=True)  # only set for "email_change"
+ 
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+ 
+    user = relationship("User")
+
+# ---------------------------------------------------------------------------
 # User
 # Core identity — volunteers, TDs, and admins all live here.
 #
@@ -95,33 +157,6 @@ class User(Base):
     )
 
 # ---------------------------------------------------------------------------
-# Verification Token
-# Backs signup email verification, email-change, and password reset.
-# One raw token is emailed to the user; only its hash is stored here.
-#
-# purpose: "signup_verify" | "email_change" | "password_reset"
-#   new_email is only ever set for "email_change" rows.
-#
-# On create, any prior unconsumed row for the same (user_id, purpose) is
-# marked used_at (stale-token guarding) — see app/core/verification_tokens.py.
-# ---------------------------------------------------------------------------
-class VerificationToken(Base):
-    __tablename__ = "verification_tokens"
- 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
- 
-    token_hash = Column(String(255), nullable=False, index=True, unique=True)
-    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset"
-    new_email = Column(String(255), nullable=True)  # only set for "email_change"
- 
-    expires_at = Column(DateTime(timezone=True), nullable=False)
-    used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
- 
-    user = relationship("User")
-
-# ---------------------------------------------------------------------------
 # Competition Experience
 # ---------------------------------------------------------------------------
 class UserCompetitionExperience(Base):
@@ -135,8 +170,6 @@ class UserCompetitionExperience(Base):
 
     user = relationship("User", back_populates="competition_experience")
     event = relationship("Event", back_populates="user_competition_experience")
-
-
 
 # ---------------------------------------------------------------------------
 # Volunteer Experience
@@ -346,30 +379,6 @@ class TournamentMembership(Base):
 
 
 # ---------------------------------------------------------------------------
-# SheetConfig
-# ---------------------------------------------------------------------------
-class SheetConfig(Base):
-    __tablename__ = "sheet_configs"
-
-    id = Column(Integer, primary_key=True, index=True)
-    tournament_id = Column(
-        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
-    )
-    label = Column(String(255), nullable=False)
-    sheet_type = Column(String(64), nullable=False)
-    sheet_url = Column(Text, nullable=False)
-    spreadsheet_id = Column(String(255), nullable=False)
-    sheet_name = Column(String(255), nullable=False)
-    column_mappings = Column(JSON, nullable=False, default=dict)
-    is_active = Column(Boolean, default=True)
-    last_synced_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
-
-    tournament = relationship("Tournament", back_populates="sheet_configs")
-
-
-# ---------------------------------------------------------------------------
 # Tournament Event
 # ---------------------------------------------------------------------------
 class TournamentEvent(Base):
@@ -402,3 +411,27 @@ class TournamentEvent(Base):
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
     )
+
+
+# ---------------------------------------------------------------------------
+# SheetConfig
+# ---------------------------------------------------------------------------
+class SheetConfig(Base):
+    __tablename__ = "sheet_configs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
+    )
+    label = Column(String(255), nullable=False)
+    sheet_type = Column(String(64), nullable=False)
+    sheet_url = Column(Text, nullable=False)
+    spreadsheet_id = Column(String(255), nullable=False)
+    sheet_name = Column(String(255), nullable=False)
+    column_mappings = Column(JSON, nullable=False, default=dict)
+    is_active = Column(Boolean, default=True)
+    last_synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="sheet_configs")
