@@ -163,9 +163,32 @@ class AccountSetupConfirm(BaseModel):
 class AccountSetupResendRequest(BaseModel):
     """
     POST /admin/auth/account-setup/resend — admin only.
-    
+
     Resends the account-setup invite for a specific user (by id) at the
     admin's request. Not public — avoids any account-enumeration surface
     on the signup page.
     """
     user_id: int
+
+
+# ---------------------------------------------------------------------------
+# Self-service deactivate / delete
+# ---------------------------------------------------------------------------
+
+class AccountDeactivateRequest(BaseModel):
+    """
+    POST /users/me/deactivate — authenticated.
+    
+    Reversible — sets status="deactivated" and revokes every session.
+    """
+    password: str
+
+
+class AccountDeleteRequest(BaseModel):
+    """
+    DELETE /users/me — authenticated.
+    
+    Irreversible hard delete — cascades through TournamentMembership and
+    everything else owned by the user.
+    """
+    password: str

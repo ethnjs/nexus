@@ -1,9 +1,9 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
 from typing import Union
 
-from app.core.auth import get_current_user, require_admin, revoke_all_sessions
+from app.core.auth import get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
@@ -12,6 +12,7 @@ from app.schemas.user import (
     UserFullResponse, UserMeFullResponse, UserSlimResponse,
     UserMeSlimResponse, UserUpdate, AdminUserUpdate
 )
+from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
 
 router = APIRouter(tags=["users"])
 
@@ -155,7 +156,61 @@ def update_user_me(
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
-    
+
     response = UserMeFullResponse.model_validate(user)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/deactivate/ — authenticated self-service deactivation
+# ---------------------------------------------------------------------------
+@router.post("/users/me/deactivate/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={401: {"description": "Current password is incorrect"}},
+)
+def deactivate_me(
+    body: AccountDeactivateRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Reversible self-deactivation. Revokes every session for the user
+    (including the one making this request) and clears the cookie on this
+    response so the client isn't left holding a dead token.
+    """
+    if not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    user.status = "deactivated"
+    revoke_all_sessions(db, user.id)
+    db.commit()
+
+    clear_auth_cookie(response)
+    return {"detail": "Account deactivated"}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /users/me/ — authenticated self-service hard delete
+# ---------------------------------------------------------------------------
+@router.delete("/users/me/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={401: {"description": "Current password is incorrect"}},
+)
+def delete_me(
+    body: AccountDeleteRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Irreversible hard delete — cascades through TournamentMembership,
+    sessions, verification tokens, etc. via DB-level ON DELETE CASCADE.
+    """
+    if not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    db.delete(user)
+    db.commit()
+
+    clear_auth_cookie(response)
+    return {"detail": "Account successfully deleted"}

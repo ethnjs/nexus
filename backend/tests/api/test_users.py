@@ -173,6 +173,81 @@ class TestAdminDeleteUser:
 
 
 # ---------------------------------------------------------------------------
+# POST /users/me/deactivate/ — authenticated self-service deactivation
+# ---------------------------------------------------------------------------
+
+class TestDeactivateMe:
+    def test_deactivate_success(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/users/me/deactivate/", json={"password": "tdpass"})
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.status == "deactivated"
+
+    def test_wrong_password_rejected(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/users/me/deactivate/", json={"password": "wrongpass"})
+        assert res.status_code == 401
+        db.refresh(td_user)
+        assert td_user.status == "active"
+
+    def test_deactivate_revokes_session(self, client, td_user):
+        # The session used to make this request should itself be dead
+        # afterward, not just future logins blocked.
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/users/me/deactivate/", json={"password": "tdpass"}).status_code == 200
+        assert client.get("/users/me/").status_code == 401
+
+    def test_deactivated_user_cannot_login(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.post("/users/me/deactivate/", json={"password": "tdpass"})
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/users/me/deactivate/", json={"password": "whatever"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# DELETE /users/me/ — authenticated self-service hard delete
+# ---------------------------------------------------------------------------
+
+class TestDeleteMe:
+    def test_delete_success(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.request("DELETE", "/users/me/", json={"password": "tdpass"})
+        assert res.status_code == 200
+        assert db.query(User).filter(User.id == td_user.id).first() is None
+
+    def test_wrong_password_rejected(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.request("DELETE", "/users/me/", json={"password": "wrongpass"})
+        assert res.status_code == 401
+        assert db.query(User).filter(User.id == td_user.id).first() is not None
+
+    def test_delete_cascades_membership(self, client, admin_user, td_tournament, db):
+        # admin_user here is a plain member, not the tournament owner — a
+        # user who owns a tournament can't be hard-deleted yet (owner_id is
+        # NOT NULL with no cascade rule defined); tracked separately in
+        # docs/deferred-items.md rather than handled by this route.
+        from app.models.models import TournamentMembership
+        db.add(TournamentMembership(
+            user_id=admin_user.id,
+            tournament_id=td_tournament.id,
+            positions=["event_supervisor"],
+            status="confirmed",
+        ))
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0
+        assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
+        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() == 0
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.request("DELETE", "/users/me/", json={"password": "whatever"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # GET /users/me/ (default, no ?full) — slim shape, folded in from old /auth/me/
 # ---------------------------------------------------------------------------
 
