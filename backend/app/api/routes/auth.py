@@ -11,7 +11,7 @@ from app.core.auth import (
     clear_auth_cookie,
 )
 from app.core.users import check_if_email_exists, find_user_by_id, create_user
-from app.core.email_verification import verify_verification_token
+from app.core.auth import consume_verification_token
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.user import UserSlimResponse
@@ -91,30 +91,32 @@ def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _:
 @router.get("/auth/verify-email/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
     responses={
         400: {"description": "Invalid or expired token"},
-        404: {"description": "User not found"},
     },
 )
 def verify_email(token: str, db: Session = Depends(get_db)):
-    user_id = verify_verification_token(token)
-    if user_id is None:
+    token_row = consume_verification_token(db, token, "signup_verify")
+    if token_row is None:
         raise HTTPException(400, "Invalid or expired token")
-    
-    user = find_user_by_id(db, user_id)
+
+    user = find_user_by_id(db, token_row.user_id)
     user.email_verified = True
     db.commit()
     return {"detail": "User email successfully verified"}
 
-# todo: add rate limiting
 @router.post("/auth/send-email-verification/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
     responses={
         400: {"description": "Email already verified"},
+        429: {"description": "Verification email requested too recently"},
         500: {"description": "Failed to send verification email"},
     },
 )
-async def send_email_verification(user: User = Depends(get_current_user)):
+async def send_email_verification(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
     if user.email_verified:
         raise HTTPException(400, "Email already verified")
-    
-    await send_signup_verification_email(user.email, user.id)
+
+    await send_signup_verification_email(db, user.email, user.id)
 
     return {"detail": "Verification email successfully sent"}

@@ -2,8 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.core.auth import hash_password
-from app.core.email_verification import generate_verification_token
+from app.core.auth import hash_password, create_verification_token
 from app.models.models import User
 
 
@@ -349,7 +348,7 @@ class TestAdminRegister:
 class TestVerifyEmail:
     def test_valid_token_verifies_email(self, client, td_user, db):
         assert td_user.email_verified is False
-        token = generate_verification_token(td_user.id)
+        token = create_verification_token(db, td_user.id, "signup_verify")
         res = client.get(f"/auth/verify-email/?token={token}")
         assert res.status_code == 200
         db.refresh(td_user)
@@ -358,9 +357,10 @@ class TestVerifyEmail:
     def test_invalid_token_rejected(self, client):
         assert client.get("/auth/verify-email/?token=garbage").status_code == 400
 
-    def test_token_for_nonexistent_user_not_found(self, client):
-        token = generate_verification_token(9999)
-        assert client.get(f"/auth/verify-email/?token={token}").status_code == 404
+    def test_token_already_used_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "signup_verify")
+        assert client.get(f"/auth/verify-email/?token={token}").status_code == 200
+        assert client.get(f"/auth/verify-email/?token={token}").status_code == 400
 
 
 # ---------------------------------------------------------------------------
