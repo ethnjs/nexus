@@ -95,6 +95,33 @@ class User(Base):
     )
 
 # ---------------------------------------------------------------------------
+# Verification Token
+# Backs signup email verification, email-change, and password reset.
+# One raw token is emailed to the user; only its hash is stored here.
+#
+# purpose: "signup_verify" | "email_change" | "password_reset"
+#   new_email is only ever set for "email_change" rows.
+#
+# On create, any prior unconsumed row for the same (user_id, purpose) is
+# marked used_at (stale-token guarding) — see app/core/verification_tokens.py.
+# ---------------------------------------------------------------------------
+class VerificationToken(Base):
+    __tablename__ = "verification_tokens"
+ 
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+ 
+    token_hash = Column(String(255), nullable=False, index=True, unique=True)
+    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset"
+    new_email = Column(String(255), nullable=True)  # only set for "email_change"
+ 
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+ 
+    user = relationship("User")
+
+# ---------------------------------------------------------------------------
 # Competition Experience
 # ---------------------------------------------------------------------------
 class UserCompetitionExperience(Base):
