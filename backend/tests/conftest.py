@@ -25,7 +25,7 @@ os.environ.setdefault("API_KEY", "")
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 from app.db.session import Base, get_db
 from app.models import models  # noqa: F401
@@ -218,6 +218,19 @@ def mock_forms_service() -> MagicMock:
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def mock_send_email(monkeypatch):
+    """
+    Stubs the actual Resend call so no test run consumes real email quota.
+    Patched at the source (email_service.send_verification_email) so every
+    higher-level sender (signup verify, email change, password reset,
+    account setup) is covered without needing its own mock.
+    """
+    mock = AsyncMock()
+    monkeypatch.setattr("app.services.email_service.send_verification_email", mock)
+    return mock
+
 
 @pytest.fixture(scope="function")
 def client(db, mock_sheets_service, mock_forms_service):
