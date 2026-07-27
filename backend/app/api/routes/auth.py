@@ -1,6 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
-from typing import Optional
 
 from app.core.auth import (
     create_access_token,
@@ -8,78 +7,18 @@ from app.core.auth import (
     verify_password,
     get_current_user,
     require_admin,
+    set_auth_cookie,
+    clear_auth_cookie,
 )
-from app.core.config import get_settings
-from app.core.users import check_if_email_exists, find_user_by_id
-from app.core.email_verification import generate_verification_token, verify_verification_token
+from app.core.users import check_if_email_exists, find_user_by_id, create_user
+from app.core.email_verification import verify_verification_token
 from app.db.session import get_db
 from app.models.models import User
 from app.schemas.user import UserSlimResponse
 from app.schemas.auth import LoginRequest, RegisterRequest, AdminRegisterRequest, MessageResponse
-from app.services.email_service import send_verification_email
+from app.services.email_service import send_signup_verification_email
 
-router = APIRouter( tags=["auth"])
-
-COOKIE_NAME = "access_token"
-COOKIE_MAX_AGE = 7 * 24 * 60 * 60  # 7 days in seconds
-
-
-def _set_auth_cookie(response: Response, token: str) -> None:
-    settings = get_settings()
-    is_prod = settings.app_env == "production"
-    is_preview = settings.app_env == "preview"
-    response.set_cookie(
-        key=COOKIE_NAME,
-        value=token,
-        httponly=True,
-        secure=is_prod or is_preview,
-        samesite="none" if (is_prod or is_preview) else "lax",
-        max_age=COOKIE_MAX_AGE,
-        path="/",
-        domain=".ethanshih.com" if is_prod else None,
-    )
-
-
-def _clear_auth_cookie(response: Response) -> None:
-    settings = get_settings()
-    is_prod = settings.app_env == "production"
-    response.delete_cookie(
-        key=COOKIE_NAME,
-        path="/",
-        domain=".ethanshih.com" if is_prod else None,
-    )
-
-def _create_user(
-        db: Session,
-        email: str,
-        first_name: str,
-        last_name: str,
-        role: str,
-        phone: Optional[str] = None,
-        password: Optional[str] = None,
-        is_active: bool = True
-    ) -> User:
-
-    user = User(
-        email=email.lower(),
-        phone=phone,
-        hashed_password=hash_password(password) if password else None,
-        first_name=first_name,
-        last_name=last_name,
-        role=role,
-        is_active=is_active,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-    
-async def _send_verification_email(to: str, id: int):
-    try:
-        await send_verification_email(to, generate_verification_token(id))
-
-    except Exception:
-        raise HTTPException(500, "Failed to send verification email")
+router = APIRouter(tags=["auth"])
 
 
 @router.post("/auth/login/", response_model=UserSlimResponse)
@@ -107,7 +46,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         )
 
     token = create_access_token(user.id)
-    _set_auth_cookie(response, token)
+    set_auth_cookie(response, token)
     return user
 
 
@@ -115,7 +54,7 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
 @router.post("/auth/logout/", status_code=status.HTTP_200_OK)
 def logout(response: Response):
     """Clear the auth cookie."""
-    _clear_auth_cookie(response)
+    clear_auth_cookie(response)
     return {"detail": "Logged out"}
 
 
@@ -128,10 +67,10 @@ def register(body: RegisterRequest, response: Response, db: Session = Depends(ge
     """
     check_if_email_exists(db, body.email)
 
-    user = _create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
+    user = create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
 
     token = create_access_token(user.id)
-    _set_auth_cookie(response, token)
+    set_auth_cookie(response, token)
 
     return user
 
@@ -145,7 +84,7 @@ def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _:
     """
     check_if_email_exists(db, body.email)
 
-    return _create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
+    return create_user(db, body.email, body.first_name, body.last_name, body.role, is_active=False)
 
 
 
@@ -176,6 +115,6 @@ async def send_email_verification(user: User = Depends(get_current_user)):
     if user.email_verified:
         raise HTTPException(400, "Email already verified")
     
-    await _send_verification_email(user.email, user.id)
+    await send_signup_verification_email(user.email, user.id)
 
     return {"detail": "Verification email successfully sent"}
