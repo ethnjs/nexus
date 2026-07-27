@@ -123,6 +123,22 @@ class TestAdminUpdateUser:
         login(client, "admin@test.com", "adminpass")
         assert client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
 
+    def test_locking_revokes_existing_session(self, client, admin_user, db):
+        # Locking must cut off an already-logged-in device immediately, not
+        # just block future logins the way plain deactivation does.
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+        assert client.get("/users/me/").status_code == 200
+
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "locked"})
+        assert res.status_code == 200
+        assert res.json()["status"] == "locked"
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 401
+
     def test_non_admin_forbidden(self, client, td_user, db):
         alice = _db_user(db)
         login(client, "td@test.com", "tdpass")

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 from typing import Union
 
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user, require_admin, revoke_all_sessions
 from app.core.users import check_if_email_exists, find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
@@ -70,10 +70,21 @@ def admin_update_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin)
 ):
-    """Admin can only update a user's role and status."""
+    """
+    Admin can only update a user's role and status.
+
+    Setting status="locked" also revokes every session for that user —
+    locking is meant to cut off access immediately, not just block future
+    logins, so a currently-logged-in device shouldn't stay usable.
+    """
     user = find_user_by_id(db, user_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(user, field, value)
+
+    if updates.get("status") == "locked":
+        revoke_all_sessions(db, user.id)
+
     db.commit()
     db.refresh(user)
     return user
