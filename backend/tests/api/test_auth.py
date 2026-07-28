@@ -37,6 +37,22 @@ def volunteer_no_password(db):
     return user
 
 
+@pytest.fixture
+def invited_user(db):
+    """An admin-created user who hasn't completed account-setup yet."""
+    user = User(
+        email="invited@test.com",
+        first_name="Invited",
+        last_name="User",
+        role="user",
+        status="invited",
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
 # ---------------------------------------------------------------------------
 # POST /auth/login/
 # ---------------------------------------------------------------------------
@@ -380,3 +396,270 @@ class TestSendEmailVerification:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.post("/auth/send-email-verification/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/email/request-change/
+# ---------------------------------------------------------------------------
+
+class TestRequestEmailChange:
+    def test_request_change_success(self, client, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
+        assert res.status_code == 200
+        assert mock_send_email.called
+
+    def test_duplicate_email_rejected(self, client, td_user, other_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/email/request-change/", json={"new_email": "other@test.com"})
+        assert res.status_code == 409
+
+    def test_own_current_email_allowed(self, client, td_user):
+        # Requesting a "change" to the same email isn't a conflict with self
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/email/request-change/", json={"new_email": "td@test.com"})
+        assert res.status_code == 200
+
+    def test_rate_limited_on_repeat_request(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
+        res = client.post("/auth/email/request-change/", json={"new_email": "tdnew2@test.com"})
+        assert res.status_code == 429
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/auth/email/request-change/", json={"new_email": "x@test.com"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/email/confirm-change/
+# ---------------------------------------------------------------------------
+
+class TestConfirmEmailChange:
+    def test_valid_token_confirms_change(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        res = client.get(f"/auth/email/confirm-change/?token={token}")
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.email == "tdnew@test.com"
+        assert td_user.email_verified is True
+
+    def test_invalid_token_rejected(self, client):
+        assert client.get("/auth/email/confirm-change/?token=garbage").status_code == 400
+
+    def test_token_already_used_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 200
+        assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
+
+    def test_wrong_purpose_token_rejected(self, client, td_user, db):
+        # A signup_verify token shouldn't be usable here
+        token = create_verification_token(db, td_user.id, "signup_verify")
+        assert client.get(f"/auth/email/confirm-change/?token={token}").status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/password/change/
+# ---------------------------------------------------------------------------
+
+class TestChangePassword:
+    def test_change_password_success(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "tdpass",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
+        client.post("/auth/logout/")
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+        assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_wrong_current_password_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "wrongpass",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 401
+
+    def test_new_password_same_as_current_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "tdpass",
+            "new_password": "tdpass",
+        })
+        assert res.status_code == 422
+
+    def test_weak_new_password_rejected(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/password/change/", json={
+            "current_password": "tdpass",
+            "new_password": "weak",
+        })
+        assert res.status_code == 422
+
+    def test_unauthenticated_forbidden(self, client):
+        res = client.post("/auth/password/change/", json={
+            "current_password": "x",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/password/reset/request/
+# ---------------------------------------------------------------------------
+
+class TestRequestPasswordReset:
+    def test_active_user_with_password_sends_email(self, client, td_user, mock_send_email):
+        res = client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
+        assert res.status_code == 200
+        assert mock_send_email.called
+
+    def test_unknown_email_returns_generic_200_no_email_sent(self, client, mock_send_email):
+        res = client.post("/auth/password/reset/request/", json={"email": "nobody@test.com"})
+        assert res.status_code == 200
+        assert not mock_send_email.called
+
+    def test_invited_user_excluded_no_email_sent(self, client, invited_user, mock_send_email):
+        # Pending admin-invited accounts have no password yet — they should
+        # use account-setup, not password reset.
+        res = client.post("/auth/password/reset/request/", json={"email": "invited@test.com"})
+        assert res.status_code == 200
+        assert not mock_send_email.called
+
+    def test_no_password_user_excluded_no_email_sent(self, client, volunteer_no_password, mock_send_email):
+        res = client.post("/auth/password/reset/request/", json={"email": "vol@test.com"})
+        assert res.status_code == 200
+        assert not mock_send_email.called
+
+    def test_deactivated_user_excluded_no_email_sent(self, client, inactive_user, mock_send_email):
+        res = client.post("/auth/password/reset/request/", json={"email": "inactive@test.com"})
+        assert res.status_code == 200
+        assert not mock_send_email.called
+
+    def test_rate_limit_swallowed_as_generic_200(self, client, td_user):
+        client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
+        res = client.post("/auth/password/reset/request/", json={"email": "td@test.com"})
+        assert res.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/password/reset/confirm/
+# ---------------------------------------------------------------------------
+
+class TestConfirmPasswordReset:
+    def test_valid_token_resets_password(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        res = client.post("/auth/password/reset/confirm/", json={
+            "token": token,
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 200
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+        assert login(client, "td@test.com", VALID_PASSWORD).status_code == 200
+
+    def test_invalid_token_rejected(self, client):
+        res = client.post("/auth/password/reset/confirm/", json={
+            "token": "garbage",
+            "new_password": VALID_PASSWORD,
+        })
+        assert res.status_code == 400
+
+    def test_token_already_used_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": VALID_PASSWORD})
+        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": "Another@123"})
+        assert res.status_code == 400
+
+    def test_weak_new_password_rejected(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "password_reset")
+        res = client.post("/auth/password/reset/confirm/", json={"token": token, "new_password": "weak"})
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# POST /auth/account-setup/confirm/
+# ---------------------------------------------------------------------------
+
+class TestConfirmAccountSetup:
+    def test_valid_token_completes_setup(self, client, invited_user, db):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        res = client.post("/auth/account-setup/confirm/", json={
+            "token": token,
+            "password": VALID_PASSWORD,
+            "phone": VALID_PHONE,
+        })
+        assert res.status_code == 200
+        assert "access_token" in res.cookies
+        db.refresh(invited_user)
+        assert invited_user.status == "active"
+        assert invited_user.hashed_password is not None
+        assert invited_user.phone is not None
+
+    def test_confirm_logs_user_in(self, client, invited_user, db):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        client.post("/auth/account-setup/confirm/", json={
+            "token": token,
+            "password": VALID_PASSWORD,
+            "phone": VALID_PHONE,
+        })
+        assert client.get("/users/me/").status_code == 200
+
+    def test_name_correction_is_optional(self, client, invited_user, db):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        res = client.post("/auth/account-setup/confirm/", json={
+            "token": token,
+            "password": VALID_PASSWORD,
+            "phone": VALID_PHONE,
+        })
+        assert res.json()["first_name"] == "Invited"
+
+    def test_name_correction_applied_when_given(self, client, invited_user, db):
+        token = create_verification_token(db, invited_user.id, "account_setup")
+        res = client.post("/auth/account-setup/confirm/", json={
+            "token": token,
+            "password": VALID_PASSWORD,
+            "phone": VALID_PHONE,
+            "first_name": "Corrected",
+        })
+        assert res.json()["first_name"] == "Corrected"
+
+    def test_invalid_token_rejected(self, client):
+        res = client.post("/auth/account-setup/confirm/", json={
+            "token": "garbage",
+            "password": VALID_PASSWORD,
+            "phone": VALID_PHONE,
+        })
+        assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/auth/account-setup/resend/
+# ---------------------------------------------------------------------------
+
+class TestResendAccountSetup:
+    def test_admin_can_resend_for_invited_user(self, client, admin_user, invited_user, mock_send_email):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/admin/auth/account-setup/resend/", json={"user_id": invited_user.id})
+        assert res.status_code == 200
+        assert mock_send_email.called
+
+    def test_already_completed_rejected(self, client, admin_user, td_user):
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/admin/auth/account-setup/resend/", json={"user_id": td_user.id})
+        assert res.status_code == 400
+
+    def test_rate_limited_on_repeat_resend(self, client, admin_user, invited_user):
+        login(client, "admin@test.com", "adminpass")
+        client.post("/admin/auth/account-setup/resend/", json={"user_id": invited_user.id})
+        res = client.post("/admin/auth/account-setup/resend/", json={"user_id": invited_user.id})
+        assert res.status_code == 429
+
+    def test_non_admin_forbidden(self, client, td_user, invited_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/admin/auth/account-setup/resend/", json={"user_id": invited_user.id})
+        assert res.status_code == 403
+
+    def test_unauthenticated_forbidden(self, client, invited_user):
+        res = client.post("/admin/auth/account-setup/resend/", json={"user_id": invited_user.id})
+        assert res.status_code == 401
