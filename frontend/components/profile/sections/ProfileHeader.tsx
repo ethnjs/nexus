@@ -60,7 +60,7 @@ export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderPro
 
       {showEditButton && (
         <Link
-          href="/account-settings"
+          href="/settings/account"
           title="Edit account settings"
           style={{
             position: "absolute", top: 0, right: 0,
