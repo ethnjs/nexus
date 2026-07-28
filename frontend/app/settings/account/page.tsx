@@ -10,7 +10,8 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
+import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 
 interface ProfileDraft {
@@ -129,11 +130,9 @@ export default function AccountSettingsPage() {
 
   return (
     <div style={{ paddingBottom: "60px" }}>
-      <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "22px", marginBottom: "28px" }}>
-        Account
-      </h1>
+      <SettingsPageHeading title="Account" />
 
-      <div>
+      <SettingsSection>
         <SettingsRow label="First name">
           <Input
             fullWidth
@@ -185,7 +184,7 @@ export default function AccountSettingsPage() {
             error={errors.date_of_birth}
           />
         </SettingsRow>
-      </div>
+      </SettingsSection>
 
       {showEmailModal && (
         <ChangeEmailModal currentEmail={original.email} onClose={() => setShowEmailModal(false)} />

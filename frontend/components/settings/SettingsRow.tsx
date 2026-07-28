@@ -31,16 +31,25 @@ export function SettingsRow({ label, helper, children, last = false }: SettingsR
   );
 }
 
-export function SettingsSection({ title, children }: { title: string; children: ReactNode }) {
+export function SettingsSection({ title, children }: { title?: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: "40px" }}>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.06em", textTransform: "uppercase",
-        color: "var(--color-text-tertiary)", marginBottom: "4px",
-      }}>
-        {title}
-      </div>
+    <div style={{
+      marginBottom: "24px",
+      background: "var(--color-surface)",
+      border: "1px solid var(--color-border)",
+      borderRadius: "var(--radius-lg)",
+      boxShadow: "var(--shadow-sm)",
+      padding: "8px 28px 28px",
+    }}>
+      {title && (
+        <div style={{
+          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+          letterSpacing: "0.06em", textTransform: "uppercase",
+          color: "var(--color-text-tertiary)", paddingTop: "20px",
+        }}>
+          {title}
+        </div>
+      )}
       <div>{children}</div>
     </div>
   );

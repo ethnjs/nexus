@@ -15,7 +15,18 @@ export function SettingsNav() {
   return (
     <aside style={{
       width: "220px", flexShrink: 0,
+      alignSelf: "flex-start",
+      position: "sticky",
+      top: "52px",
+      marginTop: "16px",
+      marginBottom: "16px",
+      height: "calc(100vh - 84px)",
+      boxSizing: "border-box",
       padding: "32px 12px",
+      background: "var(--color-surface)",
+      border: "1px solid var(--color-border)",
+      borderRadius: "var(--radius-lg)",
+      boxShadow: "var(--shadow-sm)",
     }}>
       <div style={{
         fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
