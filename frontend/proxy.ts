@@ -28,13 +28,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (pathname === '/verify-email') {
-    const verifyToken = request.nextUrl.searchParams.get('token')
-    if (!verifyToken) {
-      const url = request.nextUrl.clone()
-      url.pathname = token ? '/dashboard' : '/'
-      return NextResponse.redirect(url)
-    }
+  const TOKEN_REQUIRED_ROUTES = ['/verify-email', '/reset-password', '/confirm-email-change']
+  if (TOKEN_REQUIRED_ROUTES.includes(pathname) && !request.nextUrl.searchParams.get('token')) {
+    const url = request.nextUrl.clone()
+    url.pathname = token ? '/dashboard' : '/'
+    return NextResponse.redirect(url)
   }
 
   return NextResponse.next()

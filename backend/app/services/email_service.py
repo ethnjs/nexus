@@ -179,7 +179,7 @@ async def send_signup_verification_email(db: Session, to: str, user_id: int) -> 
 # ---------------------------------------------------------------------------
 
 async def send_email_change_email(to_new_email: str, token: str) -> None:
-    url = _cta_url("/settings/account/confirm-email", token)
+    url = _cta_url("/confirm-email-change", token)
     html = _render_email_html(
         heading="Confirm your new email",
         body_lines=[

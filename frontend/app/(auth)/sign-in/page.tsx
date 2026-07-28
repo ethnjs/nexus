@@ -47,7 +47,7 @@ export default function SignInPage() {
     }
 
     return (
-        <section style={{ maxWidth: '420px', width: '100%' }}>
+        <div style={{ width: '100%' }}>
             <div style={{ marginBottom: '5px' }}>
                 <button onClick={() => router.push('/')} className="link-subtle" style={{
                     display: 'flex',
@@ -58,15 +58,7 @@ export default function SignInPage() {
                     <IconArrowLeft/>Back to home
                 </button>
             </div>
-            
-            <div style={{ marginBottom: '10px' }}>
-                <h1 style={{
-                    fontFamily: 'var(--font-serif)',
-                    fontSize: '48px',
-                    color: 'var(--color-text-primary)'
-                }}>NEXUS</h1>
-            </div>
-            
+
             <div style={{ marginBottom: '30px' }}>
                 <h2 style={{
                     fontFamily: 'var(--font-sans)',
@@ -115,7 +107,7 @@ export default function SignInPage() {
                     )}
                 </div>
             </form>
-        </section>
+        </div>
         
     )
 }

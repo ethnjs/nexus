@@ -11,7 +11,6 @@ import { IconArrowLeft, IconCheckCircle, IconXCircle } from "@/components/ui/Ico
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Modal } from "@/components/ui/Modal"
-import { ProfileCard } from "@/components/profile/ProfileCard"
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion"
 import {
   PronounsField, StudentStatusField,
@@ -287,7 +286,7 @@ export default function SignUpPage() {
   return (
     <>
       {state === STATE.ACCOUNT && (
-          <section style={{ maxWidth: '420px', width: '100%' }}>
+          <div style={{ width: '100%' }}>
           <div style={{ marginBottom: '5px' }}>
             <button onClick={() => router.push('/')} className="link-subtle" style={{
               display: 'flex',
@@ -297,14 +296,6 @@ export default function SignUpPage() {
             }}>
               <IconArrowLeft />Back to home
             </button>
-          </div>
-
-          <div style={{ marginBottom: '10px' }}>
-            <h1 style={{
-              fontFamily: 'var(--font-serif)',
-              fontSize: '48px',
-              color: 'var(--color-text-primary)'
-            }}>NEXUS</h1>
           </div>
 
           <div style={{ marginBottom: '30px' }}>
@@ -414,21 +405,12 @@ export default function SignUpPage() {
               )}
             </div>
           </form>
-        </section>
+        </div>
       )}
 
       {state >= STATE.DATE_OF_BIRTH && (
-        <section style={{ maxWidth: '900px', width: '100%', margin: '20px 0px'}}>
+        <div style={{ width: '100%' }}>
           {showVerifyModal && <VerifyModal />}
-          <ProfileCard>
-            <div style={{ marginBottom: '10px', textAlign: 'center' }}>
-              <h1 style={{
-                fontFamily: 'var(--font-serif)',
-                fontSize: '48px',
-                color: 'var(--color-text-primary)'
-              }}>NEXUS</h1>
-            </div>
-
             <div style={{ marginBottom: '30px', textAlign: 'center' }}>
               <h2 style={{
                 fontFamily: 'var(--font-sans)',
@@ -775,8 +757,7 @@ export default function SignUpPage() {
                 )}
               </div>
             </form>
-          </ProfileCard>
-        </section>
+        </div>
       )}
     </>
   )
