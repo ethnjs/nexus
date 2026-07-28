@@ -141,7 +141,8 @@ export interface UserSlim {
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
 export interface UserMeSlim extends UserSlim {
-  is_profile_complete: boolean
+  is_profile_complete:    boolean
+  is_onboarding_complete: boolean
 }
 
 // Matches UserFullResponse — adds the profile fields, no date_of_birth
@@ -192,11 +193,8 @@ interface UserUpdate {
 // Auth
 // -------------------------------------------------------------------------
 export interface AuthRegister {
-  email:      string
-  phone:      string
-  password:   string
-  first_name: string
-  last_name:  string
+  email:    string
+  password: string
 }
 
 export interface EmailPendingChange {
@@ -225,20 +223,11 @@ export const authApi = {
   confirmPasswordReset: (token: string, newPassword: string) =>
     api.post<void>('/auth/password/reset/confirm/', { token, new_password: newPassword }),
 
-  confirmAccountSetup: (
-    token: string,
-    password: string,
-    phone: string,
-    firstName?: string,
-    lastName?: string,
-  ) =>
-    api.post<UserSlim>('/auth/account-setup/confirm/', {
-      token,
-      password,
-      phone,
-      first_name: firstName,
-      last_name: lastName,
-    }),
+  confirmAccountSetup: (token: string, password: string) =>
+    api.post<UserSlim>('/auth/account-setup/confirm/', { token, password }),
+
+  revertEmailChange: (token: string, newPassword: string) =>
+    api.post<void>('/auth/email/revert/', { token, new_password: newPassword }),
 }
 
 // -------------------------------------------------------------------------
