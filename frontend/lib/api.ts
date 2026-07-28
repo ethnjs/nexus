@@ -173,7 +173,6 @@ export interface UserMeFull extends UserFull {
 interface UserUpdate {
   first_name?:          string
   last_name?:           string
-  email?:                string
   phone?:               string | null
   date_of_birth?:       string | null
   pronouns?:            string | null
