@@ -125,9 +125,11 @@ export default function SecuritySettingsPage() {
             />
           </SettingsRow>
 
-          <div style={{ margin: "20px 0" }}>
-            <PasswordChecklist checks={checks} />
-          </div>
+          {newPassword && (
+            <div style={{ margin: "20px 0" }}>
+              <PasswordChecklist checks={checks} />
+            </div>
+          )}
 
           {success && (
             <div style={{ marginBottom: "16px" }}>
