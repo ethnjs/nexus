@@ -199,6 +199,11 @@ export interface AuthRegister {
   last_name:  string
 }
 
+export interface EmailPendingChange {
+  new_email:     string | null
+  can_resend_at: string | null
+}
+
 export const authApi = {
   login: (email: string, password: string) => api.post<UserSlim>('/auth/login/', { email, password }),
   logout: ()                               => api.post<void>('/auth/logout/', {}),
@@ -206,8 +211,10 @@ export const authApi = {
   verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
   sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
 
+  getPendingEmailChange: () =>
+    api.get<EmailPendingChange>('/auth/email/pending-change/'),
   requestEmailChange: (newEmail: string) =>
-    api.post<void>('/auth/email/request-change/', { new_email: newEmail }),
+    api.post<EmailPendingChange>('/auth/email/request-change/', { new_email: newEmail }),
   confirmEmailChange: (token: string) =>
     api.get<void>(`/auth/email/confirm-change/?token=${token}`),
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { usersApi, authApi, UserMeFull, ApiError } from "@/lib/api";
+import { usersApi, authApi, UserMeFull, EmailPendingChange, ApiError } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
@@ -44,10 +44,15 @@ export default function AccountSettingsPage() {
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
 
   const [showEmailModal, setShowEmailModal] = useState(false);
+  const [pendingEmailChange, setPendingEmailChange] = useState<EmailPendingChange | null>(null);
 
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState<string | undefined>(undefined);
   const [resendSuccess, setResendSuccess] = useState(false);
+
+  const [emailChangeResendError, setEmailChangeResendError] = useState<string | undefined>(undefined);
+  const [emailChangeResending, setEmailChangeResending] = useState(false);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     if (authLoading) return;
@@ -62,7 +67,16 @@ export default function AccountSettingsPage() {
         setDraft(toDraft(user));
       })
       .catch(() => setLoadError("Failed to load account settings."));
+
+    authApi.getPendingEmailChange()
+      .then(setPendingEmailChange)
+      .catch(() => {});
   }, [authLoading, currentUser, router]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
 
   const isDirty = useMemo(() => {
     if (!original || !draft) return false;
@@ -115,6 +129,20 @@ export default function AccountSettingsPage() {
       setSaveError(error instanceof ApiError ? error.message : "Something went wrong. Try again.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleResendEmailChange() {
+    if (!pendingEmailChange?.new_email) return;
+    setEmailChangeResendError(undefined);
+    setEmailChangeResending(true);
+    try {
+      const result = await authApi.requestEmailChange(pendingEmailChange.new_email);
+      setPendingEmailChange(result);
+    } catch (error: unknown) {
+      setEmailChangeResendError(error instanceof ApiError ? error.message : "Failed to resend confirmation email.");
+    } finally {
+      setEmailChangeResending(false);
     }
   }
 
@@ -178,7 +206,26 @@ export default function AccountSettingsPage() {
               </Button>
             </div>
 
-            {!original.email_verified && (
+            {pendingEmailChange?.new_email ? (
+              <Banner
+                variant="info"
+                message={`Email change pending confirmation for ${pendingEmailChange.new_email}.`}
+                action={
+                  <Tooltip status={emailChangeResendError ? "error" : "idle"} message={{ error: emailChangeResendError }}>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={handleResendEmailChange}
+                      loading={emailChangeResending}
+                      disabled={!!pendingEmailChange.can_resend_at && now < new Date(pendingEmailChange.can_resend_at).getTime()}
+                    >
+                      Resend
+                    </Button>
+                  </Tooltip>
+                }
+              />
+            ) : !original.email_verified && (
               <Banner
                 variant="warning"
                 message={resendSuccess ? "Verification email sent — check your inbox." : "Your email isn't verified yet."}
@@ -223,7 +270,12 @@ export default function AccountSettingsPage() {
       </SettingsSection>
 
       {showEmailModal && (
-        <ChangeEmailModal currentEmail={original.email} onClose={() => setShowEmailModal(false)} />
+        <ChangeEmailModal
+          currentEmail={original.email}
+          pendingChange={pendingEmailChange ?? { new_email: null, can_resend_at: null }}
+          onChange={setPendingEmailChange}
+          onClose={() => setShowEmailModal(false)}
+        />
       )}
 
       <FloatingSaveBar

@@ -4,35 +4,30 @@ import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { authApi, ApiError } from "@/lib/api";
+import { authApi, ApiError, EmailPendingChange } from "@/lib/api";
 import { validateEmail } from "@/lib/auth";
-
-const COOLDOWN_SECONDS = 60;
 
 interface ChangeEmailModalProps {
   currentEmail: string;
+  pendingChange: EmailPendingChange;
+  onChange: (next: EmailPendingChange) => void;
   onClose: () => void;
 }
 
-export function ChangeEmailModal({ currentEmail, onClose }: ChangeEmailModalProps) {
-  const [newEmail, setNewEmail] = useState("");
+export function ChangeEmailModal({ currentEmail, pendingChange, onChange, onClose }: ChangeEmailModalProps) {
+  const [newEmail, setNewEmail] = useState(pendingChange.new_email ?? "");
   const [error, setError] = useState<string | undefined>(undefined);
   const [sending, setSending] = useState(false);
-  const [sentAt, setSentAt] = useState<number | null>(null);
-  const [cooldown, setCooldown] = useState(0);
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    if (sentAt === null) return;
-
-    function tick() {
-      const remaining = COOLDOWN_SECONDS - Math.floor((Date.now() - sentAt!) / 1000);
-      setCooldown(Math.max(0, remaining));
-    }
-
-    tick();
-    const id = setInterval(tick, 1000);
+    const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, [sentAt]);
+  }, []);
+
+  const canResendAt = pendingChange.can_resend_at ? new Date(pendingChange.can_resend_at).getTime() : null;
+  const onCooldown = canResendAt !== null && now < canResendAt;
+  const cooldownSeconds = onCooldown ? Math.ceil((canResendAt! - now) / 1000) : 0;
 
   async function handleSend() {
     const err = validateEmail(newEmail);
@@ -48,16 +43,14 @@ export function ChangeEmailModal({ currentEmail, onClose }: ChangeEmailModalProp
     setError(undefined);
     setSending(true);
     try {
-      await authApi.requestEmailChange(newEmail);
-      setSentAt(Date.now());
+      const result = await authApi.requestEmailChange(newEmail);
+      onChange(result);
     } catch (e: unknown) {
       setError(e instanceof ApiError ? e.message : "Failed to send confirmation email.");
     } finally {
       setSending(false);
     }
   }
-
-  const onCooldown = sentAt !== null && cooldown > 0;
 
   return (
     <Modal title="Change email" onClose={onClose}>
@@ -95,11 +88,11 @@ export function ChangeEmailModal({ currentEmail, onClose }: ChangeEmailModalProp
           </Button>
         </div>
 
-        {sentAt !== null && (
+        {pendingChange.new_email && (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
             {onCooldown
-              ? `Verification sent to ${newEmail}. Didn't receive it? Try again in ${cooldown}s.`
-              : `Verification sent to ${newEmail}. Didn't receive it? You can resend now.`}
+              ? `Verification sent to ${pendingChange.new_email}. Didn't receive it? Try again in ${cooldownSeconds}s.`
+              : `Verification sent to ${pendingChange.new_email}. Didn't receive it? You can resend now.`}
           </p>
         )}
       </div>
