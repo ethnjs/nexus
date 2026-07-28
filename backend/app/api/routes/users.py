@@ -8,7 +8,7 @@ from app.core.auth import (
     get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
     get_current_session, revoke_all_other_sessions,
 )
-from app.core.users import check_if_email_exists, find_user_by_id
+from app.core.users import find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
 from app.db.session import get_db
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
@@ -153,11 +153,10 @@ def update_user_me(
     """
     Update the current user's own profile.
     Omitted fields are left unchanged. Explicit null clears a field.
-    Email uniqueness is checked before applying changes.
+    Email changes must go through the verify-before-apply flow
+    (POST /auth/email/request-change/ + GET /auth/email/confirm-change/).
     """
     for field, value in body.model_dump(exclude_unset=True).items():
-        if field == "email":
-            check_if_email_exists(db, body.email, exclude_user_id=user.id)
         setattr(user, field, value)
     db.commit()
     db.refresh(user)

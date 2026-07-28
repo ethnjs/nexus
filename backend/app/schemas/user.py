@@ -16,7 +16,6 @@ class UserUpdate(BaseModel):
     """Partial update — all fields optional."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
     phone: Optional[str] = None
     date_of_birth: Optional[date] = None
     pronouns: Optional[str] = None
@@ -35,7 +34,7 @@ class UserUpdate(BaseModel):
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
 
-    @field_validator("first_name", "last_name", "email", "phone")
+    @field_validator("first_name", "last_name", "phone")
     @classmethod
     def reject_null(cls, v):
         if v is None:

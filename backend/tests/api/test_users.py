@@ -388,26 +388,16 @@ class TestUpdateMe:
         client.patch("/users/me/", json={"first_name": "Updated"})
         assert client.get("/users/me/").json()["last_name"] == "User"
 
-    def test_can_update_email(self, client, td_user):
+    def test_email_field_ignored(self, client, td_user):
+        # Email changes must go through the verify-before-apply flow
+        # (POST /auth/email/request-change/ + GET /auth/email/confirm-change/),
+        # not this generic partial-update route. `email` isn't a declared
+        # field on UserUpdate, so pydantic silently drops it.
         login(client, "td@test.com", "tdpass")
-        res = client.patch("/users/me/", json={"email": "newemail@test.com"})
-        assert res.status_code == 200
-        assert res.json()["email"] == "newemail@test.com"
-
-    def test_duplicate_email_rejected(self, client, td_user, admin_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "admin@test.com"}).status_code == 409
-
-    def test_duplicate_email_case_insensitive_rejected(self, client, td_user, admin_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "ADMIN@TEST.COM"}).status_code == 409
-
-    def test_same_email_unchanged_not_rejected(self, client, td_user):
-        # Re-submitting your own current email should not conflict with yourself.
-        login(client, "td@test.com", "tdpass")
-        res = client.patch("/users/me/", json={"email": "td@test.com", "first_name": "Still TD"})
+        res = client.patch("/users/me/", json={"email": "newemail@test.com", "first_name": "Updated"})
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
+        assert res.json()["first_name"] == "Updated"
 
     def test_null_clears_optional_field(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -424,17 +414,9 @@ class TestUpdateMe:
         login(client, "td@test.com", "tdpass")
         assert client.patch("/users/me/", json={"last_name": None}).status_code == 422
 
-    def test_null_email_rejected(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": None}).status_code == 422
-
     def test_null_phone_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         assert client.patch("/users/me/", json={"phone": None}).status_code == 422
-
-    def test_invalid_email_rejected(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "notanemail"}).status_code == 422
 
     def test_phone_stored_as_digits(self, client, td_user):
         # Formatted input should be normalized to raw digits
