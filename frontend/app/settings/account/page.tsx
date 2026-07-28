@@ -3,15 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { usersApi, authApi, UserMeFull, ApiError } from "@/lib/api";
+import { usersApi, UserMeFull, ApiError } from "@/lib/api";
 import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsRow } from "@/components/settings/SettingsRow";
+import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 
 interface ProfileDraft {
   first_name:    string;
@@ -40,11 +40,7 @@ export default function AccountSettingsPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
 
-  // ── Email change — separate flow from the save bar ─────────────────────
-  const [newEmail, setNewEmail] = useState("");
-  const [emailRequestError, setEmailRequestError] = useState<string | undefined>(undefined);
-  const [emailRequestSent, setEmailRequestSent] = useState<string | null>(null);
-  const [emailRequesting, setEmailRequesting] = useState(false);
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -115,20 +111,6 @@ export default function AccountSettingsPage() {
     }
   }
 
-  async function handleRequestEmailChange() {
-    setEmailRequestError(undefined);
-    setEmailRequesting(true);
-    try {
-      await authApi.requestEmailChange(newEmail);
-      setEmailRequestSent(newEmail);
-      setNewEmail("");
-    } catch (error: unknown) {
-      setEmailRequestError(error instanceof ApiError ? error.message : "Failed to send confirmation email.");
-    } finally {
-      setEmailRequesting(false);
-    }
-  }
-
   if (authLoading || (!original && !loadError)) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
@@ -151,7 +133,7 @@ export default function AccountSettingsPage() {
         Account
       </h1>
 
-      <SettingsSection title="Profile">
+      <div>
         <SettingsRow label="First name">
           <Input
             fullWidth
@@ -167,6 +149,16 @@ export default function AccountSettingsPage() {
             value={draft.last_name}
             onChange={(e) => setDraft((d) => (d ? { ...d, last_name: e.target.value } : d))}
           />
+        </SettingsRow>
+        <SettingsRow label="Email" helper="Changing your email requires confirming the new address.">
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)" }}>
+              {original.email}
+            </span>
+            <Button type="button" variant="secondary" size="sm" onClick={() => setShowEmailModal(true)}>
+              Change email
+            </Button>
+          </div>
         </SettingsRow>
         <SettingsRow label="Phone">
           <Input
@@ -193,39 +185,11 @@ export default function AccountSettingsPage() {
             error={errors.date_of_birth}
           />
         </SettingsRow>
-      </SettingsSection>
+      </div>
 
-      <SettingsSection title="Email">
-        <SettingsRow label="Current email" helper="Changing your email requires confirming the new address.">
-          <Input fullWidth font="sans" value={original.email} disabled />
-        </SettingsRow>
-        <SettingsRow label="New email" last>
-          {emailRequestSent ? (
-            <Banner variant="success" message={`Verification sent to ${emailRequestSent} — check your inbox.`} />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              <Input
-                fullWidth
-                font="sans"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                error={emailRequestError}
-                placeholder="new@example.com"
-              />
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                onClick={handleRequestEmailChange}
-                loading={emailRequesting}
-                disabled={!newEmail}
-              >
-                Send confirmation
-              </Button>
-            </div>
-          )}
-        </SettingsRow>
-      </SettingsSection>
+      {showEmailModal && (
+        <ChangeEmailModal currentEmail={original.email} onClose={() => setShowEmailModal(false)} />
+      )}
 
       <FloatingSaveBar
         visible={isDirty}
