@@ -99,6 +99,17 @@ class EmailChangeRequest(BaseModel):
     new_email: EmailStr
 
 
+class EmailPendingChangeResponse(BaseModel):
+    """
+    GET /auth/email/pending-change — authenticated.
+    Also the response shape for POST /auth/email/request-change.
+
+    Both fields null together means no email change is currently pending.
+    """
+    new_email: Optional[str] = None
+    can_resend_at: Optional[datetime] = None
+
+
 class PasswordChangeRequest(BaseModel):
     """POST /auth/password/change — authenticated."""
     current_password: str

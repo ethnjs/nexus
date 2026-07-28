@@ -15,6 +15,8 @@ from app.core.auth import (
     set_auth_cookie,
     clear_auth_cookie,
     consume_verification_token,
+    get_pending_email_change,
+    RATE_LIMIT_WINDOW,
 )
 from app.core.users import check_if_email_exists, find_user_by_id, create_user
 from app.db.session import get_db
@@ -26,6 +28,7 @@ from app.schemas.auth import (
     AdminRegisterRequest,
     MessageResponse,
     EmailChangeRequest,
+    EmailPendingChangeResponse,
     PasswordChangeRequest,
     PasswordResetRequest,
     PasswordResetConfirm,
@@ -186,7 +189,23 @@ async def send_email_verification(
 # Email change
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/email/request-change/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+@router.get("/auth/email/pending-change/", status_code=status.HTTP_200_OK, response_model=EmailPendingChangeResponse)
+def get_pending_email_change_route(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Whether the current user has an email change awaiting confirmation."""
+    token_row = get_pending_email_change(db, user.id)
+    if token_row is None:
+        return EmailPendingChangeResponse()
+
+    return EmailPendingChangeResponse(
+        new_email=token_row.new_email,
+        can_resend_at=token_row.created_at + RATE_LIMIT_WINDOW,
+    )
+
+
+@router.post("/auth/email/request-change/", status_code=status.HTTP_200_OK, response_model=EmailPendingChangeResponse,
     responses={
         409: {"description": "Email already registered to another account"},
         429: {"description": "Email change requested too recently"},
@@ -200,13 +219,19 @@ async def request_email_change(
 ):
     """
     Sends a confirmation link to the NEW address. user.email is untouched
-    until that link is clicked — see confirm_email_change().
+    until that link is clicked — see confirm_email_change(). Also doubles
+    as the resend route: the frontend calls this again with the same
+    new_email to resend, rather than a separate no-arg resend endpoint.
     """
     check_if_email_exists(db, body.new_email, exclude_user_id=user.id)
 
     await send_email_change_request_email(db, user.id, body.new_email)
 
-    return {"detail": "Confirmation email sent to new address"}
+    token_row = get_pending_email_change(db, user.id)
+    return EmailPendingChangeResponse(
+        new_email=token_row.new_email,
+        can_resend_at=token_row.created_at + RATE_LIMIT_WINDOW,
+    )
 
 
 @router.get("/auth/email/confirm-change/", status_code=status.HTTP_200_OK, response_model=MessageResponse,

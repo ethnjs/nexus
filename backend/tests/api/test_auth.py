@@ -409,6 +409,13 @@ class TestRequestEmailChange:
         assert res.status_code == 200
         assert mock_send_email.called
 
+    def test_request_change_returns_pending_state(self, client, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
+        body = res.json()
+        assert body["new_email"] == "tdnew@test.com"
+        assert body["can_resend_at"] is not None
+
     def test_duplicate_email_rejected(self, client, td_user, other_user):
         login(client, "td@test.com", "tdpass")
         res = client.post("/auth/email/request-change/", json={"new_email": "other@test.com"})
@@ -428,6 +435,39 @@ class TestRequestEmailChange:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.post("/auth/email/request-change/", json={"new_email": "x@test.com"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /auth/email/pending-change/
+# ---------------------------------------------------------------------------
+
+class TestPendingEmailChange:
+    def test_nothing_pending_returns_nulls(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get("/auth/email/pending-change/")
+        assert res.status_code == 200
+        assert res.json() == {"new_email": None, "can_resend_at": None}
+
+    def test_pending_change_reflects_request(self, client, td_user, mock_send_email):
+        login(client, "td@test.com", "tdpass")
+        client.post("/auth/email/request-change/", json={"new_email": "tdnew@test.com"})
+
+        res = client.get("/auth/email/pending-change/")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["new_email"] == "tdnew@test.com"
+        assert body["can_resend_at"] is not None
+
+    def test_consumed_token_not_reported_as_pending(self, client, td_user, db):
+        token = create_verification_token(db, td_user.id, "email_change", new_email="tdnew@test.com")
+        client.get(f"/auth/email/confirm-change/?token={token}")
+
+        login(client, "tdnew@test.com", "tdpass")
+        res = client.get("/auth/email/pending-change/")
+        assert res.json() == {"new_email": None, "can_resend_at": None}
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/auth/email/pending-change/").status_code == 401
 
 
 # ---------------------------------------------------------------------------

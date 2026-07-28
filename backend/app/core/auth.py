@@ -272,6 +272,27 @@ def create_verification_token(
     return raw_token
 
 
+def get_pending_email_change(db: Session, user_id: int) -> Optional[VerificationToken]:
+    """
+    Returns the user's active (unconsumed, unexpired) email_change token, if
+    any. create_verification_token invalidates older tokens for the same
+    (user_id, purpose) on each new request, so at most one row can ever
+    match — no ordering/tiebreak needed.
+    """
+    now = datetime.now(timezone.utc)
+
+    return (
+        db.query(VerificationToken)
+        .filter(
+            VerificationToken.user_id == user_id,
+            VerificationToken.purpose == "email_change",
+            VerificationToken.used_at.is_(None),
+            VerificationToken.expires_at > now,
+        )
+        .first()
+    )
+
+
 def consume_verification_token(
     db: Session,
     raw_token: str,
