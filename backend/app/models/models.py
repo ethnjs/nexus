@@ -63,21 +63,23 @@ class UserSession(Base):
 # Backs signup email verification, email-change, and password reset.
 # One raw token is emailed to the user; only its hash is stored here.
 #
-# purpose: "signup_verify" | "email_change" | "password_reset"
-#   new_email is only ever set for "email_change" rows.
+# purpose: "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
+#   new_email is only ever set for "email_change" and "email_change_revert" rows.
+#   For "email_change_revert" it's overloaded to mean "the email this token
+#   reverts TO" (i.e. the pre-takeover address), not "the new email".
 #
 # On create, any prior unconsumed row for the same (user_id, purpose) is
 # marked used_at (stale-token guarding) — see app/core/verification_tokens.py.
 # ---------------------------------------------------------------------------
 class VerificationToken(Base):
     __tablename__ = "verification_tokens"
- 
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
- 
+
     token_hash = Column(String(255), nullable=False, index=True, unique=True)
-    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset"
-    new_email = Column(String(255), nullable=True)  # only set for "email_change"
+    purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
+    new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
  
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)

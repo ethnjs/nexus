@@ -133,6 +133,23 @@ class PasswordResetConfirm(BaseModel):
     def check_new_password(cls, password: str) -> str:
         return validate_password_strength(password)
     
+class EmailChangeRevertConfirm(BaseModel):
+    """
+    POST /auth/email/revert — logged out, token + new password.
+
+    Consumes an 'email_change_revert' token — undoes an in-progress or
+    completed email change and forces a new password, since reaching this
+    route at all means assume account compromise.
+    """
+    token: str
+    new_password: str
+
+    @field_validator("new_password")
+    @classmethod
+    def check_new_password(cls, password: str) -> str:
+        return validate_password_strength(password)
+
+
 class AccountSetupConfirm(BaseModel):
     """
     POST /auth/account-setup/confirm — logged out.

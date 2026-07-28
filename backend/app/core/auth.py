@@ -200,13 +200,14 @@ def clear_auth_cookie(response: Response) -> None:
 # (VerificationToken.token_hash, via the same bcrypt context as passwords).
 # ---------------------------------------------------------------------------
 
-Purpose = Literal["signup_verify", "email_change", "password_reset", "account_setup"]
+Purpose = Literal["signup_verify", "email_change", "password_reset", "account_setup", "email_change_revert"]
 
 TOKEN_TTL: dict[Purpose, timedelta] = {
     "signup_verify": timedelta(hours=24),
     "email_change": timedelta(hours=24),
     "password_reset": timedelta(hours=1),
     "account_setup": timedelta(days=7),  # admin invites sit longer before expiring
+    "email_change_revert": timedelta(hours=24),
 }
 
 RATE_LIMIT_WINDOW = timedelta(seconds=60)

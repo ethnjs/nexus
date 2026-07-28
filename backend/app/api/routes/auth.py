@@ -7,7 +7,10 @@ from app.core.auth import (
     create_session,
     get_active_session,
     get_client_ip,
+    get_current_session,
     revoke_session,
+    revoke_all_sessions,
+    revoke_all_other_sessions,
     hash_password,
     verify_password,
     get_current_user,
@@ -20,7 +23,7 @@ from app.core.auth import (
 )
 from app.core.users import check_if_email_exists, find_user_by_id, create_user
 from app.db.session import get_db
-from app.models.models import User
+from app.models.models import User, UserSession, VerificationToken
 from app.schemas.user import UserSlimResponse
 from app.schemas.auth import (
     LoginRequest,
@@ -29,6 +32,7 @@ from app.schemas.auth import (
     MessageResponse,
     EmailChangeRequest,
     EmailPendingChangeResponse,
+    EmailChangeRevertConfirm,
     PasswordChangeRequest,
     PasswordResetRequest,
     PasswordResetConfirm,
@@ -38,11 +42,12 @@ from app.schemas.auth import (
 from app.services.email_service import (
     send_signup_verification_email,
     send_email_change_request_email,
-    send_email_changed_notice,
+    send_email_change_requested_notice,
     send_password_reset_request_email,
     send_password_changed_notice,
     send_account_setup_invite_email,
 )
+from datetime import datetime, timezone
 
 router = APIRouter(tags=["auth"])
 
@@ -222,10 +227,16 @@ async def request_email_change(
     until that link is clicked — see confirm_email_change(). Also doubles
     as the resend route: the frontend calls this again with the same
     new_email to resend, rather than a separate no-arg resend endpoint.
+
+    Also notifies the OLD address immediately (not on confirm) — user.email
+    is still the original address here, so it's captured before anything
+    is mutated. This is the only notice the account owner will see if they
+    weren't the one who made the request.
     """
     check_if_email_exists(db, body.new_email, exclude_user_id=user.id)
 
     await send_email_change_request_email(db, user.id, body.new_email)
+    await send_email_change_requested_notice(db, user.id, user.email, body.new_email)
 
     token_row = get_pending_email_change(db, user.id)
     return EmailPendingChangeResponse(
@@ -249,15 +260,64 @@ async def confirm_email_change(token: str, db: Session = Depends(get_db)):
         raise HTTPException(400, "Invalid or expired token")
 
     user = find_user_by_id(db, token_row.user_id)
-    old_email = user.email
 
     user.email = token_row.new_email
     user.email_verified = True
     db.commit()
 
-    await send_email_changed_notice(old_email, user.email)
-
     return {"detail": "Email successfully updated"}
+
+
+@router.post("/auth/email/revert/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={
+        400: {"description": "Invalid or expired token"},
+    },
+)
+async def revert_email_change(body: EmailChangeRevertConfirm, db: Session = Depends(get_db)):
+    """
+    Consumes an email_change_revert token. Handles both cases in one route,
+    since the token doesn't know which state it'll find things in:
+
+    - Change was requested but never confirmed (still pending) — the
+      email_change token is still valid/unconsumed. Cancel it so it can't
+      be confirmed later. user.email is untouched since it was never
+      mutated in the first place.
+    - Change was already confirmed and applied — user.email currently holds
+      the attacker's address. Revert it to the address stored on this token.
+
+    Either branch, or both, end the same way: reaching this route at all
+    means assume compromise — force a new password and revoke every
+    session, don't do a partial fix.
+    """
+    token_row = consume_verification_token(db, body.token, "email_change_revert")
+    if token_row is None:
+        raise HTTPException(400, "Invalid or expired token")
+
+    user = find_user_by_id(db, token_row.user_id)
+    original_email = token_row.new_email  # reused column — see VerificationToken.new_email comment
+
+    now = datetime.now(timezone.utc)
+
+    # Case 1: still-pending email_change token — cancel it.
+    pending = db.query(VerificationToken).filter(
+        VerificationToken.user_id == user.id,
+        VerificationToken.purpose == "email_change",
+        VerificationToken.used_at.is_(None),
+        VerificationToken.expires_at > now,
+    ).first()
+    if pending:
+        pending.used_at = now
+
+    # Case 2: already applied — this is a no-op if it wasn't.
+    user.email = original_email
+    user.email_verified = True  # assumes the original address was verified pre-takeover
+
+    user.hashed_password = hash_password(body.new_password)
+    db.commit()
+
+    revoke_all_sessions(db, user.id)
+
+    return {"detail": "Email reverted and account secured"}
 
 
 # ---------------------------------------------------------------------------
@@ -272,6 +332,7 @@ async def confirm_email_change(token: str, db: Session = Depends(get_db)):
 async def change_password(
     body: PasswordChangeRequest,
     user: User = Depends(get_current_user),
+    session: UserSession = Depends(get_current_session),
     db: Session = Depends(get_db),
 ):
     """Authenticated password change — requires current_password to match before setting new_password."""
@@ -282,6 +343,7 @@ async def change_password(
     db.commit()
 
     await send_password_changed_notice(user.email)
+    revoke_all_other_sessions(db, user.id, session.id)
 
     return {"detail": "Password successfully changed"}
 
@@ -327,6 +389,7 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
     db.commit()
 
     await send_password_changed_notice(user.email)
+    revoke_all_sessions(db, user.id)
 
     return {"detail": "Password successfully reset"}
 

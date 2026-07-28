@@ -205,18 +205,29 @@ async def send_email_change_request_email(db: Session, user_id: int, new_email: 
         raise HTTPException(500, "Failed to send email change confirmation")
 
 
-async def send_email_changed_notice(old_email: str, new_email: str) -> None:
+async def send_email_change_requested_notice(db: Session, user_id: int, old_email: str, new_email: str) -> None:
     """
-    Sent to the OLD email address once an email change completes — the
-    account owner may not be the one who initiated it, so this is the only
-    notice that reaches them if their account was compromised.
+    Sent to the OLD email address the moment an email change is requested
+    (not once it's confirmed) — the account owner may not be the one who
+    requested it, so this needs to reach them while the change can still be
+    intercepted, not just after it's already applied.
+
+    Creates the email_change_revert token itself and embeds it in the CTA
+    link, so the recipient can undo the change directly instead of landing
+    on /forgot-password with no way to look themselves up (their email is
+    about to become the attacker's address).
     """
-    url = _cta_url("/forgot-password")
+    try:
+        revert_token = create_verification_token(db, user_id, "email_change_revert", new_email=old_email)
+    except RateLimitedError as e:
+        raise HTTPException(429, str(e))
+
+    url = _cta_url("/revert-email-change", revert_token)
     html = _render_email_html(
-        heading="Your email address was changed",
+        heading="Your email address is being changed",
         body_lines=[
-            f"The email on your NEXUS account was changed to {new_email}.",
-            "If you made this change, no action is needed.",
+            f"A request was made to change the email on your NEXUS account to {new_email}.",
+            "If you made this request, no action is needed.",
         ],
         cta_label="Secure your account",
         cta_url=url,
@@ -224,8 +235,8 @@ async def send_email_changed_notice(old_email: str, new_email: str) -> None:
     )
     await _send(
         old_email,
-        "Your NEXUS account email was changed",
-        f"Your account email was changed to {new_email}. If this wasn't you, secure your account: {url}",
+        "Your NEXUS account email is being changed",
+        f"A request was made to change your account email to {new_email}. If this wasn't you, secure your account: {url}",
         html,
     )
 
