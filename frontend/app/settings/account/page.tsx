@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { usersApi, UserMeFull, ApiError } from "@/lib/api";
+import { usersApi, authApi, UserMeFull, ApiError } from "@/lib/api";
+import { Banner } from "@/components/ui/Banner";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
@@ -42,6 +44,10 @@ export default function AccountSettingsPage() {
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
 
   const [showEmailModal, setShowEmailModal] = useState(false);
+
+  const [resending, setResending] = useState(false);
+  const [resendError, setResendError] = useState<string | undefined>(undefined);
+  const [resendSuccess, setResendSuccess] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -112,6 +118,20 @@ export default function AccountSettingsPage() {
     }
   }
 
+  async function handleResendVerification() {
+    setResendError(undefined);
+    setResendSuccess(false);
+    setResending(true);
+    try {
+      await authApi.sendEmailVerification();
+      setResendSuccess(true);
+    } catch (error: unknown) {
+      setResendError(error instanceof ApiError ? error.message : "Failed to send verification email.");
+    } finally {
+      setResending(false);
+    }
+  }
+
   if (authLoading || (!original && !loadError)) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
@@ -148,13 +168,31 @@ export default function AccountSettingsPage() {
           />
         </SettingsRow>
         <SettingsRow label="Email" helper="Changing your email requires confirming the new address.">
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)" }}>
-              {original.email}
-            </span>
-            <Button type="button" variant="secondary" size="sm" onClick={() => setShowEmailModal(true)}>
-              Change email
-            </Button>
+          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-primary)" }}>
+                {original.email}
+              </span>
+              <Button type="button" variant="secondary" size="sm" onClick={() => setShowEmailModal(true)}>
+                Change email
+              </Button>
+            </div>
+
+            {!original.email_verified && (
+              <Banner
+                variant="warning"
+                message={resendSuccess ? "Verification email sent — check your inbox." : "Your email isn't verified yet."}
+                action={
+                  !resendSuccess && (
+                    <Tooltip status={resendError ? "error" : "idle"} message={{ error: resendError }}>
+                      <Button type="button" variant="secondary" size="sm" onClick={handleResendVerification} loading={resending}>
+                        Resend
+                      </Button>
+                    </Tooltip>
+                  )
+                }
+              />
+            )}
           </div>
         </SettingsRow>
         <SettingsRow label="Phone">
