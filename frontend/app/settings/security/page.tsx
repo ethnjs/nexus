@@ -8,8 +8,9 @@ import { checkPassword, validatePassword, PasswordChecks } from "@/lib/auth";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
-import { SettingsRow } from "@/components/settings/SettingsRow";
+import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { PasswordChecklist } from "@/components/settings/PasswordChecklist";
+import { SessionList } from "@/components/settings/SessionList";
 
 const EMPTY_CHECKS: PasswordChecks = {
   length: false, upper: false, lower: false, number: false, symbol: false, confirm: false,
@@ -78,71 +79,77 @@ export default function SecuritySettingsPage() {
         Security
       </h1>
 
-      <form onSubmit={handleSubmit}>
-        <SettingsRow label="Current password">
-          <Input
-            fullWidth
-            font="sans"
-            type="password"
-            value={currentPassword}
-            onChange={(e) => {
-              setCurrentPassword(e.target.value);
-              setErrors((er) => ({ ...er, current_password: undefined }));
-            }}
-            autoComplete="current-password"
-            error={errors.current_password}
-          />
-        </SettingsRow>
-        <SettingsRow label="New password">
-          <Input
-            fullWidth
-            font="sans"
-            type="password"
-            value={newPassword}
-            onChange={(e) => {
-              setNewPassword(e.target.value);
-              setChecks(checkPassword(e.target.value, confirmPassword));
-              setErrors((er) => ({ ...er, new_password: undefined }));
-            }}
-            autoComplete="new-password"
-            error={errors.new_password}
-          />
-        </SettingsRow>
-        <SettingsRow label="Confirm new password" last>
-          <Input
-            fullWidth
-            font="sans"
-            type="password"
-            value={confirmPassword}
-            onChange={(e) => {
-              setConfirmPassword(e.target.value);
-              setChecks(checkPassword(newPassword, e.target.value));
-              setErrors((er) => ({ ...er, confirm_password: undefined }));
-            }}
-            autoComplete="new-password"
-            error={errors.confirm_password}
-          />
-        </SettingsRow>
+      <SettingsSection title="Password">
+        <form onSubmit={handleSubmit}>
+          <SettingsRow label="Current password">
+            <Input
+              fullWidth
+              font="sans"
+              type="password"
+              value={currentPassword}
+              onChange={(e) => {
+                setCurrentPassword(e.target.value);
+                setErrors((er) => ({ ...er, current_password: undefined }));
+              }}
+              autoComplete="current-password"
+              error={errors.current_password}
+            />
+          </SettingsRow>
+          <SettingsRow label="New password">
+            <Input
+              fullWidth
+              font="sans"
+              type="password"
+              value={newPassword}
+              onChange={(e) => {
+                setNewPassword(e.target.value);
+                setChecks(checkPassword(e.target.value, confirmPassword));
+                setErrors((er) => ({ ...er, new_password: undefined }));
+              }}
+              autoComplete="new-password"
+              error={errors.new_password}
+            />
+          </SettingsRow>
+          <SettingsRow label="Confirm new password" last>
+            <Input
+              fullWidth
+              font="sans"
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => {
+                setConfirmPassword(e.target.value);
+                setChecks(checkPassword(newPassword, e.target.value));
+                setErrors((er) => ({ ...er, confirm_password: undefined }));
+              }}
+              autoComplete="new-password"
+              error={errors.confirm_password}
+            />
+          </SettingsRow>
 
-        <div style={{ margin: "20px 0" }}>
-          <PasswordChecklist checks={checks} />
-        </div>
-
-        {success && (
-          <div style={{ marginBottom: "16px" }}>
-            <Banner variant="success" message="Your password has been changed." />
+          <div style={{ margin: "20px 0" }}>
+            <PasswordChecklist checks={checks} />
           </div>
-        )}
-        {errors.form && (
-          <div style={{ marginBottom: "16px" }}>
-            <Banner variant="error" message={errors.form} />
-          </div>
-        )}
 
-        <Button type="submit" variant="primary" loading={submitting}>
-          Update password
-        </Button>
-      </form>
+          {success && (
+            <div style={{ marginBottom: "16px" }}>
+              <Banner variant="success" message="Your password has been changed." />
+            </div>
+          )}
+          {errors.form && (
+            <div style={{ marginBottom: "16px" }}>
+              <Banner variant="error" message={errors.form} />
+            </div>
+          )}
+
+          <Button type="submit" variant="primary" loading={submitting}>
+            Update password
+          </Button>
+        </form>
+      </SettingsSection>
+
+      <SettingsSection title="Sessions">
+        <SessionList />
+      </SettingsSection>
     </div>
   );
 }
