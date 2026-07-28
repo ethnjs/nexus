@@ -71,6 +71,7 @@ class UserSlimResponse(BaseModel):
 
 class UserMeSlimResponse(UserSlimResponse):
     is_profile_complete: bool = False
+    is_onboarding_complete: bool = False
 
 
 

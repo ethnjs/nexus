@@ -9,7 +9,7 @@ from app.core.auth import (
     get_current_session, revoke_all_other_sessions,
 )
 from app.core.users import find_user_by_id
-from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
+from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
 from app.schemas.user import (
@@ -138,6 +138,7 @@ def get_me(
 
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
+    response.is_onboarding_complete = is_onboarding_complete(current_user)
     return response
 
 

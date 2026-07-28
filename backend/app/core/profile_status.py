@@ -55,3 +55,12 @@ def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) 
 
 def is_profile_complete(user: User, *, db: Optional[Session] = None) -> bool:
     return not compute_missing_profile_fields(user, db=db)
+
+
+ONBOARDING_REQUIRED = ["first_name", "last_name", "phone", "date_of_birth"]
+
+def compute_missing_onboarding_fields(user: User) -> list[str]:
+    return [f for f in ONBOARDING_REQUIRED if not getattr(user, f)]
+
+def is_onboarding_complete(user: User) -> bool:
+    return not compute_missing_onboarding_fields(user)
