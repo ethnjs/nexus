@@ -129,14 +129,13 @@ export default function AccountSettingsPage() {
   }
 
   return (
-    <div style={{ paddingBottom: "60px" }}>
+    <div>
       <SettingsPageHeading title="Account" />
 
       <SettingsSection>
         <SettingsRow label="First name">
           <Input
             fullWidth
-            font="sans"
             value={draft.first_name}
             onChange={(e) => setDraft((d) => (d ? { ...d, first_name: e.target.value } : d))}
           />
@@ -144,7 +143,6 @@ export default function AccountSettingsPage() {
         <SettingsRow label="Last name">
           <Input
             fullWidth
-            font="sans"
             value={draft.last_name}
             onChange={(e) => setDraft((d) => (d ? { ...d, last_name: e.target.value } : d))}
           />

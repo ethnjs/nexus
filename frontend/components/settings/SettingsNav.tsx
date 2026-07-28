@@ -3,24 +3,26 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconUser, IconShield } from "@/components/ui/Icons";
+import { SETTINGS_NAV_WIDTH, SETTINGS_CONTAINER_MAX_WIDTH } from "@/app/settings/constants";
 
 const NAV_ITEMS = [
   { href: "/settings/account",  icon: <IconUser size={15} />,   label: "Account" },
   { href: "/settings/security", icon: <IconShield size={15} />, label: "Security" },
 ];
 
+const TOPBAR_HEIGHT = 52;
+const GAP = 16;
+
 export function SettingsNav() {
   const pathname = usePathname();
 
   return (
     <aside style={{
-      width: "220px", flexShrink: 0,
-      alignSelf: "flex-start",
-      position: "sticky",
-      top: "52px",
-      marginTop: "16px",
-      marginBottom: "16px",
-      height: "calc(100vh - 84px)",
+      width: `${SETTINGS_NAV_WIDTH}px`,
+      position: "fixed",
+      top: `${TOPBAR_HEIGHT + GAP}px`,
+      left: `max(calc((100vw - ${SETTINGS_CONTAINER_MAX_WIDTH}px) / 2), 0px)`,
+      height: `calc(100vh - ${TOPBAR_HEIGHT + GAP * 2}px)`,
       boxSizing: "border-box",
       padding: "32px 12px",
       background: "var(--color-surface)",

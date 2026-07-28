@@ -75,7 +75,7 @@ export default function SecuritySettingsPage() {
   }
 
   return (
-    <div style={{ paddingBottom: "60px" }}>
+    <div>
       <SettingsPageHeading title="Security" />
 
       <SettingsSection title="Password">
