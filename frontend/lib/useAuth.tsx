@@ -30,8 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     usersApi.me()
       .then(setUser)
       .catch((err: unknown) => {
+        setUser(null)
         if (err instanceof ApiError && err.status === 401) {
-          setUser(null)
+          // Cookie is present (middleware already checked that) but invalid —
+          // clear it server-side and bounce back to sign-in.
+          authApi.logout().finally(() => {
+            window.location.href = '/'
+          })
         }
       })
       .finally(() => setLoading(false))
