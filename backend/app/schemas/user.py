@@ -54,8 +54,8 @@ class AdminUserUpdate(BaseModel):
 
 class UserSlimResponse(BaseModel):
     id: int
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
     phone: Optional[str] = None
     pronouns: Optional[str] = None

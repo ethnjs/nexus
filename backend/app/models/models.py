@@ -104,8 +104,8 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    first_name = Column(String(100), nullable=False)
-    last_name = Column(String(100), nullable=False)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
     phone = Column(String(32), nullable=True)
     date_of_birth = Column(Date, nullable=True)

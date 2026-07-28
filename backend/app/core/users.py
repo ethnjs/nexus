@@ -27,9 +27,9 @@ def find_user_by_id(db: Session, id: int) -> User:
 def create_user(
     db: Session,
     email: str,
-    first_name: str,
-    last_name: str,
-    role: str,
+    first_name: Optional[str] = None,
+    last_name: Optional[str] = None,
+    role: str = "user",
     phone: Optional[str] = None,
     password: Optional[str] = None,
     status: str = "active",

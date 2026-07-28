@@ -2,8 +2,6 @@ from pydantic import BaseModel, EmailStr, field_validator, model_validator
 from typing import Optional, Literal
 from datetime import datetime
 
-from app.core.phone import normalize_phone as _normalize_phone
-
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -60,16 +58,9 @@ def validate_password_strength(password: str) -> str:
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    phone: str
     password: str
-    first_name: str
-    last_name: str
     # role is intentionally excluded — all publicly registered users are "user".
-
-    @field_validator("phone")
-    @classmethod
-    def normalize_phone(cls, phone: str) -> str:
-        return _normalize_phone(phone)
+    # name and phone are collected later in the shared /onboarding step.
 
     @field_validator("password")
     @classmethod
@@ -147,24 +138,16 @@ class AccountSetupConfirm(BaseModel):
     POST /auth/account-setup/confirm — logged out.
 
     Consumes an 'account_setup' token (sent when an admin creates a user) and
-    completes the account: sets the initial password, collects phone (not
-    gathered at invite-time), and optionally lets the user correct the name
-    the admin entered. Mirrors sign-up's phase-1 fields, minus email (locked
-    to the invited address) and plus optional name correction.
+    completes the account: sets the initial password. Mirrors sign-up's
+    phase-1 fields, minus email (locked to the invited address). Phone and
+    any name correction are handled afterward in the shared /onboarding step,
+    same as regular sign-up users.
 
     Does NOT set email_verified — that still requires the normal verification flow.
     """
     token: str
     password: str
-    phone: str
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
- 
-    @field_validator("phone")
-    @classmethod
-    def normalize_phone(cls, phone: str) -> str:
-        return _normalize_phone(phone)
- 
+
     @field_validator("password")
     @classmethod
     def check_password(cls, password: str) -> str:

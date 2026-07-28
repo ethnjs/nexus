@@ -142,10 +142,7 @@ class TestRegister:
     def test_register_success(self, client):
         res = client.post("/auth/register/", json={
             "email": "new@test.com",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         })
         assert res.status_code == 201
         data = res.json()
@@ -158,10 +155,7 @@ class TestRegister:
         # Registration should log the user in immediately
         res = client.post("/auth/register/", json={
             "email": "new@test.com",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         })
         assert res.status_code == 201
         assert "access_token" in res.cookies
@@ -170,10 +164,7 @@ class TestRegister:
         # Cookie from registration should allow immediate access to /me/
         client.post("/auth/register/", json={
             "email": "new@test.com",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         })
         res = client.get("/users/me/")
         assert res.status_code == 200
@@ -182,10 +173,7 @@ class TestRegister:
     def test_register_email_stored_lowercase(self, client):
         res = client.post("/auth/register/", json={
             "email": "NEW@TEST.COM",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         })
         assert res.status_code == 201
         assert res.json()["email"] == "new@test.com"
@@ -193,77 +181,53 @@ class TestRegister:
     def test_register_duplicate_email_rejected(self, client, td_user):
         assert client.post("/auth/register/", json={
             "email": "td@test.com",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         }).status_code == 409
 
     def test_register_duplicate_email_case_insensitive_rejected(self, client, td_user):
         assert client.post("/auth/register/", json={
             "email": "TD@TEST.COM",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         }).status_code == 409
-
-    def test_register_invalid_phone_rejected(self, client):
-        assert client.post("/auth/register/", json={
-            "email": "new@test.com",
-            "phone": "notaphone",
-            "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
-        }).status_code == 422
 
     def test_register_can_login_with_new_credentials(self, client):
         # Confirms the password was hashed and stored correctly
         client.post("/auth/register/", json={
             "email": "new@test.com",
-            "phone": VALID_PHONE,
             "password": VALID_PASSWORD,
-            "first_name": "New",
-            "last_name": "User",
         })
         client.post("/auth/logout/")
         assert login(client, "new@test.com", VALID_PASSWORD).status_code == 200
 
     def test_register_password_too_short(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "Ab@1",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "Ab@1",
         }).status_code == 422
 
     def test_register_password_missing_uppercase(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "secure@123",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "secure@123",
         }).status_code == 422
 
     def test_register_password_missing_lowercase(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "SECURE@123",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "SECURE@123",
         }).status_code == 422
 
     def test_register_password_missing_number(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure@abc",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "Secure@abc",
         }).status_code == 422
 
     def test_register_password_missing_symbol(self, client):
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure1234",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "Secure1234",
         }).status_code == 422
 
     def test_register_password_invalid_char(self, client):
         # Control characters (ASCII < 32) should be rejected
         assert client.post("/auth/register/", json={
-            "email": "new@test.com", "phone": VALID_PHONE, "password": "Secure@1\x01",
-            "first_name": "New", "last_name": "User",
+            "email": "new@test.com", "password": "Secure@1\x01",
         }).status_code == 422
 
 
@@ -627,48 +591,25 @@ class TestConfirmAccountSetup:
         res = client.post("/auth/account-setup/confirm/", json={
             "token": token,
             "password": VALID_PASSWORD,
-            "phone": VALID_PHONE,
         })
         assert res.status_code == 200
         assert "access_token" in res.cookies
         db.refresh(invited_user)
         assert invited_user.status == "active"
         assert invited_user.hashed_password is not None
-        assert invited_user.phone is not None
 
     def test_confirm_logs_user_in(self, client, invited_user, db):
         token = create_verification_token(db, invited_user.id, "account_setup")
         client.post("/auth/account-setup/confirm/", json={
             "token": token,
             "password": VALID_PASSWORD,
-            "phone": VALID_PHONE,
         })
         assert client.get("/users/me/").status_code == 200
-
-    def test_name_correction_is_optional(self, client, invited_user, db):
-        token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post("/auth/account-setup/confirm/", json={
-            "token": token,
-            "password": VALID_PASSWORD,
-            "phone": VALID_PHONE,
-        })
-        assert res.json()["first_name"] == "Invited"
-
-    def test_name_correction_applied_when_given(self, client, invited_user, db):
-        token = create_verification_token(db, invited_user.id, "account_setup")
-        res = client.post("/auth/account-setup/confirm/", json={
-            "token": token,
-            "password": VALID_PASSWORD,
-            "phone": VALID_PHONE,
-            "first_name": "Corrected",
-        })
-        assert res.json()["first_name"] == "Corrected"
 
     def test_invalid_token_rejected(self, client):
         res = client.post("/auth/account-setup/confirm/", json={
             "token": "garbage",
             "password": VALID_PASSWORD,
-            "phone": VALID_PHONE,
         })
         assert res.status_code == 400
 

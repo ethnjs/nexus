@@ -117,7 +117,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     """
     check_if_email_exists(db, body.email)
 
-    user = create_user(db, body.email, body.first_name, body.last_name, "user", body.phone, body.password)
+    user = create_user(db, body.email, password=body.password)
 
     raw_token = create_session(
         db, user.id,
@@ -347,10 +347,9 @@ async def confirm_account_setup(
     db: Session = Depends(get_db),
 ):
     """
-    Completes an admin-created account: sets the initial password, collects
-    phone (not gathered at invite-time), and optionally overwrites the
-    admin-entered name. Logs the user in immediately, same as register(),
-    since this mirrors sign-up's flow.
+    Completes an admin-created account: sets the initial password. Logs the
+    user in immediately, same as register(), since this mirrors sign-up's
+    flow. Phone and any name correction happen afterward in onboarding.
     """
     token_row = consume_verification_token(db, body.token, "account_setup")
     if token_row is None:
@@ -359,11 +358,6 @@ async def confirm_account_setup(
     user = find_user_by_id(db, token_row.user_id)
 
     user.hashed_password = hash_password(body.password)
-    user.phone = body.phone
-    if body.first_name is not None:
-        user.first_name = body.first_name
-    if body.last_name is not None:
-        user.last_name = body.last_name
     user.status = "active"
     db.commit()
     db.refresh(user)
