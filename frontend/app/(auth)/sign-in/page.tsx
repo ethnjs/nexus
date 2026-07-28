@@ -34,7 +34,7 @@ export default function SignInPage() {
         try {
             await authApi.login(email, password)
 
-            router.push('/dashboard')
+            window.location.href = '/dashboard'
         } catch (error: unknown) {
             if (error instanceof ApiError) {
                 setErrors({ form: error.message })
