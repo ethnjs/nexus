@@ -61,7 +61,7 @@ export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
-  delete: <T>(path: string)                => request<T>(path, { method: 'DELETE' }),
+  delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
 }
 
 // -------------------------------------------------------------------------
@@ -97,6 +97,7 @@ export const canonicalEventsApi = {
 // Auth / Users
 // -------------------------------------------------------------------------
 export type ROLE = "admin" | "user"
+export type USER_STATUS = "active" | "invited" | "deactivated" | "locked"
 export type STUDENT_STATUS = "Undergraduate" | "Graduate" | "Non-Student"
 export type SHIRT_SIZE = "XS" | "S" | "M" | "L" | "XL" | "XXL"
 
@@ -132,7 +133,7 @@ export interface UserSlim {
 
   email_verified: boolean
   role:           ROLE
-  is_active:      boolean
+  status:         USER_STATUS
 
   created_at:     string
   updated_at:     string
@@ -205,11 +206,47 @@ export const authApi = {
   register: (body: AuthRegister)           => api.post<UserSlim>('/auth/register/', body),
   verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
   sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
+
+  requestEmailChange: (newEmail: string) =>
+    api.post<void>('/auth/email/request-change/', { new_email: newEmail }),
+  confirmEmailChange: (token: string) =>
+    api.get<void>(`/auth/email/confirm-change/?token=${token}`),
+
+  changePassword: (currentPassword: string, newPassword: string) =>
+    api.post<void>('/auth/password/change/', { current_password: currentPassword, new_password: newPassword }),
+  requestPasswordReset: (email: string) =>
+    api.post<void>('/auth/password/reset/request/', { email }),
+  confirmPasswordReset: (token: string, newPassword: string) =>
+    api.post<void>('/auth/password/reset/confirm/', { token, new_password: newPassword }),
+
+  confirmAccountSetup: (
+    token: string,
+    password: string,
+    phone: string,
+    firstName?: string,
+    lastName?: string,
+  ) =>
+    api.post<UserSlim>('/auth/account-setup/confirm/', {
+      token,
+      password,
+      phone,
+      first_name: firstName,
+      last_name: lastName,
+    }),
 }
 
 // -------------------------------------------------------------------------
 // Users
 // -------------------------------------------------------------------------
+export interface UserSession {
+  id:              number
+  user_agent:      string | null
+  ip_address:      string | null
+  created_at:      string
+  last_active_at:  string | null
+  is_current:      boolean
+}
+
 export const usersApi = {
   // GET /users/me/ (default) — matches UserMeSlimResponse
   me:       ()                          => api.get<UserMeSlim>('/users/me/'),
@@ -244,14 +281,21 @@ export const usersApi = {
 
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),
+
+  listSessions: ()          => api.get<UserSession[]>('/users/me/sessions/'),
+  logoutOtherSessions: ()   => api.post<void>('/users/me/sessions/logout-others/', {}),
+  deactivateAccount: (currentPassword: string) =>
+    api.post<void>('/users/me/deactivate/', { password: currentPassword }),
+  deleteAccount: (currentPassword: string) =>
+    api.delete<void>('/users/me/', { password: currentPassword }),
 }
 
 // -------------------------------------------------------------------------
 // Admin — Users
 // -------------------------------------------------------------------------
 interface AdminUserUpdate {
-  role?:      ROLE
-  is_active?: boolean
+  role?:   ROLE
+  status?: USER_STATUS
 }
 
 export const adminUsersApi = {
