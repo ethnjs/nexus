@@ -95,7 +95,7 @@ def remove_lead(
 
 
 
-@router.get("/{chapter_id}/members/", response_model=ChapterMemberResponse)
+@router.get("/{chapter_id}/members/", response_model=list[ChapterMemberResponse])
 def get_members(
     chapter_id: int,
     db: Session = Depends(get_db),
@@ -137,4 +137,21 @@ def update_chapter_roles(
     member.role = role
     db.commit()
     db.refresh()
+    return member
+# TODO(temp): officers get management powers later
+
+
+@router.get("/{chapter_id}/members/{user_id}/profile/", response_model=ChapterMemberResponse)
+def get_chapter_member(
+    chapter_id: int,
+    user_id: int,
+    db: Session = Depends(get_db),
+    lead: User = Depends(require_lead)
+):
+    """View chapter member profile. Lead only"""
+    if lead.chapter_membership.chapter_id != chapter_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not a lead for this chapter")
+    member = db.query(ChapterMembership).filter(ChapterMembership.chapter_id == chapter_id, ChapterMembership.user_id == user_id).first()
+    if not member:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return member
