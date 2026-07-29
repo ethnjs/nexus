@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 const PROTECTED_PREFIXES = ['/dashboard', '/onboarding']
-const AUTH_ROUTES        = ['/', '/sign-in']
+const AUTH_ROUTES        = ['/', '/sign-in', '/sign-up']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -17,12 +17,6 @@ export function proxy(request: NextRequest) {
   }
 
   if (isAuthRoute && token) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
-    return NextResponse.redirect(url)
-  }
-
-  if (pathname === '/sign-up' && token && !request.cookies.get('inSignUpFlow')?.value) {
     const url = request.nextUrl.clone()
     url.pathname = '/dashboard'
     return NextResponse.redirect(url)
