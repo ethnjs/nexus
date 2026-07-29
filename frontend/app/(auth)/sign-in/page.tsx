@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { ApiError, authApi } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { IconArrowLeft } from '@/components/ui/Icons'
 import { validateEmail } from '@/lib/auth'
 
 
@@ -48,25 +47,14 @@ export default function SignInPage() {
 
     return (
         <div style={{ width: '100%' }}>
-            <div style={{ marginBottom: '5px' }}>
-                <button onClick={() => router.push('/')} className="link-subtle" style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    fontFamily: 'var(--font-sans)'
-                }}>
-                    <IconArrowLeft/>Back to home
-                </button>
-            </div>
-
-            <div style={{ marginBottom: '30px' }}>
-                <h2 style={{
-                    fontFamily: 'var(--font-sans)',
-                    fontSize: '28px',
-                    fontWeight: '700',
-                    color: 'var(--color-text-primary)'
-                }}>Sign In</h2>
-            </div>
+            <h2 style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: '28px',
+                fontWeight: '700',
+                color: 'var(--color-text-primary)',
+                margin: '0 0 30px',
+                textAlign: 'center'
+            }}>Sign In</h2>
 
             <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <Input
@@ -79,16 +67,26 @@ export default function SignInPage() {
                     error={errors.email}
                     fullWidth
                 />
-                <Input
-                    label="Password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={e => { setPassword(e.target.value); setErrors(er => ({...er, password: undefined})) }}
-                    autoComplete="current-password"
-                    error={errors.password}
-                    fullWidth
-                />
+                <div>
+                    <Input
+                        label="Password"
+                        type="password"
+                        placeholder="••••••••"
+                        value={password}
+                        onChange={e => { setPassword(e.target.value); setErrors(er => ({...er, password: undefined})) }}
+                        autoComplete="current-password"
+                        error={errors.password}
+                        fullWidth
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '6px' }}>
+                        <button type="button" onClick={() => router.push('/forgot-password')} className="link-subtle" style={{
+                            fontFamily: 'var(--font-sans)',
+                            fontSize: '13px',
+                        }}>
+                            Forgot password?
+                        </button>
+                    </div>
+                </div>
                 <Button
                     type="submit"
                     loading={loading}
@@ -107,8 +105,17 @@ export default function SignInPage() {
                     )}
                 </div>
             </form>
+
+            <div style={{ marginTop: '20px', textAlign: 'center' }}>
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                    Don&rsquo;t have an account?{' '}
+                </span>
+                <button onClick={() => router.push('/sign-up')} className="link-subtle" style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600 }}>
+                    Sign up
+                </button>
+            </div>
         </div>
-        
+
     )
 }
 
