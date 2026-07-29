@@ -31,12 +31,21 @@ export function SettingsRow({ label, helper, children, last = false }: SettingsR
   );
 }
 
-export function SettingsSection({ title, children }: { title?: string; children: ReactNode }) {
+interface SettingsSectionProps {
+  title?:    string;
+  children:  ReactNode;
+  /** "danger" gives the section a red-accented border/title — use for irreversible/high-stakes actions. */
+  variant?:  "normal" | "danger";
+}
+
+export function SettingsSection({ title, children, variant = "normal" }: SettingsSectionProps) {
+  const accentColor = variant === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)";
+
   return (
     <div style={{
       marginBottom: "24px",
-      background: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
+      background: variant === "danger" ? "var(--color-danger-subtle)" : "var(--color-surface)",
+      border: `1px solid ${variant === "danger" ? "var(--color-danger)" : "var(--color-border)"}`,
       borderRadius: "var(--radius-lg)",
       boxShadow: "var(--shadow-sm)",
       padding: "8px 28px 28px",
@@ -45,7 +54,7 @@ export function SettingsSection({ title, children }: { title?: string; children:
         <div style={{
           fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
           letterSpacing: "0.06em", textTransform: "uppercase",
-          color: "var(--color-text-tertiary)", paddingTop: "20px",
+          color: accentColor, paddingTop: "20px",
         }}>
           {title}
         </div>

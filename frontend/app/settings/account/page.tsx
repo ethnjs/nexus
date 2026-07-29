@@ -15,6 +15,8 @@ import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
+import { DeactivateAccountModal } from "@/components/settings/DeactivateAccountModal";
+import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
 
 interface ProfileDraft {
   first_name:    string;
@@ -45,6 +47,9 @@ export default function AccountSettingsPage() {
 
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [pendingEmailChange, setPendingEmailChange] = useState<EmailPendingChange | null>(null);
+
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const [resending, setResending] = useState(false);
   const [resendError, setResendError] = useState<string | undefined>(undefined);
@@ -269,6 +274,23 @@ export default function AccountSettingsPage() {
         </SettingsRow>
       </SettingsSection>
 
+      <SettingsSection title="Danger zone" variant="danger">
+        <SettingsRow label="Deactivate account" helper="Temporarily disable your account. Contact support to reactivate.">
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
+            <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
+              Deactivate
+            </Button>
+          </div>
+        </SettingsRow>
+        <SettingsRow label="Delete account" helper="Permanently delete your account and all associated data. This cannot be undone." last>
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
+            <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+              Delete
+            </Button>
+          </div>
+        </SettingsRow>
+      </SettingsSection>
+
       {showEmailModal && (
         <ChangeEmailModal
           currentEmail={original.email}
@@ -277,6 +299,9 @@ export default function AccountSettingsPage() {
           onClose={() => setShowEmailModal(false)}
         />
       )}
+
+      {showDeactivateModal && <DeactivateAccountModal onClose={() => setShowDeactivateModal(false)} />}
+      {showDeleteModal && <DeleteAccountModal onClose={() => setShowDeleteModal(false)} />}
 
       <FloatingSaveBar
         visible={isDirty}
