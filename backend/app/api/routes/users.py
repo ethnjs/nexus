@@ -2,7 +2,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
-from typing import Union
 
 from app.core.auth import (
     get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
@@ -116,7 +115,7 @@ def admin_delete_user(
 # GET /users/me/ — current user's own profile. ?full=true for full response
 # with experience lists eagerly loaded.
 # ---------------------------------------------------------------------------
-@router.get("/users/me/", response_model=Union[UserMeFullResponse, UserMeSlimResponse])
+@router.get("/users/me/", response_model=None)
 def get_me(
     full: bool = False,
     db: Session = Depends(get_db),
