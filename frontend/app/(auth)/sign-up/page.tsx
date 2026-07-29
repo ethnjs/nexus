@@ -419,7 +419,7 @@ export default function SignUpPage() {
                 color: 'var(--color-text-primary)'
               }}>Complete Your Profile</h2>
             </div>
-            <form onSubmit={handleProfileSubmit} noValidate>
+            <form onSubmit={handleProfileSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <ProfileQuestion
                 question="What is your date of birth?"
                 onSkip={() => setState(STATE.PRONOUNS)}

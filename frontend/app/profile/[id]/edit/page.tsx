@@ -279,9 +279,7 @@ export default function ProfileEditPage() {
         maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
         display: "flex", flexDirection: "column", gap: "20px",
       }}>
-        <ProfileCard>
-          <ProfileHeader user={original} showEditButton />
-        </ProfileCard>
+        <ProfileHeader user={original} showEditButton />
 
         <ProfileCard>
           <ProfileQuestion question="Pronouns">
