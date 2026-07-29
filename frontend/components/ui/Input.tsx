@@ -12,6 +12,13 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   fullWidth?: boolean
   font?:      InputFont
   size?:      InputSize
+  /**
+   * Distinct "intentionally uneditable" treatment — different from a plain
+   * `disabled` input, which reads as generically unavailable. Use when the
+   * value is fixed for a reason the user should understand at a glance
+   * (e.g. an email locked to an invite). Implies `disabled`.
+   */
+  locked?:    boolean
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -26,7 +33,7 @@ const SIZE_MAP: Record<InputSize, { height: string; paddingX: string; fontSize: 
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', className = '', id, value, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', className = '', id, value, locked, disabled, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -49,18 +56,20 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
         <input
           ref={ref}
           id={inputId}
+          disabled={locked || disabled}
           style={{
             height: sizing.height,
             paddingLeft: sizing.paddingX,
             paddingRight: sizing.paddingX,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
-            background: 'var(--color-surface)',
-            color: 'var(--color-text-primary)',
+            background: locked ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
+            color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
             borderRadius: 'var(--radius-sm)',
             outline: 'none',
             width: fullWidth ? '100%' : undefined,
+            cursor: locked ? 'not-allowed' : undefined,
             transition: 'border-color 150ms ease',
           }}
           onFocus={e => {

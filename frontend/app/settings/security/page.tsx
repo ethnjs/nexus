@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
 import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
-import { PasswordChecklist } from "@/components/settings/PasswordChecklist";
+import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { SessionList } from "@/components/settings/SessionList";
 
 const EMPTY_CHECKS: PasswordChecks = {

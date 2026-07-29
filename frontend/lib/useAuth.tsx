@@ -27,10 +27,10 @@ const PROTECTED_PREFIXES = ['/dashboard']
 // Routes reachable without a completed onboarding — public/pre-session pages
 // (no session yet, so is_onboarding_complete doesn't apply) plus onboarding
 // itself. Extend this when new (auth)-shelled routes are added, e.g.
-// /account-setup and /revert-email-change.
+// /revert-email-change.
 const ONBOARDING_EXEMPT_ROUTES = [
   '/', '/sign-in', '/sign-up', '/verify-email', '/forgot-password',
-  '/reset-password', '/confirm-email-change', '/onboarding',
+  '/reset-password', '/confirm-email-change', '/account-setup', '/onboarding',
 ]
 
 // -------------------------------------------------------------------------

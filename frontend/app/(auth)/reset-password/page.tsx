@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
 import { Spinner } from "@/components/ui/Spinner"
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons"
-import { PasswordChecklist } from "@/components/settings/PasswordChecklist"
+import { PasswordChecklist } from "@/components/auth/PasswordChecklist"
 
 const EMPTY_CHECKS: PasswordChecks = {
   length: false, upper: false, lower: false, number: false, symbol: false, confirm: false,
