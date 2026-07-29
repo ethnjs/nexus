@@ -5,6 +5,7 @@ import { ApiError, authApi } from "@/lib/api"
 import { validateEmail } from "@/lib/auth"
 import { Input } from "@/components/ui/Input"
 import { Button } from "@/components/ui/Button"
+import { Banner } from "@/components/ui/Banner"
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -42,9 +43,10 @@ export default function ForgotPasswordPage() {
       </div>
 
       {sent ? (
-        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', textAlign: 'center' }}>
-          If an account exists for that email, a reset link has been sent.
-        </p>
+        <Banner
+          variant="success"
+          message="If an account exists for that email, a reset link has been sent."
+        />
       ) : (
         <form onSubmit={handleSubmit} style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '16px' }} noValidate>
           <Input
