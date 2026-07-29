@@ -22,7 +22,7 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  const TOKEN_REQUIRED_ROUTES = ['/verify-email', '/reset-password', '/confirm-email-change', '/account-setup']
+  const TOKEN_REQUIRED_ROUTES = ['/verify-email', '/reset-password', '/confirm-email-change', '/account-setup', '/revert-email-change']
   if (TOKEN_REQUIRED_ROUTES.includes(pathname) && !request.nextUrl.searchParams.get('token')) {
     const url = request.nextUrl.clone()
     url.pathname = token ? '/dashboard' : '/'
