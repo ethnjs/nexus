@@ -124,8 +124,24 @@ export default function OnboardingPage() {
     canonicalEventsApi.list().then(setEvents).catch(() => {});
   }, [authLoading, currentUser, router]);
 
+  function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
+    const originalIds = new Set(originalRows.filter(r => r.id !== undefined).map(r => r.id));
+    const currentIds = new Set(currentRows.filter(r => r.id !== undefined).map(r => r.id));
+
+    const toAdd = currentRows.filter(r => r.id === undefined);
+    const toDelete = originalRows.filter(r => r.id !== undefined && !currentIds.has(r.id));
+    const toUpdate = currentRows.filter(r => {
+      if (r.id === undefined || !originalIds.has(r.id)) return false;
+      const orig = originalRows.find(o => o.id === r.id);
+      return JSON.stringify(orig) !== JSON.stringify(r);
+    });
+
+    return { toAdd, toUpdate, toDelete };
+  }
+
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
+    if (!original) return;
     setLoading(true);
     setErrors({});
 
@@ -152,30 +168,41 @@ export default function OnboardingPage() {
       await usersApi.updateMe(cleaned);
 
       if (profileData.has_competition_experience) {
-        await Promise.all(competitionRows.map((row) =>
-          usersApi.addCompetitionExperience({
-            event_id: row.event_id as number,
-            school: row.school,
-            notes: row.notes || null,
-          })
-        ));
+        const compDiff = diffRows(original.competition_experience.map(competitionExperienceToDraft), competitionRows);
+        await Promise.all([
+          ...compDiff.toAdd.map(row => usersApi.addCompetitionExperience({
+            event_id: row.event_id as number, school: row.school, notes: row.notes || null,
+          })),
+          ...compDiff.toUpdate.map(row => usersApi.updateCompetitionExperience(row.id as number, {
+            event_id: row.event_id as number, school: row.school, notes: row.notes || null,
+          })),
+          ...compDiff.toDelete.map(row => usersApi.deleteCompetitionExperience(row.id as number)),
+        ]);
       }
 
       if (profileData.has_volunteer_experience) {
-        await Promise.all(volunteerRows.map((row) =>
-          usersApi.addVolunteerExperience({
+        function volunteerBody(row: VolunteerExperienceDraft) {
+          const hasCustomEvent = row.event_id === null && row.event_name.trim();
+          const hasNotesOther = row.notes_other.trim();
+          return {
             tournament_name: row.tournament_name,
             year: Number(row.year),
             role: row.role,
             event_id: row.event_id ?? undefined,
-            notes: (row.event_id === null && row.event_name.trim()) || row.notes_other.trim()
+            notes: hasCustomEvent || hasNotesOther
               ? {
-                  ...(row.event_id === null && row.event_name.trim() ? { event: row.event_name.trim() } : {}),
-                  ...(row.notes_other.trim() ? { other: row.notes_other.trim() } : {}),
+                  ...(hasCustomEvent ? { event: row.event_name.trim() } : {}),
+                  ...(hasNotesOther ? { other: row.notes_other.trim() } : {}),
                 }
               : undefined,
-          })
-        ));
+          };
+        }
+        const volDiff = diffRows(original.volunteer_experience.map(volunteerExperienceToDraft), volunteerRows);
+        await Promise.all([
+          ...volDiff.toAdd.map(row => usersApi.addVolunteerExperience(volunteerBody(row))),
+          ...volDiff.toUpdate.map(row => usersApi.updateVolunteerExperience(row.id as number, volunteerBody(row))),
+          ...volDiff.toDelete.map(row => usersApi.deleteVolunteerExperience(row.id as number)),
+        ]);
       }
 
       window.location.href = "/dashboard";
