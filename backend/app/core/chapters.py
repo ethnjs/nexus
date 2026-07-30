@@ -6,6 +6,9 @@ from app.models.models import User, AlumniChapter, ChapterMembership
 from app.core.auth import get_current_user
 from app.db.session import get_db
 
+import string
+import secrets
+
 def _create_chapter(
         db: Session,
         name: str,
@@ -108,3 +111,11 @@ def _assign_chapter_lead(
     db.commit()
     db.refresh(chapter_member)
     return chapter_member
+
+AMBIGUOUS_CHARS = set("0O1Il")
+ALLOWED_CHARS = "".join([c for c in string.ascii_letters + string.digits if c not in AMBIGUOUS_CHARS])
+
+def generate_chapter_join_code(length: int = 8) -> str:
+    """Generates an 8-character cryptographically secure random alphanumeric code."""
+    return "".join(secrets.choice(ALLOWED_CHARS) for _ in range(length))
+    

@@ -536,6 +536,10 @@ class ChapterMembership(Base):
     alumni_chapters = relationship("AlumniChapter", back_populates="chapter_memberships")
     users = relationship("User", back_populates="chapter_membership")
 
+    @property
+    def user(self):
+        return self.users
+
 
 # ---------------------------------------------------------------------------
 # [In Progress???] ChapterJoinCode

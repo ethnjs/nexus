@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from tests.conftest import login
 from app.core.auth import hash_password
-from app.models.models import AlumniChapter, ChapterMembership, University, User
+from app.models.models import AlumniChapter, ChapterJoinCode, ChapterMembership, University, User
 
 
 def _university(db, **kwargs):
@@ -279,3 +279,99 @@ def test_get_member_profile_non_lead_forbidden(client, td_user, db):
     login(client, "td@test.com", "tdpass")
 
     assert client.get(f"/chapters/{chapter.id}/members/{member.id}/profile/").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Chapter join code endpoints
+# ---------------------------------------------------------------------------
+
+def test_get_join_codes_lead_can_access(client, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    lead = _user(db, "joinlead@example.com", password="LeadPass123!")
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
+    db.commit()
+    login(client, "joinlead@example.com", "LeadPass123!")
+
+    res = client.get(f"/chapters/{chapter.id}/join-codes/")
+    assert res.status_code == 200
+
+
+def test_get_join_codes_non_lead_forbidden(client, td_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    login(client, "td@test.com", "tdpass")
+
+    assert client.get(f"/chapters/{chapter.id}/join-codes/").status_code == 403
+
+
+def test_create_join_code_creates_record(client, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    lead = _user(db, "joincreator@example.com", password="LeadPass123!")
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
+    db.commit()
+    login(client, "joincreator@example.com", "LeadPass123!")
+
+    res = client.post(
+        f"/chapters/{chapter.id}/join-codes/",
+        json={"label": "Spring 2026", "expires_in_hours": 24},
+    )
+    assert res.status_code == 201
+    data = res.json()
+    assert data["label"] == "Spring 2026"
+    assert data["is_active"] is True
+    assert data["code"]
+
+    created = db.query(ChapterJoinCode).filter_by(id=data["id"]).first()
+    assert created is not None
+    assert created.label == "Spring 2026"
+
+
+def test_deactivate_join_code_marks_inactive(client, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    lead = _user(db, "joinlead2@example.com", password="LeadPass123!")
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
+    join_code = ChapterJoinCode(
+        chapter_id=chapter.id,
+        created_by=lead.id,
+        code="ABC12345",
+        label="Test Code",
+        expires_at=None,
+        is_active=True,
+    )
+    db.add(join_code)
+    db.commit()
+    db.refresh(join_code)
+    login(client, "joinlead2@example.com", "LeadPass123!")
+
+    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": False})
+    assert res.status_code == 200
+    assert res.json()["is_active"] is False
+
+    refreshed = db.query(ChapterJoinCode).filter_by(id=join_code.id).first()
+    assert refreshed is not None
+    assert refreshed.is_active is False
+
+
+def test_deactivate_join_code_twice_rejected(client, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    lead = _user(db, "joinlead3@example.com", password="LeadPass123!")
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
+    join_code = ChapterJoinCode(
+        chapter_id=chapter.id,
+        created_by=lead.id,
+        code="XYZ98765",
+        label="Already Deactivated",
+        expires_at=None,
+        is_active=False,
+    )
+    db.add(join_code)
+    db.commit()
+    db.refresh(join_code)
+    login(client, "joinlead3@example.com", "LeadPass123!")
+
+    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": False})
+    assert res.status_code == 400
