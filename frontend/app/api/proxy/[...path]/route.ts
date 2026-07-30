@@ -14,6 +14,8 @@ async function proxy(
   // Forward the raw Cookie header from the browser request — simpler and more
   // reliable than reading individual cookies via next/headers
   const cookieHeader = req.headers.get('cookie') ?? ''
+  const userAgent = req.headers.get('user-agent') ?? ''
+  const forwardedFor = req.headers.get('x-forwarded-for') ?? ''
 
   const upstream = await fetch(`${API_URL}/${path}${search}`, {
     method,
@@ -21,6 +23,8 @@ async function proxy(
       'Content-Type': 'application/json',
       ...(API_KEY ? { 'X-API-Key': API_KEY } : {}),
       ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      ...(userAgent ? { 'User-Agent': userAgent } : {}),
+      ...(forwardedFor ? { 'X-Forwarded-For': forwardedFor } : {}),
     },
     body: method !== 'GET' && method !== 'DELETE'
       ? await req.text()
