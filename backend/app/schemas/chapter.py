@@ -3,12 +3,11 @@ from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, EmailStr, ConfigDict
 
-from university import UniversityResponse
+from app.schemas.university import UniversityResponse
 
 # Request Schema
 
 class ChapterUpdate(BaseModel):
-    id: int
     name: Optional[str] = None
 
 class ChapterCreate(BaseModel):
@@ -40,8 +39,8 @@ class ChapterUserSlimReponse(BaseModel):
     employer: Optional[str] = None
     has_competition_experience: Optional[bool] = None
     has_volunteer_experience: Optional[bool] = None
-    competition_exerience: list[CompetitionExperienceResponse] = []
-    volunteer_experience: list[VolunteerExperienceResponse] = []
+    competition_experience: list[dict] = []
+    volunteer_experience: list[dict] = []
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
 

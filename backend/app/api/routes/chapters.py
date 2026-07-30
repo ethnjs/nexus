@@ -10,7 +10,7 @@ from app.core.chapters import _create_chapter, check_if_chapter_exists, require_
 router = APIRouter(prefix="/chapters", tags=["chapters"])
 
 
-@router.get("/", response_model=ChapterResponse)
+@router.get("/", response_model=list[ChapterResponse])
 def get_chapters(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin)
