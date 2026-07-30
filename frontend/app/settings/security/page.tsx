@@ -142,7 +142,7 @@ export default function SecuritySettingsPage() {
             </div>
           )}
 
-          <Button type="submit" variant="primary" loading={submitting}>
+          <Button type="submit" variant="primary" loading={submitting} style={{marginBottom: "20px"}}>
             Update password
           </Button>
         </form>

@@ -48,7 +48,7 @@ export function SettingsSection({ title, children, variant = "normal" }: Setting
       border: `1px solid ${variant === "danger" ? "var(--color-danger)" : "var(--color-border)"}`,
       borderRadius: "var(--radius-lg)",
       boxShadow: "var(--shadow-sm)",
-      padding: "8px 28px 28px",
+      padding: "8px 28px",
     }}>
       {title && (
         <div style={{
