@@ -1,6 +1,9 @@
 """Tests for /chapters endpoints."""
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy.exc import IntegrityError
 
 from tests.conftest import login
 from app.core.auth import hash_password
@@ -375,3 +378,140 @@ def test_deactivate_join_code_twice_rejected(client, db):
 
     res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": False})
     assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Public chapter join flow error paths
+# ---------------------------------------------------------------------------
+
+def _join_code(db, chapter_id, created_by, **kwargs):
+    defaults = {
+        "code": "JOIN1234",
+        "label": "Join code",
+        "expires_at": None,
+        "is_active": True,
+    }
+    defaults.update(kwargs)
+    join_code = ChapterJoinCode(
+        chapter_id=chapter_id,
+        created_by=created_by,
+        **defaults,
+    )
+    db.add(join_code)
+    db.commit()
+    db.refresh(join_code)
+    return join_code
+
+
+@pytest.mark.parametrize("params", [{}, {"code": "SHORT"}, {"code": "TOO-LONG9"}])
+def test_preview_chapter_rejects_missing_or_malformed_code(client, params):
+    res = client.get("/join-chapter/", params=params)
+
+    assert res.status_code == 422
+
+
+def test_preview_chapter_rejects_unknown_code(client):
+    res = client.get("/join-chapter/", params={"code": "UNKNOWN1"})
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Invalid join code"
+
+
+def test_preview_chapter_rejects_deactivated_code(client, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    _join_code(db, chapter.id, admin_user.id, code="INACTIVE", is_active=False)
+
+    res = client.get("/join-chapter/", params={"code": "INACTIVE"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "This join code has been deactivated"
+
+
+def test_preview_chapter_rejects_expired_code(client, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    expired_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    _join_code(db, chapter.id, admin_user.id, code="EXPIRED1", expires_at=expired_at)
+    res = client.get("/join-chapter/", params={"code": "EXPIRED1"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "This join code has expired"
+
+
+def test_join_chapter_requires_authentication(client):
+    res = client.post("/join-chapter/", json={"code": "JOIN1234"})
+
+    assert res.status_code == 401
+
+
+@pytest.mark.parametrize("payload", [{}, {"code": "SHORT"}, {"code": "TOO-LONG9"}])
+def test_join_chapter_rejects_malformed_code(client, td_user, payload):
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post("/join-chapter/", json=payload)
+
+    assert res.status_code == 422
+
+
+def test_join_chapter_rejects_existing_member(client, td_user, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=td_user.id, role="member"))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post("/join-chapter/", json={"code": "JOIN1234"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "User is already a member of a chapter"
+
+
+def test_join_chapter_rejects_unknown_code(client, td_user):
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post("/join-chapter/", json={"code": "UNKNOWN1"})
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Invalid join code"
+
+
+def test_join_chapter_rejects_deactivated_code(client, td_user, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    _join_code(db, chapter.id, admin_user.id, code="INACTIVE", is_active=False)
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post("/join-chapter/", json={"code": "INACTIVE"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "This join code has been deactivated"
+
+
+def test_join_chapter_rejects_expired_code(client, td_user, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    expired_at = datetime.now(timezone.utc) - timedelta(hours=1)
+    _join_code(db, chapter.id, admin_user.id, code="EXPIRED1", expires_at=expired_at)
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post("/join-chapter/", json={"code": "EXPIRED1"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "This join code has expired"
+
+
+def test_join_chapter_handles_membership_integrity_conflict(client, td_user, admin_user, db, monkeypatch):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    _join_code(db, chapter.id, admin_user.id)
+    login(client, "td@test.com", "tdpass")
+
+    def raise_integrity_error():
+        raise IntegrityError("INSERT INTO chapter_memberships", {}, Exception("duplicate membership"))
+
+    monkeypatch.setattr(db, "commit", raise_integrity_error)
+    res = client.post("/join-chapter/", json={"code": "JOIN1234"})
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "User is already a member of a chapter"
