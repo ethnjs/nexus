@@ -344,30 +344,32 @@ export default function OnboardingPage() {
                   }}
                 />
               </ProfileQuestion>
+            </ProfileCard>
+          )}
 
-              {state >= STATE.STUDENT_STATUS && (
-                <ProfileQuestion
-                  question="What is your student status?"
-                  onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
-                  isActive={state === STATE.STUDENT_STATUS}
-                >
-                  <StudentStatusField
-                    value={profileData.student_status}
-                    onChange={(v) => {
-                      setProfileData((d) => ({ ...d, student_status: v }));
-                      if (state >= STATE.STUDENT_STATUS + 3) return;
-                      if (v === "Undergraduate" || v === "Graduate") {
-                        setState(STATE.UNIVERSITY);
-                      } else if (v === "Non-Student") {
-                        setState(STATE.EMPLOYER);
-                      }
-                    }}
-                  />
-                </ProfileQuestion>
-              )}
-
+          {state >= STATE.STUDENT_STATUS && (
+            <ProfileCard>
+              <ProfileQuestion
+                question="What is your student status?"
+                onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
+                isActive={state === STATE.STUDENT_STATUS}
+              >
+                <StudentStatusField
+                  value={profileData.student_status}
+                  onChange={(v) => {
+                    setProfileData((d) => ({ ...d, student_status: v }));
+                    if (state >= STATE.STUDENT_STATUS + 3) return;
+                    if (v === "Undergraduate" || v === "Graduate") {
+                      setState(STATE.UNIVERSITY);
+                    } else if (v === "Non-Student") {
+                      setState(STATE.EMPLOYER);
+                    }
+                  }}
+                />
+              </ProfileQuestion>
+              
               {state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
-                <div>
+                <>
                   <ProfileQuestion question="What university do you attend?">
                     <UniversityField
                       value={profileData.university}
@@ -426,9 +428,9 @@ export default function OnboardingPage() {
                       onChange={(v) => setProfileData((d) => ({ ...d, graduation_year: v }))}
                     />
                   </ProfileQuestion>
-                </div>
+                </>
               )}
-
+              
               {state >= STATE.EMPLOYER && profileData.student_status === "Non-Student" && (
                 <ProfileQuestion
                   question="Who is your employer?"
@@ -611,7 +613,7 @@ export default function OnboardingPage() {
               type="submit"
               variant="primary"
               size="lg"
-              disabled={state < STATE.PRONOUNS}
+              disabled={state < STATE.DATE_OF_BIRTH}
               loading={loading}
               fullWidth
             >

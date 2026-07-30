@@ -22,9 +22,7 @@ export function ProfileQuestion({
   const showActions = isActive && (showSkip || showNext)
 
   return (
-    <div style={{
-      padding: '18px 20px',
-    }}>
+    <div>
       <label style={{
         display: 'block', marginBottom: '10px',
         fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600,

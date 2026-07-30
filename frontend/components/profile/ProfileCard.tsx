@@ -7,10 +7,10 @@ export function ProfileCard({ children }: { children: ReactNode }) {
       border: "1px solid var(--color-border)",
       borderRadius: "var(--radius-lg)",
       boxShadow: "var(--shadow-sm)",
-      padding: "14px",
+      padding: "28px",
       display: "flex",
       flexDirection: "column",
-      gap: "6px",
+      gap: "28px",
     }}>
       {children}
     </div>
