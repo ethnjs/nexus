@@ -29,6 +29,18 @@ def check_if_chapter_exists(db: Session, university_id: int):
             detail="Alumni Chapter already exists"
         )
 
+def find_chapter(
+        chapter_id: int,
+        db: Session = Depends(get_db)
+        ):
+    chapter = db.query(AlumniChapter).filter(AlumniChapter.id == chapter_id).first()
+    if not chapter:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alumni Chapter not found"
+        )
+    return chapter
+
 def require_lead(
         chapter_id: int,
         db: Session = Depends(get_db),
