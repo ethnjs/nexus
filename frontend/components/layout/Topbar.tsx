@@ -15,6 +15,9 @@ interface TopbarProps {
   showAvatar?: boolean;
   tournamentId?: string | number;
   sidebarExpanded?: boolean;
+  // Extra left padding to clear a fixed-position control (e.g. a mobile
+  // drawer toggle) rendered outside the Topbar but overlapping its top-left.
+  extraLeftPad?: number;
 }
 
 // ─── Tournament Dropdown ──────────────────────────────────────────────────────
@@ -141,8 +144,9 @@ export function Topbar({
   showAvatar = true,
   tournamentId,
   sidebarExpanded = false,
+  extraLeftPad = 0,
 }: TopbarProps) {
-  const leftPad = (sidebarExpanded ? EXPANDED_W - COLLAPSED_W : 0) + 16;
+  const leftPad = (sidebarExpanded ? EXPANDED_W - COLLAPSED_W : 0) + 16 + extraLeftPad;
 
   return (
     <header style={{

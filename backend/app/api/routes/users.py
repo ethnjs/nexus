@@ -1,17 +1,22 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session, selectinload
-from typing import Union
 
-from app.core.auth import get_current_user, require_admin
-from app.core.users import check_if_email_exists, find_user_by_id
-from app.core.profile_status import compute_missing_profile_fields, is_profile_complete
+from app.core.auth import (
+    get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
+    get_current_session, revoke_all_other_sessions,
+)
+from app.core.users import find_user_by_id
+from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
-from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event
+from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
 from app.schemas.user import (
     UserFullResponse, UserMeFullResponse, UserSlimResponse,
     UserMeSlimResponse, UserUpdate, AdminUserUpdate
 )
+from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
+from app.schemas.session import SessionResponse
 
 router = APIRouter(tags=["users"])
 
@@ -70,10 +75,21 @@ def admin_update_user(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin)
 ):
-    """Admin can only update a user's role and is_active status."""
+    """
+    Admin can only update a user's role and status.
+
+    Setting status="locked" also revokes every session for that user —
+    locking is meant to cut off access immediately, not just block future
+    logins, so a currently-logged-in device shouldn't stay usable.
+    """
     user = find_user_by_id(db, user_id)
-    for field, value in body.model_dump(exclude_unset=True).items():
+    updates = body.model_dump(exclude_unset=True)
+    for field, value in updates.items():
         setattr(user, field, value)
+
+    if updates.get("status") == "locked":
+        revoke_all_sessions(db, user.id)
+
     db.commit()
     db.refresh(user)
     return user
@@ -99,7 +115,7 @@ def admin_delete_user(
 # GET /users/me/ — current user's own profile. ?full=true for full response
 # with experience lists eagerly loaded.
 # ---------------------------------------------------------------------------
-@router.get("/users/me/", response_model=Union[UserMeFullResponse, UserMeSlimResponse])
+@router.get("/users/me/", response_model=None)
 def get_me(
     full: bool = False,
     db: Session = Depends(get_db),
@@ -121,6 +137,7 @@ def get_me(
 
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
+    response.is_onboarding_complete = is_onboarding_complete(current_user)
     return response
 
 
@@ -136,15 +153,117 @@ def update_user_me(
     """
     Update the current user's own profile.
     Omitted fields are left unchanged. Explicit null clears a field.
-    Email uniqueness is checked before applying changes.
+    Email changes must go through the verify-before-apply flow
+    (POST /auth/email/request-change/ + GET /auth/email/confirm-change/).
     """
     for field, value in body.model_dump(exclude_unset=True).items():
-        if field == "email":
-            check_if_email_exists(db, body.email, exclude_user_id=user.id)
         setattr(user, field, value)
     db.commit()
     db.refresh(user)
-    
+
     response = UserMeFullResponse.model_validate(user)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
     return response
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/deactivate/ — authenticated self-service deactivation
+# ---------------------------------------------------------------------------
+@router.post("/users/me/deactivate/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={401: {"description": "Current password is incorrect"}},
+)
+def deactivate_me(
+    body: AccountDeactivateRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Reversible self-deactivation. Revokes every session for the user
+    (including the one making this request) and clears the cookie on this
+    response so the client isn't left holding a dead token.
+    """
+    if not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    user.status = "deactivated"
+    revoke_all_sessions(db, user.id)
+    db.commit()
+
+    clear_auth_cookie(response)
+    return {"detail": "Account deactivated"}
+
+
+# ---------------------------------------------------------------------------
+# DELETE /users/me/ — authenticated self-service hard delete
+# ---------------------------------------------------------------------------
+@router.delete("/users/me/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
+    responses={401: {"description": "Current password is incorrect"}},
+)
+def delete_me(
+    body: AccountDeleteRequest,
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """
+    Irreversible hard delete — cascades through TournamentMembership,
+    sessions, verification tokens, etc. via DB-level ON DELETE CASCADE.
+    """
+    if not user.hashed_password or not verify_password(body.password, user.hashed_password):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    db.delete(user)
+    db.commit()
+
+    clear_auth_cookie(response)
+    return {"detail": "Account successfully deleted"}
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/sessions/ — list the current user's active sessions
+# ---------------------------------------------------------------------------
+@router.get("/users/me/sessions/", response_model=list[SessionResponse])
+def list_my_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_session: UserSession = Depends(get_current_session),
+):
+    """Lists active (not revoked, not expired) sessions, most recently active first."""
+    now = datetime.now(timezone.utc)
+    sessions = (
+        db.query(UserSession)
+        .filter(
+            UserSession.user_id == user.id,
+            UserSession.revoked_at.is_(None),
+            UserSession.expires_at > now,
+        )
+        .order_by(UserSession.last_active_at.desc())
+        .all()
+    )
+
+    return [
+        SessionResponse(
+            id=s.id,
+            user_agent=s.user_agent,
+            ip_address=s.ip_address,
+            created_at=s.created_at,
+            last_active_at=s.last_active_at,
+            is_current=(s.id == current_session.id),
+        )
+        for s in sessions
+    ]
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/sessions/logout-others/ — "log out everywhere" except here
+# ---------------------------------------------------------------------------
+@router.post("/users/me/sessions/logout-others/", status_code=status.HTTP_200_OK, response_model=MessageResponse)
+def logout_other_sessions(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+    current_session: UserSession = Depends(get_current_session),
+):
+    """Revokes every session for the user except the one making this request."""
+    revoke_all_other_sessions(db, user.id, current_session.id)
+    return {"detail": "Logged out of all other sessions"}

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
-import { IconLogout, IconUser } from "@/components/ui/Icons";
+import { IconLogout, IconUser, IconSettings } from "@/components/ui/Icons";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import Link from "next/link";
 
@@ -70,6 +70,22 @@ export function UserAvatar() {
           >
             <IconUser size={16}/>
             Profile
+          </Link>
+          <Link
+            href="/settings/account"
+            onClick={() => setOpen(false)}
+            style={{
+              display: "flex", alignItems: "center", gap: "8px",
+              width: "100%", padding: "11px 16px",
+              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+              color: "var(--color-text-primary)", textDecoration: "none",
+              borderBottom: "1px solid var(--color-border)",
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+          >
+            <IconSettings size={16}/>
+            Settings
           </Link>
           <button
             onClick={() => { setOpen(false); logout(); }}

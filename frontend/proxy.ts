@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const PROTECTED_PREFIXES = ['/dashboard']
-const AUTH_ROUTES        = ['/', '/sign-in']
+const PROTECTED_PREFIXES = ['/dashboard', '/onboarding']
+const AUTH_ROUTES        = ['/', '/sign-in', '/sign-up']
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
@@ -22,19 +22,11 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  if (pathname === '/sign-up' && token && !request.cookies.get('inSignUpFlow')?.value) {
+  const TOKEN_REQUIRED_ROUTES = ['/verify-email', '/reset-password', '/confirm-email-change', '/account-setup', '/revert-email-change']
+  if (TOKEN_REQUIRED_ROUTES.includes(pathname) && !request.nextUrl.searchParams.get('token')) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    url.pathname = token ? '/dashboard' : '/'
     return NextResponse.redirect(url)
-  }
-
-  if (pathname === '/verify-email') {
-    const verifyToken = request.nextUrl.searchParams.get('token')
-    if (!verifyToken) {
-      const url = request.nextUrl.clone()
-      url.pathname = token ? '/dashboard' : '/'
-      return NextResponse.redirect(url)
-    }
   }
 
   return NextResponse.next()

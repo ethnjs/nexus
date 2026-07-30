@@ -17,7 +17,7 @@ def _db_user(db, email="alice@example.com", **kwargs):
         "email": email,
         "hashed_password": hash_password("Password@1"),
         "role": "user",
-        "is_active": True,
+        "status": "active",
     }
     defaults.update(kwargs)
     user = User(**defaults)
@@ -93,7 +93,7 @@ class TestAdminGetUserByEmail:
 
 
 # ---------------------------------------------------------------------------
-# PATCH /admin/users/{id} — admin only, role + is_active only
+# PATCH /admin/users/{id} — admin only, role + status only
 # ---------------------------------------------------------------------------
 
 class TestAdminUpdateUser:
@@ -107,21 +107,37 @@ class TestAdminUpdateUser:
     def test_admin_can_disable_user(self, client, admin_user, db):
         alice = _db_user(db)
         login(client, "admin@test.com", "adminpass")
-        res = client.patch(f"/admin/users/{alice.id}/", json={"is_active": False})
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"})
         assert res.status_code == 200
-        assert res.json()["is_active"] == False
+        assert res.json()["status"] == "deactivated"
 
     def test_disabled_user_cannot_login(self, client, admin_user, db):
         # Confirms disabling actually revokes access, not just flips a flag
         alice = _db_user(db, email="alice@example.com")
         login(client, "admin@test.com", "adminpass")
-        client.patch(f"/admin/users/{alice.id}/", json={"is_active": False})
+        client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"})
         assert login(client, "alice@example.com", "Password@1").status_code == 401
 
     def test_invalid_role_rejected(self, client, admin_user, db):
         alice = _db_user(db)
         login(client, "admin@test.com", "adminpass")
         assert client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
+
+    def test_locking_revokes_existing_session(self, client, admin_user, db):
+        # Locking must cut off an already-logged-in device immediately, not
+        # just block future logins the way plain deactivation does.
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+        assert client.get("/users/me/").status_code == 200
+
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "locked"})
+        assert res.status_code == 200
+        assert res.json()["status"] == "locked"
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 401
 
     def test_non_admin_forbidden(self, client, td_user, db):
         alice = _db_user(db)
@@ -154,6 +170,131 @@ class TestAdminDeleteUser:
 
     def test_unauthenticated_forbidden(self, client):
         assert client.delete("/admin/users/1/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/deactivate/ — authenticated self-service deactivation
+# ---------------------------------------------------------------------------
+
+class TestDeactivateMe:
+    def test_deactivate_success(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/users/me/deactivate/", json={"password": "tdpass"})
+        assert res.status_code == 200
+        db.refresh(td_user)
+        assert td_user.status == "deactivated"
+
+    def test_wrong_password_rejected(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.post("/users/me/deactivate/", json={"password": "wrongpass"})
+        assert res.status_code == 401
+        db.refresh(td_user)
+        assert td_user.status == "active"
+
+    def test_deactivate_revokes_session(self, client, td_user):
+        # The session used to make this request should itself be dead
+        # afterward, not just future logins blocked.
+        login(client, "td@test.com", "tdpass")
+        assert client.post("/users/me/deactivate/", json={"password": "tdpass"}).status_code == 200
+        assert client.get("/users/me/").status_code == 401
+
+    def test_deactivated_user_cannot_login(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        client.post("/users/me/deactivate/", json={"password": "tdpass"})
+        assert login(client, "td@test.com", "tdpass").status_code == 401
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/users/me/deactivate/", json={"password": "whatever"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# DELETE /users/me/ — authenticated self-service hard delete
+# ---------------------------------------------------------------------------
+
+class TestDeleteMe:
+    def test_delete_success(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.request("DELETE", "/users/me/", json={"password": "tdpass"})
+        assert res.status_code == 200
+        assert db.query(User).filter(User.id == td_user.id).first() is None
+
+    def test_wrong_password_rejected(self, client, td_user, db):
+        login(client, "td@test.com", "tdpass")
+        res = client.request("DELETE", "/users/me/", json={"password": "wrongpass"})
+        assert res.status_code == 401
+        assert db.query(User).filter(User.id == td_user.id).first() is not None
+
+    def test_delete_cascades_membership(self, client, admin_user, td_tournament, db):
+        # admin_user here is a plain member, not the tournament owner — a
+        # user who owns a tournament can't be hard-deleted yet (owner_id is
+        # NOT NULL with no cascade rule defined); tracked separately in
+        # docs/deferred-items.md rather than handled by this route.
+        from app.models.models import TournamentMembership
+        db.add(TournamentMembership(
+            user_id=admin_user.id,
+            tournament_id=td_tournament.id,
+            positions=["event_supervisor"],
+            status="confirmed",
+        ))
+        db.commit()
+
+        login(client, "admin@test.com", "adminpass")
+        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0
+        assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
+        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() == 0
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.request("DELETE", "/users/me/", json={"password": "whatever"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# GET /users/me/sessions/ — list active sessions
+# ---------------------------------------------------------------------------
+
+class TestListMySessions:
+    def test_lists_active_session_with_current_flag(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        res = client.get("/users/me/sessions/")
+        assert res.status_code == 200
+        sessions = res.json()
+        assert len(sessions) == 1
+        assert sessions[0]["is_current"] is True
+
+    def test_second_login_creates_separate_session(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        login(client, "td@test.com", "tdpass")  # simulates a second device
+        res = client.get("/users/me/sessions/")
+        sessions = res.json()
+        assert len(sessions) == 2
+        assert sum(s["is_current"] for s in sessions) == 1
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.get("/users/me/sessions/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /users/me/sessions/logout-others/ — "log out everywhere" except here
+# ---------------------------------------------------------------------------
+
+class TestLogoutOtherSessions:
+    def test_revokes_other_sessions_keeps_current(self, client, td_user):
+        login(client, "td@test.com", "tdpass")
+        first_cookie = client.cookies.get("access_token")
+
+        login(client, "td@test.com", "tdpass")  # second device, now current
+        second_cookie = client.cookies.get("access_token")
+
+        res = client.post("/users/me/sessions/logout-others/")
+        assert res.status_code == 200
+
+        client.cookies.set("access_token", first_cookie)
+        assert client.get("/users/me/").status_code == 401
+
+        client.cookies.set("access_token", second_cookie)
+        assert client.get("/users/me/").status_code == 200
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/users/me/sessions/logout-others/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -247,26 +388,16 @@ class TestUpdateMe:
         client.patch("/users/me/", json={"first_name": "Updated"})
         assert client.get("/users/me/").json()["last_name"] == "User"
 
-    def test_can_update_email(self, client, td_user):
+    def test_email_field_ignored(self, client, td_user):
+        # Email changes must go through the verify-before-apply flow
+        # (POST /auth/email/request-change/ + GET /auth/email/confirm-change/),
+        # not this generic partial-update route. `email` isn't a declared
+        # field on UserUpdate, so pydantic silently drops it.
         login(client, "td@test.com", "tdpass")
-        res = client.patch("/users/me/", json={"email": "newemail@test.com"})
-        assert res.status_code == 200
-        assert res.json()["email"] == "newemail@test.com"
-
-    def test_duplicate_email_rejected(self, client, td_user, admin_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "admin@test.com"}).status_code == 409
-
-    def test_duplicate_email_case_insensitive_rejected(self, client, td_user, admin_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "ADMIN@TEST.COM"}).status_code == 409
-
-    def test_same_email_unchanged_not_rejected(self, client, td_user):
-        # Re-submitting your own current email should not conflict with yourself.
-        login(client, "td@test.com", "tdpass")
-        res = client.patch("/users/me/", json={"email": "td@test.com", "first_name": "Still TD"})
+        res = client.patch("/users/me/", json={"email": "newemail@test.com", "first_name": "Updated"})
         assert res.status_code == 200
         assert res.json()["email"] == "td@test.com"
+        assert res.json()["first_name"] == "Updated"
 
     def test_null_clears_optional_field(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -283,17 +414,9 @@ class TestUpdateMe:
         login(client, "td@test.com", "tdpass")
         assert client.patch("/users/me/", json={"last_name": None}).status_code == 422
 
-    def test_null_email_rejected(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": None}).status_code == 422
-
     def test_null_phone_rejected(self, client, td_user):
         login(client, "td@test.com", "tdpass")
         assert client.patch("/users/me/", json={"phone": None}).status_code == 422
-
-    def test_invalid_email_rejected(self, client, td_user):
-        login(client, "td@test.com", "tdpass")
-        assert client.patch("/users/me/", json={"email": "notanemail"}).status_code == 422
 
     def test_phone_stored_as_digits(self, client, td_user):
         # Formatted input should be normalized to raw digits

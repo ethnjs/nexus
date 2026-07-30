@@ -23,56 +23,69 @@ export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderPro
       : user.email;
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: "20px", position: "relative" }}>
-      <AvatarCircle user={user} size={96} />
-      <div>
-        <div style={{
-          fontFamily: "var(--font-sans)", fontSize: "22px", fontWeight: 700,
-          color: "var(--color-text-primary)",
-        }}>
-          {fullName}
-        </div>
-        {user.pronouns && (
+    <div style={{
+      background: "var(--color-surface)",
+      border: "1px solid var(--color-border)",
+      borderRadius: "var(--radius-lg)",
+      boxShadow: "var(--shadow-sm)",
+      padding: "28px" 
+    }}>
+      <div style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "20px",
+        position: "relative",
+      }}>
+        <AvatarCircle user={user} size={96} />
+        <div>
           <div style={{
-            fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400,
-            color: "var(--color-text-tertiary)", marginTop: "2px",
+            fontFamily: "var(--font-sans)", fontSize: "22px", fontWeight: 700,
+            color: "var(--color-text-primary)",
           }}>
-            {user.pronouns}
+            {fullName}
           </div>
-        )}
-        <div style={{
-          display: "flex", flexDirection: "row", alignItems: "center", gap: "10px",
-          marginTop: "10px",
-        }}>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            {user.email}
-          </span>
-          {user.phone && (
-            <>
-              <span style={{ width: "1px", height: "12px", background: "var(--color-border)" }} />
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                {formatPhone(user.phone)}
-              </span>
-            </>
+          {user.pronouns && (
+            <div style={{
+              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400,
+              color: "var(--color-text-tertiary)", marginTop: "2px",
+            }}>
+              {user.pronouns}
+            </div>
           )}
+          <div style={{
+            display: "flex", flexDirection: "row", alignItems: "center", gap: "10px",
+            marginTop: "10px",
+          }}>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+              {user.email}
+            </span>
+            {user.phone && (
+              <>
+                <span style={{ width: "1px", height: "12px", background: "var(--color-border)" }} />
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                  {formatPhone(user.phone)}
+                </span>
+              </>
+            )}
+          </div>
         </div>
-      </div>
 
-      {showEditButton && (
-        <Link
-          href="/account-settings"
-          title="Edit account settings"
-          style={{
-            position: "absolute", top: 0, right: 0,
-            width: "30px", height: "30px", borderRadius: "50%",
-            border: "1px solid var(--color-border)", background: "var(--color-surface)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            color: "var(--color-text-secondary)", textDecoration: "none",
-          }}
-        >
-          <IconEdit size={13} />
-        </Link>
-      )}
+        {showEditButton && (
+          <Link
+            href="/settings/account"
+            title="Edit account settings"
+            style={{
+              position: "absolute", top: 0, right: 0,
+              width: "30px", height: "30px", borderRadius: "50%",
+              border: "1px solid var(--color-border)", background: "var(--color-surface)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              color: "var(--color-text-secondary)", textDecoration: "none",
+            }}
+          >
+            <IconEdit size={13} />
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

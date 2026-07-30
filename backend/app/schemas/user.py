@@ -8,6 +8,7 @@ from app.schemas.user_experience import CompetitionExperienceResponse, Volunteer
 
 
 ROLE = Literal["admin", "user"]
+USER_STATUS = Literal["active", "invited", "deactivated", "locked"]
 STUDENT_STATUS = Literal["Undergraduate", "Graduate", "Non-Student"]
 
 
@@ -15,7 +16,6 @@ class UserUpdate(BaseModel):
     """Partial update — all fields optional."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    email: Optional[EmailStr] = None
     phone: Optional[str] = None
     date_of_birth: Optional[date] = None
     pronouns: Optional[str] = None
@@ -34,7 +34,7 @@ class UserUpdate(BaseModel):
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
 
-    @field_validator("first_name", "last_name", "email", "phone")
+    @field_validator("first_name", "last_name", "phone")
     @classmethod
     def reject_null(cls, v):
         if v is None:
@@ -48,21 +48,21 @@ class UserUpdate(BaseModel):
 
 class AdminUserUpdate(BaseModel):
     role: Optional[Literal["user", "admin"]] = None
-    is_active: Optional[bool] = None
+    status: Optional[USER_STATUS] = None
 
     
 
 class UserSlimResponse(BaseModel):
     id: int
-    first_name: str
-    last_name: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     email: EmailStr
     phone: Optional[str] = None
     pronouns: Optional[str] = None
 
     email_verified: bool
     role: ROLE
-    is_active: bool
+    status: USER_STATUS
 
     created_at: datetime
     updated_at: datetime
@@ -71,6 +71,7 @@ class UserSlimResponse(BaseModel):
 
 class UserMeSlimResponse(UserSlimResponse):
     is_profile_complete: bool = False
+    is_onboarding_complete: bool = False
 
 
 

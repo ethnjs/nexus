@@ -27,7 +27,7 @@ def _has_volunteer_rows(user: User, db: Optional[Session]) -> bool:
 
 
 def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) -> list[str]:
-    always_required = ["phone", "date_of_birth", "shirt_size", "dietary_restriction"]
+    always_required = ["first_name", "last_name", "phone", "date_of_birth", "shirt_size", "dietary_restriction"]
     missing = [f for f in always_required if not getattr(user, f)]
 
     if not user.student_status:
@@ -55,3 +55,12 @@ def compute_missing_profile_fields(user: User, *, db: Optional[Session] = None) 
 
 def is_profile_complete(user: User, *, db: Optional[Session] = None) -> bool:
     return not compute_missing_profile_fields(user, db=db)
+
+
+ONBOARDING_REQUIRED = ["first_name", "last_name", "phone", "date_of_birth"]
+
+def compute_missing_onboarding_fields(user: User) -> list[str]:
+    return [f for f in ONBOARDING_REQUIRED if not getattr(user, f)]
+
+def is_onboarding_complete(user: User) -> bool:
+    return not compute_missing_onboarding_fields(user)

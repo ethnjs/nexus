@@ -24,10 +24,6 @@ export function ProfileQuestion({
   return (
     <div style={{
       padding: '18px 20px',
-      background: 'var(--color-bg)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-lg)',
-      marginBottom: '14px',
     }}>
       <label style={{
         display: 'block', marginBottom: '10px',
@@ -41,8 +37,7 @@ export function ProfileQuestion({
 
       {showActions && (
         <div style={{
-          marginTop: '14px', paddingTop: '14px',
-          borderTop: '1px solid var(--color-border)',
+          marginTop: '14px',
           display: 'flex', justifyContent: 'flex-end', gap: '8px',
         }}>
           {showSkip && (

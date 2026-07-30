@@ -25,7 +25,7 @@ os.environ.setdefault("API_KEY", "")
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 from app.db.session import Base, get_db
 from app.models import models  # noqa: F401
@@ -79,7 +79,7 @@ def admin_user(db):
         first_name="Admin",
         last_name="User",
         role="admin",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -95,7 +95,7 @@ def td_user(db):
         first_name="TD",
         last_name="User",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -111,7 +111,7 @@ def other_user(db):
         first_name="Other",
         last_name="User",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(user)
     db.commit()
@@ -218,6 +218,20 @@ def mock_forms_service() -> MagicMock:
 # ---------------------------------------------------------------------------
 # Test client
 # ---------------------------------------------------------------------------
+
+@pytest.fixture(autouse=True)
+def mock_send_email(monkeypatch):
+    """
+    Stubs the actual Resend call so no test run consumes real email quota.
+    Patched at _send() — the one low-level function every sender (signup
+    verify, email change, password reset, account setup, etc.) funnels
+    through — so new senders are covered automatically without needing
+    their own mock.
+    """
+    mock = AsyncMock()
+    monkeypatch.setattr("app.services.email_service._send", mock)
+    return mock
+
 
 @pytest.fixture(scope="function")
 def client(db, mock_sheets_service, mock_forms_service):

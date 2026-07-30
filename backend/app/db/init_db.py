@@ -50,7 +50,7 @@ def seed_dev_data(db: Session) -> None:
         first_name="Admin",
         last_name="User",
         role="admin",
-        is_active=True,
+        status="active",
     )
     db.add(admin)
 
@@ -63,7 +63,7 @@ def seed_dev_data(db: Session) -> None:
         first_name="Tournament",
         last_name="Director",
         role="user",
-        is_active=True,
+        status="active",
     )
     db.add(td)
     db.flush()  # get IDs before creating tournament + memberships

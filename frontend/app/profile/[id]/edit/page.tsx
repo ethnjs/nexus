@@ -7,8 +7,8 @@ import {
   usersApi, canonicalEventsApi, CanonicalEvent,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
-import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
@@ -24,47 +24,6 @@ import {
   VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, isVolunteerRowValid,
   volunteerExperienceToDraft,
 } from "@/components/profile/ExperienceTables";
-
-
-
-interface FloatingSaveBarProps {
-  visible: boolean;
-  saving?: boolean;
-  error?: string;
-  onSave: () => void;
-  onCancel: () => void;
-}
-
-function FloatingSaveBar({ visible, saving, error, onSave, onCancel }: FloatingSaveBarProps) {
-  return (
-    <div style={{
-      position: "fixed", left: "50%", bottom: visible ? "24px" : "-80px",
-      transform: "translateX(-50%)",
-      width: "min(560px, calc(100vw - 40px))",
-      background: "var(--color-surface)", border: "1px solid var(--color-border)",
-      borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-      padding: "14px 18px",
-      display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px",
-      transition: "bottom 0.25s ease",
-      zIndex: 60,
-    }}>
-      <div>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-          You have unsaved changes
-        </span>
-        {error && (
-          <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "2px" }}>
-            {error}
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", gap: "8px", flexShrink: 0 }}>
-        <Button type="button" variant="secondary" onClick={onCancel} disabled={saving}>Cancel</Button>
-        <Button type="button" variant="primary" onClick={onSave} loading={saving}>Save</Button>
-      </div>
-    </div>
-  );
-}
 
 
 
@@ -320,9 +279,7 @@ export default function ProfileEditPage() {
         maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
         display: "flex", flexDirection: "column", gap: "20px",
       }}>
-        <ProfileCard>
-          <ProfileHeader user={original} showEditButton />
-        </ProfileCard>
+        <ProfileHeader user={original} showEditButton />
 
         <ProfileCard>
           <ProfileQuestion question="Pronouns">
