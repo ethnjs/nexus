@@ -71,3 +71,12 @@ class ChapterJoinCodeUpdate(BaseModel):
         ...,
         description="Must be set to false. Reactivation is not allowed."
     )
+
+class ChapterPreviewResponse(BaseModel):
+    name: str
+    university: str
+
+    model_config= ConfigDict(from_attributes=True)
+
+class ChapterJoinRequest(BaseModel):
+    code: str = Field(..., min_length=8, max_length=8, description="8-character join code")
