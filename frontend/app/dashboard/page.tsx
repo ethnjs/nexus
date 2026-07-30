@@ -145,7 +145,7 @@ export default function DashboardPage() {
       action: <Button
         variant="secondary"
         size="sm"
-        onClick={() => router.push('/dashboard')} // TODO: push to /user/[id]/edit once that page exists
+        onClick={() => user && router.push(`/profile/${user.id}/edit`)}
       >Complete Profile</Button>
     }
   ]
