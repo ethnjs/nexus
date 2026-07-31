@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, field_validator, computed_field
 
 from app.core.phone import normalize_phone as _normalize_phone
 from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
+from app.schemas.university import UniversityResponse
 
 
 ROLE = Literal["admin", "user"]
@@ -21,7 +22,7 @@ class UserUpdate(BaseModel):
     pronouns: Optional[str] = None
 
     student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[str] = None
+    university_id: Optional[int] = None
     major: Optional[str] = None
     year_level: Optional[int] = None
     graduation_year: Optional[int] = None
@@ -77,7 +78,7 @@ class UserMeSlimResponse(UserSlimResponse):
 
 class UserFullResponse(UserSlimResponse):
     student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[str] = None
+    university: Optional[UniversityResponse] = None
     major: Optional[str] = None
     year_level: Optional[int] = None
     graduation_year: Optional[int] = None

@@ -32,7 +32,7 @@ class ChapterUserSlimReponse(BaseModel):
     email: EmailStr
     phone: Optional[str] = None
     pronouns: Optional[str] = None
-    is_active: bool
+    status: Literal["active", "invited", "deactivated", "locked"]
     major: Optional[str] = None
     year_level: Optional[int] = None
     graduation_year: Optional[int] = None

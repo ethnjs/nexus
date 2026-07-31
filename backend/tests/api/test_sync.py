@@ -41,6 +41,7 @@ def _make_tournament(client):
         "name": "2026 Nationals",
         "start_date": "2026-05-21T08:00:00",
         "end_date": "2026-05-23T18:00:00",
+        "location": "Test Location",
         "blocks": NATS_BLOCKS,
         "volunteer_schema": {"custom_fields": []},
     }).json()

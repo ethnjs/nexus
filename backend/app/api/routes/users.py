@@ -131,7 +131,7 @@ def get_me(
             .filter(User.id == current_user.id)
             .first()
         )
-        response = UserMeFullResponse.model_validate(user)
+        response = UserMeFullResponse.model_validate(user, from_attributes=True)
         response.missing_profile_fields = compute_missing_profile_fields(user)
         return response
 
@@ -161,7 +161,7 @@ def update_user_me(
     db.commit()
     db.refresh(user)
 
-    response = UserMeFullResponse.model_validate(user)
+    response = UserMeFullResponse.model_validate(user, from_attributes=True)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
     return response
 

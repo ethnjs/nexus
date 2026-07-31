@@ -6,7 +6,7 @@
 - Add Tournament--Alumni Chapter relationship table
 
 Revision ID: 2cc03b477680
-Revises: f250cb93a643
+Revises: 3cb43e5b0a3f
 Create Date: 2026-07-08 00:00:00.000000
 
 """
@@ -18,7 +18,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '2cc03b477680'
-down_revision: Union[str, None] = 'f250cb93a643'
+down_revision: Union[str, None] = '3cb43e5b0a3f'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

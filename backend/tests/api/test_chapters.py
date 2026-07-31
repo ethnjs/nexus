@@ -41,7 +41,7 @@ def _user(db, email, password="Password@1", role="user", **kwargs):
         "email": email,
         "hashed_password": hash_password(password),
         "role": role,
-        "is_active": True,
+        "status": "active",
     }
     defaults.update(kwargs)
     user = User(**defaults)
