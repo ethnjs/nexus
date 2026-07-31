@@ -386,7 +386,7 @@ export function CompetitionExperienceSpreadsheet({
           />
         </td>
         <td style={{ ...cs, position: "relative" }}>
-          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={1} size="xs" style={{ height: "32px", resize: "none" }} />
+          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={1} size="sm" expandable />
 
           {!editModeFull && (
             <div style={{
@@ -815,7 +815,7 @@ export function VolunteerExperienceSpreadsheet({
           <Input type="text" value={draft.role} onChange={e => patch({ role: e.target.value })} size="sm" fullWidth />
         </td>
         <td style={{ ...cs, position: "relative" }}>
-          <Textarea value={draft.notes_other} onChange={e => patch({ notes_other: e.target.value })} rows={2} size="xs" />
+          <Textarea value={draft.notes_other} onChange={e => patch({ notes_other: e.target.value })} rows={1} size="sm" expandable />
 
           {!editModeFull && (
             <div style={{
