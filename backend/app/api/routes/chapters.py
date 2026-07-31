@@ -133,7 +133,7 @@ def update_chapter_roles(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has that role")
     member.role = role
     db.commit()
-    db.refresh()
+    db.refresh(member)
     return member
 # TODO(temp): officers get management powers later
 

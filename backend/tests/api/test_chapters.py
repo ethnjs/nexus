@@ -87,7 +87,6 @@ def test_create_chapter_creates_record(client, admin_user, db):
         json={
             "name": "New Chapter",
             "university_id": university.id,
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat(),
         },
     )
     assert res.status_code == 201
@@ -110,7 +109,6 @@ def test_create_chapter_duplicate_university_conflict(client, admin_user, db):
         json={
             "name": "Another Chapter",
             "university_id": university.id,
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat(),
         },
     )
     assert res.status_code == 409
@@ -123,7 +121,6 @@ def test_create_chapter_non_admin_forbidden(client, td_user):
         json={
             "name": "Sneaky Chapter",
             "university_id": 1,
-            "created_at": datetime(2025, 1, 1, tzinfo=timezone.utc).isoformat(),
         },
     )
     assert res.status_code == 403
@@ -260,6 +257,24 @@ def test_get_members_lead_can_access(client, db):
 
     res = client.get(f"/chapters/{chapter.id}/members/")
     assert res.status_code == 200
+
+
+def test_update_member_role_lead_can_promote(client, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    lead = _user(db, "roleupdatelead@example.com", password="LeadPass123!")
+    member = _user(db, "roleupdatemember@example.com")
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=lead.id, role="lead"))
+    db.add(ChapterMembership(chapter_id=chapter.id, user_id=member.id, role="member"))
+    db.commit()
+    login(client, "roleupdatelead@example.com", "LeadPass123!")
+
+    res = client.patch(f"/chapters/{chapter.id}/members/{member.id}/", params={"role": "officer"})
+    assert res.status_code == 200
+    assert res.json()["role"] == "officer"
+
+    refreshed = db.query(ChapterMembership).filter_by(chapter_id=chapter.id, user_id=member.id).first()
+    assert refreshed.role == "officer"
 
 
 def test_update_member_role_non_lead_forbidden(client, td_user, db):
@@ -408,6 +423,20 @@ def test_preview_chapter_rejects_missing_or_malformed_code(client, params):
     res = client.get("/join-chapter/", params=params)
 
     assert res.status_code == 422
+
+
+def test_preview_chapter_returns_chapter_on_valid_code(client, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    _join_code(db, chapter.id, admin_user.id, code="VALID123")
+
+    res = client.get("/join-chapter/", params={"code": "VALID123"})
+
+    assert res.status_code == 200
+    data = res.json()
+    assert data["id"] == chapter.id
+    assert data["name"] == chapter.name
+    assert data["university"]["id"] == university.id
 
 
 def test_preview_chapter_rejects_unknown_code(client):

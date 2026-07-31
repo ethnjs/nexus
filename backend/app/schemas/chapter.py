@@ -13,7 +13,6 @@ class ChapterUpdate(BaseModel):
 class ChapterCreate(BaseModel):
     name: str
     university_id: int
-    created_at: datetime
 
 class AssignLeadRequest(BaseModel):
     user_id: int
@@ -23,7 +22,6 @@ class ChapterResponse(BaseModel):
     id: int
     name: str
     university: UniversityResponse
-    created_at: datetime
 
 class ChapterUserSlimReponse(BaseModel):
     id: int
@@ -71,12 +69,6 @@ class ChapterJoinCodeUpdate(BaseModel):
         ...,
         description="Must be set to false. Reactivation is not allowed."
     )
-
-class ChapterPreviewResponse(BaseModel):
-    name: str
-    university: str
-
-    model_config= ConfigDict(from_attributes=True)
 
 class ChapterJoinRequest(BaseModel):
     code: str = Field(..., min_length=8, max_length=8, description="8-character join code")

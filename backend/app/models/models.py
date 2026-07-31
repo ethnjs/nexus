@@ -240,6 +240,37 @@ class Event(Base):
 
 
 # ---------------------------------------------------------------------------
+# University
+# A master lookup registry of standardized post-secondary institutions.
+#
+# Serves as the single source of truth across the platform to eliminate free-text
+# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User 
+# profiles and Tournaments reference this table to establish structural ties.
+#
+# unique constraints:
+#   name: The full official name of the institution (e.g., "Stanford University").
+#
+# nullable fields:
+#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for 
+#     compact UI rendering, dashboard badges, and quick search indexing.
+#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
+#     context on proximity for tournament planning or regional chapter groupings.
+# ---------------------------------------------------------------------------
+class University(Base):
+    __tablename__ = "universities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
+    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+
+    # Relationships
+    tournaments = relationship("Tournament", back_populates="university")
+    users = relationship("User", back_populates="university")
+    alumni_chapters = relationship("AlumniChapter", back_populates="university", uselist=False)
+
+
+# ---------------------------------------------------------------------------
 # Tournament
 # ---------------------------------------------------------------------------
 class Tournament(Base):
@@ -459,38 +490,7 @@ class SheetConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# [In Progress???] University
-# A master lookup registry of standardized post-secondary institutions.
-#
-# Serves as the single source of truth across the platform to eliminate free-text
-# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User 
-# profiles and Tournaments reference this table to establish structural ties.
-#
-# unique constraints:
-#   name: The full official name of the institution (e.g., "Stanford University").
-#
-# nullable fields:
-#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for 
-#     compact UI rendering, dashboard badges, and quick search indexing.
-#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
-#     context on proximity for tournament planning or regional chapter groupings.
-# ---------------------------------------------------------------------------
-class University(Base):
-    __tablename__ = "universities"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), unique=True, nullable=False)
-    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
-    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
-
-    # Relationships
-    tournaments = relationship("Tournament", back_populates="university")
-    users = relationship("User", back_populates="university")
-    alumni_chapters = relationship("AlumniChapter", back_populates="university", uselist=False)
-
-
-# ---------------------------------------------------------------------------
-# [In Progress???] AlumniChapter
+# AlumniChapter
 # Regional organizations or networks where alumni coordinate and connect.
 #
 # A chapter defines a specific geographic hub (e.g., "Bay Area"). It acts
@@ -513,7 +513,7 @@ class AlumniChapter(Base):
 
 
 # ---------------------------------------------------------------------------
-# [ACTIVE] ChapterMembership
+# ChapterMembership
 # Explicit join table managing the connection between users and chapters.
 #
 # Tracks the structural relationship determining which alumni belong to
@@ -542,7 +542,7 @@ class ChapterMembership(Base):
 
 
 # ---------------------------------------------------------------------------
-# [In Progress???] ChapterJoinCode
+# ChapterJoinCode
 # Temporary access tokens used for user onboarding into an AlumniChapter.
 #
 # Generates unique, time-sensitive or usage-restricted join codes that allow
@@ -568,7 +568,7 @@ class ChapterJoinCode(Base):
 
 
 # ---------------------------------------------------------------------------
-# [In Progress???] TournamentChapter
+# TournamentChapter
 # Junction table mapping AlumniChapters to affiliated Tournaments.
 #
 # Enables a many-to-many relationship tracking which alumni chapters are

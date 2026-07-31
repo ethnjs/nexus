@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.auth import get_current_user
 from app.models.models import ChapterJoinCode, User, ChapterMembership
 from app.db.session import get_db
-from app.schemas.chapter import ChapterPreviewResponse, ChapterJoinRequest, ChapterMemberResponse
+from app.schemas.chapter import ChapterResponse, ChapterJoinRequest, ChapterMemberResponse
 
 router = APIRouter(prefix="", tags=["join_chapter"])
 
@@ -22,7 +22,7 @@ def _is_expired(join_code: ChapterJoinCode) -> bool:
     return datetime.now(timezone.utc) > expires_at
 
 
-@router.get("/join-chapter/", response_model=ChapterPreviewResponse, status_code=status.HTTP_200_OK)
+@router.get("/join-chapter/", response_model=ChapterResponse, status_code=status.HTTP_200_OK)
 def preview_chapter_by_join_code(
     code: str = Query(..., min_length=8, max_length=8, description="8-character join code"),
     db: Session = Depends(get_db)
