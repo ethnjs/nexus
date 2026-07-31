@@ -27,7 +27,7 @@ const SIZE_MAP: Record<InputSize, { padding: string; fontSize: string }> = {
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
-  ({ label, error, fullWidth, rows = 4, font='mono', size = 'md', className='', id, value, ...props }, ref) => {
+  ({ label, error, fullWidth, rows = 4, font='mono', size = 'md', className='', id, value, style, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -55,6 +55,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             outline: 'none',
             width: fullWidth ? '100%' : undefined,
             transition: 'border-color 150ms ease',
+            ...style,
           }}
           onFocus={e => {
             e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'

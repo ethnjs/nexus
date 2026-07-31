@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button"
 import { Combobox } from "@/components/ui/Combobox"
 import { Modal } from "@/components/ui/Modal"
 import { Tooltip } from "@/components/ui/Tooltip"
-import { IconEdit, IconTrash, IconCheckCircle, IconXCircle, IconPlus } from "@/components/ui/Icons"
+import { IconEdit, IconTrash, IconCheckCircle, IconXCircle, IconPlus, IconSave } from "@/components/ui/Icons"
 
 export type ExperienceTableMode = "view" | "view-edit" | "edit"
 
@@ -55,8 +55,8 @@ export function competitionExperienceToDraft(exp: CompetitionExperience): Compet
   return { id: exp.id, school: exp.school, event_id: exp.event.id, event_name: exp.event.name, notes: exp.notes ?? '' }
 }
 
-function emptyCompetitionDraft(): CompetitionExperienceDraft {
-  return { school: '', event_id: null, event_name: '', notes: '' }
+function emptyCompetitionDraft(school = ''): CompetitionExperienceDraft {
+  return { school, event_id: null, event_name: '', notes: '' }
 }
 
 // -------------------------------------------------------------------------
@@ -172,10 +172,10 @@ export function CompetitionExperienceSpreadsheet({
     setSaveError(undefined)
   }
 
-  async function confirmEdit() {
+  async function saveDraft(): Promise<boolean> {
     if (!editDraft || !isCompetitionRowValid(editDraft)) {
       setSaveError("A school and matched event are required.")
-      return
+      return false
     }
     setSaving(true)
     setSaveError(undefined)
@@ -185,13 +185,46 @@ export function CompetitionExperienceSpreadsheet({
       } else if (onAdd) {
         await onAdd(editDraft)
       }
-      setEditingIndex(null)
-      setEditDraft(null)
+      return true
     } catch {
       setSaveError("Failed to save. Try again.")
+      return false
     } finally {
       setSaving(false)
     }
+  }
+
+  async function confirmEdit() {
+    const ok = await saveDraft()
+    if (ok) {
+      setEditingIndex(null)
+      setEditDraft(null)
+    }
+  }
+
+  // Saves the row currently being edited, then opens a fresh row prefilled
+  // with the same school so the user doesn't have to retype it.
+  async function addAnotherForSchool() {
+    const school = editDraft?.school
+    const ok = await saveDraft()
+    if (ok && school) {
+      setEditingIndex(-1)
+      setEditDraft(emptyCompetitionDraft(school))
+    }
+  }
+
+  // Bulk "edit" mode: rows are local drafts, no save round-trip needed.
+  function addAnotherForSchoolBulk(i: number) {
+    const school = rows[i].school
+    onChange?.([...rows.slice(0, i + 1), emptyCompetitionDraft(school), ...rows.slice(i + 1)])
+  }
+
+  // "view-edit" mode: from a saved (read-only) row, jump straight into adding
+  // a new row prefilled with that row's school.
+  function addAnotherForSchoolFromRow(i: number) {
+    setEditingIndex(-1)
+    setEditDraft(emptyCompetitionDraft(rows[i].school))
+    setSaveError(undefined)
   }
 
   async function confirmDelete() {
@@ -200,6 +233,8 @@ export function CompetitionExperienceSpreadsheet({
     try {
       await onDelete(deleteTarget.row.id)
       setDeleteTarget(null)
+      setEditingIndex(null)
+      setEditDraft(null)
     } finally {
       setDeleting(false)
     }
@@ -241,7 +276,27 @@ export function CompetitionExperienceSpreadsheet({
               </button>
             </div>
           )}
-          {row.school}
+          <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+            <span>{row.school}</span>
+            {showHoverControls && (
+              <button
+                type="button"
+                className="spreadsheet-row-controls-mid"
+                onClick={() => addAnotherForSchoolFromRow(i)}
+                title="Add another event for this school"
+                style={{
+                  flexShrink: 0,
+                  width: "20px", height: "20px", borderRadius: "5px",
+                  border: "1px solid var(--color-border)", background: "var(--color-surface)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", color: "var(--color-text-secondary)",
+                  opacity: 0, transition: "opacity 0.12s ease",
+                }}
+              >
+                <IconPlus size={10} />
+              </button>
+            )}
+          </div>
         </td>
         <td style={cs}>{row.event_name}</td>
         <td style={{ ...cs, whiteSpace: "pre-wrap", position: "relative" }}>
@@ -284,10 +339,40 @@ export function CompetitionExperienceSpreadsheet({
       }
     }
 
+    // In view-edit mode, both save and "add another" require a full valid
+    // row (school + matched event) before they're usable. In bulk edit mode
+    // there's no save step, so just require a school to copy.
+    const canAddAnother = editModeFull ? !!draft.school.trim() : isCompetitionRowValid(draft)
+    const addAnotherDisabled = editModeFull ? !canAddAnother : (saving || !canAddAnother)
+
     return (
       <tr key={row.id ?? `editing-${i}`} style={{ position: "relative" }}>
         <td style={cs}>
-          <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
+          {editModeFull ? (
+            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
+              </div>
+              <button
+                type="button"
+                onClick={() => addAnotherForSchoolBulk(i)}
+                disabled={addAnotherDisabled}
+                title="Add another event for this school"
+                style={{
+                  flexShrink: 0,
+                  width: "32px", height: "32px", borderRadius: "5px",
+                  border: "1px solid var(--color-border)", background: "var(--color-surface)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  cursor: addAnotherDisabled ? "not-allowed" : "pointer",
+                  color: addAnotherDisabled ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
+                }}
+              >
+                <IconPlus size={13} />
+              </button>
+            </div>
+          ) : (
+            <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
+          )}
         </td>
         <td style={cs}>
           <Combobox
@@ -301,11 +386,11 @@ export function CompetitionExperienceSpreadsheet({
           />
         </td>
         <td style={{ ...cs, position: "relative" }}>
-          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={2} size="xs" />
+          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={1} size="xs" style={{ height: "32px", resize: "none" }} />
 
           {!editModeFull && (
             <div style={{
-              position: "absolute", right: "-74px", top: "6px",
+              position: "absolute", right: "-104px", top: "6px",
               display: "flex", gap: "4px",
               background: "var(--color-surface)",
               border: "1px solid var(--color-border)",
@@ -313,13 +398,13 @@ export function CompetitionExperienceSpreadsheet({
               padding: "4px",
               boxShadow: "var(--shadow-sm)",
             }}>
-              <Tooltip variant="error" message={saveError ?? ""} showIcon={false}>
+              <Tooltip variant="error" message={!isCompetitionRowValid(draft) ? "Must add a school and event" : (saveError ?? "")} showIcon={false}>
                 <button
                   type="button"
                   onClick={confirmEdit}
-                  disabled={saving}
+                  disabled={saving || !isCompetitionRowValid(draft)}
                   title="Save"
-                  style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
+                  style={{ background: "none", border: "none", cursor: (saving || !isCompetitionRowValid(draft)) ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
                 >
                   {saving ? (
                     <span style={{
@@ -331,18 +416,29 @@ export function CompetitionExperienceSpreadsheet({
                       animation: "btn-spin 600ms linear infinite",
                     }} />
                   ) : (
-                    <IconCheckCircle size={22} style={{ color: "var(--color-success)" }} />
+                    <IconSave size={20} style={{ color: isCompetitionRowValid(draft) ? "var(--color-text-secondary)" : "var(--color-text-tertiary)" }} />
                   )}
+                </button>
+              </Tooltip>
+              <Tooltip variant="error" message={!isCompetitionRowValid(draft) ? "Must add a school and event" : ""} showIcon={false}>
+                <button
+                  type="button"
+                  onClick={addAnotherForSchool}
+                  disabled={saving || !isCompetitionRowValid(draft)}
+                  title="Save and add another event for this school"
+                  style={{ background: "none", border: "none", cursor: (saving || !isCompetitionRowValid(draft)) ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
+                >
+                  <IconPlus size={20} style={{ color: isCompetitionRowValid(draft) ? "var(--color-text-secondary)" : "var(--color-text-tertiary)" }} />
                 </button>
               </Tooltip>
               <button
                 type="button"
-                onClick={cancelEdit}
+                onClick={() => draft.id !== undefined ? setDeleteTarget({ index: i, row: draft }) : cancelEdit()}
                 disabled={saving}
-                title="Cancel"
+                title="Delete"
                 style={{ background: "none", border: "none", cursor: saving ? "not-allowed" : "pointer", padding: "2px", lineHeight: 0, display: "flex" }}
               >
-                <IconXCircle size={22} style={{ color: saving ? "var(--color-text-tertiary)" : "var(--color-danger)" }} />
+                <IconTrash size={20} style={{ color: saving ? "var(--color-text-tertiary)" : "var(--color-danger)" }} />
               </button>
             </div>
           )}
@@ -354,13 +450,13 @@ export function CompetitionExperienceSpreadsheet({
               onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
               title="Remove"
               style={{
-                width: "22px", height: "22px", borderRadius: "5px",
+                width: "32px", height: "32px", borderRadius: "5px",
                 border: "1px solid var(--color-border)", background: "var(--color-surface)",
                 display: "inline-flex", alignItems: "center", justifyContent: "center",
                 cursor: "pointer", color: "var(--color-danger)",
               }}
             >
-              <IconTrash size={11} />
+              <IconTrash size={13} />
             </button>
           </td>
         )}
@@ -372,7 +468,8 @@ export function CompetitionExperienceSpreadsheet({
     <div style={{ position: "relative" }}>
       <style>{`
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-left,
-        .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right {
+        .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right,
+        .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-mid {
           opacity: 1 !important;
         }
         @keyframes btn-spin { to { transform: rotate(360deg); } }
@@ -383,8 +480,8 @@ export function CompetitionExperienceSpreadsheet({
           <colgroup>
             <col style={{ width: mode === "edit" ? "41%" : "42%" }} />
             <col style={{ width: mode === "edit" ? "34%" : "35%" }} />
-            <col style={{ width: mode === "edit" ? "calc(25% - 26px)" : "23%" }} />
-            {mode === "edit" && <col style={{ width: "26px" }} />}
+            <col style={{ width: mode === "edit" ? "calc(25% - 32px)" : "23%" }} />
+            {mode === "edit" && <col style={{ width: "32px" }} />}
           </colgroup>
           <thead>
             <tr>
