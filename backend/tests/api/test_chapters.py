@@ -340,6 +340,7 @@ def test_create_join_code_creates_record(client, db):
     assert data["label"] == "Spring 2026"
     assert data["is_active"] is True
     assert data["code"]
+    assert data["use_count"] == 0
 
     created = db.query(ChapterJoinCode).filter_by(id=data["id"]).first()
     assert created is not None
@@ -466,6 +467,22 @@ def test_preview_chapter_rejects_expired_code(client, admin_user, db):
 
     assert res.status_code == 400
     assert res.json()["detail"] == "This join code has expired"
+
+
+def test_join_chapter_success_increments_use_count(client, admin_user, db):
+    university = _university(db)
+    chapter = _chapter(db, university.id)
+    join_code = _join_code(db, chapter.id, admin_user.id, code="USECOUNT")
+    assert join_code.use_count == 0
+
+    joiner = _user(db, "usecountjoiner@example.com", password="JoinPass123!")
+    login(client, "usecountjoiner@example.com", "JoinPass123!")
+
+    res = client.post("/join-chapter/", json={"code": "USECOUNT"})
+    assert res.status_code == 201
+
+    db.refresh(join_code)
+    assert join_code.use_count == 1
 
 
 def test_join_chapter_requires_authentication(client):

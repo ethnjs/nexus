@@ -69,6 +69,7 @@ def upgrade() -> None:
         sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('is_active', sa.Boolean(), nullable=False),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+        sa.Column('use_count', sa.Integer(), nullable=False, server_default='0'),
         sa.ForeignKeyConstraint(['chapter_id'], ['alumni_chapters.id'], ondelete='CASCADE'),
         sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
         sa.PrimaryKeyConstraint('id'),

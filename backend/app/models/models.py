@@ -561,6 +561,7 @@ class ChapterJoinCode(Base):
     expires_at = Column(DateTime(timezone=True), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
+    use_count = Column(Integer, nullable=False, default=0)
 
     # Relationships
     alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_code")

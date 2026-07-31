@@ -96,6 +96,7 @@ def join_chapter_by_code(
         chapter_id=join_code.chapter_id,
         role="member"
     )
+    join_code.use_count += 1
 
     try:
         db.add(new_membership)
