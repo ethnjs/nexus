@@ -301,7 +301,7 @@ export function CompetitionExperienceSpreadsheet({
           />
         </td>
         <td style={{ ...cs, position: "relative" }}>
-          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={2} size="sm" />
+          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={2} size="xs" />
 
           {!editModeFull && (
             <div style={{
@@ -381,9 +381,9 @@ export function CompetitionExperienceSpreadsheet({
       <div style={{ overflowX: "visible" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: mode === "edit" ? "28%" : "30%" }} />
-            <col style={{ width: mode === "edit" ? "23%" : "25%" }} />
-            <col style={{ width: mode === "edit" ? "calc(49% - 26px)" : "45%" }} />
+            <col style={{ width: mode === "edit" ? "41%" : "42%" }} />
+            <col style={{ width: mode === "edit" ? "34%" : "35%" }} />
+            <col style={{ width: mode === "edit" ? "calc(25% - 26px)" : "23%" }} />
             {mode === "edit" && <col style={{ width: "26px" }} />}
           </colgroup>
           <thead>
@@ -718,7 +718,7 @@ export function VolunteerExperienceSpreadsheet({
           <Input type="text" value={draft.role} onChange={e => patch({ role: e.target.value })} size="sm" fullWidth />
         </td>
         <td style={{ ...cs, position: "relative" }}>
-          <Textarea value={draft.notes_other} onChange={e => patch({ notes_other: e.target.value })} rows={2} size="sm" />
+          <Textarea value={draft.notes_other} onChange={e => patch({ notes_other: e.target.value })} rows={2} size="xs" />
 
           {!editModeFull && (
             <div style={{
@@ -799,11 +799,11 @@ export function VolunteerExperienceSpreadsheet({
       <div style={{ overflowX: "visible" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: mode === "edit" ? "9%" : "10%" }} />
-            <col style={{ width: mode === "edit" ? "18%" : "20%" }} />
-            <col style={{ width: mode === "edit" ? "16%" : "18%" }} />
-            <col style={{ width: mode === "edit" ? "13%" : "14%" }} />
-            <col style={{ width: mode === "edit" ? "calc(44% - 26px)" : "38%" }} />
+            <col style={{ width: mode === "edit" ? "8%" : "8%" }} />
+            <col style={{ width: mode === "edit" ? "30%" : "31%" }} />
+            <col style={{ width: mode === "edit" ? "22%" : "23%" }} />
+            <col style={{ width: mode === "edit" ? "18%" : "18%" }} />
+            <col style={{ width: mode === "edit" ? "calc(22% - 26px)" : "20%" }} />
             {mode === "edit" && <col style={{ width: "26px" }} />}
           </colgroup>
           <thead>

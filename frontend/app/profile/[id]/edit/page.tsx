@@ -415,7 +415,7 @@ export default function ProfileEditPage() {
               value={hasDietary}
               onChange={(val) => {
                 setHasDietary(val);
-                if (!val) setDraft(d => ({ ...d, dietary_restriction: undefined }));
+                if (!val) setDraft(d => ({ ...d, dietary_restriction: "None" }));
               }}
             />
           </ProfileQuestion>

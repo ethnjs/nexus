@@ -3,7 +3,7 @@
 import { forwardRef, TextareaHTMLAttributes, useId } from "react"
 
 type InputFont = 'sans' | 'mono' | 'serif'
-type InputSize = 'sm' | 'md'
+type InputSize = 'xs' | 'sm' | 'md'
 
 interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
@@ -21,6 +21,7 @@ const FONT_MAP: Record<InputFont, string> = {
 }
 
 const SIZE_MAP: Record<InputSize, { padding: string; fontSize: string }> = {
+  xs: { padding: '4px 6px', fontSize: '11px' },
   sm: { padding: '8px 10px', fontSize: '13px' },
   md: { padding: '16px', fontSize: '14px' },
 }

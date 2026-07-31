@@ -232,7 +232,7 @@ export default function OnboardingPage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
       <div style={{
-        maxWidth: "700px", margin: "0 auto", padding: "40px 20px",
+        maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
         display: "flex", flexDirection: "column", gap: "5px",
       }}>
         <div style={{
@@ -602,6 +602,7 @@ export default function OnboardingPage() {
                     value={hasDietary}
                     onChange={(val) => {
                       setHasDietary(val);
+                      setProfileData((d) => ({ ...d, dietary_restriction: val ? d.dietary_restriction : "None" }));
                       if (state >= STATE.COMPLETE) return;
                       setState(val ? STATE.DIETARY_TEXT : STATE.COMPLETE);
                     }}

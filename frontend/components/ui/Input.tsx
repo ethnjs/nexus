@@ -3,7 +3,7 @@
 import { forwardRef, InputHTMLAttributes, useId } from 'react'
 
 type InputFont = 'sans' | 'mono' | 'serif'
-type InputSize = 'sm' | 'md'
+type InputSize = 'xs' | 'sm' | 'md'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?:     string
@@ -28,6 +28,7 @@ const FONT_MAP: Record<InputFont, string> = {
 }
 
 const SIZE_MAP: Record<InputSize, { height: string; paddingX: string; fontSize: string }> = {
+  xs: { height: '26px', paddingX: '8px', fontSize: '12px' },
   sm: { height: '32px', paddingX: '10px', fontSize: '13px' },
   md: { height: '44px', paddingX: '16px', fontSize: '14px' },
 }
