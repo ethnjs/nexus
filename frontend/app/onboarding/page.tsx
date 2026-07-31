@@ -83,6 +83,12 @@ export default function OnboardingPage() {
 
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
+  // ── Effective flags — derived from actual row presence, not just the stored flag ──
+  const effectiveHasCompetitionExp = !!profileData.has_competition_experience || competitionRows.length > 0;
+  const effectiveHasVolunteerExp = !!profileData.has_volunteer_experience || volunteerRows.length > 0;
+  const competitionLocked = effectiveHasCompetitionExp && competitionRows.length > 0;
+  const volunteerLocked = effectiveHasVolunteerExp && volunteerRows.length > 0;
+
   useEffect(() => {
     if (authLoading) return;
 
@@ -150,6 +156,8 @@ export default function OnboardingPage() {
       last_name: name.last,
       phone,
       ...profileData,
+      has_competition_experience: competitionRows.length > 0 ? true : profileData.has_competition_experience,
+      has_volunteer_experience: volunteerRows.length > 0 ? true : profileData.has_volunteer_experience,
     };
 
     if (cleaned.student_status === "Undergraduate" || cleaned.student_status === "Graduate") {
@@ -167,7 +175,7 @@ export default function OnboardingPage() {
     try {
       await usersApi.updateMe(cleaned);
 
-      if (profileData.has_competition_experience) {
+      if (effectiveHasCompetitionExp) {
         const compDiff = diffRows(original.competition_experience.map(competitionExperienceToDraft), competitionRows);
         await Promise.all([
           ...compDiff.toAdd.map(row => usersApi.addCompetitionExperience({
@@ -180,7 +188,7 @@ export default function OnboardingPage() {
         ]);
       }
 
-      if (profileData.has_volunteer_experience) {
+      if (effectiveHasVolunteerExp) {
         function volunteerBody(row: VolunteerExperienceDraft) {
           const hasCustomEvent = row.event_id === null && row.event_name.trim();
           const hasNotesOther = row.notes_other.trim();
@@ -484,36 +492,45 @@ export default function OnboardingPage() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
-                onSkip={() => setState(STATE.COMPETED_BEFORE + 2)}
+                onSkip={competitionLocked ? undefined : () => setState(STATE.COMPETED_BEFORE + 2)}
+                onNext={competitionLocked ? () => setState(STATE.VOLUNTEERED_BEFORE) : undefined}
                 isActive={state === STATE.COMPETED_BEFORE}
               >
-                <YesNoField
-                  name="competed"
-                  value={profileData.has_competition_experience ?? null}
-                  onChange={(val) => {
-                    setProfileData((d) => ({ ...d, has_competition_experience: val }));
-                    if (state >= STATE.COMPETED_BEFORE + 2) return;
-                    setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
-                  }}
-                />
+                <div>
+                  <YesNoField
+                    name="competed"
+                    value={effectiveHasCompetitionExp ? true : (profileData.has_competition_experience ?? null)}
+                    onChange={(val) => {
+                      setProfileData((d) => ({ ...d, has_competition_experience: val }));
+                      if (state >= STATE.COMPETED_BEFORE + 2) return;
+                      setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
+                    }}
+                    disabled={competitionLocked}
+                  />
+                  {competitionLocked && (
+                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                      Remove all competition experience entries below to change this.
+                    </p>
+                  )}
+                </div>
               </ProfileQuestion>
 
-              {state >= STATE.COMPETITION_EXP && profileData.has_competition_experience && (
+              {(competitionLocked || (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
                 <ProfileQuestion
                   question="Add your competition experience."
-                  onSkip={() => {
+                  onSkip={competitionLocked ? undefined : () => {
                     setProfileData((d) => ({ ...d, has_competition_experience: undefined }));
                     setCompetitionRows([]);
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  onNext={() => {
+                  onNext={competitionLocked ? undefined : () => {
                     if (competitionRows.length === 0 || !competitionRows.every(isCompetitionRowValid)) {
                       setErrors((er) => ({ ...er, competition_exp: "Each entry needs a school and a matched event." }));
                       return;
                     }
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  isActive={state === STATE.COMPETITION_EXP}
+                  isActive={!competitionLocked && state === STATE.COMPETITION_EXP}
                 >
                   <CompetitionExperienceSpreadsheet mode="edit" rows={competitionRows} onChange={setCompetitionRows} events={events} />
                   {errors.competition_exp && (
@@ -530,36 +547,45 @@ export default function OnboardingPage() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
-                onSkip={() => setState(STATE.SHIRT_SIZE)}
+                onSkip={volunteerLocked ? undefined : () => setState(STATE.SHIRT_SIZE)}
+                onNext={volunteerLocked ? () => setState(STATE.SHIRT_SIZE) : undefined}
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
               >
-                <YesNoField
-                  name="volunteered"
-                  value={profileData.has_volunteer_experience ?? null}
-                  onChange={(val) => {
-                    setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
-                    if (state >= STATE.SHIRT_SIZE) return;
-                    setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
-                  }}
-                />
+                <div>
+                  <YesNoField
+                    name="volunteered"
+                    value={effectiveHasVolunteerExp ? true : (profileData.has_volunteer_experience ?? null)}
+                    onChange={(val) => {
+                      setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
+                      if (state >= STATE.SHIRT_SIZE) return;
+                      setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
+                    }}
+                    disabled={volunteerLocked}
+                  />
+                  {volunteerLocked && (
+                    <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
+                      Remove all volunteer experience entries below to change this.
+                    </p>
+                  )}
+                </div>
               </ProfileQuestion>
 
-              {state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience && (
+              {(volunteerLocked || (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
                 <ProfileQuestion
                   question="Add your volunteer experience."
-                  onSkip={() => {
+                  onSkip={volunteerLocked ? undefined : () => {
                     setProfileData((d) => ({ ...d, has_volunteer_experience: undefined }));
                     setVolunteerRows([]);
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  onNext={() => {
+                  onNext={volunteerLocked ? undefined : () => {
                     if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
                       setErrors((er) => ({ ...er, volunteering_exp: "Each entry needs a tournament name, a 4-digit year, and a role." }));
                       return;
                     }
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  isActive={state === STATE.VOLUNTEERING_EXP}
+                  isActive={!volunteerLocked && state === STATE.VOLUNTEERING_EXP}
                 >
                   <VolunteerExperienceSpreadsheet mode="edit" rows={volunteerRows} onChange={setVolunteerRows} events={events} />
                   {errors.volunteering_exp && (
