@@ -68,14 +68,49 @@ def test_create_university_unauthenticated(client):
 
 
 # ---------------------------------------------------------------------------
-# DELETE /universities — admin only
+# PATCH /admin/universities/{university_id}/ — admin only
+# ---------------------------------------------------------------------------
+
+def test_update_university_admin_can_change_fields(client, admin_user, db):
+    university = _university(db)
+    login(client, "admin@test.com", "adminpass")
+
+    res = client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "NEW", "location": "Elsewhere"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["abbreviation"] == "NEW"
+    assert data["location"] == "Elsewhere"
+
+    refreshed = db.query(University).filter_by(id=university.id).first()
+    assert refreshed.abbreviation == "NEW"
+    assert refreshed.location == "Elsewhere"
+
+
+def test_update_university_not_found(client, admin_user):
+    login(client, "admin@test.com", "adminpass")
+    assert client.patch("/admin/universities/9999/", json={"abbreviation": "X"}).status_code == 404
+
+
+def test_update_university_non_admin_forbidden(client, td_user, db):
+    university = _university(db)
+    login(client, "td@test.com", "tdpass")
+    assert client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "X"}).status_code == 403
+
+
+def test_update_university_unauthenticated(client, db):
+    university = _university(db)
+    assert client.patch(f"/admin/universities/{university.id}/", json={"abbreviation": "X"}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# DELETE /admin/universities/{university_id}/ — admin only
 # ---------------------------------------------------------------------------
 
 def test_delete_university_removes_record(client, admin_user, db):
     university = _university(db)
     login(client, "admin@test.com", "adminpass")
 
-    res = client.delete(f"/universities?university_id={university.id}")
+    res = client.delete(f"/admin/universities/{university.id}/")
     assert res.status_code == 204
     assert db.query(University).filter_by(id=university.id).first() is None
 
@@ -86,17 +121,22 @@ def test_delete_university_referenced_by_chapter_conflicts(client, admin_user, d
     db.commit()
     login(client, "admin@test.com", "adminpass")
 
-    res = client.delete(f"/universities?university_id={university.id}")
+    res = client.delete(f"/admin/universities/{university.id}/")
     assert res.status_code == 409
     assert db.query(University).filter_by(id=university.id).first() is not None
 
 
 def test_delete_university_not_found(client, admin_user):
     login(client, "admin@test.com", "adminpass")
-    assert client.delete("/universities?university_id=9999").status_code == 404
+    assert client.delete("/admin/universities/9999/").status_code == 404
 
 
 def test_delete_university_non_admin_forbidden(client, td_user, db):
     university = _university(db)
     login(client, "td@test.com", "tdpass")
-    assert client.delete(f"/universities?university_id={university.id}").status_code == 403
+    assert client.delete(f"/admin/universities/{university.id}/").status_code == 403
+
+
+def test_delete_university_unauthenticated(client, db):
+    university = _university(db)
+    assert client.delete(f"/admin/universities/{university.id}/").status_code == 401
