@@ -152,15 +152,24 @@ def get_user_permissions(
     Return the full set of effective permissions for `user` in `tournament_id`.
 
     - admin users get all permissions without a DB lookup.
-    - Everyone else: load their membership, look up each position's permissions
-      in the tournament's volunteer_schema, and union them. Each position's
-      permission list is explicit (no implied expansion).
+    - the tournament owner gets all permissions — ownership sits structurally
+      above the role/rank system, not implemented as a role.
+    - Everyone else: load their membership, look up each TournamentRole's
+      permissions via MembershipRole, and union them. Each role's permission
+      list is explicit (no implied expansion).
 
     Returns an empty set if the user has no membership in this tournament.
     """
-    from app.models.models import TournamentMembership, Tournament
+    from app.models.models import TournamentMembership, TournamentRole, Tournament
 
     if user.role == "admin":
+        return set(ALL_PERMISSIONS)
+
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        return set()
+
+    if user.id == tournament.owner_id:
         return set(ALL_PERMISSIONS)
 
     membership = (
@@ -174,26 +183,12 @@ def get_user_permissions(
     if not membership:
         return set()
 
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        return set()
+    role_ids = [mr.role_id for mr in membership.roles]
+    roles = db.query(TournamentRole).filter(TournamentRole.id.in_(role_ids)).all()
 
-    # Build a lookup from position key → permissions list using this
-    # tournament's volunteer_schema (may have been customised by the TD).
-    schema_positions: list[dict] = (
-        (tournament.volunteer_schema or {}).get("positions", [])
-    )
-    position_map: dict[str, list[str]] = {
-        p["key"]: p.get("permissions", [])
-        for p in schema_positions
-    }
-
-    # Collect permissions from all of the user's positions. Each position lists
-    # its full permission set explicitly (no implied expansion) — see
-    # DEFAULT_POSITIONS above.
     effective: set[str] = set()
-    for pos_key in (membership.positions or []):
-        effective.update(position_map.get(pos_key, []))
+    for role in roles:
+        effective.update(role.permissions or [])
 
     return effective
 
