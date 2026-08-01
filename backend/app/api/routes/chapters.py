@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from app.core.auth import require_admin
 from app.models.models import User, AlumniChapter, ChapterMembership, ChapterJoinCode
 from app.db.session import get_db
-from app.schemas.chapter import ChapterCreate, ChapterResponse, ChapterUpdate, AssignLeadRequest, ChapterMemberResponse, ChapterJoinCodeResponse, ChapterJoinCodeCreate, ChapterJoinCodeUpdate
+from app.schemas.chapter import ChapterCreate, ChapterResponse, ChapterUpdate, AssignLeadRequest, ChapterMemberResponse, ChapterMemberProfileResponse, ChapterJoinCodeResponse, ChapterJoinCodeCreate, ChapterJoinCodeUpdate
 from app.core.chapters import _create_chapter, check_if_chapter_exists, require_chapter_lead_or_admin, require_lead, _assign_chapter_lead, find_chapter, generate_chapter_join_code as generate_code
 
 router = APIRouter(prefix="/chapters", tags=["chapters"])
@@ -138,7 +138,7 @@ def update_chapter_roles(
 # TODO(temp): officers get management powers later
 
 
-@router.get("/{chapter_id}/members/{user_id}/profile/", response_model=ChapterMemberResponse)
+@router.get("/{chapter_id}/members/{user_id}/profile/", response_model=ChapterMemberProfileResponse)
 def get_chapter_member(
     user_id: int,
     chapter: AlumniChapter = Depends(find_chapter),

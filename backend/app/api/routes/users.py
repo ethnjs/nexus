@@ -12,8 +12,8 @@ from app.core.profile_status import compute_missing_profile_fields, is_profile_c
 from app.db.session import get_db
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
 from app.schemas.user import (
-    UserFullResponse, UserMeFullResponse, UserSlimResponse,
-    UserMeSlimResponse, UserUpdate, AdminUserUpdate
+    UserMeFullResponse, AdminUserSlimResponse,
+    AdminUserFullResponse, UserMeSlimResponse, UserUpdate, AdminUserUpdate
 )
 from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
 from app.schemas.session import SessionResponse
@@ -24,7 +24,7 @@ router = APIRouter(tags=["users"])
 # ---------------------------------------------------------------------------
 # GET /users/ — admin only (global unscoped list)
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/", response_model=list[UserSlimResponse])
+@router.get("/admin/users/", response_model=list[AdminUserSlimResponse])
 def list_users(
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
@@ -36,7 +36,7 @@ def list_users(
 # ---------------------------------------------------------------------------
 # GET /users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/{user_id}/", response_model=UserFullResponse)
+@router.get("/admin/users/{user_id}/", response_model=AdminUserFullResponse)
 def get_user(
     user_id: int,
     db: Session = Depends(get_db),
@@ -52,7 +52,7 @@ def get_user(
 # ---------------------------------------------------------------------------
 # GET /users/by-email/{email}/ — admin only
 # ---------------------------------------------------------------------------
-@router.get("/admin/users/by-email/{email}/", response_model=UserFullResponse)
+@router.get("/admin/users/by-email/{email}/", response_model=AdminUserFullResponse)
 def get_user_by_email(
     email: str,
     db: Session = Depends(get_db),
@@ -68,7 +68,7 @@ def get_user_by_email(
 # ---------------------------------------------------------------------------
 # PATCH /admin/users/{user_id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.patch("/admin/users/{user_id}/", response_model=UserSlimResponse)
+@router.patch("/admin/users/{user_id}/", response_model=AdminUserSlimResponse)
 def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,

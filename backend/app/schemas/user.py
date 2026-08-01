@@ -61,6 +61,10 @@ class UserSlimResponse(BaseModel):
     phone: Optional[str] = None
     pronouns: Optional[str] = None
 
+    model_config = {"from_attributes": True}
+
+
+class AdminUserSlimResponse(UserSlimResponse):
     email_verified: bool
     role: ROLE
     status: USER_STATUS
@@ -68,12 +72,10 @@ class UserSlimResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
 
-class UserMeSlimResponse(UserSlimResponse):
+class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
-
 
 
 class UserFullResponse(UserSlimResponse):
@@ -93,7 +95,12 @@ class UserFullResponse(UserSlimResponse):
 
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
-    
-class UserMeFullResponse(UserFullResponse):
+
+
+class AdminUserFullResponse(UserFullResponse, AdminUserSlimResponse):
+    pass
+
+
+class UserMeFullResponse(UserFullResponse, UserMeSlimResponse):
     date_of_birth: Optional[date] = None
     missing_profile_fields: list[str] = []
