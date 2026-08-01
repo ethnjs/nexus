@@ -11,7 +11,7 @@ from sqlalchemy import (
     ForeignKey, UniqueConstraint, Column,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from typing import Optional
 
 from app.db.session import Base
@@ -88,6 +88,73 @@ class VerificationToken(Base):
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
+# University
+# A master lookup registry of standardized post-secondary institutions.
+#
+# Serves as the single source of truth across the platform to eliminate free-text
+# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User
+# profiles and Tournaments reference this table to establish structural ties.
+#
+# unique constraints:
+#   name: The full official name of the institution (e.g., "Stanford University").
+#
+# nullable fields:
+#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for
+#     compact UI rendering, dashboard badges, and quick search indexing.
+#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
+#     context on proximity for tournament planning or regional chapter groupings.
+# ---------------------------------------------------------------------------
+class University(Base):
+    __tablename__ = "universities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
+    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+
+    # Relationships
+    tournaments = relationship("Tournament", back_populates="university")
+    users = relationship("User", back_populates="university")
+    alumni_chapter = relationship("AlumniChapter", back_populates="university", uselist=False)
+
+
+# ---------------------------------------------------------------------------
+# Event Category
+# ---------------------------------------------------------------------------
+class EventCategory(Base):
+    __tablename__ = "event_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+
+    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
+
+# ---------------------------------------------------------------------------
+# Event
+# ---------------------------------------------------------------------------
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+
+    category = relationship("EventCategory", back_populates="events")
+    user_competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="event",
+        foreign_keys="UserCompetitionExperience.event_id",
+        passive_deletes=True,
+    )
+    user_volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="event",
+        foreign_keys="UserVolunteerExperience.event_id",
+        passive_deletes=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # User
 # Core identity — volunteers, TDs, and admins all live here.
 #
@@ -120,7 +187,7 @@ class User(Base):
     status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
     
     # if a student
-    university = Column(String(255), nullable=True)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     major = Column(String(255), nullable=True)
     student_status = Column(String(255), nullable=True)       # "Undergraduate", "Graduate", "Non-Student"
     year_level = Column(Integer, nullable=True)
@@ -157,6 +224,9 @@ class User(Base):
         foreign_keys="UserVolunteerExperience.user_id",
         cascade="all, delete-orphan"
     )
+    university = relationship("University", back_populates="users")
+    chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
+    chapter_join_codes = relationship("ChapterJoinCode", back_populates="creator")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -198,42 +268,6 @@ class UserVolunteerExperience(Base):
     user = relationship("User", back_populates="volunteer_experience")
     event = relationship("Event", back_populates="user_volunteer_experience")
 
-    
-
-# ---------------------------------------------------------------------------
-# Event Category
-# ---------------------------------------------------------------------------
-class EventCategory(Base):
-    __tablename__ = "event_categories"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
-
-    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
-
-# ---------------------------------------------------------------------------
-# Event
-# ---------------------------------------------------------------------------
-class Event(Base):
-    __tablename__ = "events"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
-    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
-
-    category = relationship("EventCategory", back_populates="events")
-    user_competition_experience = relationship(
-        "UserCompetitionExperience",
-        back_populates="event",
-        foreign_keys="UserCompetitionExperience.event_id",
-        passive_deletes=True,
-    )
-    user_volunteer_experience = relationship(
-        "UserVolunteerExperience",
-        back_populates="event",
-        foreign_keys="UserVolunteerExperience.event_id",
-        passive_deletes=True,
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +280,7 @@ class Tournament(Base):
     name = Column(String(255), nullable=False)
     start_date = Column(DateTime(timezone=True), nullable=True)
     end_date = Column(DateTime(timezone=True), nullable=True)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
 
     # [{number, label, date, start, end}, ...]
@@ -276,6 +311,21 @@ class Tournament(Base):
     memberships = relationship(
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
+    university = relationship("University", back_populates="tournaments")
+    tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
+
+    # Schema Validator: at least one of "university_id" or "location" must be set
+    @validates("university_id", "location")
+    def validate_tournament_source(self, key, value):
+        # Determine the other field's value
+        univ = value if key == "university_id" else self.university_id
+        loc = value if key == "location" else self.location
+
+        # If both are None, raise a validation error. At least one must be set.
+        if not univ and not loc:
+            raise ValueError("Tournament must have either a university_id or a location.")
+
+        return value
 
 # ---------------------------------------------------------------------------
 # Tournament Membership
@@ -437,3 +487,97 @@ class SheetConfig(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
+
+
+# ---------------------------------------------------------------------------
+# AlumniChapter
+# Regional organizations or networks where alumni coordinate and connect.
+#
+# A chapter defines a specific geographic hub (e.g., "Bay Area"). It acts
+# as the parent container for both regional leadership roles and local events.
+# ---------------------------------------------------------------------------
+
+class AlumniChapter(Base):
+    __tablename__ = "alumni_chapters"
+
+    id = Column(Integer,  primary_key=True)
+    name = Column(String(255), nullable=False)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    university = relationship("University", back_populates="alumni_chapter")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    chapter_join_codes = relationship("ChapterJoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
+
+
+# ---------------------------------------------------------------------------
+# ChapterMembership
+# Explicit join table managing the connection between users and chapters.
+#
+# Tracks the structural relationship determining which alumni belong to
+# which regional hub. It provides the database anchor for user-chapter
+# association, serving as the foundation for assigning leadership positions.
+# ---------------------------------------------------------------------------
+
+class ChapterMembership(Base):
+    __tablename__ = "chapter_memberships"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
+    # unique=True on user_id, so users can only join one chapter at DataBase level
+    role = Column(String(32), nullable=False, default="member")
+    # "lead", | "officer" | "member"
+    joined_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
+    user = relationship("User", back_populates="chapter_membership")
+
+
+# ---------------------------------------------------------------------------
+# ChapterJoinCode
+# Temporary access tokens used for user onboarding into an AlumniChapter.
+#
+# Generates unique, time-sensitive or usage-restricted join codes that allow
+# prospective members to self-verify and join a specific chapter without
+# requiring manual admin approval for every request.
+# ---------------------------------------------------------------------------
+
+class ChapterJoinCode(Base):
+    __tablename__ = "chapter_join_codes"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    code = Column(String(8), unique=True, nullable=False)
+    label = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    use_count = Column(Integer, nullable=False, default=0)
+
+    # Relationships
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_codes")
+    creator = relationship("User", back_populates="chapter_join_codes")
+
+
+# ---------------------------------------------------------------------------
+# TournamentChapter
+# Junction table mapping AlumniChapters to affiliated Tournaments.
+#
+# Enables a many-to-many relationship tracking which alumni chapters are
+# supporting, hosting, or participating in specific Science Olympiad tournaments.
+# ---------------------------------------------------------------------------
+
+class TournamentChapter(Base):
+    __tablename__ = "tournament_chapters"
+
+    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
+
+    # Relationships
+    tournament = relationship("Tournament", back_populates="tournament_chapters")
+    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")

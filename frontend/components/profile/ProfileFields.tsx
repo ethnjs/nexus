@@ -5,7 +5,7 @@ import { Select } from "@/components/ui/Select"
 import { RadioGroup } from "@/components/ui/RadioGroup"
 import { Combobox } from "@/components/ui/Combobox"
 import { Textarea } from "@/components/ui/Textarea"
-import { STUDENT_STATUS, SHIRT_SIZE } from "@/lib/api"
+import { STUDENT_STATUS, SHIRT_SIZE, University } from "@/lib/api"
 
 // -------------------------------------------------------------------------
 // Pronouns
@@ -60,7 +60,7 @@ export function StudentStatusField({ value, onChange }: StudentStatusFieldProps)
 // Education (university / major / year level / graduation year)
 // -------------------------------------------------------------------------
 export interface EducationDraft {
-  university?: string
+  university_id?: number
   major?: string
   year_level?: number
   graduation_year?: number
@@ -74,13 +74,25 @@ export interface EducationErrors {
 }
 
 interface UniversityFieldProps {
-  value: string | undefined
-  onChange: (value: string) => void
+  universities: University[]
+  value: string
+  onChange: (text: string, universityId: number | null) => void
   error?: string
 }
 
-export function UniversityField({ value, onChange, error }: UniversityFieldProps) {
-  return <Input type="text" value={value ?? ''} onChange={(e) => onChange(e.target.value)} error={error} fullWidth />
+export function UniversityField({ universities, value, onChange, error }: UniversityFieldProps) {
+  return (
+    <Combobox
+      options={universities}
+      getId={u => u.id}
+      getLabel={u => u.name}
+      getSearchText={u => `${u.name} ${u.abbreviation ?? ''}`}
+      value={value}
+      allowFreeText={false}
+      error={error}
+      onChange={(text, matched) => onChange(text, matched ? matched.id : null)}
+    />
+  )
 }
 
 interface MajorFieldProps {

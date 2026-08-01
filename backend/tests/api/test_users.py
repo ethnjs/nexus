@@ -2,7 +2,7 @@
 from tests.conftest import login
 from app.core.auth import hash_password
 from app.models.models import (
-    User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience,
+    User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience, University,
 )
 
 
@@ -331,8 +331,10 @@ class TestGetMeFull:
         assert "missing_profile_fields" in data
         assert "competition_experience" in data
         assert "volunteer_experience" in data
-        # Full shape — slim-only field must not be present.
-        assert "is_profile_complete" not in data
+        # UserMeFullResponse inherits from UserMeSlimResponse for the shared
+        # account fields (email_verified/role/status/timestamps), so these
+        # onboarding flags come along too — same info as the slim response.
+        assert "is_profile_complete" in data
 
     def test_unauthenticated_forbidden(self, client):
         assert client.get("/users/me/?full=true").status_code == 401
@@ -460,14 +462,18 @@ class TestMissingProfileFields:
         })
         assert client.get("/users/me/?full=true").json()["missing_profile_fields"] == []
 
-    def test_student_complete_profile(self, client, td_user):
+    def test_student_complete_profile(self, client, td_user, db):
+        university = University(name="MIT")
+        db.add(university)
+        db.commit()
+
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={
             "phone": VALID_PHONE,
             "date_of_birth": "2000-01-01",
             "pronouns": "she/her",
             "student_status": "Undergraduate",
-            "university": "MIT",
+            "university_id": university.id,
             "major": "CS",
             "year_level": 2,
             "graduation_year": 2027,
@@ -528,14 +534,18 @@ class TestIsProfileComplete:
         })
         assert client.get("/users/me/").json()["is_profile_complete"] is True
 
-    def test_student_complete_profile(self, client, td_user):
+    def test_student_complete_profile(self, client, td_user, db):
+        university = University(name="MIT")
+        db.add(university)
+        db.commit()
+
         login(client, "td@test.com", "tdpass")
         client.patch("/users/me/", json={
             "phone": VALID_PHONE,
             "date_of_birth": "2000-01-01",
             "pronouns": "she/her",
             "student_status": "Undergraduate",
-            "university": "MIT",
+            "university_id": university.id,
             "major": "CS",
             "year_level": 2,
             "graduation_year": 2027,

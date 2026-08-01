@@ -94,6 +94,35 @@ export const canonicalEventsApi = {
 }
 
 // -------------------------------------------------------------------------
+// Canonical Universities
+// -------------------------------------------------------------------------
+export interface University {
+  id:           number
+  name:         string
+  abbreviation: string | null
+  location:     string | null
+}
+
+interface UniversityCreate {
+  name:          string
+  abbreviation?: string | null
+  location?:     string | null
+}
+
+interface UniversityUpdate {
+  name?:         string
+  abbreviation?: string | null
+  location?:     string | null
+}
+
+export const universitiesApi = {
+  list:   ()                                        => api.get<University[]>('/universities/'),
+  create: (body: UniversityCreate)                  => api.post<University>('/admin/universities/', body),
+  update: (id: number, body: UniversityUpdate)      => api.patch<University>(`/admin/universities/${id}/`, body),
+  delete: (id: number)                              => api.delete<void>(`/admin/universities/${id}/`),
+}
+
+// -------------------------------------------------------------------------
 // Auth / Users
 // -------------------------------------------------------------------------
 export type ROLE = "admin" | "user"
@@ -122,15 +151,21 @@ export interface VolunteerExperience {
   notes:           VolunteerExperienceNotes | null
 }
 
-// Matches UserSlimResponse — no student/employer/experience/shirt/dietary fields
+// Matches UserSlimResponse — minimal, public-safe identity. No account-internal
+// fields (email_verified/role/status/timestamps) — those live on AdminUserSlim.
+// Shown to other users (e.g. chapter members), not just self/admin views.
 export interface UserSlim {
-  id:             number
-  first_name:     string
-  last_name:      string
-  email:          string
-  phone:          string | null
-  pronouns:       string | null
+  id:         number
+  first_name: string | null
+  last_name:  string | null
+  email:      string
+  phone:      string | null
+  pronouns:   string | null
+}
 
+// Matches AdminUserSlimResponse — slim + account-management fields. Used by
+// admin user list/patch, and as the base for self-view (login/register/me).
+export interface AdminUserSlim extends UserSlim {
   email_verified: boolean
   role:           ROLE
   status:         USER_STATUS
@@ -140,15 +175,16 @@ export interface UserSlim {
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
-export interface UserMeSlim extends UserSlim {
+export interface UserMeSlim extends AdminUserSlim {
   is_profile_complete:    boolean
   is_onboarding_complete: boolean
 }
 
-// Matches UserFullResponse — adds the profile fields, no date_of_birth
+// Matches UserFullResponse — slim + profile fields. No account-internal
+// fields — this is what chapter leads see on a member's profile.
 export interface UserFull extends UserSlim {
   student_status:      STUDENT_STATUS | null
-  university:          string | null
+  university:          University | null
   major:               string | null
   year_level:          number | null
   graduation_year:     number | null
@@ -165,8 +201,11 @@ export interface UserFull extends UserSlim {
   dietary_restriction:  string | null
 }
 
+// GET /admin/users/{id}/ + /admin/users/by-email/{email}/ — matches AdminUserFullResponse
+export interface AdminUserFull extends UserFull, AdminUserSlim {}
+
 // GET /users/me/?full=true — matches UserMeFullResponse
-export interface UserMeFull extends UserFull {
+export interface UserMeFull extends UserFull, UserMeSlim {
   date_of_birth:          string | null
   missing_profile_fields: string[]
 }
@@ -178,7 +217,7 @@ interface UserUpdate {
   date_of_birth?:       string | null
   pronouns?:            string | null
   student_status?:      STUDENT_STATUS | null
-  university?:          string | null
+  university_id?:       number | null
   major?:               string | null
   year_level?:          number | null
   graduation_year?:     number | null
@@ -203,9 +242,9 @@ export interface EmailPendingChange {
 }
 
 export const authApi = {
-  login: (email: string, password: string) => api.post<UserSlim>('/auth/login/', { email, password }),
+  login: (email: string, password: string) => api.post<AdminUserSlim>('/auth/login/', { email, password }),
   logout: ()                               => api.post<void>('/auth/logout/', {}),
-  register: (body: AuthRegister)           => api.post<UserSlim>('/auth/register/', body),
+  register: (body: AuthRegister)           => api.post<AdminUserSlim>('/auth/register/', body),
   verifyEmail: (token: string)             => api.get<void>(`/auth/verify-email/?token=${token}`),
   sendEmailVerification: ()                => api.post<void>('/auth/send-email-verification/', {}),
 
@@ -224,7 +263,7 @@ export const authApi = {
     api.post<void>('/auth/password/reset/confirm/', { token, new_password: newPassword }),
 
   confirmAccountSetup: (token: string, password: string) =>
-    api.post<UserSlim>('/auth/account-setup/confirm/', { token, password }),
+    api.post<AdminUserSlim>('/auth/account-setup/confirm/', { token, password }),
 
   revertEmailChange: (token: string, newPassword: string) =>
     api.post<void>('/auth/email/revert/', { token, new_password: newPassword }),
@@ -294,10 +333,10 @@ interface AdminUserUpdate {
 }
 
 export const adminUsersApi = {
-  list:       ()                                   => api.get<UserSlim[]>('/admin/users/'),
-  get:        (id: number)                         => api.get<UserFull>(`/admin/users/${id}/`),
-  getByEmail: (email: string)                      => api.get<UserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
-  updateRole: (id: number, body: AdminUserUpdate)  => api.patch<UserSlim>(`/admin/users/${id}/`, body),
+  list:       ()                                   => api.get<AdminUserSlim[]>('/admin/users/'),
+  get:        (id: number)                         => api.get<AdminUserFull>(`/admin/users/${id}/`),
+  getByEmail: (email: string)                      => api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
+  updateRole: (id: number, body: AdminUserUpdate)  => api.patch<AdminUserSlim>(`/admin/users/${id}/`, body),
   delete:     (id: number)                         => api.delete<void>(`/admin/users/${id}/`),
 }
 

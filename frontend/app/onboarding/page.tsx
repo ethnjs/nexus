@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import {
   usersApi, canonicalEventsApi, CanonicalEvent,
+  universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
 import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
@@ -48,7 +49,8 @@ interface ProfileDraft {
   date_of_birth?: string;
   pronouns?: string;
   student_status?: STUDENT_STATUS;
-  university?: string;
+  university_id?: number;
+  university_name?: string;
   major?: string;
   year_level?: number;
   graduation_year?: number;
@@ -77,6 +79,7 @@ export default function OnboardingPage() {
 
   const [profileData, setProfileData] = useState<ProfileDraft>({});
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
+  const [universities, setUniversities] = useState<University[]>([]);
   const [competitionRows, setCompetitionRows] = useState<CompetitionExperienceDraft[]>([]);
   const [volunteerRows, setVolunteerRows] = useState<VolunteerExperienceDraft[]>([]);
   const [hasDietary, setHasDietary] = useState<boolean | null>(null);
@@ -111,7 +114,8 @@ export default function OnboardingPage() {
           date_of_birth: user.date_of_birth ?? undefined,
           pronouns: user.pronouns ?? undefined,
           student_status: user.student_status ?? undefined,
-          university: user.university ?? undefined,
+          university_id: user.university?.id ?? undefined,
+          university_name: user.university?.name ?? undefined,
           major: user.major ?? undefined,
           year_level: user.year_level ?? undefined,
           graduation_year: user.graduation_year ?? undefined,
@@ -128,6 +132,7 @@ export default function OnboardingPage() {
       .catch(() => setLoadError("Failed to load your account."));
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
+    universitiesApi.list().then(setUniversities).catch(() => {});
   }, [authLoading, currentUser, router]);
 
   function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
@@ -151,11 +156,13 @@ export default function OnboardingPage() {
     setLoading(true);
     setErrors({});
 
+    const { university_name: _university_name, ...restProfileData } = profileData;
+
     const cleaned: Record<string, unknown> = {
       first_name: name.first,
       last_name: name.last,
       phone,
-      ...profileData,
+      ...restProfileData,
       has_competition_experience: competitionRows.length > 0 ? true : profileData.has_competition_experience,
       has_volunteer_experience: volunteerRows.length > 0 ? true : profileData.has_volunteer_experience,
     };
@@ -163,9 +170,9 @@ export default function OnboardingPage() {
     if (cleaned.student_status === "Undergraduate" || cleaned.student_status === "Graduate") {
       cleaned.employer = undefined;
     } else if (cleaned.student_status === "Non-Student") {
-      cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+      cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
     } else {
-      cleaned.student_status = cleaned.employer = cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+      cleaned.student_status = cleaned.employer = cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
     }
 
     for (const key of Object.keys(cleaned)) {
@@ -407,10 +414,11 @@ export default function OnboardingPage() {
                 <>
                   <ProfileQuestion question="What university do you attend?">
                     <UniversityField
-                      value={profileData.university}
+                      universities={universities}
+                      value={profileData.university_name ?? ''}
                       error={errors.university}
-                      onChange={(v) => {
-                        setProfileData((d) => ({ ...d, university: v }));
+                      onChange={(text, universityId) => {
+                        setProfileData((d) => ({ ...d, university_name: text, university_id: universityId ?? undefined }));
                         setErrors((er) => ({ ...er, university: undefined }));
                       }}
                     />
@@ -438,13 +446,13 @@ export default function OnboardingPage() {
                   <ProfileQuestion
                     question="What is your projected graduation year?"
                     onSkip={() => {
-                      setProfileData((d) => ({ ...d, university: undefined, major: undefined, year_level: undefined, graduation_year: undefined }));
+                      setProfileData((d) => ({ ...d, university_id: undefined, university_name: undefined, major: undefined, year_level: undefined, graduation_year: undefined }));
                       setState(STATE.UNIVERSITY + 2);
                     }}
                     onNext={() => {
                       const ers: typeof errors = {};
 
-                      if (!profileData.university) ers.university = "Cannot be empty.";
+                      if (!profileData.university_id) ers.university = "Cannot be empty.";
                       if (!profileData.major) ers.major = "Cannot be empty.";
                       if (!profileData.year_level) ers.year_level = "Cannot be empty.";
 

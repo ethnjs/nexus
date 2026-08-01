@@ -24,7 +24,7 @@ from app.core.auth import (
 from app.core.users import check_if_email_exists, find_user_by_id, create_user
 from app.db.session import get_db
 from app.models.models import User, UserSession, VerificationToken
-from app.schemas.user import UserSlimResponse
+from app.schemas.user import AdminUserSlimResponse
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
@@ -56,7 +56,7 @@ router = APIRouter(tags=["auth"])
 # Login / Logout
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/login/", response_model=UserSlimResponse)
+@router.post("/auth/login/", response_model=AdminUserSlimResponse)
 def login(body: LoginRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Authenticate with email + password.
@@ -114,7 +114,7 @@ def logout(
 # Registration
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED)
 def register(body: RegisterRequest, request: Request, response: Response, db: Session = Depends(get_db)):
     """
     Public route to create a new user account.
@@ -135,7 +135,7 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
 
 
 
-@router.post("/admin/auth/register/", response_model=UserSlimResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/admin/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED)
 async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     """
     Admin only. Can create normal users and admin users. Password is excluded to allow the newly created user
@@ -398,7 +398,7 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
 # Account setup (admin-created invite)
 # ---------------------------------------------------------------------------
 
-@router.post("/auth/account-setup/confirm/", response_model=UserSlimResponse, status_code=status.HTTP_200_OK,
+@router.post("/auth/account-setup/confirm/", response_model=AdminUserSlimResponse, status_code=status.HTTP_200_OK,
     responses={
         400: {"description": "Invalid or expired token"},
     },

@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr, field_validator, computed_field
 
 from app.core.phone import normalize_phone as _normalize_phone
 from app.schemas.user_experience import CompetitionExperienceResponse, VolunteerExperienceResponse
+from app.schemas.university import UniversityResponse
 
 
 ROLE = Literal["admin", "user"]
@@ -21,7 +22,7 @@ class UserUpdate(BaseModel):
     pronouns: Optional[str] = None
 
     student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[str] = None
+    university_id: Optional[int] = None
     major: Optional[str] = None
     year_level: Optional[int] = None
     graduation_year: Optional[int] = None
@@ -60,6 +61,10 @@ class UserSlimResponse(BaseModel):
     phone: Optional[str] = None
     pronouns: Optional[str] = None
 
+    model_config = {"from_attributes": True}
+
+
+class AdminUserSlimResponse(UserSlimResponse):
     email_verified: bool
     role: ROLE
     status: USER_STATUS
@@ -67,17 +72,15 @@ class UserSlimResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
 
-class UserMeSlimResponse(UserSlimResponse):
+class UserMeSlimResponse(AdminUserSlimResponse):
     is_profile_complete: bool = False
     is_onboarding_complete: bool = False
 
 
-
 class UserFullResponse(UserSlimResponse):
     student_status: Optional[STUDENT_STATUS] = None
-    university: Optional[str] = None
+    university: Optional[UniversityResponse] = None
     major: Optional[str] = None
     year_level: Optional[int] = None
     graduation_year: Optional[int] = None
@@ -92,7 +95,12 @@ class UserFullResponse(UserSlimResponse):
 
     shirt_size: Optional[str] = None
     dietary_restriction: Optional[str] = None
-    
-class UserMeFullResponse(UserFullResponse):
+
+
+class AdminUserFullResponse(UserFullResponse, AdminUserSlimResponse):
+    pass
+
+
+class UserMeFullResponse(UserFullResponse, UserMeSlimResponse):
     date_of_birth: Optional[date] = None
     missing_profile_fields: list[str] = []

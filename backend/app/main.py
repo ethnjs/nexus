@@ -9,7 +9,7 @@ from app.db.init_db import init_db, seed_dev_data
 from app.api.routes import (
     auth, events, tournaments,
     tournament_events, tournament_memberships,
-    sheets, users, user_experience
+    sheets, users, user_experience, universities, chapters
 )
 
 settings = get_settings()
@@ -21,9 +21,11 @@ async def lifespan(app: FastAPI):
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
         from app.db.session import SessionLocal
         from app.db.seed_canon_events import seed_events_and_categories
+        from app.db.seed_universities import seed_universities
 
         with SessionLocal() as db:
             seed_events_and_categories(db)  # always — dev + prod
+            seed_universities(db)  # always — dev + prod
 
         if get_settings().app_env in ("development", "preview"):
             init_db()
@@ -65,6 +67,8 @@ app.include_router(tournament_memberships.router, prefix="", dependencies=[api_k
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])
+app.include_router(universities.router,           prefix="", dependencies=[api_key_dependency])
+app.include_router(chapters.router,               prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])
