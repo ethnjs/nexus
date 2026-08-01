@@ -27,8 +27,8 @@ interface ProfileDraft {
 
 function toDraft(user: UserMeFull): ProfileDraft {
   return {
-    first_name:    user.first_name,
-    last_name:     user.last_name,
+    first_name:    user.first_name ?? "",
+    last_name:     user.last_name ?? "",
     phone:         user.phone ?? "",
     date_of_birth: user.date_of_birth ?? "",
   };
