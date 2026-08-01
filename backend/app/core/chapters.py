@@ -45,44 +45,50 @@ def find_chapter(
         )
     return chapter
 
-def require_lead(
+def _require_chapter_role(
         chapter_id: int,
-        db: Session = Depends(get_db),
-        current_user: User = Depends(get_current_user),
+        allowed_roles: set[str],
+        db: Session,
+        current_user: User,
+        allow_admin: bool = False,
     ) -> User:
-    lead = db.query(ChapterMembership).filter(
+    if allow_admin and current_user.role == "admin":
+        return current_user
+
+    membership = db.query(ChapterMembership).filter(
         ChapterMembership.chapter_id == chapter_id,
         ChapterMembership.user_id == current_user.id,
-        ChapterMembership.role == "lead"
+        ChapterMembership.role.in_(allowed_roles),
     ).first()
 
-    if not lead:
+    if not membership:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Insufficient permissions"
         )
     return current_user
+
+def require_lead(
+        chapter_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+    return _require_chapter_role(chapter_id, {"lead"}, db, current_user)
+
+def require_officer_or_lead(
+        chapter_id: int,
+        db: Session = Depends(get_db),
+        current_user: User = Depends(get_current_user),
+    ) -> User:
+    """Officers and leads both pass — leads can do everything officers can."""
+    return _require_chapter_role(chapter_id, {"lead", "officer"}, db, current_user, allow_admin=True)
 
 def require_chapter_lead_or_admin(
         chapter_id: int,
         db: Session = Depends(get_db),
         current_user: User = Depends(get_current_user)
     ) -> User:
-    if current_user.role == "admin":
-        return current_user
-    
-    lead = db.query(ChapterMembership).filter(
-        ChapterMembership.chapter_id == chapter_id,
-        ChapterMembership.user_id == current_user.id,
-        ChapterMembership.role == "lead"
-    ).first()
-
-    if not lead:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions"
-        )
-    return current_user
+    return _require_chapter_role(chapter_id, {"lead"}, db, current_user, allow_admin=True)
 
 def assign_chapter_lead(
         chapter_id: int,

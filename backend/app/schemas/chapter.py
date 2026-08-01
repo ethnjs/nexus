@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,6 +17,9 @@ class ChapterCreate(BaseModel):
 
 class AssignLeadRequest(BaseModel):
     user_id: int
+
+class ChapterMemberUpdate(BaseModel):
+    role: Literal["lead", "officer", "member"]
 
 
 class ChapterResponse(BaseModel):

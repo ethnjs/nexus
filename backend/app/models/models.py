@@ -526,7 +526,7 @@ class ChapterMembership(Base):
 
     id = Column(Integer, primary_key=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
     # unique=True on user_id, so users can only join one chapter at DataBase level
     role = Column(String(32), nullable=False, default="member")
     # "lead", | "officer" | "member"

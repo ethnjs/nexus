@@ -14,6 +14,7 @@ from app.core.chapters import (
     generate_chapter_join_code as generate_code,
     require_chapter_lead_or_admin,
     require_lead,
+    require_officer_or_lead,
 )
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterJoinCode, ChapterMembership, User
@@ -26,6 +27,7 @@ from app.schemas.chapter import (
     ChapterJoinRequest,
     ChapterMemberProfileResponse,
     ChapterMemberResponse,
+    ChapterMemberUpdate,
     ChapterResponse,
     ChapterUpdate,
 )
@@ -181,16 +183,16 @@ def update_chapter(
 
 
 # ---------------------------------------------------------------------------
-# Members — chapter lead or admin, unless noted otherwise
+# Members — chapter officer/lead or admin, unless noted otherwise
 # ---------------------------------------------------------------------------
 
 @router.get("/chapters/{chapter_id}/members/", response_model=list[ChapterMemberResponse])
 def get_members(
     chapter: AlumniChapter = Depends(find_chapter),
     db: Session = Depends(get_db),
-    _: User = Depends(require_chapter_lead_or_admin),
+    _: User = Depends(require_officer_or_lead),
 ):
-    """List all members of a chapter, sorted by name. Chapter lead or admin only."""
+    """List all members of a chapter, sorted by name. Chapter officer, lead, or admin."""
     return (
         db.query(ChapterMembership)
         .join(User, ChapterMembership.user_id == User.id)
@@ -215,9 +217,9 @@ def get_chapter_member(
 
 
 @router.patch("/chapters/{chapter_id}/members/{user_id}/", response_model=ChapterMemberResponse)
-def update_chapter_roles(
+def update_chapter_member(
     user_id: int,
-    role: str,
+    payload: ChapterMemberUpdate,
     chapter: AlumniChapter = Depends(find_chapter),
     db: Session = Depends(get_db),
     _: User = Depends(require_lead),
@@ -232,9 +234,9 @@ def update_chapter_roles(
     member = db.query(ChapterMembership).with_parent(chapter, AlumniChapter.chapter_memberships).filter(ChapterMembership.user_id == user_id).first()
     if not member:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member not found")
-    if member.role == role:
+    if member.role == payload.role:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="User already has that role")
-    member.role = role
+    member.role = payload.role
     db.commit()
     db.refresh(member)
     return member

@@ -55,7 +55,7 @@ def upgrade() -> None:
         sa.Column('role', sa.String(length=32), nullable=False),
         sa.Column('joined_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['chapter_id'], ['alumni_chapters.id'], ondelete='CASCADE'),
-        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+        sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('user_id')
     )
