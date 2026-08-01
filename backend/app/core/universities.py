@@ -1,10 +1,11 @@
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, Depends
 from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.models import University
+from app.db.session import get_db
 
-def _create_university(
+def create_university_record(
         db: Session,
         name: str,
         abbreviation: Optional[str] = None,
@@ -28,3 +29,15 @@ def check_if_university_exists(db: Session, name: str):
             status_code=status.HTTP_409_CONFLICT,
             detail="University already exists"
         )
+
+def find_university(
+        university_id: int,
+        db: Session = Depends(get_db)
+    ) -> University:
+    university = db.query(University).filter(University.id == university_id).first()
+    if not university:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="University not found"
+        )
+    return university

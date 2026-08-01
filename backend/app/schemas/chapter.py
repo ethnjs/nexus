@@ -1,5 +1,5 @@
 from __future__ import annotations
-from typing import Optional, Literal
+from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -9,6 +9,7 @@ from app.schemas.user import UserSlimResponse, UserFullResponse
 
 class ChapterUpdate(BaseModel):
     name: Optional[str] = None
+    university_id: Optional[int] = None
 
 class ChapterCreate(BaseModel):
     name: str
@@ -77,10 +78,9 @@ class ChapterJoinCodeCreate(BaseModel):
     expires_in_hours: Optional[int] = Field(default=None, ge=1)
 
 class ChapterJoinCodeUpdate(BaseModel):
-    is_active: Literal[False] = Field(
-        ...,
-        description="Must be set to false. Reactivation is not allowed."
-    )
+    label: Optional[str] = Field(default=None, max_length=100)
+    expires_at: Optional[datetime] = None
+    is_active: Optional[bool] = None
 
 class ChapterJoinRequest(BaseModel):
     code: str = Field(..., min_length=8, max_length=8, description="8-character join code")
