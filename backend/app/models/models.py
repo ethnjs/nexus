@@ -313,6 +313,7 @@ class Tournament(Base):
     )
     university = relationship("University", back_populates="tournaments")
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
+    roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
     @validates("university_id", "location")
@@ -404,6 +405,7 @@ class TournamentMembership(Base):
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
     assigned_event = relationship("TournamentEvent", back_populates="memberships")
+    roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
@@ -427,6 +429,68 @@ class TournamentMembership(Base):
     __table_args__ = (
         # One membership per user per tournament
         UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tournament Role
+# Relational replacement for Tournament.volunteer_schema["positions"]. Each row
+# is one role definable by a TD for their tournament (e.g. "Tournament
+# Director", "Test Writer") carrying a fixed set of permission strings and a
+# rank used to bound staff-management actions (see TournamentMembershipRole, Step 7 of
+# the roles/permissions rebuild).
+# ---------------------------------------------------------------------------
+class TournamentRole(Base):
+    __tablename__ = "tournament_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    key = Column(String(64), nullable=False)          # snake_case identifier
+    label = Column(String(255), nullable=False)        # human-readable name
+
+    # List of permission strings from ALL_PERMISSIONS in core/permissions.py.
+    # Kept as JSON rather than a junction table deliberately — permissions are a
+    # small, fixed, code-defined enum (adding one requires a deploy, not a runtime
+    # action), so there's no relational benefit to normalizing them, and a junction
+    # table would add a join to the permission-check hot path for no query gain.
+    permissions = Column(JSON, nullable=False, default=list)
+
+    # Lower number = higher authority. Ties are allowed and expected (e.g. the
+    # four coordinator roles all share a rank). Used to bound what a MANAGE_STAFF
+    # holder can assign/remove. The tournament Owner is NOT a role and has no
+    # rank; it sits structurally above rank 1.
+    rank = Column(Integer, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="roles")
+    memberships = relationship("TournamentMembershipRole", back_populates="role", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "key", name="uq_tournament_role_key"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tournament Membership Role
+# Join table assigning a TournamentRole to a TournamentMembership. Replacement
+# for TournamentMembership.positions (JSON array of role key strings). Named
+# with the "Tournament" prefix to avoid ambiguity with ChapterMembership's
+# own role/permission concept.
+# ---------------------------------------------------------------------------
+class TournamentMembershipRole(Base):
+    __tablename__ = "tournament_membership_roles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    role_id = Column(Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"), nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="roles")
+    role = relationship("TournamentRole", back_populates="memberships")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "role_id", name="uq_membership_role"),
     )
 
 
