@@ -9,6 +9,7 @@ interface ComboboxProps<T> {
   options:  T[]
   getId:    (option: T) => string | number
   getLabel: (option: T) => string
+  getSearchText?: (option: T) => string
 
   value:    string
   onChange: (text: string, matched: T | null) => void
@@ -27,6 +28,7 @@ export function Combobox<T>({
   options,
   getId,
   getLabel,
+  getSearchText = getLabel,
   value,
   onChange,
   allowFreeText = true,
@@ -40,7 +42,7 @@ export function Combobox<T>({
 
   const query = value.trim().toLowerCase()
   const matches = query
-    ? options.filter(o => getLabel(o).toLowerCase().includes(query)).slice(0, maxResults)
+    ? options.filter(o => getSearchText(o).toLowerCase().includes(query)).slice(0, maxResults)
     : []
 
   const exactMatch = matches.some(o => getLabel(o).toLowerCase() === query)

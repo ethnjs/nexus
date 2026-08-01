@@ -1,6 +1,6 @@
 interface EducationCareerUser {
   student_status: "Undergraduate" | "Graduate" | "Non-Student" | null;
-  university: string | null;
+  university: { name: string } | null;
   major: string | null;
   year_level: number | null;
   graduation_year: number | null;
@@ -55,7 +55,7 @@ export function EducationCareerSection({ user }: { user: EducationCareerUser }) 
         <Field label="Employer" value={user.employer} />
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <Field label="University" value={user.university} />
+          <Field label="University" value={user.university?.name ?? null} />
           <Field label="Major" value={user.major} />
           <Field label="Year Level" value={formatYearLevel(user.year_level)} />
           <Field label="Graduation Year" value={user.graduation_year !== null ? String(user.graduation_year) : null} />

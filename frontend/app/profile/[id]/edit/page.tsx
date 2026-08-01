@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import {
   usersApi, canonicalEventsApi, CanonicalEvent,
+  universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
@@ -30,7 +31,8 @@ import {
 interface ProfileDraft {
   pronouns?: string
   student_status?: STUDENT_STATUS
-  university?: string
+  university_id?: number
+  university_name?: string
   major?: string
   year_level?: number
   graduation_year?: number
@@ -45,7 +47,8 @@ function profileToDraft(user: UserMeFull): ProfileDraft {
   return {
     pronouns: user.pronouns ?? undefined,
     student_status: user.student_status ?? undefined,
-    university: user.university ?? undefined,
+    university_id: user.university?.id ?? undefined,
+    university_name: user.university?.name ?? undefined,
     major: user.major ?? undefined,
     year_level: user.year_level ?? undefined,
     graduation_year: user.graduation_year ?? undefined,
@@ -65,6 +68,7 @@ export default function ProfileEditPage() {
 
   const [original, setOriginal] = useState<UserMeFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
+  const [universities, setUniversities] = useState<University[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [draft, setDraft] = useState<ProfileDraft>({});
@@ -101,6 +105,7 @@ export default function ProfileEditPage() {
       .catch(() => setLoadError("Failed to load profile."));
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
+    universitiesApi.list().then(setUniversities).catch(() => {});
   }, [authLoading, currentUser, profileId, router]);
 
   // ── Effective flags — derived from actual row presence, not just the stored flag ──
@@ -184,8 +189,9 @@ export default function ProfileEditPage() {
     }
 
     // Self-heal flags from actual row presence before sending
+    const { university_name: _university_name, ...restDraft } = draft;
     const cleaned: Record<string, unknown> = {
-      ...draft,
+      ...restDraft,
       has_competition_experience: competitionRows.length > 0 ? true : draft.has_competition_experience,
       has_volunteer_experience: volunteerRows.length > 0 ? true : draft.has_volunteer_experience,
     };
@@ -193,7 +199,7 @@ export default function ProfileEditPage() {
     if (cleaned.student_status === 'Undergraduate' || cleaned.student_status === 'Graduate') {
       cleaned.employer = undefined;
     } else if (cleaned.student_status === 'Non-Student') {
-      cleaned.university = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
+      cleaned.university_id = cleaned.major = cleaned.year_level = cleaned.graduation_year = undefined;
     }
 
     for (const key of Object.keys(cleaned)) {
@@ -302,9 +308,10 @@ export default function ProfileEditPage() {
             <>
               <ProfileQuestion question="University">
                 <UniversityField
-                  value={draft.university}
+                  universities={universities}
+                  value={draft.university_name ?? ''}
                   error={errors.university}
-                  onChange={(v) => setDraft(d => ({ ...d, university: v }))}
+                  onChange={(text, universityId) => setDraft(d => ({ ...d, university_name: text, university_id: universityId ?? undefined }))}
                 />
               </ProfileQuestion>
               <ProfileQuestion question="Major">
