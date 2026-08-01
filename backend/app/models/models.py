@@ -88,6 +88,73 @@ class VerificationToken(Base):
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
+# University
+# A master lookup registry of standardized post-secondary institutions.
+#
+# Serves as the single source of truth across the platform to eliminate free-text
+# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User
+# profiles and Tournaments reference this table to establish structural ties.
+#
+# unique constraints:
+#   name: The full official name of the institution (e.g., "Stanford University").
+#
+# nullable fields:
+#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for
+#     compact UI rendering, dashboard badges, and quick search indexing.
+#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
+#     context on proximity for tournament planning or regional chapter groupings.
+# ---------------------------------------------------------------------------
+class University(Base):
+    __tablename__ = "universities"
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), unique=True, nullable=False)
+    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
+    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
+
+    # Relationships
+    tournaments = relationship("Tournament", back_populates="university")
+    users = relationship("User", back_populates="university")
+    alumni_chapter = relationship("AlumniChapter", back_populates="university", uselist=False)
+
+
+# ---------------------------------------------------------------------------
+# Event Category
+# ---------------------------------------------------------------------------
+class EventCategory(Base):
+    __tablename__ = "event_categories"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+
+    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
+
+# ---------------------------------------------------------------------------
+# Event
+# ---------------------------------------------------------------------------
+class Event(Base):
+    __tablename__ = "events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), unique=True, nullable=False)
+    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
+
+    category = relationship("EventCategory", back_populates="events")
+    user_competition_experience = relationship(
+        "UserCompetitionExperience",
+        back_populates="event",
+        foreign_keys="UserCompetitionExperience.event_id",
+        passive_deletes=True,
+    )
+    user_volunteer_experience = relationship(
+        "UserVolunteerExperience",
+        back_populates="event",
+        foreign_keys="UserVolunteerExperience.event_id",
+        passive_deletes=True,
+    )
+
+
+# ---------------------------------------------------------------------------
 # User
 # Core identity — volunteers, TDs, and admins all live here.
 #
@@ -158,8 +225,8 @@ class User(Base):
         cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="users")
-    chapter_membership = relationship("ChapterMembership", back_populates="users", uselist=False)
-    chapter_join_code = relationship("ChapterJoinCode", back_populates="creator")
+    chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
+    chapter_join_codes = relationship("ChapterJoinCode", back_populates="creator")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -201,73 +268,6 @@ class UserVolunteerExperience(Base):
     user = relationship("User", back_populates="volunteer_experience")
     event = relationship("Event", back_populates="user_volunteer_experience")
 
-    
-
-# ---------------------------------------------------------------------------
-# Event Category
-# ---------------------------------------------------------------------------
-class EventCategory(Base):
-    __tablename__ = "event_categories"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
-
-    events = relationship("Event", back_populates="category", cascade="all, delete-orphan")
-
-# ---------------------------------------------------------------------------
-# Event
-# ---------------------------------------------------------------------------
-class Event(Base):
-    __tablename__ = "events"
-
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), unique=True, nullable=False)
-    category_id = Column(Integer, ForeignKey('event_categories.id'), nullable=False)
-
-    category = relationship("EventCategory", back_populates="events")
-    user_competition_experience = relationship(
-        "UserCompetitionExperience",
-        back_populates="event",
-        foreign_keys="UserCompetitionExperience.event_id",
-        passive_deletes=True,
-    )
-    user_volunteer_experience = relationship(
-        "UserVolunteerExperience",
-        back_populates="event",
-        foreign_keys="UserVolunteerExperience.event_id",
-        passive_deletes=True,
-    )
-
-
-# ---------------------------------------------------------------------------
-# University
-# A master lookup registry of standardized post-secondary institutions.
-#
-# Serves as the single source of truth across the platform to eliminate free-text
-# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User 
-# profiles and Tournaments reference this table to establish structural ties.
-#
-# unique constraints:
-#   name: The full official name of the institution (e.g., "Stanford University").
-#
-# nullable fields:
-#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for 
-#     compact UI rendering, dashboard badges, and quick search indexing.
-#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
-#     context on proximity for tournament planning or regional chapter groupings.
-# ---------------------------------------------------------------------------
-class University(Base):
-    __tablename__ = "universities"
-
-    id = Column(Integer, primary_key=True)
-    name = Column(String(255), unique=True, nullable=False)
-    abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
-    location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
-
-    # Relationships
-    tournaments = relationship("Tournament", back_populates="university")
-    users = relationship("User", back_populates="university")
-    alumni_chapters = relationship("AlumniChapter", back_populates="university", uselist=False)
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +312,7 @@ class Tournament(Base):
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
     university = relationship("University", back_populates="tournaments")
-    chapters = relationship("TournamentChapter", back_populates="tournaments")
+    tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
     @validates("university_id", "location")
@@ -506,10 +506,10 @@ class AlumniChapter(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
-    university = relationship("University", back_populates="alumni_chapters")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapters", cascade="all, delete-orphan")
-    chapter_join_code = relationship("ChapterJoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    tournaments = relationship("TournamentChapter", back_populates="chapters")
+    university = relationship("University", back_populates="alumni_chapter")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    chapter_join_codes = relationship("ChapterJoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
 
 
 # ---------------------------------------------------------------------------
@@ -533,12 +533,8 @@ class ChapterMembership(Base):
     joined_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
-    alumni_chapters = relationship("AlumniChapter", back_populates="chapter_memberships")
-    users = relationship("User", back_populates="chapter_membership")
-
-    @property
-    def user(self):
-        return self.users
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
+    user = relationship("User", back_populates="chapter_membership")
 
 
 # ---------------------------------------------------------------------------
@@ -564,8 +560,8 @@ class ChapterJoinCode(Base):
     use_count = Column(Integer, nullable=False, default=0)
 
     # Relationships
-    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_code")
-    creator = relationship("User", back_populates="chapter_join_code")
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_codes")
+    creator = relationship("User", back_populates="chapter_join_codes")
 
 
 # ---------------------------------------------------------------------------
@@ -583,5 +579,5 @@ class TournamentChapter(Base):
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
 
     # Relationships
-    tournaments = relationship("Tournament", back_populates="chapters")
-    chapters = relationship("AlumniChapter", back_populates="tournaments")
+    tournament = relationship("Tournament", back_populates="tournament_chapters")
+    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")

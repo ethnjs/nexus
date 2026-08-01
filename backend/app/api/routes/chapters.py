@@ -266,7 +266,7 @@ def get_chapter_join_codes(
     _: User = Depends(require_lead),
 ):
     """List every join code for a chapter, including expired and deactivated ones. Chapter lead only."""
-    return db.query(ChapterJoinCode).with_parent(chapter, AlumniChapter.chapter_join_code).all()
+    return db.query(ChapterJoinCode).with_parent(chapter, AlumniChapter.chapter_join_codes).all()
 
 
 @router.post("/chapters/{chapter_id}/join-codes/", response_model=ChapterJoinCodeResponse, status_code=status.HTTP_201_CREATED)
