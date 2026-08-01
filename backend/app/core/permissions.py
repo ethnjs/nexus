@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all below
+MANAGE_STAFF       = "manage_staff"        # assign/remove roles on existing memberships
 MANAGE_VOLUNTEERS  = "manage_volunteers"   # read + write volunteer/membership pages
 MANAGE_EVENTS      = "manage_events"       # read + write events page
 MANAGE_MATERIALS   = "manage_materials"    # read + write materials page (future)
@@ -44,6 +45,7 @@ VIEW_EVENTS        = "view_events"         # read-only events list
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
     MANAGE_TOURNAMENT,
+    MANAGE_STAFF,
     MANAGE_VOLUNTEERS,
     MANAGE_EVENTS,
     MANAGE_MATERIALS,
@@ -52,16 +54,6 @@ ALL_PERMISSIONS: list[str] = [
     VIEW_EVENTS,
 ]
 
-# manage_X permissions imply their corresponding view_X permission.
-# Used in get_user_permissions() to expand effective permissions.
-PERMISSION_IMPLICATIONS: dict[str, list[str]] = {
-    MANAGE_TOURNAMENT: [
-        MANAGE_VOLUNTEERS, MANAGE_EVENTS, MANAGE_MATERIALS,
-        MANAGE_LOGISTICS, VIEW_VOLUNTEERS, VIEW_EVENTS,
-    ],
-    MANAGE_VOLUNTEERS: [VIEW_VOLUNTEERS],
-    MANAGE_EVENTS:     [VIEW_EVENTS],
-}
 
 
 # ---------------------------------------------------------------------------
@@ -74,17 +66,20 @@ DEFAULT_POSITIONS: list[dict] = [
     {
         "key":         "tournament_director",
         "label":       "Tournament Director",
-        "permissions": [MANAGE_TOURNAMENT],
+        "permissions": [
+            MANAGE_TOURNAMENT, MANAGE_STAFF, MANAGE_VOLUNTEERS, MANAGE_EVENTS,
+            MANAGE_MATERIALS, MANAGE_LOGISTICS, VIEW_VOLUNTEERS, VIEW_EVENTS,
+        ],
     },
     {
         "key":         "volunteer_coordinator",
         "label":       "Volunteer Coordinator",
-        "permissions": [MANAGE_VOLUNTEERS],
+        "permissions": [MANAGE_VOLUNTEERS, VIEW_VOLUNTEERS],
     },
     {
         "key":         "test_coordinator",
         "label":       "Test Coordinator",
-        "permissions": [MANAGE_EVENTS],
+        "permissions": [MANAGE_EVENTS, VIEW_EVENTS],
     },
     {
         "key":         "materials_coordinator",
@@ -93,7 +88,7 @@ DEFAULT_POSITIONS: list[dict] = [
     },
     {
         "key":         "logistics",
-        "label":       "Director of Logistics",
+        "label":       "Logistics Coordinator",
         "permissions": [MANAGE_LOGISTICS],
     },
     {
@@ -158,7 +153,8 @@ def get_user_permissions(
 
     - admin users get all permissions without a DB lookup.
     - Everyone else: load their membership, look up each position's permissions
-      in the tournament's volunteer_schema, then expand via PERMISSION_IMPLICATIONS.
+      in the tournament's volunteer_schema, and union them. Each position's
+      permission list is explicit (no implied expansion).
 
     Returns an empty set if the user has no membership in this tournament.
     """
@@ -192,15 +188,12 @@ def get_user_permissions(
         for p in schema_positions
     }
 
-    # Collect raw permissions from all of the user's positions.
-    raw: set[str] = set()
+    # Collect permissions from all of the user's positions. Each position lists
+    # its full permission set explicitly (no implied expansion) — see
+    # DEFAULT_POSITIONS above.
+    effective: set[str] = set()
     for pos_key in (membership.positions or []):
-        raw.update(position_map.get(pos_key, []))
-
-    # Expand implied permissions (e.g. manage_tournament → everything).
-    effective = set(raw)
-    for perm in list(raw):
-        effective.update(PERMISSION_IMPLICATIONS.get(perm, []))
+        effective.update(position_map.get(pos_key, []))
 
     return effective
 
