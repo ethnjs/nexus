@@ -11,7 +11,9 @@ from app.core.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import TournamentMembership, Tournament, User
-from app.schemas.tournament import TournamentCreate, TournamentRead, TournamentUpdate
+from app.schemas.tournament import (
+    TournamentCreate, TournamentRead, TournamentUpdate, TransferOwnershipRequest,
+)
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
@@ -192,3 +194,50 @@ def delete_tournament(
 
     db.delete(tournament)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/transfer-ownership/ — owner only
+# The old owner keeps whatever TournamentRole assignments they already had —
+# no roles are auto-assigned or auto-removed as a side effect of transfer.
+# ---------------------------------------------------------------------------
+@router.post("/{tournament_id}/transfer-ownership/", response_model=TournamentRead)
+def transfer_ownership(
+    tournament_id: int,
+    payload: TransferOwnershipRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+
+    # 404 if no membership (don't leak existence)
+    if not has_any_membership(current_user, tournament_id, db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if tournament.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the current owner can transfer ownership",
+        )
+
+    new_owner_membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == payload.new_owner_id,
+            TournamentMembership.tournament_id == tournament_id,
+        )
+        .first()
+    )
+    if not new_owner_membership:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="new_owner_id must already hold a membership in this tournament",
+        )
+
+    tournament.owner_id = payload.new_owner_id
+    db.commit()
+    db.refresh(tournament)
+    return _serialize(tournament)

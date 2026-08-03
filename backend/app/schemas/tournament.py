@@ -239,6 +239,10 @@ class TournamentUpdate(BaseModel):
     volunteer_schema: VolunteerSchema | None = None
 
 
+class TransferOwnershipRequest(BaseModel):
+    new_owner_id: int
+
+
 class TournamentRead(TournamentBase):
     id: int
     owner_id: int
