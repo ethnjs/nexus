@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.permissions import (
+from app.core.tournament.permissions import (
     DEFAULT_POSITIONS,
     MANAGE_TOURNAMENT,
     require_membership,

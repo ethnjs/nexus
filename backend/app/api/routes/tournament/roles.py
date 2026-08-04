@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.permissions import (
+from app.core.tournament.permissions import (
     MANAGE_ROLES,
     MANAGE_TOURNAMENT,
     get_highest_rank,

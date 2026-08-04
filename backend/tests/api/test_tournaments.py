@@ -2,7 +2,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import login
-from app.core.permissions import DEFAULT_POSITIONS
+from app.core.tournament.permissions import DEFAULT_POSITIONS
 from app.models.models import TournamentMembership, Tournament
 
 SAMPLE_BLOCKS = [

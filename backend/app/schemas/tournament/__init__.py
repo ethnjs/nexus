@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel, model_validator, field_validator
-from app.core.permissions import ALL_PERMISSIONS
+from app.core.tournament.permissions import ALL_PERMISSIONS
 
 
 # ---------------------------------------------------------------------------

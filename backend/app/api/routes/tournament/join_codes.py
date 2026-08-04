@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code, is_join_code_expired
-from app.core.permissions import MANAGE_TOURNAMENT, require_permission
+from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentJoinCode, TournamentMembership, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate

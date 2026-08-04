@@ -33,7 +33,7 @@ from app.api.routes.sheets import get_sheets_service, get_forms_service
 from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.core.auth import hash_password
-from app.core.permissions import DEFAULT_POSITIONS
+from app.core.tournament.permissions import DEFAULT_POSITIONS
 from app.models.models import TournamentMembership, Tournament, User, Event, EventCategory
 from app.schemas.sheet_config import (
     FormQuestionOption,

@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
-from app.core.permissions import (
+from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     MANAGE_VOLUNTEERS,
     VIEW_VOLUNTEERS,

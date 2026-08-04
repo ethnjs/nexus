@@ -1,5 +1,5 @@
 """
-app/core/permissions.py
+app/core/tournament/permissions.py
 
 Permission constants, default position definitions, and the runtime
 permission-checking helper used by route dependencies.

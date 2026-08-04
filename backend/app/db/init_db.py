@@ -35,7 +35,7 @@ def seed_dev_data(db: Session) -> None:
     """
     from app.models.models import TournamentMembership, Tournament, User
     from app.core.auth import hash_password
-    from app.core.permissions import DEFAULT_POSITIONS
+    from app.core.tournament.permissions import DEFAULT_POSITIONS
     from datetime import datetime
 
     # Skip if already seeded
