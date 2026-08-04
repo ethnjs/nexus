@@ -6,13 +6,20 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.chapters import find_chapter, require_lead
-from app.core.join_codes import apply_join_code_patch, get_unique_join_code, is_join_code_expired
+from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code, is_join_code_expired
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterJoinCode, ChapterMembership, User
 from app.schemas.chapter.membership import ChapterMemberResponse
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate
 
 router = APIRouter(tags=["chapters"])
+
+
+def _get_join_code_or_404(code_id: int, chapter_id: int, db: Session) -> ChapterJoinCode:
+    jc = db.query(ChapterJoinCode).filter(ChapterJoinCode.id == code_id).first()
+    if not jc or jc.chapter_id != chapter_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Join code not found")
+    return jc
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +120,7 @@ def generate_chapter_join_code(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /chapters/{chapter_id}/join-codes/{code_id}/ — update or deactivate a join code. Chapter lead only.
+# PATCH /chapters/{chapter_id}/join-codes/{code_id}/ — update a join code's label and/or extend its expiry. Chapter lead only.
 # ---------------------------------------------------------------------------
 @router.patch("/chapters/{chapter_id}/join-codes/{code_id}/", response_model=JoinCodeResponse)
 def update_chapter_join_code(
@@ -123,19 +130,31 @@ def update_chapter_join_code(
     user: User = Depends(require_lead),
     db: Session = Depends(get_db),
 ):
-    """Update a join code's label, expiry, or deactivate it. Chapter lead only.
+    """Update a join code's label and/or extend its expiry. Chapter lead only.
 
-    Deactivation is one-way — is_active can only go True -> False; setting it
-    back to True is rejected.
+    Deactivation is a separate DELETE, not part of this update.
     """
-    join_code = db.query(ChapterJoinCode).filter(ChapterJoinCode.id == code_id).first()
-    if not join_code:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Join code not found")
-    if join_code.chapter_id != chapter.id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Join code not found in this chapter")
-
-    apply_join_code_patch(join_code, payload.model_dump(exclude_unset=True))
+    join_code = _get_join_code_or_404(code_id, chapter.id, db)
+    apply_join_code_update(join_code, payload.label, payload.add_hours)
 
     db.commit()
     db.refresh(join_code)
     return join_code
+
+
+# ---------------------------------------------------------------------------
+# DELETE /chapters/{chapter_id}/join-codes/{code_id}/ — deactivate a join code. Chapter lead only.
+# Deactivates the join code (one-way) — does not remove the row, so
+# use_count/history stay visible via GET.
+# ---------------------------------------------------------------------------
+@router.delete("/chapters/{chapter_id}/join-codes/{code_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_chapter_join_code(
+    code_id: int,
+    chapter: AlumniChapter = Depends(find_chapter),
+    user: User = Depends(require_lead),
+    db: Session = Depends(get_db),
+):
+    """Deactivate a join code. Chapter lead only. One-way — 400 if already deactivated."""
+    join_code = _get_join_code_or_404(code_id, chapter.id, db)
+    deactivate_join_code(join_code)
+    db.commit()

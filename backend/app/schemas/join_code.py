@@ -21,7 +21,7 @@ class JoinCodeCreate(BaseModel):
 
 
 class JoinCodeUpdate(BaseModel):
-    """Partial update — all fields optional. is_active can only go True -> False."""
     label: str | None = None
-    expires_at: datetime | None = None
-    is_active: bool | None = None
+    # Extends expires_at by this many hours from its current value (or from
+    # now, if the code currently never expires) — cumulative, not absolute.
+    add_hours: int | None = None

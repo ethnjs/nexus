@@ -1,13 +1,13 @@
 """
 Shared join-code logic used by every join-code feature (chapters,
 tournaments, ...). The underlying tables differ (which parent they belong
-to), but code generation, expiry checking, and the one-way-deactivation
-patch rule are identical regardless of parent.
+to), but code generation, expiry checking, updating, and deactivation are
+identical regardless of parent.
 """
 from __future__ import annotations
 import secrets
 import string
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Protocol
 
 from fastapi import HTTPException, status
@@ -54,22 +54,27 @@ def get_unique_join_code(db: Session, model: type, max_retries: int = 10) -> str
     )
 
 
-def apply_join_code_patch(join_code: JoinCodeLike, updates: dict) -> None:
+def apply_join_code_update(join_code: JoinCodeLike, label: str | None, add_hours: int | None) -> None:
     """
-    Apply a partial update to a join code, enforcing that is_active can only
-    go True -> False (deactivation is one-way; reactivation is rejected).
-    """
-    if "is_active" in updates:
-        if updates["is_active"] and not join_code.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot reactivate a deactivated join code",
-            )
-        if not updates["is_active"] and not join_code.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Join code is already deactivated",
-            )
+    Apply a label change and/or extend expiry by `add_hours`. Extension is
+    cumulative from the code's current expires_at (or from now, if the code
+    currently never expires) — not a reset to now + add_hours.
 
-    for field, value in updates.items():
-        setattr(join_code, field, value)
+    Deactivation is a separate operation — see deactivate_join_code().
+    """
+    if label is not None:
+        join_code.label = label
+
+    if add_hours is not None:
+        base = join_code.expires_at or datetime.now(timezone.utc)
+        join_code.expires_at = base + timedelta(hours=add_hours)
+
+
+def deactivate_join_code(join_code: JoinCodeLike) -> None:
+    """Deactivate a join code. One-way — 400 if it's already inactive."""
+    if not join_code.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Join code is already deactivated",
+        )
+    join_code.is_active = False

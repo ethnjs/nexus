@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.join_codes import apply_join_code_patch, get_unique_join_code, is_join_code_expired
+from app.core.join_codes import apply_join_code_update, deactivate_join_code, get_unique_join_code, is_join_code_expired
 from app.core.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentJoinCode, TournamentMembership, User
@@ -133,7 +133,7 @@ def create_join_code(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
-# Deactivation is one-way — is_active can only go True -> False.
+# Label and/or extend expiry — see deactivate_join_code() for deactivation.
 # ---------------------------------------------------------------------------
 @router.patch("/{tournament_id}/join-codes/{code_id}/", response_model=JoinCodeResponse)
 def update_join_code(
@@ -144,8 +144,25 @@ def update_join_code(
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
     join_code = _get_join_code_or_404(code_id, tournament_id, db)
-    apply_join_code_patch(join_code, payload.model_dump(exclude_unset=True))
+    apply_join_code_update(join_code, payload.label, payload.add_hours)
 
     db.commit()
     db.refresh(join_code)
     return join_code
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
+# Deactivates the join code (one-way) — does not remove the row, so
+# use_count/history stay visible via GET.
+# ---------------------------------------------------------------------------
+@router.delete("/{tournament_id}/join-codes/{code_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def deactivate_tournament_join_code(
+    tournament_id: int,
+    code_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+):
+    join_code = _get_join_code_or_404(code_id, tournament_id, db)
+    deactivate_join_code(join_code)
+    db.commit()
