@@ -65,8 +65,24 @@ def upgrade() -> None:
     op.add_column('tournaments', sa.Column('is_verified', sa.Boolean(), nullable=False, server_default=sa.text('false')))
     op.add_column('tournaments', sa.Column('registration_opens_at', sa.DateTime(timezone=True), nullable=True))
 
+    op.create_table('audit_log_entries',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('tournament_id', sa.Integer(), nullable=False),
+    sa.Column('actor_id', sa.Integer(), nullable=False),
+    sa.Column('action', sa.String(length=64), nullable=False),
+    sa.Column('target_type', sa.String(length=64), nullable=True),
+    sa.Column('target_id', sa.Integer(), nullable=True),
+    sa.Column('extra_data', sa.JSON(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['actor_id'], ['users.id'], ),
+    sa.ForeignKeyConstraint(['tournament_id'], ['tournaments.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+
 
 def downgrade() -> None:
+    op.drop_table('audit_log_entries')
+
     op.drop_column('tournaments', 'registration_opens_at')
     op.drop_column('tournaments', 'is_verified')
     op.drop_column('tournaments', 'is_public')

@@ -328,6 +328,7 @@ class Tournament(Base):
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
     join_codes = relationship("TournamentJoinCode", back_populates="tournament", cascade="all, delete-orphan")
+    audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
     @validates("university_id", "location")
@@ -531,6 +532,27 @@ class TournamentJoinCode(Base):
 
     tournament = relationship("Tournament", back_populates="join_codes")
     creator = relationship("User")
+
+
+# ---------------------------------------------------------------------------
+# Audit Log Entry
+# Per-tournament audit trail
+# actor_id includes the Owner with no special case (Owner isn't a role, but
+# still shows up as the actor on rows they trigger).
+# ---------------------------------------------------------------------------
+class AuditLogEntry(Base):
+    __tablename__ = "audit_log_entries"
+
+    id = Column(Integer, primary_key=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action = Column(String(64), nullable=False)
+    target_type = Column(String(64), nullable=True)   # e.g. "membership", "role", "join_code"
+    target_id = Column(Integer, nullable=True)
+    extra_data = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    tournament = relationship("Tournament", back_populates="audit_log")
 
 
 # ---------------------------------------------------------------------------
