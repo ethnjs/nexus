@@ -3,7 +3,9 @@ from datetime import datetime
 from typing import Any, Optional
 from pydantic import BaseModel, field_validator
 
-VALID_STATUSES = {"interested", "confirmed", "declined", "assigned", "removed"}
+# No declined/removed states — a member who doesn't confirm is removed by
+# deleting the TournamentMembership row, not by tracking a status for it.
+VALID_STATUSES = {"interested", "confirmed"}
 LunchOrderValue = str | dict[str, Any]
 
 

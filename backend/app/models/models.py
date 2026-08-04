@@ -385,8 +385,7 @@ class TournamentMembership(Base):
     # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
     schedule = Column(JSON, nullable=True)
 
-    # Volunteer availability/assignment status
-    # "interested" | "confirmed" | "declined" | "assigned" | "removed"
+    # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
 
     # What they asked for on the form — ["event_volunteer", "general_volunteer"]
