@@ -13,7 +13,7 @@ from app.core.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import TournamentEvent, Tournament, User
-from app.schemas.tournament_event import EventCreate, EventRead, EventUpdate
+from app.schemas.tournament.event import EventCreate, EventRead, EventUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
 # tournament_id is always present in the path, which drives the permission check.

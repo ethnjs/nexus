@@ -10,8 +10,10 @@ from app.core.permissions import (
     require_membership,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentRole, User
-from app.schemas.tournament import RoleDefinition, RoleRead, RoleUpdate
+from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
+from app.schemas.tournament.role import RoleAssignRequest, RoleDefinition, RoleRead, RoleUpdate
+from app.schemas.tournament.membership import MembershipRead
+from app.api.routes.tournament.memberships import _get_membership_or_404, _serialize as _serialize_membership
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -165,4 +167,145 @@ def delete_role(
     _validate_rank_bound(current_user, tournament, role.rank, db)
 
     db.delete(role)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Membership role assignment — a sub-resource of memberships, so nested under
+# /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Kept in
+# this module (not memberships.py) since it's role-management logic gated by
+# MANAGE_ROLES, same as the CRUD routes above.
+# ---------------------------------------------------------------------------
+membership_roles_router = APIRouter(
+    prefix="/tournaments/{tournament_id}/memberships/{membership_id}/roles",
+    tags=["tournaments"],
+)
+
+
+def _get_role_in_tournament_or_404(role_id: int, tournament_id: int, db: Session) -> TournamentRole:
+    role = db.query(TournamentRole).filter(TournamentRole.id == role_id).first()
+    if not role or role.tournament_id != tournament_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
+    return role
+
+
+def _validate_role_action(
+    actor: User,
+    tournament: Tournament,
+    membership: TournamentMembership,
+    role: TournamentRole,
+    db: Session,
+) -> None:
+    """
+    Rank-bound checks for assigning/removing `role` on `membership`. Owner and
+    platform admins bypass entirely — MANAGE_TOURNAMENT does NOT bypass (same
+    rationale as _validate_rank_bound above: it's the tournament metadata
+    permission, not a role-management bypass).
+
+    Two independent checks, both must pass:
+      1. The role being assigned/removed must not outrank the actor's own
+         highest rank. Self-demotion is naturally exempt (a role you're
+         removing from yourself is by definition one of your own roles, so
+         it can never outrank your own highest rank); self-promotion
+         (assigning yourself a role above your own rank) is blocked like
+         any other case.
+      2. The target member's highest-ranked role overall must not outrank
+         the actor — except when acting on your own membership, where this
+         is a no-op (you can't outrank yourself).
+    """
+    if actor.id == tournament.owner_id or actor.role == "admin":
+        return
+
+    actor_rank = get_highest_rank(actor, tournament.id, db)
+    if actor_rank is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    if role.rank < actor_rank:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot assign or remove a role that outranks your own",
+        )
+
+    is_self = membership.user_id == actor.id
+    if not is_self:
+        target_rank = get_highest_rank(membership.user, tournament.id, db)
+        if target_rank is not None and target_rank < actor_rank:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot modify roles for a member who outranks you",
+            )
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/memberships/{membership_id}/roles/
+# manage_tournament or manage_roles, rank-bound (see _validate_role_action)
+# ---------------------------------------------------------------------------
+@membership_roles_router.post(
+    "/",
+    response_model=MembershipRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_role(
+    tournament_id: int,
+    membership_id: int,
+    payload: RoleAssignRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    m = _get_membership_or_404(membership_id, tournament_id, db)
+    role = _get_role_in_tournament_or_404(payload.role_id, tournament_id, db)
+
+    existing = (
+        db.query(TournamentMembershipRole)
+        .filter(TournamentMembershipRole.membership_id == m.id, TournamentMembershipRole.role_id == role.id)
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Member already holds this role",
+        )
+
+    _validate_role_action(current_user, tournament, m, role, db)
+
+    db.add(TournamentMembershipRole(membership_id=m.id, role_id=role.id))
+    db.commit()
+    db.refresh(m)
+    return _serialize_membership(m)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/{membership_id}/roles/{role_id}/
+# manage_tournament or manage_roles, rank-bound (see _validate_role_action)
+# ---------------------------------------------------------------------------
+@membership_roles_router.delete("/{role_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def remove_role(
+    tournament_id: int,
+    membership_id: int,
+    role_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    m = _get_membership_or_404(membership_id, tournament_id, db)
+    role = _get_role_in_tournament_or_404(role_id, tournament_id, db)
+
+    assignment = (
+        db.query(TournamentMembershipRole)
+        .filter(TournamentMembershipRole.membership_id == m.id, TournamentMembershipRole.role_id == role.id)
+        .first()
+    )
+    if not assignment:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member does not hold this role")
+
+    _validate_role_action(current_user, tournament, m, role, db)
+
+    db.delete(assignment)
     db.commit()
