@@ -1,16 +1,16 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.permissions import (
+    MANAGE_ROLES,
     MANAGE_TOURNAMENT,
-    has_permission,
+    get_highest_rank,
+    require_any_permission,
     require_membership,
-    require_permission,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, TournamentRole, User
+from app.models.models import Tournament, TournamentRole, User
 from app.schemas.tournament import RoleDefinition, RoleRead, RoleUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
@@ -31,41 +31,20 @@ def _get_role_or_404(role_id: int, tournament_id: int, db: Session) -> Tournamen
     return role
 
 
-def _actor_highest_rank(user: User, tournament_id: int, db: Session) -> int | None:
-    """Lowest rank number (highest authority) among the user's own roles in this tournament."""
-    membership = (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.user_id == user.id,
-            TournamentMembership.tournament_id == tournament_id,
-        )
-        .first()
-    )
-    if not membership:
-        return None
-
-    role_ids = [mr.role_id for mr in membership.roles]
-    if not role_ids:
-        return None
-
-    return (
-        db.query(func.min(TournamentRole.rank))
-        .filter(TournamentRole.id.in_(role_ids))
-        .scalar()
-    )
-
-
 def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Session) -> None:
     """
-    A staff member can never create or edit a role that outranks (or ties) their
-    own highest role. The Owner and anyone with MANAGE_TOURNAMENT are exempt.
+    A MANAGE_ROLES holder can never create or edit a role that outranks (or
+    ties) their own highest role. Only the Owner and platform admins are
+    exempt — MANAGE_TOURNAMENT does NOT bypass this: it's the tournament
+    metadata permission, not an implicit "outrank everyone" grant. The
+    Tournament Director role holds both MANAGE_TOURNAMENT and MANAGE_ROLES
+    and sits at rank 1, so it can still modify every role — that falls out
+    of being the highest rank, not a permission bypass.
     """
-    if user.id == tournament.owner_id:
-        return
-    if has_permission(user, tournament.id, MANAGE_TOURNAMENT, db):
+    if user.id == tournament.owner_id or user.role == "admin":
         return
 
-    actor_rank = _actor_highest_rank(user, tournament.id, db)
+    actor_rank = get_highest_rank(user, tournament.id, db)
     if actor_rank is None or rank <= actor_rank:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -92,14 +71,14 @@ def list_roles(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/roles/ — manage_tournament
+# POST /tournaments/{tournament_id}/roles/ — manage_tournament or manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=RoleRead, status_code=status.HTTP_201_CREATED)
 def create_role(
     tournament_id: int,
     payload: RoleDefinition,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -126,7 +105,7 @@ def create_role(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament
+# PATCH /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament or manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
 @router.patch("/{role_id}/", response_model=RoleRead)
 def update_role(
@@ -134,7 +113,7 @@ def update_role(
     role_id: int,
     payload: RoleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -167,7 +146,7 @@ def update_role(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament
+# DELETE /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament or manage_roles (rank-bound)
 # Cascades to MembershipRole rows (FK ondelete="CASCADE") — no blocking check
 # for roles currently assigned to members.
 # ---------------------------------------------------------------------------
@@ -176,7 +155,7 @@ def delete_role(
     tournament_id: int,
     role_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:

@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all below
-MANAGE_STAFF       = "manage_staff"        # assign/remove roles on existing memberships
+MANAGE_ROLES       = "manage_roles"        # create/edit/delete roles, assign/remove roles on memberships
 MANAGE_VOLUNTEERS  = "manage_volunteers"   # read + write volunteer/membership pages
 MANAGE_EVENTS      = "manage_events"       # read + write events page
 MANAGE_MATERIALS   = "manage_materials"    # read + write materials page (future)
@@ -45,7 +45,7 @@ VIEW_EVENTS        = "view_events"         # read-only events list
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
     MANAGE_TOURNAMENT,
-    MANAGE_STAFF,
+    MANAGE_ROLES,
     MANAGE_VOLUNTEERS,
     MANAGE_EVENTS,
     MANAGE_MATERIALS,
@@ -67,7 +67,7 @@ DEFAULT_POSITIONS: list[dict] = [
         "key":         "tournament_director",
         "label":       "Tournament Director",
         "permissions": [
-            MANAGE_TOURNAMENT, MANAGE_STAFF, MANAGE_VOLUNTEERS, MANAGE_EVENTS,
+            MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_VOLUNTEERS, MANAGE_EVENTS,
             MANAGE_MATERIALS, MANAGE_LOGISTICS, VIEW_VOLUNTEERS, VIEW_EVENTS,
         ],
     },
@@ -203,6 +203,44 @@ def has_permission(
     return permission in get_user_permissions(user, tournament_id, db)
 
 
+def get_highest_rank(
+    user: "User",
+    tournament_id: int,
+    db: Session,
+) -> int | None:
+    """
+    Lowest TournamentRole.rank number (= highest authority) among `user`'s own
+    role assignments in `tournament_id`. Lower number = higher authority.
+
+    Returns None if the user has no membership or holds no roles — callers
+    should treat None as "no rank," i.e. the most restrictive case, not as
+    unbounded authority.
+    """
+    from sqlalchemy import func
+    from app.models.models import TournamentMembership, TournamentRole
+
+    membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == user.id,
+            TournamentMembership.tournament_id == tournament_id,
+        )
+        .first()
+    )
+    if not membership:
+        return None
+
+    role_ids = [mr.role_id for mr in membership.roles]
+    if not role_ids:
+        return None
+
+    return (
+        db.query(func.min(TournamentRole.rank))
+        .filter(TournamentRole.id.in_(role_ids))
+        .scalar()
+    )
+
+
 def has_any_membership(
     user: "User",
     tournament_id: int,
@@ -284,6 +322,42 @@ def require_permission(
                 detail="Tournament not found",
             )
         if not has_permission(current_user, tournament_id, permission, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+    return _dependency
+
+
+def require_any_permission(
+    *permissions: str,
+    tournament_id_param: str = "tournament_id",
+):
+    """
+    Dependency factory — requires the current user to hold AT LEAST ONE of
+    `permissions` in the tournament identified by `tournament_id_param`.
+
+    Usage:
+        @router.post("/{tournament_id}/roles/")
+        def create_role(
+            tournament_id: int,
+            ...
+            _: None = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+        ):
+    """
+    def _dependency(
+        tournament_id: int,
+        current_user: "User" = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> "User":
+        if not has_any_membership(current_user, tournament_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament not found",
+            )
+        user_permissions = get_user_permissions(current_user, tournament_id, db)
+        if not any(p in user_permissions for p in permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

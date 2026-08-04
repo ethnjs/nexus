@@ -99,6 +99,10 @@ class MembershipRead(MembershipBase):
     model_config = {"from_attributes": True}
 
 
+class RoleAssignRequest(BaseModel):
+    role_id: int
+
+
 class MembershipReadFlat(MembershipRead):
     """List-view read: user identity fields flattened onto the membership dict.
 

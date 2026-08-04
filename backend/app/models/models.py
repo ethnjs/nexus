@@ -456,7 +456,7 @@ class TournamentRole(Base):
     permissions = Column(JSON, nullable=False, default=list)
 
     # Lower number = higher authority. Ties are allowed and expected (e.g. the
-    # four coordinator roles all share a rank). Used to bound what a MANAGE_STAFF
+    # four coordinator roles all share a rank). Used to bound what a MANAGE_ROLES
     # holder can assign/remove. The tournament Owner is NOT a role and has no
     # rank; it sits structurally above rank 1.
     rank = Column(Integer, nullable=False)
