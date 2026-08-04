@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user, require_admin
+from app.core.auth import get_current_user
 from app.core.permissions import (
     DEFAULT_POSITIONS,
     MANAGE_TOURNAMENT,
@@ -41,43 +41,21 @@ def _serialize(tournament: Tournament) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/ — admin only (global list)
-# ---------------------------------------------------------------------------
-@router.get("/", response_model=list[TournamentRead])
-def list_all_tournaments(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_admin),
-):
-    """
-    List ALL tournaments. Admin only.
-    Regular users should use GET /tournaments/me instead.
-    """
-    tournaments = db.query(Tournament).order_by(Tournament.created_at.desc()).all()
-    return [_serialize(t) for t in tournaments]
-
-
-# ---------------------------------------------------------------------------
-# GET /tournaments/me — tournaments the current user has any membership in
+# GET /tournaments/me — tournaments the current user has any membership in.
 # ---------------------------------------------------------------------------
 @router.get("/me/", response_model=list[TournamentRead])
 def list_my_tournaments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Return all tournaments where the current user has any membership.
-    Admins see all tournaments.
-    """
-    if current_user.role == "admin":
-        tournaments = db.query(Tournament).order_by(Tournament.created_at.desc()).all()
-    else:
-        tournaments = (
-            db.query(Tournament)
-            .join(TournamentMembership, TournamentMembership.tournament_id == Tournament.id)
-            .filter(TournamentMembership.user_id == current_user.id)
-            .order_by(Tournament.created_at.desc())
-            .all()
-        )
+    """Return all tournaments where the current user has any membership."""
+    tournaments = (
+        db.query(Tournament)
+        .join(TournamentMembership, TournamentMembership.tournament_id == Tournament.id)
+        .filter(TournamentMembership.user_id == current_user.id)
+        .order_by(Tournament.created_at.desc())
+        .all()
+    )
     return [_serialize(t) for t in tournaments]
 
 
@@ -126,12 +104,9 @@ def create_tournament(
 def get_tournament(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_membership()),
 ):
     """Any user with a membership in this tournament can view it."""
-    if not has_any_membership(current_user, tournament_id, db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
@@ -180,10 +155,7 @@ def delete_tournament(
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
 
     # 404 if no membership (don't leak existence)
-    if not has_any_membership(current_user, tournament_id, db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    if not tournament:
+    if not has_any_membership(current_user, tournament_id, db) or not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     if current_user.role != "admin" and tournament.owner_id != current_user.id:
