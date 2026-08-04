@@ -8,7 +8,7 @@ from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 from app.api.routes import (
     auth, events,
-    sheets, users, user_experience, universities, chapters
+    sheets, users, user_experience, universities,
 )
 from app.api.routes import tournament as tournament_core
 from app.api.routes.tournament import events as tournament_events
@@ -16,6 +16,10 @@ from app.api.routes.tournament import memberships as tournament_memberships
 from app.api.routes.tournament import roles as tournament_roles
 from app.api.routes.tournament import join_codes as tournament_join_codes
 from app.api.routes.tournament import admin as tournament_admin
+from app.api.routes import chapter as chapter_core
+from app.api.routes.chapter import admin as chapter_admin
+from app.api.routes.chapter import memberships as chapter_memberships
+from app.api.routes.chapter import join_codes as chapter_join_codes
 
 settings = get_settings()
 
@@ -77,7 +81,10 @@ app.include_router(sheets.router,                 prefix="", dependencies=[api_k
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(universities.router,           prefix="", dependencies=[api_key_dependency])
-app.include_router(chapters.router,               prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_core.router,           prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_admin.router,          prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_memberships.router,    prefix="", dependencies=[api_key_dependency])
+app.include_router(chapter_join_codes.router,     prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

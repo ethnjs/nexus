@@ -1,31 +1,16 @@
 from __future__ import annotations
-from typing import Optional, Literal
+from typing import Literal
 from datetime import datetime
 from pydantic import BaseModel, ConfigDict, model_validator
 
-from app.schemas.university import UniversityResponse
 from app.schemas.user import UserSlimResponse, UserFullResponse
 
-
-class ChapterUpdate(BaseModel):
-    name: Optional[str] = None
-    university_id: Optional[int] = None
-
-class ChapterCreate(BaseModel):
-    name: str
-    university_id: int
 
 class AssignLeadRequest(BaseModel):
     user_id: int
 
 class ChapterMemberUpdate(BaseModel):
     role: Literal["lead", "officer", "member"]
-
-
-class ChapterResponse(BaseModel):
-    id: int
-    name: str
-    university: UniversityResponse
 
 class ChapterMemberResponse(UserSlimResponse):
     membership_id: int
