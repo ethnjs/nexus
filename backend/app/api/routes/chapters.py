@@ -1,6 +1,6 @@
 from datetime import datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -8,29 +8,25 @@ from app.core.auth import get_current_user, require_admin
 from app.core.chapters import (
     assign_chapter_lead,
     create_alumni_chapter,
-    is_join_code_expired,
     check_if_chapter_exists,
     find_chapter,
-    generate_chapter_join_code as generate_code,
     require_chapter_lead_or_admin,
     require_lead,
     require_officer_or_lead,
 )
+from app.core.join_codes import apply_join_code_patch, get_unique_join_code, is_join_code_expired
 from app.db.session import get_db
 from app.models.models import AlumniChapter, ChapterJoinCode, ChapterMembership, User
 from app.schemas.chapter import (
     AssignLeadRequest,
     ChapterCreate,
-    ChapterJoinCodeCreate,
-    ChapterJoinCodeResponse,
-    ChapterJoinCodeUpdate,
-    ChapterJoinRequest,
     ChapterMemberProfileResponse,
     ChapterMemberResponse,
     ChapterMemberUpdate,
     ChapterResponse,
     ChapterUpdate,
 )
+from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate
 
 router = APIRouter(tags=["chapters"])
 
@@ -97,7 +93,7 @@ def remove_lead(
 
 
 # ---------------------------------------------------------------------------
-# Join flow (authenticated)
+# POST /chapters/join/?code={code} -- Join flow (authenticated)
 #
 # Declared before GET /chapters/{chapter_id}/ on purpose — chapter_id is
 # typed int, but Starlette matches path templates before type-validating
@@ -107,14 +103,16 @@ def remove_lead(
 
 @router.post("/chapters/join/", response_model=ChapterMemberResponse, status_code=status.HTTP_201_CREATED)
 def join_chapter_by_code(
-    payload: ChapterJoinRequest,
+    code: str = Query(...),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Join a chapter using an invite code. Authenticated.
 
     400 if the code is invalid, deactivated, or expired, or if the user is
-    already in a chapter (one chapter per user).
+    already in a chapter (one chapter per user). Deliberately generic —
+    doesn't distinguish invalid vs. expired vs. deactivated, so a caller
+    can't use error specificity to probe which codes exist.
     """
     existing_membership = (
         db.query(ChapterMembership)
@@ -124,15 +122,9 @@ def join_chapter_by_code(
     if existing_membership:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User is already a member of a chapter")
 
-    join_code = db.query(ChapterJoinCode).filter(ChapterJoinCode.code == payload.code).first()
-    if not join_code:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid join code")
-
-    if not join_code.is_active:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This join code has been deactivated")
-
-    if is_join_code_expired(join_code):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This join code has expired")
+    join_code = db.query(ChapterJoinCode).filter(ChapterJoinCode.code == code).first()
+    if not join_code or not join_code.is_active or is_join_code_expired(join_code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
 
     new_membership = ChapterMembership(
         user_id=current_user.id,
@@ -261,7 +253,7 @@ def delete_member(
 # Join codes — chapter lead only
 # ---------------------------------------------------------------------------
 
-@router.get("/chapters/{chapter_id}/join-codes/", response_model=list[ChapterJoinCodeResponse])
+@router.get("/chapters/{chapter_id}/join-codes/", response_model=list[JoinCodeResponse])
 def get_chapter_join_codes(
     chapter: AlumniChapter = Depends(find_chapter),
     db: Session = Depends(get_db),
@@ -271,9 +263,9 @@ def get_chapter_join_codes(
     return db.query(ChapterJoinCode).with_parent(chapter, AlumniChapter.chapter_join_codes).all()
 
 
-@router.post("/chapters/{chapter_id}/join-codes/", response_model=ChapterJoinCodeResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/chapters/{chapter_id}/join-codes/", response_model=JoinCodeResponse, status_code=status.HTTP_201_CREATED)
 def generate_chapter_join_code(
-    payload: ChapterJoinCodeCreate,
+    payload: JoinCodeCreate,
     chapter: AlumniChapter = Depends(find_chapter),
     db: Session = Depends(get_db),
     user: User = Depends(require_lead),
@@ -287,34 +279,24 @@ def generate_chapter_join_code(
     if payload.expires_in_hours is not None:
         expires_at = datetime.now(timezone.utc) + timedelta(hours=payload.expires_in_hours)
 
-    max_retries = 10
-    for _ in range(max_retries):
-        code = generate_code()
-        existing = db.query(ChapterJoinCode).filter(ChapterJoinCode.code == code).first()
-        if not existing:
-            join_code = ChapterJoinCode(
-                chapter_id=chapter.id,
-                created_by=user.id,
-                code=code,
-                label=payload.label,
-                expires_at=expires_at,
-                is_active=True,
-            )
-            db.add(join_code)
-            db.commit()
-            db.refresh(join_code)
-            return join_code
-
-    raise HTTPException(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Could not generate a unique join code. Please try again.",
+    join_code = ChapterJoinCode(
+        chapter_id=chapter.id,
+        created_by=user.id,
+        code=get_unique_join_code(db, ChapterJoinCode),
+        label=payload.label,
+        expires_at=expires_at,
+        is_active=True,
     )
+    db.add(join_code)
+    db.commit()
+    db.refresh(join_code)
+    return join_code
 
 
-@router.patch("/chapters/{chapter_id}/join-codes/{code_id}/", response_model=ChapterJoinCodeResponse)
+@router.patch("/chapters/{chapter_id}/join-codes/{code_id}/", response_model=JoinCodeResponse)
 def update_chapter_join_code(
     code_id: int,
-    payload: ChapterJoinCodeUpdate,
+    payload: JoinCodeUpdate,
     chapter: AlumniChapter = Depends(find_chapter),
     user: User = Depends(require_lead),
     db: Session = Depends(get_db),
@@ -330,16 +312,7 @@ def update_chapter_join_code(
     if join_code.chapter_id != chapter.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Join code not found in this chapter")
 
-    updates = payload.model_dump(exclude_unset=True)
-
-    if "is_active" in updates:
-        if updates["is_active"] and not join_code.is_active:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot reactivate a deactivated join code")
-        if not updates["is_active"] and not join_code.is_active:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Join code is already deactivated")
-
-    for field, value in updates.items():
-        setattr(join_code, field, value)
+    apply_join_code_patch(join_code, payload.model_dump(exclude_unset=True))
 
     db.commit()
     db.refresh(join_code)

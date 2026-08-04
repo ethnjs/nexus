@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import Optional, Literal
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.schemas.university import UniversityResponse
 from app.schemas.user import UserSlimResponse, UserFullResponse
@@ -66,24 +66,3 @@ class ChapterMemberProfileResponse(UserFullResponse):
             "role": data.role,
             "joined_at": data.joined_at,
         }
-
-class ChapterJoinCodeResponse(BaseModel):
-    id: int
-    code: str
-    label: Optional[str] = None
-    expires_at: Optional[datetime] = None
-    is_active: bool
-    created_at: datetime
-    use_count: int = 0
-
-class ChapterJoinCodeCreate(BaseModel):
-    label: Optional[str] = Field(default=None, max_length=100)
-    expires_in_hours: Optional[int] = Field(default=None, ge=1)
-
-class ChapterJoinCodeUpdate(BaseModel):
-    label: Optional[str] = Field(default=None, max_length=100)
-    expires_at: Optional[datetime] = None
-    is_active: Optional[bool] = None
-
-class ChapterJoinRequest(BaseModel):
-    code: str = Field(..., min_length=8, max_length=8, description="8-character join code")
