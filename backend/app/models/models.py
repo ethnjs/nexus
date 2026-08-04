@@ -295,8 +295,21 @@ class Tournament(Base):
     volunteer_schema = Column(JSON, nullable=False, default=dict)
 
     # The user who created this tournament.
-    # Always has a membership with positions=["tournament_director"].
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # TD-controlled — whether this tournament shows up in the public directory
+    # (as upcoming, not necessarily verified). False = invite-only via
+    # TournamentJoinCode.
+    is_public = Column(Boolean, nullable=False, default=False)
+
+    # Platform-admin-only — manually flipped after reviewing a tournament.
+    # Never settable by the tournament's own TD. Independent of is_public: a
+    # tournament can be public but not yet verified.
+    is_verified = Column(Boolean, nullable=False, default=False)
+
+    # Gates join/visibility behavior — load-bearing, unlike the informational
+    # deadlines that live in TournamentDeadline.
+    registration_opens_at = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -314,6 +327,7 @@ class Tournament(Base):
     university = relationship("University", back_populates="tournaments")
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
+    join_codes = relationship("TournamentJoinCode", back_populates="tournament", cascade="all, delete-orphan")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
     @validates("university_id", "location")
@@ -492,6 +506,32 @@ class TournamentMembershipRole(Base):
     __table_args__ = (
         UniqueConstraint("membership_id", "role_id", name="uq_membership_role"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Tournament Join Code
+# Invite-link mechanism for is_public=False tournaments (and as an optional
+# recruiting channel for public ones). Redeeming a code creates a bare
+# TournamentMembership with no roles attached and status="interested" —
+# staff assign roles afterward. is_active is fully manual for now; whether a
+# code should auto-deactivate once a registration deadline passes is
+# deferred.
+# ---------------------------------------------------------------------------
+class TournamentJoinCode(Base):
+    __tablename__ = "tournament_join_codes"
+
+    id = Column(Integer, primary_key=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    code = Column(String(8), unique=True, nullable=False)
+    label = Column(String(255), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    use_count = Column(Integer, nullable=False, default=0)
+
+    tournament = relationship("Tournament", back_populates="join_codes")
+    creator = relationship("User")
 
 
 # ---------------------------------------------------------------------------
