@@ -2,7 +2,7 @@
 import uuid
 
 from app.core.auth import hash_password
-from app.models.models import AlumniChapter, ChapterJoinCode, University, User
+from app.models.models import AlumniChapter, JoinCode, University, User
 
 
 def make_university(db, **kwargs):
@@ -54,7 +54,7 @@ def make_join_code(db, chapter_id, created_by, **kwargs):
         "is_active": True,
     }
     defaults.update(kwargs)
-    join_code = ChapterJoinCode(
+    join_code = JoinCode(
         chapter_id=chapter_id,
         created_by=created_by,
         **defaults,

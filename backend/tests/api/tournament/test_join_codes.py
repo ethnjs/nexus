@@ -1,11 +1,10 @@
-"""Tests for tournament join-code endpoints (app/api/routes/tournament/join_codes.py)."""
+"""Tests for tournament join-code management endpoints
+(app/api/routes/tournament/join_codes.py). Redemption via POST /join/ is
+covered in tests/api/test_join.py, alongside the chapter case."""
 from datetime import datetime, timedelta, timezone
 
-import pytest
-from sqlalchemy.exc import IntegrityError
-
 from tests.conftest import grant_role, login
-from app.models.models import TournamentJoinCode, TournamentMembership
+from app.models.models import JoinCode
 
 
 def make_join_code(db, tournament_id, created_by, **kwargs):
@@ -16,7 +15,7 @@ def make_join_code(db, tournament_id, created_by, **kwargs):
         "is_active": True,
     }
     defaults.update(kwargs)
-    join_code = TournamentJoinCode(
+    join_code = JoinCode(
         tournament_id=tournament_id,
         created_by=created_by,
         **defaults,
@@ -25,90 +24,6 @@ def make_join_code(db, tournament_id, created_by, **kwargs):
     db.commit()
     db.refresh(join_code)
     return join_code
-
-
-# ---------------------------------------------------------------------------
-# POST /tournaments/join/?code={code} — any authenticated user
-# ---------------------------------------------------------------------------
-
-def test_join_tournament_success_creates_interested_membership(client, td_user, td_tournament, other_user, db):
-    join_code = make_join_code(db, td_tournament.id, td_user.id, code="USECOUNT")
-    login(client, "other@test.com", "otherpass")
-
-    response = client.post("/tournaments/join/?code=USECOUNT")
-    assert response.status_code == 201
-    data = response.json()
-    assert data["tournament_id"] == td_tournament.id
-
-    membership = db.query(TournamentMembership).filter(
-        TournamentMembership.user_id == other_user.id,
-        TournamentMembership.tournament_id == td_tournament.id,
-    ).first()
-    assert membership is not None
-    assert membership.status == "interested"
-    assert membership.roles == []
-
-    db.refresh(join_code)
-    assert join_code.use_count == 1
-
-
-def test_join_tournament_requires_authentication(client):
-    assert client.post("/tournaments/join/?code=JOIN1234").status_code == 401
-
-
-def test_join_tournament_rejects_missing_code(client, td_user):
-    login(client, "td@test.com", "tdpass")
-    assert client.post("/tournaments/join/").status_code == 422
-
-
-@pytest.mark.parametrize("code", ["SHORT", "TOO-LONG9", "UNKNOWN1"])
-def test_join_tournament_rejects_code_that_does_not_exist(client, td_user, code):
-    login(client, "td@test.com", "tdpass")
-    response = client.post(f"/tournaments/join/?code={code}")
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid or expired join code"
-
-
-def test_join_tournament_rejects_deactivated_code(client, td_user, td_tournament, other_user, db):
-    make_join_code(db, td_tournament.id, td_user.id, code="INACTIVE", is_active=False)
-    login(client, "other@test.com", "otherpass")
-
-    response = client.post("/tournaments/join/?code=INACTIVE")
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid or expired join code"
-
-
-def test_join_tournament_rejects_expired_code(client, td_user, td_tournament, other_user, db):
-    expired_at = datetime.now(timezone.utc) - timedelta(hours=1)
-    make_join_code(db, td_tournament.id, td_user.id, code="EXPIRED1", expires_at=expired_at)
-    login(client, "other@test.com", "otherpass")
-
-    response = client.post("/tournaments/join/?code=EXPIRED1")
-    assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid or expired join code"
-
-
-def test_join_tournament_rejects_existing_member(client, td_user, td_tournament, other_user, db):
-    grant_role(db, td_tournament, other_user, "event_supervisor")
-    make_join_code(db, td_tournament.id, td_user.id, code="AGAIN123")
-    login(client, "other@test.com", "otherpass")
-
-    response = client.post("/tournaments/join/?code=AGAIN123")
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Already a member of this tournament"
-
-
-def test_join_tournament_handles_membership_integrity_conflict(client, td_user, td_tournament, other_user, db, monkeypatch):
-    make_join_code(db, td_tournament.id, td_user.id, code="RACE1234")
-    login(client, "other@test.com", "otherpass")
-
-    def raise_integrity_error():
-        raise IntegrityError("INSERT INTO tournament_memberships", {}, Exception("duplicate membership"))
-
-    monkeypatch.setattr(db, "commit", raise_integrity_error)
-    response = client.post("/tournaments/join/?code=RACE1234")
-    assert response.status_code == 409
-    assert response.json()["detail"] == "Already a member of this tournament"
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +67,7 @@ def test_create_join_code_creates_record(client, td_user, td_tournament, db):
     assert data["use_count"] == 0
     assert data["expires_at"] is not None
 
-    created = db.query(TournamentJoinCode).filter_by(id=data["id"]).first()
+    created = db.query(JoinCode).filter_by(id=data["id"]).first()
     assert created is not None
     assert created.created_by == td_user.id
 
