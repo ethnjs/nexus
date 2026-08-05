@@ -16,6 +16,7 @@ from app.api.routes.tournament import memberships as tournament_memberships
 from app.api.routes.tournament import roles as tournament_roles
 from app.api.routes.tournament import join_codes as tournament_join_codes
 from app.api.routes.tournament import admin as tournament_admin
+from app.api.routes.tournament import audit as tournament_audit
 from app.api.routes import chapter as chapter_core
 from app.api.routes.chapter import admin as chapter_admin
 from app.api.routes.chapter import memberships as chapter_memberships
@@ -77,6 +78,7 @@ app.include_router(tournament_roles.router,               prefix="", dependencie
 app.include_router(tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_join_codes.router,          prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_admin.router,                prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_audit.router,                prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])

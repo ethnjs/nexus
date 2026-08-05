@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, log_action
 from app.core.tournament.permissions import (
     DEFAULT_POSITIONS,
     MANAGE_TOURNAMENT,
@@ -209,7 +210,15 @@ def transfer_ownership(
             detail="new_owner_id must already hold a membership in this tournament",
         )
 
+    old_owner_id = tournament.owner_id
     tournament.owner_id = payload.new_owner_id
+
+    log_action(
+        db, tournament_id, current_user.id, OWNERSHIP_TRANSFERRED,
+        target_type="tournament", target_id=tournament.id,
+        extra_data={"old_owner_id": old_owner_id, "new_owner_id": payload.new_owner_id},
+    )
+
     db.commit()
     db.refresh(tournament)
     return _serialize(tournament)

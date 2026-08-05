@@ -2,6 +2,14 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.tournament.audit import (
+    ROLE_ASSIGNED,
+    ROLE_CREATED,
+    ROLE_DELETED,
+    ROLE_REMOVED,
+    ROLE_UPDATED,
+    log_action,
+)
 from app.core.tournament.permissions import (
     MANAGE_ROLES,
     MANAGE_TOURNAMENT,
@@ -101,6 +109,14 @@ def create_role(
 
     role = TournamentRole(tournament_id=tournament_id, **payload.model_dump())
     db.add(role)
+    db.flush()  # get role.id before logging
+
+    log_action(
+        db, tournament_id, current_user.id, ROLE_CREATED,
+        target_type="role", target_id=role.id,
+        extra_data={"key": role.key, "label": role.label, "rank": role.rank, "permissions": role.permissions},
+    )
+
     db.commit()
     db.refresh(role)
     return role
@@ -139,8 +155,21 @@ def update_role(
                 detail=f"Role '{updates['key']}' already exists in this tournament",
             )
 
+    changes = {
+        field: {"old": getattr(role, field), "new": value}
+        for field, value in updates.items()
+        if getattr(role, field) != value
+    }
+
     for field, value in updates.items():
         setattr(role, field, value)
+
+    if changes:
+        log_action(
+            db, tournament_id, current_user.id, ROLE_UPDATED,
+            target_type="role", target_id=role.id,
+            extra_data={"changes": changes},
+        )
 
     db.commit()
     db.refresh(role)
@@ -165,6 +194,12 @@ def delete_role(
 
     role = _get_role_or_404(role_id, tournament_id, db)
     _validate_rank_bound(current_user, tournament, role.rank, db)
+
+    log_action(
+        db, tournament_id, current_user.id, ROLE_DELETED,
+        target_type="role", target_id=role.id,
+        extra_data={"key": role.key, "label": role.label, "rank": role.rank},
+    )
 
     db.delete(role)
     db.commit()
@@ -273,6 +308,13 @@ def assign_role(
     _validate_role_action(current_user, tournament, m, role, db)
 
     db.add(TournamentMembershipRole(membership_id=m.id, role_id=role.id))
+
+    log_action(
+        db, tournament_id, current_user.id, ROLE_ASSIGNED,
+        target_type="membership", target_id=m.id,
+        extra_data={"role_id": role.id, "role_key": role.key, "role_label": role.label},
+    )
+
     db.commit()
     db.refresh(m)
     return _serialize_membership(m)
@@ -306,6 +348,12 @@ def remove_role(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member does not hold this role")
 
     _validate_role_action(current_user, tournament, m, role, db)
+
+    log_action(
+        db, tournament_id, current_user.id, ROLE_REMOVED,
+        target_type="membership", target_id=m.id,
+        extra_data={"role_id": role.id, "role_key": role.key, "role_label": role.label},
+    )
 
     db.delete(assignment)
     db.commit()

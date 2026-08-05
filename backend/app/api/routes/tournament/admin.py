@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
+from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
 from app.db.session import get_db
 from app.models.models import Tournament, User
 from app.schemas.tournament import TournamentRead
@@ -46,5 +47,12 @@ def set_tournament_verified(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     tournament.is_verified = payload.is_verified
+
+    log_action(
+        db, tournament_id, current_user.id, TOURNAMENT_VERIFIED,
+        target_type="tournament", target_id=tournament.id,
+        extra_data={"is_verified": payload.is_verified},
+    )
+
     db.commit()
     return {"id": tournament.id, "is_verified": tournament.is_verified}
