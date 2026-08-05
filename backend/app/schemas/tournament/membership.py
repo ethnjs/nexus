@@ -4,10 +4,8 @@ from typing import Any, Optional
 from pydantic import BaseModel, field_validator
 
 from app.schemas.tournament.role import RoleRead
+from app.schemas.user import UserFullResponse, UserSlimResponse
 
-# No declined/removed states — a member who doesn't confirm is removed by
-# deleting the TournamentMembership row, not by tracking a status for it.
-VALID_STATUSES = {"interested", "confirmed"}
 LunchOrderValue = str | dict[str, Any]
 
 
@@ -24,78 +22,67 @@ class ScheduleSlot(BaseModel):
     duty: str    # role key or free string, e.g. "event_supervisor"
 
 
-class MembershipBase(BaseModel):
-    user_id: int
-    tournament_id: int
-    assigned_event_id: int | None = None
+class MembershipMeUpdate(BaseModel):
+    """Self-service update — the fields a volunteer fills out during onboarding.
 
-    # Day-of block schedule — one entry per block.
-    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
-    schedule: list[ScheduleSlot] | None = None
-
-    status: str = "interested"
-
-    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
-    role_preference: list[str] | None = None
-
-    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
-    event_preference: list[str] | None = None
-
-    # Normalized availability — [{date, start, end}, ...]
-    availability: list[AvailabilitySlot] | None = None
-
-    lunch_order: LunchOrderValue | None = None
-    notes: Optional[str] = None
-
-    # Catch-all for tournament-specific fields — e.g. transportation,
-    # carpool_seats, general_volunteer_interest, etc. No structured schema
-    # for these keys currently; that's redesigned later as part of a
-    # separate forms system.
-    extra_data: dict | None = None
-
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, v: str) -> str:
-        if v not in VALID_STATUSES:
-            raise ValueError(f"status must be one of: {VALID_STATUSES}")
-        return v
-
-
-class MembershipCreate(MembershipBase):
-    pass
-
-
-class MembershipUpdate(BaseModel):
-    """Partial update — TD/coordinator manual override for any field."""
-    assigned_event_id: int | None = None
-    schedule: list[ScheduleSlot] | None = None
-    status: Optional[str] = None
+    manage_volunteers cannot write these on someone else's behalf; see
+    MembershipCoordinatorUpdate for the staff-side fields.
+    """
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None
     availability: list[AvailabilitySlot] | None = None
     lunch_order: LunchOrderValue | None = None
-    notes: Optional[str] = None
-    extra_data: dict | None = None
 
-    @field_validator("status")
+
+class MembershipCoordinatorUpdate(BaseModel):
+    """manage_volunteers override — day-of logistics only, not onboarding data."""
+    schedule: list[ScheduleSlot] | None = None
+    notes: Optional[str] = None
+
+
+class _MembershipRolesMixin(BaseModel):
+    """Shared roles handling for response schemas.
+
+    TournamentMembership.roles is a list of TournamentMembershipRole join
+    rows, not TournamentRole rows — unwrap to the underlying role so this
+    serializes as list[RoleRead].
+    """
+    roles: list[RoleRead] = []
+
+    @field_validator("roles", mode="before")
     @classmethod
-    def validate_status(cls, v: str | None) -> str | None:
-        if v is not None and v not in VALID_STATUSES:
-            raise ValueError(f"status must be one of: {VALID_STATUSES}")
+    def _unwrap_roles(cls, v):
+        if v and hasattr(v[0], "role"):
+            return [mr.role for mr in v]
         return v
 
+    model_config = {"from_attributes": True}
 
-class MembershipRead(MembershipBase):
+
+class MembershipSlimResponse(_MembershipRolesMixin):
+    """List view — members page roster. No onboarding/logistics fields;
+    those live behind the per-member expand panel (MembershipFullResponse)."""
     id: int
-
-    # How this membership was created, and which join code if applicable.
-    # System-set — not accepted on MembershipCreate/MembershipUpdate.
     source: str
     join_code_id: int | None = None
+    user: UserSlimResponse
 
-    # Current role assignments — read-only here. Assign/remove via
-    # PATCH /tournaments/{id}/memberships/{id}/roles/, not through this schema.
-    roles: list[RoleRead] = []
+
+class MembershipFullResponse(_MembershipRolesMixin):
+    """Detail view — the expanded side panel for a single member."""
+    id: int
+    tournament_id: int
+    assigned_event_id: int | None = None
+    schedule: list[ScheduleSlot] | None = None
+    status: str
+    role_preference: list[str] | None = None
+    event_preference: list[str] | None = None
+    availability: list[AvailabilitySlot] | None = None
+    lunch_order: LunchOrderValue | None = None
+    notes: Optional[str] = None
+    extra_data: dict | None = None
+    source: str
+    join_code_id: int | None = None
 
     is_over_18: Optional[bool] = None
     is_over_21: Optional[bool] = None
@@ -103,20 +90,4 @@ class MembershipRead(MembershipBase):
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
-
-
-class MembershipReadFlat(MembershipRead):
-    """List-view read: user identity fields flattened onto the membership dict.
-
-    Avoids a nested user object in list responses. The four fields below are
-    sourced from the User table via a JOIN and promoted to the top level.
-
-    # TODO(temp): these fields are sourced from User — when the user profile
-    # page is built, the full user profile (beyond identity) should continue
-    # to come from User, not Membership.
-    """
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
+    user: UserFullResponse

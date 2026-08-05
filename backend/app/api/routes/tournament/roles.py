@@ -19,8 +19,8 @@ from app.core.tournament.permissions import (
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
 from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleUpdate
-from app.schemas.tournament.membership import MembershipRead
-from app.api.routes.tournament.memberships import _get_membership_or_404, _serialize as _serialize_membership
+from app.schemas.tournament.membership import MembershipSlimResponse
+from app.api.routes.tournament.memberships import _get_membership_or_404
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -285,7 +285,7 @@ def _validate_role_action(
 # Rank-bound validation still runs against every role_id in the request,
 # add or remove, whether or not it ends up being a no-op.
 # ---------------------------------------------------------------------------
-@membership_roles_router.patch("/", response_model=MembershipRead)
+@membership_roles_router.patch("/", response_model=MembershipSlimResponse)
 def update_membership_roles(
     tournament_id: int,
     membership_id: int,
@@ -343,4 +343,4 @@ def update_membership_roles(
 
     db.commit()
     db.refresh(m)
-    return _serialize_membership(m)
+    return MembershipSlimResponse.model_validate(m)
