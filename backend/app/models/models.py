@@ -8,7 +8,7 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, Column,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
@@ -226,7 +226,7 @@ class User(Base):
     )
     university = relationship("University", back_populates="users")
     chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
-    chapter_join_codes = relationship("ChapterJoinCode", back_populates="creator")
+    join_codes = relationship("JoinCode", back_populates="creator")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -288,7 +288,7 @@ class Tournament(Base):
 
     # TD-controlled — whether this tournament shows up in the public directory
     # (as upcoming, not necessarily verified). False = invite-only via
-    # TournamentJoinCode.
+    # JoinCode.
     is_public = Column(Boolean, nullable=False, default=False)
 
     # Platform-admin-only — manually flipped after reviewing a tournament.
@@ -316,7 +316,7 @@ class Tournament(Base):
     university = relationship("University", back_populates="tournaments")
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
-    join_codes = relationship("TournamentJoinCode", back_populates="tournament", cascade="all, delete-orphan")
+    join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
 
     # Schema Validator: at least one of "university_id" or "location" must be set
@@ -491,19 +491,26 @@ class TournamentMembershipRole(Base):
 
 
 # ---------------------------------------------------------------------------
-# Tournament Join Code
-# Invite-link mechanism for is_public=False tournaments (and as an optional
-# recruiting channel for public ones). Redeeming a code creates a bare
-# TournamentMembership with no roles attached and status="interested" —
-# staff assign roles afterward. is_active is fully manual for now; whether a
-# code should auto-deactivate once a registration deadline passes is
-# deferred.
+# Join Code
+# Invite-link mechanism shared by tournaments (is_public=False, and as an
+# optional recruiting channel for public ones) and alumni chapters. Exactly
+# one of tournament_id/chapter_id is set — enforced by ck_join_code_one_target
+# — so `code` is globally unique and a single /join lookup can resolve which
+# onboarding flow to send someone through without checking two tables.
+#
+# Redeeming a tournament code creates a bare TournamentMembership with no
+# roles attached and status="interested" — staff assign roles afterward.
+# Redeeming a chapter code creates a ChapterMembership with role="member"
+# directly, since chapters don't have a staff-assignment step.
+# is_active is fully manual for now; whether a code should auto-deactivate
+# once a registration deadline passes is deferred.
 # ---------------------------------------------------------------------------
-class TournamentJoinCode(Base):
-    __tablename__ = "tournament_join_codes"
+class JoinCode(Base):
+    __tablename__ = "join_codes"
 
     id = Column(Integer, primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     code = Column(String(8), unique=True, nullable=False)
     label = Column(String(255), nullable=True)
@@ -512,8 +519,16 @@ class TournamentJoinCode(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow)
     use_count = Column(Integer, nullable=False, default=0)
 
+    __table_args__ = (
+        CheckConstraint(
+            "(tournament_id IS NOT NULL) != (chapter_id IS NOT NULL)",
+            name="ck_join_code_one_target",
+        ),
+    )
+
     tournament = relationship("Tournament", back_populates="join_codes")
-    creator = relationship("User")
+    alumni_chapter = relationship("AlumniChapter", back_populates="join_codes")
+    creator = relationship("User", back_populates="join_codes")
 
 
 # ---------------------------------------------------------------------------
@@ -615,7 +630,7 @@ class AlumniChapter(Base):
     # Relationships
     university = relationship("University", back_populates="alumni_chapter")
     chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    chapter_join_codes = relationship("ChapterJoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
     tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
 
 
@@ -643,32 +658,6 @@ class ChapterMembership(Base):
     alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
     user = relationship("User", back_populates="chapter_membership")
 
-
-# ---------------------------------------------------------------------------
-# ChapterJoinCode
-# Temporary access tokens used for user onboarding into an AlumniChapter.
-#
-# Generates unique, time-sensitive or usage-restricted join codes that allow
-# prospective members to self-verify and join a specific chapter without
-# requiring manual admin approval for every request.
-# ---------------------------------------------------------------------------
-
-class ChapterJoinCode(Base):
-    __tablename__ = "chapter_join_codes"
-
-    id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
-    code = Column(String(8), unique=True, nullable=False)
-    label = Column(String(255), nullable=True)
-    expires_at = Column(DateTime(timezone=True), nullable=True)
-    is_active = Column(Boolean, nullable=False, default=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    use_count = Column(Integer, nullable=False, default=0)
-
-    # Relationships
-    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_join_codes")
-    creator = relationship("User", back_populates="chapter_join_codes")
 
 
 # ---------------------------------------------------------------------------

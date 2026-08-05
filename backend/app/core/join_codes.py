@@ -1,8 +1,8 @@
 """
 Shared join-code logic used by every join-code feature (chapters,
-tournaments, ...). The underlying tables differ (which parent they belong
-to), but code generation, expiry checking, updating, and deactivation are
-identical regardless of parent.
+tournaments). Both share the JoinCode table — code generation, expiry
+checking, updating, and deactivation are identical regardless of which
+target (tournament_id/chapter_id) a given code points to.
 """
 from __future__ import annotations
 import secrets
@@ -12,6 +12,8 @@ from typing import Protocol
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
+
+from app.models.models import JoinCode
 
 AMBIGUOUS_CHARS = set("0O1Il")
 ALLOWED_CHARS = "".join(c for c in string.ascii_letters + string.digits if c not in AMBIGUOUS_CHARS)
@@ -38,14 +40,11 @@ def is_join_code_expired(join_code: JoinCodeLike) -> bool:
     return datetime.now(timezone.utc) > expires_at
 
 
-def get_unique_join_code(db: Session, model: type, max_retries: int = 10) -> str:
-    """
-    Generate a join code guaranteed unique against `model.code`.
-    `model` is the join-code ORM class (e.g. ChapterJoinCode, TournamentJoinCode).
-    """
+def get_unique_join_code(db: Session, max_retries: int = 10) -> str:
+    """Generate a join code guaranteed unique against JoinCode.code."""
     for _ in range(max_retries):
         code = generate_join_code()
-        if not db.query(model).filter(model.code == code).first():
+        if not db.query(JoinCode).filter(JoinCode.code == code).first():
             return code
 
     raise HTTPException(
