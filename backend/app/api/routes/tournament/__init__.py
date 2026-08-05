@@ -25,6 +25,7 @@ def _serialize(tournament: Tournament) -> dict:
         "name": tournament.name,
         "start_date": tournament.start_date,
         "end_date": tournament.end_date,
+        "university": tournament.university,
         "location": tournament.location,
         "is_public": tournament.is_public,
         "is_verified": tournament.is_verified,
@@ -68,7 +69,11 @@ def create_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tournament = Tournament(**payload.model_dump(), owner_id=current_user.id)
+    # exclude_none: Tournament.validate_tournament_source fires per-field as
+    # the declarative constructor assigns kwargs in order — explicitly
+    # assigning None to whichever of university_id/location wasn't provided
+    # would trip that check before the other field is set.
+    tournament = Tournament(**payload.model_dump(exclude_none=True), owner_id=current_user.id)
     db.add(tournament)
     db.flush()  # get tournament.id before creating roles/membership
 
