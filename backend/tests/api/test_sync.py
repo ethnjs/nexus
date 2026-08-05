@@ -56,7 +56,15 @@ def _sync(client, tournament_id, config_id):
 
 
 def _list_memberships(client, tournament_id):
-    return client.get(f"/tournaments/{tournament_id}/memberships/").json()
+    """Full membership details (roster list is slim now — user id/onboarding
+    fields live behind the per-membership detail route)."""
+    slim = client.get(f"/tournaments/{tournament_id}/memberships/").json()
+    full = []
+    for row in slim:
+        detail = client.get(f"/tournaments/{tournament_id}/memberships/{row['id']}/").json()
+        detail["user_id"] = detail["user"]["id"]
+        full.append(detail)
+    return full
 
 
 # ---------------------------------------------------------------------------
