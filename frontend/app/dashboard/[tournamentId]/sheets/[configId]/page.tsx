@@ -234,14 +234,14 @@ export default function ViewSheetConfigPage() {
     setDeleteLoading(true);
     setDeleteError("");
     try {
-      const memberships = await membershipsApi.listByTournament(tournamentId);
+      const memberships = await membershipsApi.list(tournamentId);
       await Promise.all(
         memberships.map((m) => membershipsApi.delete(tournamentId, m.id))
       );
       await sheetsApi.deleteConfig(tournamentId, configId);
       router.push(`/dashboard/${tournamentId}/sheets`);
     } catch {
-      setDeleteError("Failed to delete memberships. Try deleting them manually from the Volunteers page.");
+      setDeleteError("Failed to delete memberships.");
       setDeleteLoading(false);
       setShowDeleteMemberships(false);
     }

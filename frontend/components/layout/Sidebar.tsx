@@ -7,7 +7,6 @@ import {
   IconHome,
   IconAssignments,
   IconEvents,
-  IconVolunteers,
   IconSheets,
   IconSettings,
 } from "@/components/ui/Icons";
@@ -19,7 +18,6 @@ const NAV_ITEMS = [
   { segment: "overview",    icon: <IconHome />,               label: "Overview" },
   { segment: "assignments", icon: <IconAssignments />,        label: "Assignments" },
   { segment: "events",      icon: <IconEvents />,             label: "Events" },
-  { segment: "volunteers",  icon: <IconVolunteers />,         label: "Volunteers" },
   { segment: "sheets",      icon: <IconSheets />,             label: "Sheets" },
   { segment: "settings",    icon: <IconSettings size={18} />, label: "Settings" },
 ];
