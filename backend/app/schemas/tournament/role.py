@@ -94,5 +94,12 @@ class RoleRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class RoleAssignRequest(BaseModel):
-    role_id: int
+class RoleAssignmentUpdate(BaseModel):
+    """
+    Batch add/remove for a membership's roles — one PATCH covers "add these,
+    remove those, maybe both at once" instead of one call per role, which
+    also keeps the audit log to a single entry per staff action instead of
+    one row per role touched.
+    """
+    add: list[int] = []
+    remove: list[int] = []

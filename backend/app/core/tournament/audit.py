@@ -13,8 +13,7 @@ from app.models.models import AuditLogEntry
 ROLE_CREATED = "role_created"
 ROLE_UPDATED = "role_updated"
 ROLE_DELETED = "role_deleted"
-ROLE_ASSIGNED = "role_assigned"
-ROLE_REMOVED = "role_removed"
+MEMBERSHIP_ROLES_UPDATED = "membership_roles_updated"
 JOIN_CODE_CREATED = "join_code_created"
 JOIN_CODE_UPDATED = "join_code_updated"
 JOIN_CODE_DEACTIVATED = "join_code_deactivated"
@@ -22,7 +21,7 @@ TOURNAMENT_VERIFIED = "tournament_verified"
 OWNERSHIP_TRANSFERRED = "ownership_transferred"
 
 ALL_ACTIONS: list[str] = [
-    ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED, ROLE_ASSIGNED, ROLE_REMOVED,
+    ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED, MEMBERSHIP_ROLES_UPDATED,
     JOIN_CODE_CREATED, JOIN_CODE_UPDATED, JOIN_CODE_DEACTIVATED,
     TOURNAMENT_VERIFIED, OWNERSHIP_TRANSFERRED,
 ]

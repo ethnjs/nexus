@@ -3,10 +3,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import (
-    ROLE_ASSIGNED,
+    MEMBERSHIP_ROLES_UPDATED,
     ROLE_CREATED,
     ROLE_DELETED,
-    ROLE_REMOVED,
     ROLE_UPDATED,
     log_action,
 )
@@ -19,7 +18,7 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
-from app.schemas.tournament.role import RoleAssignRequest, RoleDefinition, RoleRead, RoleUpdate
+from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleUpdate
 from app.schemas.tournament.membership import MembershipRead
 from app.api.routes.tournament.memberships import _get_membership_or_404, _serialize as _serialize_membership
 
@@ -272,18 +271,25 @@ def _validate_role_action(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/memberships/{membership_id}/roles/
+# PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
 # manage_tournament or manage_roles, rank-bound (see _validate_role_action)
+#
+# Batch add/remove in one call — staff commonly add or remove several roles
+# (or a mix of both) on a member at once, so one PATCH covers it instead of
+# one POST/DELETE per role. Also keeps the audit log to a single entry per
+# staff action rather than one row per role touched.
+#
+# add/remove entries that are already no-ops (adding a role already held,
+# removing one not held) are silently skipped rather than erroring — this is
+# a batch operation, one stale entry in a list shouldn't fail the rest.
+# Rank-bound validation still runs against every role_id in the request,
+# add or remove, whether or not it ends up being a no-op.
 # ---------------------------------------------------------------------------
-@membership_roles_router.post(
-    "/",
-    response_model=MembershipRead,
-    status_code=status.HTTP_201_CREATED,
-)
-def assign_role(
+@membership_roles_router.patch("/", response_model=MembershipRead)
+def update_membership_roles(
     tournament_id: int,
     membership_id: int,
-    payload: RoleAssignRequest,
+    payload: RoleAssignmentUpdate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
 ):
@@ -292,68 +298,49 @@ def assign_role(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     m = _get_membership_or_404(membership_id, tournament_id, db)
-    role = _get_role_in_tournament_or_404(payload.role_id, tournament_id, db)
 
-    existing = (
-        db.query(TournamentMembershipRole)
-        .filter(TournamentMembershipRole.membership_id == m.id, TournamentMembershipRole.role_id == role.id)
-        .first()
-    )
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Member already holds this role",
+    touched_role_ids = set(payload.add) | set(payload.remove)
+    roles_by_id = {
+        role_id: _get_role_in_tournament_or_404(role_id, tournament_id, db)
+        for role_id in touched_role_ids
+    }
+
+    for role in roles_by_id.values():
+        _validate_role_action(current_user, tournament, m, role, db)
+
+    currently_held_ids = {
+        mr.role_id for mr in
+        db.query(TournamentMembershipRole).filter(TournamentMembershipRole.membership_id == m.id).all()
+    }
+
+    to_add = [rid for rid in payload.add if rid not in currently_held_ids]
+    to_remove = [rid for rid in payload.remove if rid in currently_held_ids]
+
+    for role_id in to_add:
+        db.add(TournamentMembershipRole(membership_id=m.id, role_id=role_id))
+
+    if to_remove:
+        db.query(TournamentMembershipRole).filter(
+            TournamentMembershipRole.membership_id == m.id,
+            TournamentMembershipRole.role_id.in_(to_remove),
+        ).delete(synchronize_session=False)
+
+    if to_add or to_remove:
+        log_action(
+            db, tournament_id, current_user.id, MEMBERSHIP_ROLES_UPDATED,
+            target_type="membership", target_id=m.id,
+            extra_data={
+                "added": [
+                    {"role_id": rid, "role_key": roles_by_id[rid].key, "role_label": roles_by_id[rid].label}
+                    for rid in to_add
+                ],
+                "removed": [
+                    {"role_id": rid, "role_key": roles_by_id[rid].key, "role_label": roles_by_id[rid].label}
+                    for rid in to_remove
+                ],
+            },
         )
-
-    _validate_role_action(current_user, tournament, m, role, db)
-
-    db.add(TournamentMembershipRole(membership_id=m.id, role_id=role.id))
-
-    log_action(
-        db, tournament_id, current_user.id, ROLE_ASSIGNED,
-        target_type="membership", target_id=m.id,
-        extra_data={"role_id": role.id, "role_key": role.key, "role_label": role.label},
-    )
 
     db.commit()
     db.refresh(m)
     return _serialize_membership(m)
-
-
-# ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/{membership_id}/roles/{role_id}/
-# manage_tournament or manage_roles, rank-bound (see _validate_role_action)
-# ---------------------------------------------------------------------------
-@membership_roles_router.delete("/{role_id}/", status_code=status.HTTP_204_NO_CONTENT)
-def remove_role(
-    tournament_id: int,
-    membership_id: int,
-    role_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
-):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    m = _get_membership_or_404(membership_id, tournament_id, db)
-    role = _get_role_in_tournament_or_404(role_id, tournament_id, db)
-
-    assignment = (
-        db.query(TournamentMembershipRole)
-        .filter(TournamentMembershipRole.membership_id == m.id, TournamentMembershipRole.role_id == role.id)
-        .first()
-    )
-    if not assignment:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Member does not hold this role")
-
-    _validate_role_action(current_user, tournament, m, role, db)
-
-    log_action(
-        db, tournament_id, current_user.id, ROLE_REMOVED,
-        target_type="membership", target_id=m.id,
-        extra_data={"role_id": role.id, "role_key": role.key, "role_label": role.label},
-    )
-
-    db.delete(assignment)
-    db.commit()
