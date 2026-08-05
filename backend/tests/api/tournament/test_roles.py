@@ -2,7 +2,7 @@
 (app/api/routes/tournament/roles.py)."""
 from tests.conftest import grant_role, login
 from app.core.tournament.permissions import MANAGE_ROLES
-from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole
+from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
 
 
 def make_role(db, tournament: Tournament, key: str, rank: int, permissions=None, label=None) -> TournamentRole:
@@ -19,6 +19,16 @@ def make_role(db, tournament: Tournament, key: str, rank: int, permissions=None,
     db.commit()
     db.refresh(role)
     return role
+
+
+def make_plain_user(db, email: str) -> User:
+    """A user with no tournament ties — unlike other_user, who is other_tournament's
+    owner/TD by fixture, this one only ends up with whatever role a test grants it."""
+    user = User(email=email, first_name="Plain", last_name="User", role="user", status="active")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 def get_role_id(db, tournament_id: int, key: str) -> int:
@@ -348,6 +358,147 @@ def test_assign_roles_membership_not_found(client, td_user, td_tournament, db):
         json={"add": [role_id]},
     )
     assert response.status_code == 404
+
+
+def test_assign_roles_same_rank_as_actor_allowed(client, td_user, other_tournament, db):
+    """Assignment allows ties (role.rank == actor's own rank) — unlike role
+    create/update, which blocks ties via _validate_rank_bound's `<=`. Here
+    the check is strict `<`, so acting at your own rank is fine.
+
+    Target must be a plain user (not other_user, who is other_tournament's
+    owner/TD by fixture and would trip the target-outranks-actor check)."""
+    make_role(db, other_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    sibling = make_role(db, other_tournament, "sibling_coordinator", rank=2)
+    grant_role(db, other_tournament, td_user, "coordinator")
+    plain = make_plain_user(db, "plain1@example.com")
+    target_membership = grant_role(db, other_tournament, plain, "event_supervisor")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [sibling.id]},
+    )
+    assert response.status_code == 200
+    assert "sibling_coordinator" in [r["key"] for r in response.json()["roles"]]
+
+
+def test_assign_roles_one_rank_above_actor_forbidden(client, td_user, other_tournament, db):
+    """Boundary right past the tie case above — a role ranked exactly one
+    above the actor's own (numerically lower = higher authority) is blocked."""
+    make_role(db, other_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    senior = make_role(db, other_tournament, "senior_coordinator", rank=1)
+    grant_role(db, other_tournament, td_user, "coordinator")
+    plain = make_plain_user(db, "plain1b@example.com")
+    target_membership = grant_role(db, other_tournament, plain, "event_supervisor")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [senior.id]},
+    )
+    assert response.status_code == 403
+
+
+def test_assign_roles_target_with_same_rank_as_actor_allowed(client, td_user, other_tournament, db):
+    """The target-member check is also strict `<` — modifying someone whose
+    highest role ties your own rank is allowed, only strictly-higher-ranked
+    targets are protected."""
+    make_role(db, other_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    low_role = make_role(db, other_tournament, "photographer", rank=5)
+    grant_role(db, other_tournament, td_user, "coordinator")
+    plain = make_plain_user(db, "plain2@example.com")
+    target_membership = grant_role(db, other_tournament, plain, "coordinator")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [low_role.id]},
+    )
+    assert response.status_code == 200
+    assert "photographer" in [r["key"] for r in response.json()["roles"]]
+
+
+def test_assign_roles_target_one_rank_above_actor_forbidden(client, td_user, other_tournament, db):
+    """Boundary right past the target-tie case above — a target whose highest
+    role is exactly one rank above the actor's own is protected."""
+    make_role(db, other_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    make_role(db, other_tournament, "senior_coordinator", rank=1)
+    low_role = make_role(db, other_tournament, "photographer", rank=5)
+    grant_role(db, other_tournament, td_user, "coordinator")
+    plain = make_plain_user(db, "plain2b@example.com")
+    target_membership = grant_role(db, other_tournament, plain, "senior_coordinator")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [low_role.id]},
+    )
+    assert response.status_code == 403
+
+
+def test_assign_roles_owner_bypasses_rank_check(client, td_user, td_tournament, other_user, db):
+    """Tournament owner bypasses the rank check entirely — even with zero
+    roles of their own (so no actor_rank), they can still assign top-rank
+    roles to anyone."""
+    db.query(TournamentMembershipRole).filter(
+        TournamentMembershipRole.membership_id.in_(
+            db.query(TournamentMembership.id).filter(
+                TournamentMembership.tournament_id == td_tournament.id,
+                TournamentMembership.user_id == td_user.id,
+            )
+        )
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    target_membership = grant_role(db, td_tournament, other_user, "event_supervisor")
+    td_role_id = get_role_id(db, td_tournament.id, "tournament_director")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [td_role_id]},
+    )
+    assert response.status_code == 200
+    assert "tournament_director" in [r["key"] for r in response.json()["roles"]]
+
+
+def test_assign_roles_non_owner_with_stripped_roles_forbidden(client, td_user, td_tournament, other_user, db):
+    """Contrast with the owner-bypass case above: strip td_user's roles the
+    same way, but on a tournament they don't own (other_tournament) — without
+    the owner clause, holding zero roles means holding no MANAGE_ROLES
+    permission at all, so the request is rejected outright."""
+    make_role(db, td_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    membership = grant_role(db, td_tournament, other_user, "coordinator")
+    db.query(TournamentMembershipRole).filter(
+        TournamentMembershipRole.membership_id == membership.id,
+    ).delete(synchronize_session=False)
+    db.commit()
+
+    target_membership = grant_role(db, td_tournament, td_user, "event_supervisor")
+    td_role_id = get_role_id(db, td_tournament.id, "tournament_director")
+    login(client, "other@test.com", "otherpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"add": [td_role_id]},
+    )
+    assert response.status_code == 403
+
+
+def test_assign_roles_admin_bypasses_rank_check(client, admin_user, other_tournament, db):
+    """Platform admin bypasses the rank check even without any membership in the tournament."""
+    make_role(db, other_tournament, "coordinator", rank=2, permissions=[MANAGE_ROLES])
+    plain = make_plain_user(db, "plain3@example.com")
+    target_membership = grant_role(db, other_tournament, plain, "coordinator")
+    coordinator_role_id = get_role_id(db, other_tournament.id, "coordinator")
+    login(client, "admin@test.com", "adminpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        json={"remove": [coordinator_role_id]},
+    )
+    assert response.status_code == 200
+    assert response.json()["roles"] == []
 
 
 def test_assign_roles_non_member_forbidden(client, td_user, other_tournament, other_user, db):
