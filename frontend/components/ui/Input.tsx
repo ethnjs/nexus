@@ -2,8 +2,10 @@
 
 import { forwardRef, InputHTMLAttributes, useId } from 'react'
 
-type InputFont = 'sans' | 'mono' | 'serif'
-type InputSize = 'xs' | 'sm' | 'md'
+type InputFont  = 'sans' | 'mono' | 'serif'
+type InputSize  = 'xs' | 'sm' | 'md'
+// primary -- light gray; secondary -- white
+type InputStyleType = 'primary' | 'secondary'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?:     string
@@ -12,12 +14,8 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   fullWidth?: boolean
   font?:      InputFont
   size?:      InputSize
-  /**
-   * Distinct "intentionally uneditable" treatment — different from a plain
-   * `disabled` input, which reads as generically unavailable. Use when the
-   * value is fixed for a reason the user should understand at a glance
-   * (e.g. an email locked to an invite). Implies `disabled`.
-   */
+  styleType?: InputStyleType
+
   locked?:    boolean
 }
 
@@ -33,22 +31,29 @@ const SIZE_MAP: Record<InputSize, { height: string; paddingX: string; fontSize: 
   md: { height: '44px', paddingX: '16px', fontSize: '14px' },
 }
 
+const BACKGROUND_MAP: Record<InputStyleType, string> = {
+  primary:   'var(--color-bg)',
+  secondary: 'var(--color-surface)',
+}
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', className = '', id, value, locked, disabled, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
 
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: fullWidth ? '100%' : undefined }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: fullWidth ? '100%' : undefined }}>
         {label && (
           <label
             htmlFor={inputId}
             style={{
               fontFamily: 'var(--font-sans)',
-              fontSize: '13px',
-              fontWeight: 400,
-              color: 'var(--color-text-secondary)',
+              fontSize: '11px',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: '0.07em',
+              color: 'var(--color-text-tertiary)',
             }}
           >
             {label}
@@ -64,10 +69,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             paddingRight: sizing.paddingX,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
-            background: locked ? 'var(--color-accent-subtle)' : 'var(--color-surface)',
+            background: locked ? 'var(--color-accent-subtle)' : BACKGROUND_MAP[styleType],
             color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
-            borderRadius: 'var(--radius-sm)',
+            borderRadius: 'var(--radius-md)',
             outline: 'none',
             width: fullWidth ? '100%' : undefined,
             cursor: locked ? 'not-allowed' : undefined,

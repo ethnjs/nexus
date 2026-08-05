@@ -5,7 +5,6 @@ import { useRouter, useParams } from "next/navigation";
 import { membershipsApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
-import { FieldLabel } from "@/components/ui/FieldLabel";
 import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
   RichMappingRow,
@@ -136,7 +135,11 @@ function DeleteMembershipsModal({
         </div>
 
         <div style={{ marginBottom: "20px" }}>
-          <FieldLabel>Type DELETE to confirm</FieldLabel>
+          <label style={{
+            fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+            textTransform: "uppercase", letterSpacing: "0.07em",
+            color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
+          }}>Type DELETE to confirm</label>
           <input
             value={typed}
             onChange={(e) => setTyped(e.target.value)}

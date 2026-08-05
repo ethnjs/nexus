@@ -4,15 +4,7 @@ import { useState } from 'react'
 import { tournamentsApi, Tournament } from '@/lib/api'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
-import { FieldLabel } from '@/components/ui/FieldLabel'
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', height: '44px', padding: '0 14px',
-  border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)',
-  fontFamily: 'var(--font-sans)', fontSize: '14px',
-  color: 'var(--color-text-primary)', background: 'var(--color-bg)',
-  outline: 'none', boxSizing: 'border-box',
-}
+import { Input } from '@/components/ui/Input'
 
 interface NewTournamentModalProps {
   onClose: () => void
@@ -49,44 +41,36 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   return (
     <Modal title="New Tournament" onClose={onClose}>
       <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <div>
-          <FieldLabel>Name *</FieldLabel>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. 2026 Nationals @ USC"
-            style={inputStyle}
-            autoFocus
-          />
-        </div>
-        <div>
-          <FieldLabel>Location</FieldLabel>
-          <input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder="e.g. USC, Los Angeles CA"
-            style={inputStyle}
-          />
-        </div>
+        <Input
+          label="Name *"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. 2026 Nationals @ USC"
+          fullWidth
+          autoFocus
+        />
+        <Input
+          label="Location"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          placeholder="e.g. USC, Los Angeles CA"
+          fullWidth
+        />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <div>
-            <FieldLabel>Start Date</FieldLabel>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              style={{ ...inputStyle, padding: '0 12px' }}
-            />
-          </div>
-          <div>
-            <FieldLabel>End Date</FieldLabel>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              style={{ ...inputStyle, padding: '0 12px' }}
-            />
-          </div>
+          <Input
+            label="Start Date"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            fullWidth
+          />
+          <Input
+            label="End Date"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            fullWidth
+          />
         </div>
         {error && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>

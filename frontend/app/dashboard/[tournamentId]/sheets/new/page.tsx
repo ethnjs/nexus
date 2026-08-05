@@ -23,11 +23,21 @@ import { Input } from "@/components/ui/Input";
 import { StepIndicator } from "@/components/ui/StepIndicator";
 import { RadioOption } from "@/components/ui/RadioOption";
 import { StatCard } from "@/components/ui/StatCard";
-import { FieldLabel } from "@/components/ui/FieldLabel";
 import { useSheetValidation } from "@/lib/useSheetValidation";
 import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+const fieldLabelStyle: React.CSSProperties = {
+  fontFamily: "var(--font-sans)",
+  fontSize: "11px",
+  fontWeight: 600,
+  textTransform: "uppercase",
+  letterSpacing: "0.07em",
+  color: "var(--color-text-tertiary)",
+  display: "block",
+  marginBottom: "6px",
+};
 
 type Step = "url" | "sheet-select" | "form-url" | "mapping" | "syncing" | "results";
 
@@ -520,7 +530,7 @@ export default function NewSheetPage() {
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
-              <FieldLabel>Sheet Tab</FieldLabel>
+              <label style={fieldLabelStyle}>Sheet Tab</label>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {validateResult.sheet_names.map((name) => (
                   <RadioOption key={name} name="sheet_name" value={name} checked={selectedSheet === name} onChange={setSelectedSheet} label={name} mono />
@@ -528,7 +538,7 @@ export default function NewSheetPage() {
               </div>
             </div>
             <div>
-              <FieldLabel>Sheet Type</FieldLabel>
+              <label style={fieldLabelStyle}>Sheet Type</label>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {SHEET_TYPES.map(({ value, label, description }) => (
                   <RadioOption key={value} name="sheet_type" value={value} checked={sheetType === value} onChange={(v) => setSheetType(v as SheetType)} label={label} description={description} />

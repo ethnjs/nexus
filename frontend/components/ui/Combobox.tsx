@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Input } from "@/components/ui/Input"
 
 type ComboboxSize = 'sm' | 'md'
+type ComboboxStyleType = 'primary' | 'secondary'
 
 interface ComboboxProps<T> {
   options:  T[]
@@ -20,6 +21,7 @@ interface ComboboxProps<T> {
   maxResults?:    number
   error?: string
   size?: ComboboxSize
+  styleType?: ComboboxStyleType
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -37,6 +39,7 @@ export function Combobox<T>({
   maxResults = 8,
   error,
   size = 'md',
+  styleType = 'primary',
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
 
@@ -80,6 +83,7 @@ export function Combobox<T>({
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         error={displayedError}
         size={size}
+        styleType={styleType}
         fullWidth
       />
       {dropdownOpen && (
