@@ -349,6 +349,7 @@ export interface Tournament {
   name:                   string
   start_date:             string | null
   end_date:               string | null
+  university:             University | null
   location:               string | null
   is_public:              boolean
   is_verified:            boolean
@@ -363,6 +364,7 @@ export interface TournamentCreate {
   name:                   string
   start_date?:            string | null
   end_date?:              string | null
+  university_id?:         number | null
   location?:              string | null
   is_public?:             boolean
   registration_opens_at?: string | null
