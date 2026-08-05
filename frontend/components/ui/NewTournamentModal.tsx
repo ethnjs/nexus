@@ -37,7 +37,6 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         location: location.trim() || null,
         start_date: startDate || null,
         end_date: endDate || null,
-        blocks: [],
       })
       onCreated(t)
     } catch {

@@ -344,51 +344,49 @@ export const adminUsersApi = {
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
-export interface TournamentBlock {
-  number: number
-  label:  string
-  date:   string   // YYYY-MM-DD
-  start:  string   // HH:MM
-  end:    string   // HH:MM
-}
-
-export interface CustomField {
-  key:   string
-  label: string
-  type:  string
-}
-
-export interface PositionDefinition {
-  key:         string
-  label:       string
-  permissions: string[]
-}
-
-export interface VolunteerSchema {
-  custom_fields: CustomField[]
-  positions:     PositionDefinition[]
-}
-
 export interface Tournament {
-  id:               number
-  name:             string
-  start_date:       string | null
-  end_date:         string | null
-  location:         string | null
-  blocks:           TournamentBlock[]
-  volunteer_schema: VolunteerSchema
-  owner_id:         number
-  created_at:       string
-  updated_at:       string
+  id:                     number
+  name:                   string
+  start_date:             string | null
+  end_date:               string | null
+  location:               string | null
+  is_public:              boolean
+  is_verified:            boolean
+  registration_opens_at:  string | null
+  owner_id:               number
+  roles:                  Role[]
+  created_at:             string
+  updated_at:             string
+}
+
+export interface TournamentCreate {
+  name:                   string
+  start_date?:            string | null
+  end_date?:              string | null
+  location?:              string | null
+  is_public?:             boolean
+  registration_opens_at?: string | null
 }
 
 export const tournamentsApi = {
-  list:   ()                                      => api.get<Tournament[]>('/tournaments/me/'),
-  listAll: ()                                     => api.get<Tournament[]>('/tournaments/'),
-  get:    (id: number)                            => api.get<Tournament>(`/tournaments/${id}/`),
-  create: (body: Partial<Tournament>)             => api.post<Tournament>('/tournaments/', body),
-  update: (id: number, body: Partial<Tournament>) => api.patch<Tournament>(`/tournaments/${id}/`, body),
-  delete: (id: number)                            => api.delete<void>(`/tournaments/${id}/`),
+  // GET /tournaments/me/ — tournaments the current user has any membership in
+  list:   ()                                            => api.get<Tournament[]>('/tournaments/me/'),
+  get:    (id: number)                                  => api.get<Tournament>(`/tournaments/${id}/`),
+  create: (body: TournamentCreate)                      => api.post<Tournament>('/tournaments/', body),
+  update: (id: number, body: Partial<TournamentCreate>) => api.patch<Tournament>(`/tournaments/${id}/`, body),
+  delete: (id: number)                                  => api.delete<void>(`/tournaments/${id}/`),
+  transferOwnership: (id: number, newOwnerId: number)   =>
+    api.post<Tournament>(`/tournaments/${id}/transfer-ownership/`, { new_owner_id: newOwnerId }),
+}
+
+// -------------------------------------------------------------------------
+// Admin — Tournaments
+// -------------------------------------------------------------------------
+export const adminTournamentsApi = {
+  // GET /admin/tournaments/ — every tournament, regardless of membership
+  list: () => api.get<Tournament[]>('/admin/tournaments/'),
+  setVerified: (id: number, is_verified: boolean) =>
+    api.patch<{ id: number; is_verified: boolean }>(`/admin/tournaments/${id}/verify/`, { is_verified }),
 }
 
 
@@ -412,7 +410,7 @@ export interface TournamentEvent {
 }
 
 export const tournamentEventsApi = {
-  listByTournament: (tournamentId: number) =>
+  list: (tournamentId: number) =>
     api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
   get:    (tournamentId: number, id: number) =>
     api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
@@ -427,7 +425,12 @@ export const tournamentEventsApi = {
 // -------------------------------------------------------------------------
 // Memberships
 // -------------------------------------------------------------------------
-export type MembershipStatus = 'interested' | 'confirmed' | 'declined' | 'assigned' | 'removed'
+export type MembershipStatus = 'interested' | 'confirmed'
+
+// How a membership was created. "manual" covers staff-add, owner-on-create,
+// and sync import — collapsed into one value until manual add-by-staff is
+// actually removed.
+export type MembershipSource = 'join_code' | 'public' | 'manual'
 
 export interface AvailabilitySlot {
   date:  string
@@ -440,12 +443,33 @@ export interface ScheduleSlot {
   duty:  string
 }
 
-export interface Membership {
+// Matches RoleRead
+export interface Role {
+  id:             number
+  tournament_id:  number
+  key:            string
+  label:          string
+  permissions:    string[]
+  rank:           number
+  created_at:     string
+  updated_at:     string
+}
+
+// Matches MembershipSlimResponse — members-page roster row. No onboarding/
+// logistics fields; those live behind the per-member expand panel (MembershipFull).
+export interface MembershipSlim {
+  id:            number
+  source:        MembershipSource
+  join_code_id:  number | null
+  roles:         Role[]
+  user:          UserSlim
+}
+
+// Matches MembershipFullResponse — the expanded side panel for a single member.
+export interface MembershipFull {
   id:                number
-  user_id:           number
   tournament_id:     number
   assigned_event_id: number | null
-  positions:         string[] | null
   schedule:          ScheduleSlot[] | null
   status:            MembershipStatus
   role_preference:   string[] | null
@@ -454,51 +478,124 @@ export interface Membership {
   lunch_order:       Record<string, unknown> | string | null
   notes:             string | null
   extra_data:        Record<string, unknown> | null
+  source:            MembershipSource
+  join_code_id:      number | null
+  is_over_18:        boolean | null
+  is_over_21:        boolean | null
   created_at:        string
   updated_at:        string
+  roles:             Role[]
+  user:              UserFull
+}
 
-  // TODO(temp): identity fields sourced from User table — when user profile
-  // page is built, these and any additional profile fields should come from User
-  first_name?: string | null
-  last_name?:  string | null
-  email?:      string | null
-  phone?:      string | null
+// PATCH .../memberships/me/ — self-service, onboarding responses only
+export interface MembershipMeUpdate {
+  role_preference?:  string[] | null
+  event_preference?: string[] | null
+  availability?:     AvailabilitySlot[] | null
+  lunch_order?:      Record<string, unknown> | string | null
+}
 
-  // TODO(temp): profile fields synced to membership until user self-management
-  shirt_size?:          string | null
-  dietary_restriction?: string | null
-  university?:          string | null
-  major?:               string | null
-  employer?:            string | null
-  student_status?:      string | null
-  competition_exp?:     string | null
-  volunteering_exp?:    string | null
+// PATCH .../memberships/{id}/ — manage_volunteers override, day-of logistics only
+export interface MembershipCoordinatorUpdate {
+  schedule?: ScheduleSlot[] | null
+  notes?:    string | null
 }
 
 export const membershipsApi = {
-  listByTournament: (tournamentId: number, status?: MembershipStatus) =>
-    api.get<Membership[]>(
-      `/tournaments/${tournamentId}/memberships/${status ? `?status=${status}` : ''}`
-    ),
-  get:    (tournamentId: number, id: number) =>
-    api.get<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  create: (tournamentId: number, body: Partial<Membership>) =>
-    api.post<Membership>(`/tournaments/${tournamentId}/memberships/`, body),
-  update: (tournamentId: number, id: number, body: Partial<Membership>) =>
-    api.patch<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
+  list: (tournamentId: number) =>
+    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`),
+  get: (tournamentId: number, id: number) =>
+    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
+  updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
+  update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  deleteMembershipsByEmails: async (tournamentId: number, emails: string[]): Promise<{ deleted: number }> => {
-    const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
-    const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
-    const toDelete = memberships.filter(
-      (m) => m.email && emailSet.has(m.email.toLowerCase().trim())
-    )
-    await Promise.all(
-      toDelete.map((m) => api.delete<void>(`/tournaments/${tournamentId}/memberships/${m.id}/`))
-    )
-    return { deleted: toDelete.length }
-  },
+  updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
+    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
+}
+
+// -------------------------------------------------------------------------
+// Tournament Roles — nested under /tournaments/{id}/roles/
+// -------------------------------------------------------------------------
+// Matches ALL_PERMISSIONS in app/core/tournament/permissions.py
+export type Permission =
+  | 'manage_tournament'
+  | 'manage_roles'
+  | 'manage_volunteers'
+  | 'manage_events'
+  | 'manage_materials'
+  | 'manage_logistics'
+  | 'view_volunteers'
+  | 'view_events'
+
+export interface RoleDefinition {
+  key:         string
+  label:       string
+  permissions: Permission[]
+  rank:        number
+}
+
+export const rolesApi = {
+  list: (tournamentId: number) =>
+    api.get<Role[]>(`/tournaments/${tournamentId}/roles/`),
+  create: (tournamentId: number, body: RoleDefinition) =>
+    api.post<Role>(`/tournaments/${tournamentId}/roles/`, body),
+  update: (tournamentId: number, id: number, body: Partial<RoleDefinition>) =>
+    api.patch<Role>(`/tournaments/${tournamentId}/roles/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/roles/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Tournament Join Codes — nested under /tournaments/{id}/join-codes/
+// -------------------------------------------------------------------------
+export interface JoinCode {
+  id:         number
+  code:       string
+  label:      string | null
+  expires_at: string | null
+  is_active:  boolean
+  created_at: string
+  use_count:  number
+}
+
+export interface JoinCodeCreate {
+  label?:            string | null
+  expires_in_hours?: number | null
+}
+
+export interface JoinCodeUpdate {
+  label?:     string | null
+  add_hours?: number | null
+}
+
+export const tournamentJoinCodesApi = {
+  list: (tournamentId: number) =>
+    api.get<JoinCode[]>(`/tournaments/${tournamentId}/join-codes/`),
+  create: (tournamentId: number, body: JoinCodeCreate) =>
+    api.post<JoinCode>(`/tournaments/${tournamentId}/join-codes/`, body),
+  update: (tournamentId: number, id: number, body: JoinCodeUpdate) =>
+    api.patch<JoinCode>(`/tournaments/${tournamentId}/join-codes/${id}/`, body),
+  // Deactivates the code (one-way) — does not delete the row, history stays visible via GET.
+  deactivate: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/join-codes/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Join — single redemption entry point shared by tournament & chapter codes
+// -------------------------------------------------------------------------
+export interface JoinRedeemResponse {
+  type:          'tournament' | 'chapter'
+  target_id:     number
+  membership_id: number
+}
+
+export const joinApi = {
+  redeem: (code: string) =>
+    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {}),
 }
 
 // -------------------------------------------------------------------------
@@ -655,11 +752,7 @@ export const sheetsApi = {
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<{ user?: { email?: string } }[]>(
-      `/tournaments/${tournamentId}/memberships/`
-    )
-    return memberships
-      .map((m) => m.user?.email)
-      .filter((e): e is string => Boolean(e))
+    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
+    return memberships.map((m) => m.user.email)
   },
 }

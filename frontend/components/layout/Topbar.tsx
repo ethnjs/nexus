@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useTournament, Tournament } from "@/lib/useTournament";
+import { useTournament } from "@/lib/useTournament";
+import { Tournament } from "@/lib/api";
 import { NewTournamentModal } from "@/components/ui/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
