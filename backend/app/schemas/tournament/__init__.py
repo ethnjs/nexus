@@ -4,10 +4,6 @@ from pydantic import BaseModel, model_validator
 
 from app.schemas.tournament.role import RoleRead
 
-
-# ---------------------------------------------------------------------------
-# Tournament schemas
-# ---------------------------------------------------------------------------
 class TournamentBase(BaseModel):
     name: str
     start_date: datetime | None = None
