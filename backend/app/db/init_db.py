@@ -91,6 +91,7 @@ def seed_dev_data(db: Session) -> None:
         user_id=td.id,
         tournament_id=tournament.id,
         status="confirmed",
+        source="manual",
     )
     db.add(td_membership)
     db.flush()
@@ -104,6 +105,7 @@ def seed_dev_data(db: Session) -> None:
         user_id=admin.id,
         tournament_id=tournament.id,
         status="confirmed",
+        source="manual",
     )
     db.add(admin_membership)
     db.flush()

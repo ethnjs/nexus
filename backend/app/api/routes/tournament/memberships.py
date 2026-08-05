@@ -29,6 +29,8 @@ def _serialize(m: TournamentMembership, include_user: bool = False) -> dict:
         "user_id": m.user_id,
         "tournament_id": m.tournament_id,
         "assigned_event_id": m.assigned_event_id,
+        "source": m.source,
+        "join_code_id": m.join_code_id,
         "roles": [mr.role for mr in m.roles],
         "schedule": m.schedule,
         "status": m.status,
@@ -196,7 +198,7 @@ def create_membership(
     if data.get("schedule"):
         data["schedule"] = [s.model_dump() for s in payload.schedule]
 
-    membership = TournamentMembership(**data)
+    membership = TournamentMembership(**data, source="manual")
     db.add(membership)
     db.commit()
     db.refresh(membership)

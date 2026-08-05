@@ -627,6 +627,7 @@ def sync_sheet(
                     user_id=user.id,
                     tournament_id=tournament.id,
                     status="interested",
+                    source="manual",
                     availability=merged_availability,
                     extra_data=extra_data or None,
                     **membership_fields,

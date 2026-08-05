@@ -149,6 +149,7 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
         user_id=owner.id,
         tournament_id=tournament.id,
         status="confirmed",
+        source="manual",
     )
     db.add(membership)
     db.flush()
@@ -172,7 +173,7 @@ def grant_role(db: Session, tournament: Tournament, user: User, role_key: str, s
         .first()
     )
     if not membership:
-        membership = TournamentMembership(user_id=user.id, tournament_id=tournament.id, status=status)
+        membership = TournamentMembership(user_id=user.id, tournament_id=tournament.id, status=status, source="manual")
         db.add(membership)
         db.flush()
 

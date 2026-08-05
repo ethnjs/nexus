@@ -88,6 +88,11 @@ class MembershipUpdate(BaseModel):
 class MembershipRead(MembershipBase):
     id: int
 
+    # How this membership was created, and which join code if applicable.
+    # System-set — not accepted on MembershipCreate/MembershipUpdate.
+    source: str
+    join_code_id: int | None = None
+
     # Current role assignments — read-only here. Assign/remove via
     # PATCH /tournaments/{id}/memberships/{id}/roles/, not through this schema.
     roles: list[RoleRead] = []

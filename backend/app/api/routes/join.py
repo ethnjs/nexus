@@ -64,6 +64,8 @@ def _redeem_tournament_code(join_code: JoinCode, current_user: User, db: Session
         user_id=current_user.id,
         tournament_id=join_code.tournament_id,
         status="interested",
+        source="join_code",
+        join_code_id=join_code.id,
     )
     join_code.use_count += 1
 

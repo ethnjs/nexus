@@ -363,6 +363,17 @@ class TournamentMembership(Base):
         Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
     )
 
+    # How this membership was created — "join_code" | "public" | "manual"
+    # ("manual" = staff added directly, incl. owner-on-creation and sync
+    # import; slated for removal once manual add-by-staff goes away)
+    source = Column(String(32), nullable=False)
+
+    # Which code was redeemed, if source == "join_code". Null for public
+    # self-joins. SET NULL on code deletion so history survives the code.
+    join_code_id = Column(
+        Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
+    )
+
     # Day-of block schedule — [{block: int, duty: str}, ...]
     # One entry per block. duty is a free string (typically a role key).
     # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
@@ -402,6 +413,7 @@ class TournamentMembership(Base):
     tournament = relationship("Tournament", back_populates="memberships")
     assigned_event = relationship("TournamentEvent", back_populates="memberships")
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
+    join_code = relationship("JoinCode")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:

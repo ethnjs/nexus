@@ -82,6 +82,7 @@ def create_tournament(
         user_id=current_user.id,
         tournament_id=tournament.id,
         status="confirmed",
+        source="manual",
     )
     db.add(membership)
     db.flush()  # get membership.id
