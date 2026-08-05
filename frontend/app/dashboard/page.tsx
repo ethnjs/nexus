@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { tournamentsApi, tournamentEventsApi, membershipsApi, Tournament, UserMeSlim, authApi, ApiError } from "@/lib/api"
-import { NewTournamentModal } from "@/components/ui/NewTournamentModal"
+import { NewTournamentModal } from "@/components/tournament/NewTournamentModal"
 import { Topbar } from "@/components/layout/Topbar"
 import { Banner, BannerProps } from "@/components/ui/Banner"
 import { Button } from "@/components/ui/Button"
