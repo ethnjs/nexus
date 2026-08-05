@@ -1,8 +1,7 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from tests.conftest import login
-from app.models.models import TournamentMembership
+from tests.conftest import grant_role, login
 
 
 def _make_user(db, email="alice@example.com"):
@@ -43,19 +42,8 @@ def test_create_membership_minimal(client, td_user, td_tournament, db):
     assert data["user_id"] == u["id"]
     assert data["tournament_id"] == td_tournament.id
     assert data["status"] == "interested"
-    assert data["positions"] is None
+    assert data["roles"] == []
     assert data["schedule"] is None
-
-
-def test_create_membership_with_positions(client, td_user, td_tournament, db):
-    u = _make_user(db)
-    login(client, "td@test.com", "tdpass")
-    response = _make_membership(
-        client, td_tournament.id, u["id"],
-        positions=["lead_event_supervisor", "test_writer"],
-    )
-    assert response.status_code == 201
-    assert response.json()["positions"] == ["lead_event_supervisor", "test_writer"]
 
 
 def test_create_membership_with_schedule(client, td_user, td_tournament, db):
@@ -81,8 +69,7 @@ def test_create_membership_full(client, td_user, td_tournament, db):
     response = _make_membership(
         client, td_tournament.id, u["id"],
         assigned_event_id=e["id"],
-        status="assigned",
-        positions=["lead_event_supervisor"],
+        status="confirmed",
         schedule=[{"block": 1, "duty": "event_supervisor"}],
         role_preference=["event_volunteer"],
         event_preference=["Boomilever"],
@@ -93,7 +80,6 @@ def test_create_membership_full(client, td_user, td_tournament, db):
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["positions"] == ["lead_event_supervisor"]
     assert data["assigned_event_id"] == e["id"]
     assert data["extra_data"]["transportation"] == "Driving"
     assert data["extra_data"]["general_volunteer_interest"] == ["STEM Expo"]
@@ -139,13 +125,7 @@ def test_create_membership_non_member_forbidden(client, td_user, other_tournamen
 def test_create_membership_volunteer_member_forbidden(
     client, td_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     u = _make_user(db, "newvolunteer@example.com")
     login(client, "td@test.com", "tdpass")
     assert _make_membership(client, other_tournament.id, u["id"]).status_code == 403
@@ -180,13 +160,7 @@ def test_list_memberships_filter_by_status(client, td_user, td_tournament, db):
 def test_list_memberships_requires_view_volunteers(
     client, td_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "td@test.com", "tdpass")
     assert client.get(
         f"/tournaments/{other_tournament.id}/memberships/"
@@ -222,18 +196,6 @@ def test_update_membership_status(client, td_user, td_tournament, db):
     )
     assert response.status_code == 200
     assert response.json()["status"] == "confirmed"
-
-
-def test_update_membership_positions(client, td_user, td_tournament, db):
-    u = _make_user(db)
-    login(client, "td@test.com", "tdpass")
-    created = _make_membership(client, td_tournament.id, u["id"]).json()
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{created['id']}/",
-        json={"positions": ["lead_event_supervisor", "test_writer"]},
-    )
-    assert response.status_code == 200
-    assert response.json()["positions"] == ["lead_event_supervisor", "test_writer"]
 
 
 def test_update_membership_schedule(client, td_user, td_tournament, db):

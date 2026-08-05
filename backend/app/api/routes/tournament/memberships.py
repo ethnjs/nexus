@@ -9,7 +9,7 @@ from app.core.tournament.permissions import (
     has_permission,
 )
 from app.db.session import get_db
-from app.models.models import Event, Tournament, TournamentMembership, User
+from app.models.models import Tournament, TournamentEvent, TournamentMembership, User
 from app.schemas.tournament.membership import (
     MembershipCreate, MembershipRead, MembershipUpdate, MembershipReadFlat,
 )
@@ -40,15 +40,6 @@ def _serialize(m: TournamentMembership, include_user: bool = False) -> dict:
         "extra_data": m.extra_data,
         "created_at": m.created_at,
         "updated_at": m.updated_at,
-        # TODO(temp): remove when user account self-management is implemented
-        "shirt_size": m.shirt_size,
-        "dietary_restriction": m.dietary_restriction,
-        "university": m.university,
-        "major": m.major,
-        "employer": m.employer,
-        "student_status": m.student_status,
-        "competition_exp": m.competition_exp,
-        "volunteering_exp": m.volunteering_exp,
     }
 
     if include_user:
@@ -182,9 +173,9 @@ def create_membership(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     if payload.assigned_event_id:
-        event = db.query(Event).filter(
-            Event.id == payload.assigned_event_id,
-            Event.tournament_id == tournament_id,
+        event = db.query(TournamentEvent).filter(
+            TournamentEvent.id == payload.assigned_event_id,
+            TournamentEvent.tournament_id == tournament_id,
         ).first()
         if not event:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")
@@ -228,9 +219,9 @@ def update_membership(
     m = _get_membership_or_404(membership_id, tournament_id, db)
 
     if payload.assigned_event_id is not None:
-        event = db.query(Event).filter(
-            Event.id == payload.assigned_event_id,
-            Event.tournament_id == tournament_id,
+        event = db.query(TournamentEvent).filter(
+            TournamentEvent.id == payload.assigned_event_id,
+            TournamentEvent.tournament_id == tournament_id,
         ).first()
         if not event:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found in this tournament")

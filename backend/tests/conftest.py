@@ -12,7 +12,7 @@ Fixture hierarchy:
   admin_user       — role="admin", bypasses all permission checks
   td_user          — role="user", has tournament_director membership in td_tournament
   other_user       — role="user", has tournament_director membership in other_tournament
-  td_tournament    — tournament owned by td_user, default positions in schema
+  td_tournament    — tournament owned by td_user, DEFAULT_ROLES populated
   other_tournament — tournament owned by other_user
 """
 
@@ -33,8 +33,11 @@ from app.api.routes.sheets import get_sheets_service, get_forms_service
 from app.services.sheets_service import SheetsService
 from app.services.forms_service import FormsService
 from app.core.auth import hash_password
-from app.core.tournament.permissions import DEFAULT_POSITIONS
-from app.models.models import TournamentMembership, Tournament, User, Event, EventCategory
+from app.core.tournament.permissions import DEFAULT_ROLES
+from app.models.models import (
+    Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole,
+    User, Event, EventCategory,
+)
 from app.schemas.sheet_config import (
     FormQuestionOption,
     MappedHeader,
@@ -123,48 +126,78 @@ def other_user(db):
 # Tournament + membership fixtures
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-def td_tournament(db, td_user):
+def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
+    """
+    Create a tournament owned by `owner`, populate DEFAULT_ROLES, and give
+    `owner` a confirmed membership holding the tournament_director role —
+    mirrors what POST /tournaments/ does for a real signup.
+    """
     tournament = Tournament(
-        name="TD Test Tournament",
-        owner_id=td_user.id,
+        name=name,
+        owner_id=owner.id,
         location="Test Location",
-        blocks=[],
-        volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
     )
     db.add(tournament)
     db.flush()
-    db.add(TournamentMembership(
-        user_id=td_user.id,
+
+    role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
+    db.add_all(role_rows)
+    db.flush()
+    td_role = next(r for r in role_rows if r.key == "tournament_director")
+
+    membership = TournamentMembership(
+        user_id=owner.id,
         tournament_id=tournament.id,
-        positions=["tournament_director"],
         status="confirmed",
-    ))
+    )
+    db.add(membership)
+    db.flush()
+    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=td_role.id))
+
     db.commit()
     db.refresh(tournament)
     return tournament
+
+
+def grant_role(db: Session, tournament: Tournament, user: User, role_key: str, status: str = "confirmed") -> TournamentMembership:
+    """
+    Give `user` a membership in `tournament` holding the role identified by
+    `role_key` (must already exist on the tournament — DEFAULT_ROLES covers
+    every key used across the test suite). Reuses an existing membership if
+    one is already there instead of erroring on the unique constraint.
+    """
+    membership = (
+        db.query(TournamentMembership)
+        .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+        .first()
+    )
+    if not membership:
+        membership = TournamentMembership(user_id=user.id, tournament_id=tournament.id, status=status)
+        db.add(membership)
+        db.flush()
+
+    role = (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == tournament.id, TournamentRole.key == role_key)
+        .first()
+    )
+    if role is None:
+        raise ValueError(f"No TournamentRole with key={role_key!r} on tournament {tournament.id}")
+
+    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=role.id))
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+@pytest.fixture
+def td_tournament(db, td_user):
+    return _make_tournament_with_td(db, td_user, "TD Test Tournament")
 
 
 @pytest.fixture
 def other_tournament(db, other_user):
-    tournament = Tournament(
-        name="Other Test Tournament",
-        owner_id=other_user.id,
-        location="Test Location",
-        blocks=[],
-        volunteer_schema={"custom_fields": [], "positions": DEFAULT_POSITIONS},
-    )
-    db.add(tournament)
-    db.flush()
-    db.add(TournamentMembership(
-        user_id=other_user.id,
-        tournament_id=tournament.id,
-        positions=["tournament_director"],
-        status="confirmed",
-    ))
-    db.commit()
-    db.refresh(tournament)
-    return tournament
+    return _make_tournament_with_td(db, other_user, "Other Test Tournament")
 
 
 # ---------------------------------------------------------------------------

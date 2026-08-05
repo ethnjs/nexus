@@ -15,20 +15,17 @@ from app.schemas.sheet_config import coerce_legacy_type
 from unittest.mock import MagicMock
 
 
-def _make_tournament(blocks=None, start_date=None):
+def _make_tournament(start_date=None):
+    """
+    _parse_day_string no longer matches against Tournament.blocks (removed in
+    the roles/permissions cutover) — it only falls back to reconstructing
+    month/day against start_date's year. Default year (2026) matches what
+    NATS_BLOCKS used to encode, so existing "Thursday 5/21" etc. assertions
+    still resolve to the same dates.
+    """
     t = MagicMock()
-    t.blocks = blocks or []
-    t.start_date = start_date
+    t.start_date = start_date or datetime(2026, 5, 21)
     return t
-
-
-NATS_BLOCKS = [
-    {"number": 1,  "label": "Thu Check-in", "date": "2026-05-21", "start": "08:00", "end": "10:00"},
-    {"number": 2,  "label": "Thu Morning",  "date": "2026-05-21", "start": "10:00", "end": "12:00"},
-    {"number": 3,  "label": "Fri Check-in", "date": "2026-05-22", "start": "08:00", "end": "10:00"},
-    {"number": 14, "label": "Sat Block 1",  "date": "2026-05-23", "start": "08:00", "end": "09:00"},
-    {"number": 15, "label": "Sat Block 2",  "date": "2026-05-23", "start": "09:15", "end": "10:15"},
-]
 
 
 # ---------------------------------------------------------------------------
@@ -82,23 +79,23 @@ def test_parse_time_range_extra_spaces():
 # ---------------------------------------------------------------------------
 
 def test_parse_day_string_thursday():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     assert _parse_day_string("Thursday 5/21", t) == "2026-05-21"
 
 def test_parse_day_string_saturday():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     assert _parse_day_string("Saturday 5/23", t) == "2026-05-23"
 
 def test_parse_day_string_no_match_fallback():
-    t = _make_tournament([], start_date=datetime(2026, 5, 21))
+    t = _make_tournament(start_date=datetime(2026, 5, 21))
     assert _parse_day_string("Sunday 5/24", t) == "2026-05-24"
 
 def test_parse_day_string_no_date_pattern():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     assert _parse_day_string("Thursday", t) is None
 
 def test_parse_day_string_month_name():
-    t = _make_tournament([], start_date=datetime(2026, 5, 21))
+    t = _make_tournament(start_date=datetime(2026, 5, 21))
     assert _parse_day_string("February 14", t) == "2026-02-14"
 
 
@@ -107,21 +104,21 @@ def test_parse_day_string_month_name():
 # ---------------------------------------------------------------------------
 
 def test_parse_availability_none():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     assert _parse_availability("None", "8:00 AM - 10:00 AM", t) == []
 
 def test_parse_availability_empty():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     assert _parse_availability("", "8:00 AM - 10:00 AM", t) == []
 
 def test_parse_availability_single_day():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     slots = _parse_availability("Thursday 5/21", "8:00 AM - 10:00 AM", t)
     assert len(slots) == 1
     assert slots[0] == {"date": "2026-05-21", "start": "08:00", "end": "10:00"}
 
 def test_parse_availability_multiple_days():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     slots = _parse_availability(
         "Thursday 5/21, Saturday 5/23", "8:00 AM - 10:00 AM", t
     )
@@ -206,7 +203,7 @@ def test_process_cell_legacy_availability_row_coerced(caplog):
     """availability_row is coerced to matrix_row. Without a parse_availability
     rule, matrix_row returns the raw string — the TD must add the rule."""
     import logging
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {
         "field": "availability",
         "type": "availability_row",
@@ -221,7 +218,7 @@ def test_process_cell_legacy_availability_row_coerced(caplog):
 def test_process_cell_legacy_category_events_coerced(caplog):
     """category_events is coerced to string and returns raw value."""
     import logging
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "event_preference", "type": "category_events"}
     with caplog.at_level(logging.WARNING):
         result = _process_cell("Technology & Engineering (Boomilever)", mapping, t)
@@ -273,7 +270,7 @@ def test_rule_matches_no_match_string_returns_false():
 # ---------------------------------------------------------------------------
 
 def _t():
-    return _make_tournament(NATS_BLOCKS)
+    return _make_tournament()
 
 
 def test_apply_rules_set():
@@ -329,7 +326,7 @@ def test_apply_rules_parse_availability_short_circuits():
         # this rule would fire on a string but should never run
         {"condition": "always", "action": "set", "value": "SHOULD NOT APPEAR"},
     ]
-    result = _apply_rules("Thursday 5/21", rules, mapping, _make_tournament(NATS_BLOCKS))
+    result = _apply_rules("Thursday 5/21", rules, mapping, _make_tournament())
     assert isinstance(result, list)
     assert result == [{"date": "2026-05-21", "start": "08:00", "end": "10:00"}]
 
@@ -353,7 +350,7 @@ def test_apply_rules_empty_rules_unchanged():
 
 def test_process_cell_rules_run_before_type_coercion():
     """Rule normalizes value, then boolean coercion fires on the result."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {
         "field": "extra_data",
         "type": "boolean",
@@ -363,7 +360,7 @@ def test_process_cell_rules_run_before_type_coercion():
     assert _process_cell("Yes I have", mapping, t) is True
 
 def test_process_cell_rules_discard_returns_none():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {
         "field": "notes",
         "type": "string",
@@ -372,14 +369,14 @@ def test_process_cell_rules_discard_returns_none():
     assert _process_cell("N/A", mapping, t) is None
 
 def test_process_cell_multi_select_custom_delimiter():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "role_preference", "type": "multi_select", "delimiter": ";"}
     result = _process_cell("Event Supervisor;General Volunteer;Floater", mapping, t)
     assert result == ["Event Supervisor", "General Volunteer", "Floater"]
 
 def test_process_cell_parse_availability_via_rule():
     """matrix_row + parse_availability rule produces slots list."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {
         "field": "availability",
         "type": "matrix_row",
@@ -391,7 +388,7 @@ def test_process_cell_parse_availability_via_rule():
 
 def test_process_cell_matrix_row_no_rule_returns_string():
     """matrix_row without a parse_availability rule stores raw string."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "availability", "type": "matrix_row", "row_key": "8:00 AM - 10:00 AM"}
     result = _process_cell("Thursday 5/21", mapping, t)
     assert result == "Thursday 5/21"
@@ -408,7 +405,7 @@ def test_process_cell_string_parse_time_range_rule():
 
 
 def test_process_cell_phone_normalizes_to_digits():
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "phone", "type": "string"}
     assert _process_cell("9495551234", mapping, t) == "9495551234"
     assert _process_cell("+1 (949) 555-1234", mapping, t) == "9495551234"
@@ -423,7 +420,7 @@ def test_process_cell_phone_normalizes_to_digits():
 
 def test_process_cell_matrix_row_returns_string_value():
     """matrix_row without a parse rule returns the raw string — sync_sheet builds the dict."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "protein"}
     result = _process_cell("Carnitas", mapping, t)
     assert result == "Carnitas"
@@ -431,7 +428,7 @@ def test_process_cell_matrix_row_returns_string_value():
 
 def test_process_cell_matrix_row_blank_returns_none():
     """Blank matrix_row cell returns None; sync_sheet stores '' for that key."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "lunch_order", "type": "matrix_row", "row_key": "drink"}
     result = _process_cell("", mapping, t)
     assert result is None
@@ -439,7 +436,7 @@ def test_process_cell_matrix_row_blank_returns_none():
 
 def test_process_cell_lunch_order_string_returns_value():
     """lunch_order with type=string (single-header legacy config) returns the raw string."""
-    t = _make_tournament(NATS_BLOCKS)
+    t = _make_tournament()
     mapping = {"field": "lunch_order", "type": "string"}
     result = _process_cell("Carnitas bowl", mapping, t)
     assert result == "Carnitas bowl"

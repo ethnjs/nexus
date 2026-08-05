@@ -2,9 +2,8 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
-from tests.conftest import login
+from tests.conftest import grant_role, login
 from app.schemas.sheet_config import SheetValidateResponse, SheetHeadersResponse, MappedHeader
-from app.models.models import TournamentMembership
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 FAKE_FORM_URL = "https://docs.google.com/forms/d/fake_form/edit"
@@ -66,13 +65,7 @@ def test_validate_non_member_gets_404(client, td_user, other_tournament, mock_sh
 def test_validate_volunteer_member_forbidden(
     client, td_user, other_tournament, db, mock_sheets_service
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "td@test.com", "tdpass")
     assert client.post(
         f"/tournaments/{other_tournament.id}/sheets/validate/",
@@ -240,13 +233,7 @@ def test_get_sheet_config(client, td_user, td_tournament, mock_sheets_service):
 def test_get_sheet_config_wrong_tournament_404(
     client, td_user, td_tournament, other_tournament, db, mock_sheets_service
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["tournament_director"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "tournament_director")
     login(client, "td@test.com", "tdpass")
     mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
     created = _make_config(client, td_tournament.id).json()

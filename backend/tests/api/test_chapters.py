@@ -622,9 +622,8 @@ def test_deactivate_join_code_marks_inactive(client, db):
     db.refresh(join_code)
     login(client, "joinlead2@example.com", "LeadPass123!")
 
-    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": False})
-    assert res.status_code == 200
-    assert res.json()["is_active"] is False
+    res = client.delete(f"/chapters/{chapter.id}/join-codes/{join_code.id}/")
+    assert res.status_code == 204
 
     refreshed = db.query(ChapterJoinCode).filter_by(id=join_code.id).first()
     assert refreshed is not None
@@ -649,11 +648,13 @@ def test_deactivate_join_code_twice_rejected(client, db):
     db.refresh(join_code)
     login(client, "joinlead3@example.com", "LeadPass123!")
 
-    res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": False})
+    res = client.delete(f"/chapters/{chapter.id}/join-codes/{join_code.id}/")
     assert res.status_code == 400
 
 
-def test_reactivate_join_code_rejected(client, db):
+def test_reactivate_join_code_ignored_by_patch(client, db):
+    """is_active isn't a PATCH field anymore — there's no reactivate endpoint at
+    all, so sending it is silently ignored rather than validated-and-rejected."""
     university = _university(db)
     chapter = _chapter(db, university.id)
     lead = _user(db, "joinlead4@example.com", password="LeadPass123!")
@@ -662,7 +663,11 @@ def test_reactivate_join_code_rejected(client, db):
     login(client, "joinlead4@example.com", "LeadPass123!")
 
     res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": True})
-    assert res.status_code == 400
+    assert res.status_code == 200
+    assert res.json()["is_active"] is False
+
+    refreshed = db.query(ChapterJoinCode).filter_by(id=join_code.id).first()
+    assert refreshed.is_active is False
 
 
 # ---------------------------------------------------------------------------
@@ -678,7 +683,7 @@ def test_join_chapter_success_increments_use_count(client, admin_user, db):
     joiner = _user(db, "usecountjoiner@example.com", password="JoinPass123!")
     login(client, "usecountjoiner@example.com", "JoinPass123!")
 
-    res = client.post("/chapters/join/", json={"code": "USECOUNT"})
+    res = client.post("/chapters/join/?code=USECOUNT")
     assert res.status_code == 201
     data = res.json()
     assert data["id"] == joiner.id
@@ -689,18 +694,29 @@ def test_join_chapter_success_increments_use_count(client, admin_user, db):
 
 
 def test_join_chapter_requires_authentication(client):
-    res = client.post("/chapters/join/", json={"code": "JOIN1234"})
+    res = client.post("/chapters/join/?code=JOIN1234")
 
     assert res.status_code == 401
 
 
-@pytest.mark.parametrize("payload", [{}, {"code": "SHORT"}, {"code": "TOO-LONG9"}])
-def test_join_chapter_rejects_malformed_code(client, td_user, payload):
+def test_join_chapter_rejects_missing_code(client, td_user):
     login(client, "td@test.com", "tdpass")
 
-    res = client.post("/chapters/join/", json=payload)
+    res = client.post("/chapters/join/")
 
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize("code", ["SHORT", "TOO-LONG9", "UNKNOWN1"])
+def test_join_chapter_rejects_code_that_does_not_exist(client, td_user, code):
+    """No length validation on `code` anymore — a short/long/unknown code is
+    just a lookup miss, same generic 400 as any other invalid code."""
+    login(client, "td@test.com", "tdpass")
+
+    res = client.post(f"/chapters/join/?code={code}")
+
+    assert res.status_code == 400
+    assert res.json()["detail"] == "Invalid or expired join code"
 
 
 def test_join_chapter_rejects_existing_member(client, td_user, admin_user, db):
@@ -710,19 +726,10 @@ def test_join_chapter_rejects_existing_member(client, td_user, admin_user, db):
     db.commit()
     login(client, "td@test.com", "tdpass")
 
-    res = client.post("/chapters/join/", json={"code": "JOIN1234"})
+    res = client.post("/chapters/join/?code=JOIN1234")
 
     assert res.status_code == 400
     assert res.json()["detail"] == "User is already a member of a chapter"
-
-
-def test_join_chapter_rejects_unknown_code(client, td_user):
-    login(client, "td@test.com", "tdpass")
-
-    res = client.post("/chapters/join/", json={"code": "UNKNOWN1"})
-
-    assert res.status_code == 404
-    assert res.json()["detail"] == "Invalid join code"
 
 
 def test_join_chapter_rejects_deactivated_code(client, td_user, admin_user, db):
@@ -731,10 +738,10 @@ def test_join_chapter_rejects_deactivated_code(client, td_user, admin_user, db):
     _join_code(db, chapter.id, admin_user.id, code="INACTIVE", is_active=False)
     login(client, "td@test.com", "tdpass")
 
-    res = client.post("/chapters/join/", json={"code": "INACTIVE"})
+    res = client.post("/chapters/join/?code=INACTIVE")
 
     assert res.status_code == 400
-    assert res.json()["detail"] == "This join code has been deactivated"
+    assert res.json()["detail"] == "Invalid or expired join code"
 
 
 def test_join_chapter_rejects_expired_code(client, td_user, admin_user, db):
@@ -744,10 +751,10 @@ def test_join_chapter_rejects_expired_code(client, td_user, admin_user, db):
     _join_code(db, chapter.id, admin_user.id, code="EXPIRED1", expires_at=expired_at)
     login(client, "td@test.com", "tdpass")
 
-    res = client.post("/chapters/join/", json={"code": "EXPIRED1"})
+    res = client.post("/chapters/join/?code=EXPIRED1")
 
     assert res.status_code == 400
-    assert res.json()["detail"] == "This join code has expired"
+    assert res.json()["detail"] == "Invalid or expired join code"
 
 
 def test_join_chapter_handles_membership_integrity_conflict(client, td_user, admin_user, db, monkeypatch):
@@ -760,7 +767,7 @@ def test_join_chapter_handles_membership_integrity_conflict(client, td_user, adm
         raise IntegrityError("INSERT INTO chapter_memberships", {}, Exception("duplicate membership"))
 
     monkeypatch.setattr(db, "commit", raise_integrity_error)
-    res = client.post("/chapters/join/", json={"code": "JOIN1234"})
+    res = client.post("/chapters/join/?code=JOIN1234")
 
     assert res.status_code == 400
     assert res.json()["detail"] == "User is already a member of a chapter"

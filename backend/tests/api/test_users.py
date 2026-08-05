@@ -1,5 +1,5 @@
 """Tests for /admin/users and /users/me endpoints."""
-from tests.conftest import login
+from tests.conftest import grant_role, login
 from app.core.auth import hash_password
 from app.models.models import (
     User, Event, EventCategory, UserCompetitionExperience, UserVolunteerExperience, University,
@@ -230,13 +230,7 @@ class TestDeleteMe:
         # NOT NULL with no cascade rule defined); tracked separately in
         # docs/deferred-items.md rather than handled by this route.
         from app.models.models import TournamentMembership
-        db.add(TournamentMembership(
-            user_id=admin_user.id,
-            tournament_id=td_tournament.id,
-            positions=["event_supervisor"],
-            status="confirmed",
-        ))
-        db.commit()
+        grant_role(db, td_tournament, admin_user, "event_supervisor")
 
         login(client, "admin@test.com", "adminpass")
         assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0

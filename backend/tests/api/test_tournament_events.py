@@ -1,8 +1,7 @@
 """Tests for /tournaments/{tournament_id}/events endpoints (TournamentEvent model)."""
 import pytest
 from fastapi.testclient import TestClient
-from tests.conftest import login
-from app.models.models import TournamentMembership
+from tests.conftest import grant_role, login
 
 
 def _make_event(client, tournament_id, **overrides):
@@ -72,13 +71,7 @@ def test_create_event_non_member_forbidden(client, td_user, other_tournament):
 def test_create_event_volunteer_member_forbidden(
     client, td_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "td@test.com", "tdpass")
     assert _make_event(client, other_tournament.id).status_code == 403
 
@@ -114,13 +107,7 @@ def test_list_events_ordered_by_division_name(client, td_user, td_tournament):
 def test_list_events_view_events_permission_sufficient(
     client, td_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 200
 
@@ -145,13 +132,7 @@ def test_get_event(client, td_user, td_tournament):
 def test_get_event_wrong_tournament_404(
     client, td_user, td_tournament, other_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     assert client.get(
@@ -182,13 +163,7 @@ def test_update_event(client, td_user, td_tournament):
 def test_update_event_volunteer_cannot_patch(
     client, td_user, other_user, other_tournament, db
 ):
-    db.add(TournamentMembership(
-        user_id=td_user.id,
-        tournament_id=other_tournament.id,
-        positions=["event_supervisor"],
-        status="confirmed",
-    ))
-    db.commit()
+    grant_role(db, other_tournament, td_user, "event_supervisor")
     login(client, "other@test.com", "otherpass")
     event = _make_event(client, other_tournament.id).json()
     login(client, "td@test.com", "tdpass")
