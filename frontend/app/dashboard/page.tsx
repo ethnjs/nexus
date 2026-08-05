@@ -162,8 +162,8 @@ export default function DashboardPage() {
       setTournaments(data)
       data.forEach((t) => {
         Promise.all([
-          tournamentEventsApi.listByTournament(t.id).then((e) => e.length).catch(() => 0),
-          membershipsApi.listByTournament(t.id).then((m) => m.length).catch(() => 0),
+          tournamentEventsApi.list(t.id).then((e) => e.length).catch(() => 0),
+          membershipsApi.list(t.id).then((m) => m.length).catch(() => 0),
         ]).then(([events, volunteers]) => {
           setCounts((prev) => ({ ...prev, [t.id]: { events, volunteers } }))
         })
