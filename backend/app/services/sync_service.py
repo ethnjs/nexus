@@ -137,17 +137,10 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     if month is None or day is None:
         return None
 
-    for block in (tournament.blocks or []):
-        block_date_str = block.get("date", "")
-        if not block_date_str:
-            continue
-        try:
-            block_date = datetime.strptime(block_date_str, "%Y-%m-%d").date()
-            if block_date.month == month and block_date.day == day:
-                return block_date_str
-        except ValueError:
-            continue
-
+    # Tournament.blocks (fixed time-block JSON) was removed in the roles/
+    # permissions rebuild's old-system cutover — block-based date matching
+    # goes away with it. Falls back to guessing the year from start_date,
+    # same as it always did when no block matched.
     if tournament.start_date:
         year = tournament.start_date.year
         try:

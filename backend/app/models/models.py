@@ -162,9 +162,9 @@ class Event(Base):
 #   "admin" — superuser, bypasses all tournament-level permission checks.
 #             Used for testing and platform management. Can still hold
 #             memberships in tournaments like any other user.
-#   "user"  — everyone else. Tournament-level access is determined entirely
-#             by Membership.positions and the permissions defined in that
-#             tournament's volunteer_schema.
+#   "user"  — everyone else. Tournament-level access is determined by
+#             TournamentMembershipRole assignments and the permissions
+#             defined on each TournamentRole.
 #
 # Volunteers synced from sheets have hashed_password=None and cannot log in
 # until the volunteer login phase is built.
@@ -283,17 +283,6 @@ class Tournament(Base):
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
 
-    # [{number, label, date, start, end}, ...]
-    blocks = Column(JSON, nullable=False, default=list)
-
-    # {
-    #   custom_fields: [{key, label, type}, ...],
-    #   positions: [{key, label, permissions: [...]}, ...]
-    # }
-    # Positions are auto-populated from DEFAULT_POSITIONS on tournament create.
-    # TDs can customise per-tournament at any time.
-    volunteer_schema = Column(JSON, nullable=False, default=dict)
-
     # The user who created this tournament.
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
 
@@ -347,20 +336,18 @@ class Tournament(Base):
 # Tournament Membership
 # Links a User to a Tournament — their full volunteer record for that event.
 #
-# positions: list of position keys (e.g. ["tournament_director", "test_writer"])
-#   Drives both the user's title and their system permissions within this
-#   tournament. Position definitions (including permissions) live in
-#   Tournament.volunteer_schema["positions"] and can be customised per-tournament.
+# Title(s) + permission level within this tournament are now driven by
+# TournamentMembershipRole (see `roles` relationship below), not a JSON
+# column — see TournamentRole/TournamentMembershipRole.
 #
 # schedule: day-of block assignments (e.g. [{"block": 1, "duty": "event_supervisor"}])
 #   Only populated for volunteers with day-of duties. One entry per block.
-#   Separate from positions — a volunteer_coordinator might be an event_supervisor
-#   during competition blocks.
+#   duty is a free string, typically a role key.
 #
 # Tournament-specific free-form data (e.g. general_volunteer_interest, transportation,
-# carpool_seats, t-shirt preferences, etc.) lives in extra_data. The keys and labels
-# are defined per-tournament in Tournament.volunteer_schema["custom_fields"], making
-# the system flexible for any tournament's arbitrary form data.
+# carpool_seats, t-shirt preferences, etc.) lives in extra_data. There's no
+# structured schema for these keys currently — that's redesigned later as
+# part of a separate forms system.
 # ---------------------------------------------------------------------------
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
@@ -376,13 +363,8 @@ class TournamentMembership(Base):
         Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Title(s) + permission level within this tournament.
-    # List of position keys defined in tournament.volunteer_schema["positions"].
-    # e.g. ["lead_event_supervisor", "test_writer"]
-    positions = Column(JSON, nullable=True)
-
     # Day-of block schedule — [{block: int, duty: str}, ...]
-    # One entry per block. duty is a free string (typically a position key).
+    # One entry per block. duty is a free string (typically a role key).
     # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
     schedule = Column(JSON, nullable=True)
 
@@ -406,10 +388,10 @@ class TournamentMembership(Base):
 
     notes = Column(Text, nullable=True)
 
-    # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
-    # Anything that doesn't map to a standard field lives here — e.g. transportation,
-    # carpool_seats, general_volunteer_interest, dietary restrictions override, etc.
-    # Keys match the custom_field.key defined in the tournament's volunteer_schema.
+    # Catch-all for tournament-specific fields — e.g. transportation,
+    # carpool_seats, general_volunteer_interest, dietary restrictions
+    # override, etc. No structured schema for these keys currently; that's
+    # redesigned later as part of a separate forms system.
     extra_data = Column(JSON, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)

@@ -3,6 +3,8 @@ from datetime import datetime
 from typing import Any, Optional
 from pydantic import BaseModel, field_validator
 
+from app.schemas.tournament.role import RoleRead
+
 # No declined/removed states — a member who doesn't confirm is removed by
 # deleting the TournamentMembership row, not by tracking a status for it.
 VALID_STATUSES = {"interested", "confirmed"}
@@ -19,18 +21,13 @@ class AvailabilitySlot(BaseModel):
 class ScheduleSlot(BaseModel):
     """A single day-of block assignment."""
     block: int   # block number
-    duty: str    # position key or free string, e.g. "event_supervisor"
+    duty: str    # role key or free string, e.g. "event_supervisor"
 
 
 class MembershipBase(BaseModel):
     user_id: int
     tournament_id: int
     assigned_event_id: int | None = None
-
-    # Position keys from tournament.volunteer_schema["positions"].
-    # Drives both title and system permissions within this tournament.
-    # e.g. ["lead_event_supervisor", "test_writer"]
-    positions: list[str] | None = None
 
     # Day-of block schedule — one entry per block.
     # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
@@ -50,10 +47,10 @@ class MembershipBase(BaseModel):
     lunch_order: LunchOrderValue | None = None
     notes: Optional[str] = None
 
-    # Catch-all for tournament-specific fields defined in volunteer_schema.custom_fields.
-    # Anything tournament-specific that doesn't map to a standard field lives here —
-    # e.g. transportation, carpool_seats, general_volunteer_interest, etc.
-    # Keys match custom_field.key in the tournament's volunteer_schema.
+    # Catch-all for tournament-specific fields — e.g. transportation,
+    # carpool_seats, general_volunteer_interest, etc. No structured schema
+    # for these keys currently; that's redesigned later as part of a
+    # separate forms system.
     extra_data: dict | None = None
 
     @field_validator("status")
@@ -71,7 +68,6 @@ class MembershipCreate(MembershipBase):
 class MembershipUpdate(BaseModel):
     """Partial update — TD/coordinator manual override for any field."""
     assigned_event_id: int | None = None
-    positions: list[str] | None = None
     schedule: list[ScheduleSlot] | None = None
     status: Optional[str] = None
     role_preference: list[str] | None = None
@@ -91,6 +87,10 @@ class MembershipUpdate(BaseModel):
 
 class MembershipRead(MembershipBase):
     id: int
+
+    # Current role assignments — read-only here. Assign/remove via
+    # PATCH /tournaments/{id}/memberships/{id}/roles/, not through this schema.
+    roles: list[RoleRead] = []
 
     is_over_18: Optional[bool] = None
     is_over_21: Optional[bool] = None

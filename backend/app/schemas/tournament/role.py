@@ -6,15 +6,6 @@ from app.core.tournament.permissions import ALL_PERMISSIONS
 
 # ---------------------------------------------------------------------------
 # Role definition schema — create/update schema for TournamentRole rows.
-#
-# Deliberately a separate class from PositionDefinition (app.schemas.tournament)
-# rather than a rename of it in place: PositionDefinition still backs the old,
-# coexisting VolunteerSchema.positions field (Steps 1-11 of the roles/permissions
-# rebuild require the old JSON-based system to stay fully functional and
-# untouched), and RoleDefinition's `rank` field is required — reusing the
-# same class would make old-system PATCH calls that edit positions without a
-# rank start failing validation. They merge back into one class in Step 12
-# once VolunteerSchema/PositionDefinition are deleted.
 # ---------------------------------------------------------------------------
 class RoleDefinition(BaseModel):
     key: str                    # snake_case identifier, matches TournamentMembershipRole assignments

@@ -9,6 +9,7 @@ from typing import Sequence, Union
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
 
 
 # revision identifiers, used by Alembic.
@@ -79,8 +80,16 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
 
+    op.drop_column('tournament_memberships', 'positions')
+    op.drop_column('tournaments', 'volunteer_schema')
+    op.drop_column('tournaments', 'blocks')
+
 
 def downgrade() -> None:
+    op.add_column('tournaments', sa.Column('blocks', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False))
+    op.add_column('tournaments', sa.Column('volunteer_schema', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False))
+    op.add_column('tournament_memberships', sa.Column('positions', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=True))
+
     op.drop_table('audit_log_entries')
 
     op.drop_column('tournaments', 'registration_opens_at')

@@ -29,7 +29,7 @@ def _serialize(m: TournamentMembership, include_user: bool = False) -> dict:
         "user_id": m.user_id,
         "tournament_id": m.tournament_id,
         "assigned_event_id": m.assigned_event_id,
-        "positions": m.positions,
+        "roles": [mr.role for mr in m.roles],
         "schedule": m.schedule,
         "status": m.status,
         "role_preference": m.role_preference,

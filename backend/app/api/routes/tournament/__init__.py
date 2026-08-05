@@ -4,14 +4,14 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, log_action
 from app.core.tournament.permissions import (
-    DEFAULT_POSITIONS,
+    DEFAULT_ROLES,
     MANAGE_TOURNAMENT,
     require_membership,
     require_permission,
     has_any_membership,
 )
 from app.db.session import get_db
-from app.models.models import TournamentMembership, Tournament, User
+from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
 from app.schemas.tournament import (
     TournamentCreate, TournamentRead, TournamentUpdate, TransferOwnershipRequest,
 )
@@ -20,22 +20,17 @@ router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
 def _serialize(tournament: Tournament) -> dict:
-    """
-    Convert JSON columns (blocks, volunteer_schema) from their stored dict/list
-    form into the nested Pydantic-compatible structure for TournamentRead.
-    """
     return {
         "id": tournament.id,
         "name": tournament.name,
         "start_date": tournament.start_date,
         "end_date": tournament.end_date,
         "location": tournament.location,
-        "blocks": tournament.blocks or [],
-        "volunteer_schema": tournament.volunteer_schema or {
-            "custom_fields": [],
-            "positions": [],
-        },
+        "is_public": tournament.is_public,
+        "is_verified": tournament.is_verified,
+        "registration_opens_at": tournament.registration_opens_at,
         "owner_id": tournament.owner_id,
+        "roles": tournament.roles,
         "created_at": tournament.created_at,
         "updated_at": tournament.updated_at,
     }
@@ -62,7 +57,10 @@ def list_my_tournaments(
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/ — any authenticated user
-# Auto-creates a tournament_director membership for the creator.
+# Auto-populates DEFAULT_ROLES for the new tournament and assigns the
+# creator the Tournament Director role. Custom roles are set up afterward
+# via the roles API (POST/PATCH/DELETE /tournaments/{id}/roles/), not at
+# creation time.
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=TournamentRead, status_code=status.HTTP_201_CREATED)
 def create_tournament(
@@ -70,29 +68,25 @@ def create_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    data = payload.model_dump()
-    data["blocks"] = [b.model_dump() for b in payload.blocks]
-
-    # Build volunteer_schema — merge the submitted schema with DEFAULT_POSITIONS.
-    # If the TD supplied positions in the payload we respect them; otherwise
-    # we auto-populate the defaults.
-    submitted_schema = payload.volunteer_schema.model_dump()
-    if not submitted_schema.get("positions"):
-        submitted_schema["positions"] = DEFAULT_POSITIONS
-    data["volunteer_schema"] = submitted_schema
-
-    tournament = Tournament(**data, owner_id=current_user.id)
+    tournament = Tournament(**payload.model_dump(), owner_id=current_user.id)
     db.add(tournament)
-    db.flush()  # get tournament.id before creating membership
+    db.flush()  # get tournament.id before creating roles/membership
 
-    # Auto-create a tournament_director membership for the creator.
+    role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
+    db.add_all(role_rows)
+    db.flush()  # get role ids
+    td_role = next(r for r in role_rows if r.key == "tournament_director")
+
+    # Auto-create a confirmed membership for the creator, holding the TD role.
     membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=tournament.id,
-        positions=["tournament_director"],
         status="confirmed",
     )
     db.add(membership)
+    db.flush()  # get membership.id
+    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=td_role.id))
+
     db.commit()
     db.refresh(tournament)
     return _serialize(tournament)
@@ -129,11 +123,6 @@ def update_tournament(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     update_data = payload.model_dump(exclude_none=True)
-
-    if "blocks" in update_data:
-        update_data["blocks"] = [b.model_dump() for b in payload.blocks]
-    if "volunteer_schema" in update_data:
-        update_data["volunteer_schema"] = payload.volunteer_schema.model_dump()
 
     for field, value in update_data.items():
         setattr(tournament, field, value)
