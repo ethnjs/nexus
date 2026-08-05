@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { tournamentsApi, Tournament } from '@/lib/api'
+import { useEffect, useState } from 'react'
+import { tournamentsApi, universitiesApi, Tournament, University } from '@/lib/api'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Combobox } from '@/components/ui/Combobox'
 
 interface NewTournamentModalProps {
   onClose: () => void
@@ -13,11 +14,17 @@ interface NewTournamentModalProps {
 
 export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalProps) {
   const [name, setName]           = useState('')
-  const [location, setLocation]   = useState('')
+  const [universities, setUniversities] = useState<University[]>([])
+  const [locationText, setLocationText] = useState('')
+  const [matchedUniversity, setMatchedUniversity] = useState<University | null>(null)
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate]     = useState('')
   const [loading, setLoading]     = useState(false)
   const [error, setError]         = useState('')
+
+  useEffect(() => {
+    universitiesApi.list().then(setUniversities).catch(() => {})
+  }, [])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -26,7 +33,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     try {
       const t = await tournamentsApi.create({
         name: name.trim(),
-        location: location.trim() || null,
+        university_id: matchedUniversity?.id ?? null,
+        location: matchedUniversity ? null : (locationText.trim() || null),
         start_date: startDate || null,
         end_date: endDate || null,
       })
@@ -49,12 +57,14 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           fullWidth
           autoFocus
         />
-        <Input
+        <Combobox
           label="Location"
-          value={location}
-          onChange={(e) => setLocation(e.target.value)}
+          options={universities}
+          getId={(u) => u.id}
+          getLabel={(u) => u.name}
+          value={locationText}
+          onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched) }}
           placeholder="e.g. USC, Los Angeles CA"
-          fullWidth
         />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <Input
