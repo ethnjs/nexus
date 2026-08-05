@@ -613,7 +613,7 @@ const RuleRow = memo(function RuleRow({
           disabled={isRemoved}
           size="sm"
           minWidth={120}
-          background="var(--color-bg)"
+          type="primary"
         />
 
         {showMatch && (
@@ -647,7 +647,7 @@ const RuleRow = memo(function RuleRow({
           options={validActions.map((a) => ({ value: a, label: ACTION_LABELS[a] ?? a }))}
           disabled={isRemoved}
           size="sm"
-          background="var(--color-bg)"
+          type="primary"
         />
 
         {showValue && (
@@ -1021,7 +1021,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
             options={knownFields.map((f) => ({ value: f, label: KNOWN_FIELDS_LABELS[f] ?? f }))}
             disabled={isRemoved}
             size="sm"
-            background="var(--color-bg)"
+            type="primary"
             fullWidth
           />
         )}
@@ -1038,7 +1038,7 @@ const MappingRowComponent = memo(function MappingRowComponent({
             options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
             disabled={isRemoved || isIgnored}
             size="sm"
-            background="var(--color-bg)"
+            type="primary"
             fullWidth
           />
         )}

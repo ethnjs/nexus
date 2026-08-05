@@ -7,6 +7,7 @@ import {
   useId,
   KeyboardEvent,
 } from 'react'
+import { IconChevronDown } from './Icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,15 +46,11 @@ interface SelectProps {
   error?:       string
   disabled?:    boolean
   fullWidth?:   boolean
-  /**
-   * "md" (default) — 44px trigger, 14px font, matches Input height.
-   * "sm" — 30px trigger, 11px font, for compact inline use (e.g. rule editor).
-   */
   size?:        'sm' | 'md'
   /** Minimum width of the trigger in px. Useful for sm selects that need a fixed floor. */
   minWidth?:    number
-  /** Override the trigger background color. Defaults to var(--color-surface). */
-  background?:  string
+  // primary -- var(--color-bg); secondary (default) -- var(--color-surface).
+  type?:        'primary' | 'secondary'
   id?:          string
 }
 
@@ -62,17 +59,14 @@ interface SelectProps {
 const PANEL_MAX_HEIGHT = 260
 const PANEL_GAP        = 4   // px between trigger edge and panel
 
-// ─── Chevron icon ─────────────────────────────────────────────────────────────
+const SIZE_MAP: Record<'sm' | 'md', { height: number; triggerFontSize: string; optionPadding: string; optionFontSize: string }> = {
+  sm: { height: 30, triggerFontSize: '11px', optionPadding: '5px 8px',  optionFontSize: '11px' },
+  md: { height: 44, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '13px' },
+}
 
-function ChevronDown({ open }: { open: boolean }) {
-  return (
-    <svg
-      width="14" height="14" viewBox="0 0 14 14" fill="none"
-      style={{ flexShrink: 0, transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
-    >
-      <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
+const BACKGROUND_MAP: Record<'primary' | 'secondary', string> = {
+  primary:   'var(--color-bg)',
+  secondary: 'var(--color-surface)',
 }
 
 // ─── Panel position type ──────────────────────────────────────────────────────
@@ -94,7 +88,7 @@ export function Select({
   fullWidth = false,
   size = 'md',
   minWidth,
-  background,
+  type = 'secondary',
   id,
 }: SelectProps) {
   const generatedId               = useId()
@@ -107,9 +101,8 @@ export function Select({
   const triggerRef                = useRef<HTMLButtonElement>(null)
   const listRef                   = useRef<HTMLDivElement>(null)
 
-  const height    = size === 'sm' ? 30 : 44
-  const fontSize  = size === 'sm' ? '11px' : '14px'
-  const triggerBg = background ?? 'var(--color-surface)'
+  const sizing    = SIZE_MAP[size]
+  const triggerBg = BACKGROUND_MAP[type]
 
   const flat         = flatOptions(options)
   const selected     = flat.find((o) => o.value === value)
@@ -258,10 +251,10 @@ export function Select({
             gap:            '8px',
             width:          fullWidth ? '100%' : undefined,
             minWidth:       minWidth ? `${minWidth}px` : undefined,
-            height:         `${height}px`,
+            height:         `${sizing.height}px`,
             padding:        '0 10px',
             fontFamily:     'var(--font-mono)',
-            fontSize:       fontSize,
+            fontSize:       sizing.triggerFontSize,
             color:          selected ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
             background:     triggerBg,
             border:         `1px solid ${borderColor}`,
@@ -277,7 +270,10 @@ export function Select({
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
             {displayLabel}
           </span>
-          <ChevronDown open={open} />
+          <IconChevronDown
+            size={14}
+            style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }}
+          />
         </button>
 
         {/* Dropdown panel — fixed positioned, flips upward when near bottom of viewport */}
@@ -364,8 +360,7 @@ function OptionRow({
 }) {
   const isActive   = idx === activeIdx
   const isSelected = opt.value === selectedValue
-  const padding    = size === 'sm' ? '5px 8px' : '7px 10px'
-  const fontSize   = size === 'sm' ? '11px'    : '13px'
+  const sizing     = SIZE_MAP[size]
 
   return (
     <div
@@ -379,10 +374,10 @@ function OptionRow({
         display:        'flex',
         alignItems:     'center',
         justifyContent: 'space-between',
-        padding,
+        padding:        sizing.optionPadding,
         borderRadius:   'var(--radius-sm)',
         fontFamily:     'var(--font-mono)',
-        fontSize,
+        fontSize:       sizing.optionFontSize,
         color:          'var(--color-text-primary)',
         background:     isActive && !opt.disabled ? 'var(--color-bg)' : 'transparent',
         cursor:         opt.disabled ? 'default' : 'pointer',
