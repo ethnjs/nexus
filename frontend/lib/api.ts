@@ -498,7 +498,7 @@ export interface MembershipMeUpdate {
   lunch_order?:      Record<string, unknown> | string | null
 }
 
-// PATCH .../memberships/{id}/ — manage_volunteers override, day-of logistics only
+// PATCH .../memberships/{id}/ — manage_members override, day-of logistics only
 export interface MembershipCoordinatorUpdate {
   schedule?: ScheduleSlot[] | null
   notes?:    string | null
@@ -526,12 +526,8 @@ export const membershipsApi = {
 export type Permission =
   | 'manage_tournament'
   | 'manage_roles'
-  | 'manage_volunteers'
+  | 'manage_members'
   | 'manage_events'
-  | 'manage_materials'
-  | 'manage_logistics'
-  | 'view_volunteers'
-  | 'view_events'
 
 export interface RoleDefinition {
   key:         string

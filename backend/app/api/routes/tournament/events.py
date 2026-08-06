@@ -2,15 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.auth import get_current_user
-from app.core.tournament.permissions import (
-    MANAGE_EVENTS,
-    MANAGE_TOURNAMENT,
-    VIEW_EVENTS,
-    require_membership,
-    require_permission,
-    has_permission,
-)
+from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentEvent, Tournament, User
 from app.schemas.tournament.event import EventCreate, EventRead, EventUpdate
@@ -51,26 +43,14 @@ def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> Tournam
     return event
 
 
-def _require_write_permission(user: User, tournament_id: int, db: Session) -> None:
-    """Raises 403 unless user has manage_events or manage_tournament."""
-    if not (
-        has_permission(user, tournament_id, MANAGE_EVENTS, db)
-        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
-
-
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/events/ — view_events or manage_events
+# GET /tournaments/{tournament_id}/events/ — manage_events
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[EventRead])
 def list_events(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(VIEW_EVENTS)),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
     """List all events for a tournament, ordered by division then name."""
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
@@ -87,30 +67,28 @@ def list_events(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/events/{event_id} — view_events or manage_events
+# GET /tournaments/{tournament_id}/events/{event_id} — manage_events
 # ---------------------------------------------------------------------------
 @router.get("/{event_id}/", response_model=EventRead)
 def get_event(
     tournament_id: int,
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(VIEW_EVENTS)),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
     return _serialize(_get_event_or_404(event_id, tournament_id, db))
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/events/ — manage_events or manage_tournament
+# POST /tournaments/{tournament_id}/events/ — manage_events
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=EventRead, status_code=status.HTTP_201_CREATED)
 def create_event(
     tournament_id: int,
     payload: EventCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    _require_write_permission(current_user, tournament_id, db)
-
     # Validate tournament_id in body matches path
     if payload.tournament_id != tournament_id:
         raise HTTPException(
@@ -141,7 +119,7 @@ def create_event(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
+# PATCH /tournaments/{tournament_id}/events/{event_id} — manage_events
 # ---------------------------------------------------------------------------
 @router.patch("/{event_id}/", response_model=EventRead)
 def update_event(
@@ -149,9 +127,8 @@ def update_event(
     event_id: int,
     payload: EventUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    _require_write_permission(current_user, tournament_id, db)
     event = _get_event_or_404(event_id, tournament_id, db)
 
     for field, value in payload.model_dump(exclude_none=True).items():
@@ -163,16 +140,15 @@ def update_event(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/events/{event_id} — manage_events or manage_tournament
+# DELETE /tournaments/{tournament_id}/events/{event_id} — manage_events
 # ---------------------------------------------------------------------------
 @router.delete("/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(
     tournament_id: int,
     event_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    _require_write_permission(current_user, tournament_id, db)
     event = _get_event_or_404(event_id, tournament_id, db)
     db.delete(event)
     db.commit()

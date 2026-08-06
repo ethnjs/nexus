@@ -2,12 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
-from app.core.tournament.permissions import (
-    MANAGE_TOURNAMENT,
-    MANAGE_VOLUNTEERS,
-    VIEW_VOLUNTEERS,
-    has_permission,
-)
+from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
 from app.db.session import get_db
 from app.models.models import (
     Tournament,
@@ -23,31 +18,6 @@ from app.schemas.tournament.membership import (
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
 
 
-def _require_read_permission(user: User, tournament_id: int, db: Session) -> None:
-    """Raises 403 unless user has view_volunteers, manage_volunteers, or manage_tournament."""
-    if not (
-        has_permission(user, tournament_id, VIEW_VOLUNTEERS, db)
-        or has_permission(user, tournament_id, MANAGE_VOLUNTEERS, db)
-        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
-
-
-def _require_write_permission(user: User, tournament_id: int, db: Session) -> None:
-    """Raises 403 unless user has manage_volunteers or manage_tournament."""
-    if not (
-        has_permission(user, tournament_id, MANAGE_VOLUNTEERS, db)
-        or has_permission(user, tournament_id, MANAGE_TOURNAMENT, db)
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Insufficient permissions",
-        )
-
-
 def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) -> TournamentMembership:
     """Fetch membership and validate it belongs to the given tournament."""
     m = db.query(TournamentMembership).filter(TournamentMembership.id == membership_id).first()
@@ -59,17 +29,15 @@ def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) 
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/ — view_volunteers+
+# GET /tournaments/{tournament_id}/memberships/ — manage_members
 # Members-page roster: slim user identity + roles only.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[MembershipSlimResponse])
 def list_memberships(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    _require_read_permission(current_user, tournament_id, db)
-
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
@@ -88,16 +56,15 @@ def list_memberships(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/{membership_id} — view_volunteers+
+# GET /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
 # ---------------------------------------------------------------------------
 @router.get("/{membership_id}/", response_model=MembershipFullResponse)
 def get_membership(
     tournament_id: int,
     membership_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    _require_read_permission(current_user, tournament_id, db)
     m = _get_membership_or_404(membership_id, tournament_id, db)
     return MembershipFullResponse.model_validate(m)
 
@@ -105,7 +72,7 @@ def get_membership(
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/me/ — self-service
 # Lets a volunteer update their own onboarding responses. Cannot touch
-# day-of logistics (schedule, notes) — that's manage_volunteers-only.
+# day-of logistics (schedule, notes) — that's manage_members-only.
 # ---------------------------------------------------------------------------
 @router.patch("/me/", response_model=MembershipFullResponse)
 def update_my_membership(
@@ -138,7 +105,7 @@ def update_my_membership(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_volunteers+
+# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
 # Staff override — day-of logistics only (schedule, notes). Not onboarding
 # data; that's self-service via PATCH .../me/.
 # ---------------------------------------------------------------------------
@@ -148,9 +115,8 @@ def update_membership(
     membership_id: int,
     payload: MembershipCoordinatorUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    _require_write_permission(current_user, tournament_id, db)
     m = _get_membership_or_404(membership_id, tournament_id, db)
 
     update_data = payload.model_dump(exclude_none=True)
@@ -166,7 +132,7 @@ def update_membership(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_volunteers+
+# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
 # Removes a user from the tournament.
 # ---------------------------------------------------------------------------
 @router.delete("/{membership_id}/", status_code=status.HTTP_204_NO_CONTENT)
@@ -174,9 +140,8 @@ def delete_membership(
     tournament_id: int,
     membership_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    _require_write_permission(current_user, tournament_id, db)
     m = _get_membership_or_404(membership_id, tournament_id, db)
     db.delete(m)
     db.commit()

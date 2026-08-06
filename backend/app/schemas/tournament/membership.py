@@ -25,7 +25,7 @@ class ScheduleSlot(BaseModel):
 class MembershipMeUpdate(BaseModel):
     """Self-service update — the fields a volunteer fills out during onboarding.
 
-    manage_volunteers cannot write these on someone else's behalf; see
+    manage_members cannot write these on someone else's behalf; see
     MembershipCoordinatorUpdate for the staff-side fields.
     """
     role_preference: list[str] | None = None
@@ -35,7 +35,7 @@ class MembershipMeUpdate(BaseModel):
 
 
 class MembershipCoordinatorUpdate(BaseModel):
-    """manage_volunteers override — day-of logistics only, not onboarding data."""
+    """manage_members override — day-of logistics only, not onboarding data."""
     schedule: list[ScheduleSlot] | None = None
     notes: Optional[str] = None
 

@@ -35,23 +35,15 @@ if TYPE_CHECKING:
 
 MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all below
 MANAGE_ROLES       = "manage_roles"        # create/edit/delete roles, assign/remove roles on memberships
-MANAGE_VOLUNTEERS  = "manage_volunteers"   # read + write volunteer/membership pages
+MANAGE_MEMBERS     = "manage_members"      # read + write membership/roster pages
 MANAGE_EVENTS      = "manage_events"       # read + write events page
-MANAGE_MATERIALS   = "manage_materials"    # read + write materials page (future)
-MANAGE_LOGISTICS   = "manage_logistics"    # read + write logistics page (future)
-VIEW_VOLUNTEERS    = "view_volunteers"     # read-only volunteer list
-VIEW_EVENTS        = "view_events"         # read-only events list
 
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
     MANAGE_TOURNAMENT,
     MANAGE_ROLES,
-    MANAGE_VOLUNTEERS,
+    MANAGE_MEMBERS,
     MANAGE_EVENTS,
-    MANAGE_MATERIALS,
-    MANAGE_LOGISTICS,
-    VIEW_VOLUNTEERS,
-    VIEW_EVENTS,
 ]
 
 
@@ -79,88 +71,85 @@ DEFAULT_ROLES: list[dict] = [
         "key":         "tournament_director",
         "label":       "Tournament Director",
         "rank":        10,
-        "permissions": [
-            MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_VOLUNTEERS, MANAGE_EVENTS,
-            MANAGE_MATERIALS, MANAGE_LOGISTICS, VIEW_VOLUNTEERS, VIEW_EVENTS,
-        ],
+        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS],
     },
     {
         "key":         "volunteer_coordinator",
         "label":       "Volunteer Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_VOLUNTEERS, VIEW_VOLUNTEERS],
+        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS],
     },
     {
         "key":         "test_coordinator",
         "label":       "Test Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_EVENTS, VIEW_EVENTS],
+        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES],
     },
     {
         "key":         "materials_coordinator",
         "label":       "Materials Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_MATERIALS],
+        "permissions": [],
     },
     {
         "key":         "logistics",
         "label":       "Logistics Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_LOGISTICS],
+        "permissions": [],
     },
     {
         "key":         "runner",
         "label":       "Runner",
         "rank":        20,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "scoremaster",
         "label":       "Scoremaster",
         "rank":        20,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "lead_event_supervisor",
         "label":       "Lead Event Supervisor",
         "rank":        30,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
-        "key":         "event_supervisor",
-        "label":       "Event Supervisor",
+        "key":         "volunteer",
+        "label":       "Volunteer",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "scoring",
         "label":       "Scoring",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "arbitrations",
         "label":       "Arbitrations",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "awards",
         "label":       "Awards",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "test_writer",
         "label":       "Test Writer",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
     {
         "key":         "test_reviewer",
         "label":       "Test Reviewer",
         "rank":        40,
-        "permissions": [VIEW_EVENTS],
+        "permissions": [],
     },
 ]
 
