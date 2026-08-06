@@ -326,10 +326,18 @@ def delete_role(
     role = _get_role_or_404(role_id, tournament_id, db)
     _validate_rank_bound(current_user, tournament, role.rank, db)
 
+    # Count before delete — the FK cascade removes these rows, so this is
+    # the only chance to record how many memberships lose the role.
+    members_affected = (
+        db.query(TournamentMembershipRole)
+        .filter(TournamentMembershipRole.role_id == role.id)
+        .count()
+    )
+
     log_action(
         db, tournament_id, current_user.id, ROLE_DELETED,
         target_type="role", target_id=role.id,
-        extra_data={"label": role.label, "rank": role.rank},
+        extra_data={"label": role.label, "rank": role.rank, "members_affected": members_affected},
     )
 
     db.delete(role)
