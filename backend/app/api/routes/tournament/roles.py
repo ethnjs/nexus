@@ -299,7 +299,7 @@ def reorder_role(
         log_action(
             db, tournament_id, current_user.id, ROLE_UPDATED,
             target_type="role", target_id=role.id,
-            extra_data={"changes": {"rank": {"old": old_rank, "new": new_rank}}},
+            extra_data={"changes": [{"field": "rank", "old": old_rank, "new": new_rank}]},
         )
 
     db.commit()
