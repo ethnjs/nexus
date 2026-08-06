@@ -1,3 +1,4 @@
+import asyncio
 import resend
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
@@ -326,3 +327,37 @@ async def send_account_setup_invite_email(db: Session, user_id: int, to: str) ->
         await send_account_setup_email(to, token)
     except Exception:
         raise HTTPException(500, "Failed to send account setup email")
+
+
+# ---------------------------------------------------------------------------
+# Tournament staff invite
+# ---------------------------------------------------------------------------
+
+async def send_staff_invite_email(to: str, tournament_name: str, join_url: str) -> None:
+    html = _render_email_html(
+        heading=f"You're invited to help run {tournament_name}",
+        body_lines=[
+            f"You've been invited to join the staff for {tournament_name} on NEXUS.",
+            "Use the link below to join.",
+        ],
+        cta_label="Join tournament",
+        cta_url=join_url,
+        footnote="If you weren't expecting this, you can ignore this email.",
+    )
+    await _send(to, f"You're invited to help run {tournament_name}", f"Join {tournament_name}: {join_url}", html)
+
+
+async def send_staff_invite_emails(to_emails: list[str], tournament_name: str, join_url: str) -> list[str]:
+    """
+    Sends one personalized invite email per address, in parallel — not BCC,
+    which counts every recipient against quota anyway and has worse
+    deliverability for this use case. Each send is independent, so one bad
+    address doesn't block the rest.
+
+    Returns the subset of to_emails that failed to send.
+    """
+    results = await asyncio.gather(
+        *(send_staff_invite_email(email, tournament_name, join_url) for email in to_emails),
+        return_exceptions=True,
+    )
+    return [email for email, result in zip(to_emails, results) if isinstance(result, Exception)]

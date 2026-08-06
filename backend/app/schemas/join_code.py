@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 
 
 class JoinCodeResponse(BaseModel):
@@ -26,6 +26,22 @@ class JoinCodeUpdate(BaseModel):
     # Extends expires_at by this many hours from its current value (or from
     # now, if the code currently never expires) — cumulative, not absolute.
     add_hours: int | None = None
+
+
+class StaffInviteCreate(BaseModel):
+    """
+    join_code_id must already exist — the frontend creates a new code first
+    (POST /join-codes/) if the TD chose "create new code" in the invite
+    modal, then calls this with the resulting id. This route only sends.
+    """
+    join_code_id: int
+    emails: list[EmailStr]
+
+
+class StaffInviteResponse(BaseModel):
+    join_code: JoinCodeResponse
+    sent: list[str]
+    failed: list[str] = []
 
 
 class JoinRedeemResponse(BaseModel):
