@@ -245,6 +245,73 @@ def test_get_membership_includes_roles(client, td_user, td_tournament, db):
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/me/ — any member
+# ---------------------------------------------------------------------------
+
+def test_get_my_membership_owner(client, td_user, td_tournament):
+    """td_user is both the owner and holds Tournament Director — is_owner
+    True and permissions come back as the full set regardless of role."""
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_owner"] is True
+    assert data["status"] == "confirmed"
+    assert data["membership_id"] is not None
+    assert [r["label"] for r in data["roles"]] == ["Tournament Director"]
+    assert len(data["permissions"]) > 0
+
+
+def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
+    """A plain member sees is_owner False and permissions scoped to their role."""
+    from app.core.auth import hash_password
+    from app.models.models import User as UserModel
+
+    u = _make_user(db, "volunteer@example.com")
+    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
+    user.hashed_password = hash_password("volpass")
+    db.commit()
+    membership = grant_role(db, td_tournament, user, "Volunteer")
+
+    login(client, "volunteer@example.com", "volpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_owner"] is False
+    assert data["membership_id"] == membership.id
+    assert [r["label"] for r in data["roles"]] == ["Volunteer"]
+
+
+def test_get_my_membership_admin_without_membership(client, admin_user, td_tournament):
+    """A site admin who never joined the tournament still gets in via
+    require_membership()'s admin bypass — membership_id/status/roles are
+    null/empty but permissions come back as the full admin set."""
+    login(client, "admin@test.com", "adminpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["membership_id"] is None
+    assert data["is_owner"] is False
+    assert data["status"] is None
+    assert data["roles"] == []
+    assert len(data["permissions"]) > 0
+
+
+def test_get_my_membership_requires_membership(client, td_user, other_tournament):
+    """No membership at all in the tournament — 404, not 403, so existence
+    isn't leaked."""
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/memberships/me/"
+    ).status_code == 404
+
+
+def test_get_my_membership_not_found_tournament(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.get("/tournaments/9999/memberships/me/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Self-service update — PATCH .../me/
 # ---------------------------------------------------------------------------
 
