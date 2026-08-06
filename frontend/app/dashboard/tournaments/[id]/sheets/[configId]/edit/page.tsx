@@ -74,7 +74,7 @@ function resolveOptions(
 export default function EditSheetPage() {
   const router       = useRouter();
   const params       = useParams();
-  const tournamentId = Number(params.tournamentId);
+  const tournamentId = Number(params.id);
   const configId     = Number(params.configId);
 
   // Config + form fields
@@ -461,7 +461,7 @@ export default function EditSheetPage() {
   if (loadError) {
     return (
       <div style={{ width: "100%" }}>
-        <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)} />
+        <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}`)} />
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{loadError}</p>
       </div>
     );
@@ -469,7 +469,7 @@ export default function EditSheetPage() {
 
   return (
     <div style={{ width: "100%" }}>
-      <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)} />
+      <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}`)} />
 
       <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>Edit Sheet Config</h1>
       <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "28px" }}>
@@ -557,7 +557,7 @@ export default function EditSheetPage() {
             <Banner variant="success" message="Changes saved successfully." onDismiss={() => setSaveSuccess(false)} />
           )}
           <div style={{ display: "flex", gap: "10px" }}>
-            <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}`)}>Cancel</Button>
+            <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}`)}>Cancel</Button>
             <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave}>Save</Button>
             <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync}>Save &amp; Sync</Button>
           </div>
@@ -595,7 +595,7 @@ export default function EditSheetPage() {
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>All rows imported successfully — no errors.</span>
               </div>
             )}
-            <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
+            <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
           </div>
         )}
 

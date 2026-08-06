@@ -172,7 +172,7 @@ function DeleteMembershipsModal({
 export default function ViewSheetConfigPage() {
   const router = useRouter();
   const params = useParams();
-  const tournamentId = Number(params.tournamentId);
+  const tournamentId = Number(params.id);
   const configId     = Number(params.configId);
 
   const [config, setConfig]       = useState<SheetConfig | null>(null);
@@ -222,7 +222,7 @@ export default function ViewSheetConfigPage() {
     setDeleteError("");
     try {
       await sheetsApi.deleteConfig(tournamentId, configId);
-      router.push(`/dashboard/${tournamentId}/sheets`);
+      router.push(`/dashboard/tournaments/${tournamentId}/sheets`);
     } catch {
       setDeleteError("Failed to delete config.");
       setDeleteLoading(false);
@@ -239,7 +239,7 @@ export default function ViewSheetConfigPage() {
         memberships.map((m) => membershipsApi.delete(tournamentId, m.id))
       );
       await sheetsApi.deleteConfig(tournamentId, configId);
-      router.push(`/dashboard/${tournamentId}/sheets`);
+      router.push(`/dashboard/tournaments/${tournamentId}/sheets`);
     } catch {
       setDeleteError("Failed to delete memberships.");
       setDeleteLoading(false);
@@ -261,7 +261,7 @@ export default function ViewSheetConfigPage() {
   if (loadError || !config) {
     return (
       <div style={{ width: "100%" }}>
-        <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
+        <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)} />
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
           {loadError || "Config not found."}
         </p>
@@ -278,7 +278,7 @@ export default function ViewSheetConfigPage() {
 
       {/* ── Header ── */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
-        <BackLink onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)} />
+        <BackLink onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)} />
         <div style={{ display: "flex", gap: "8px" }}>
           <Button
             variant="secondary"
@@ -291,7 +291,7 @@ export default function ViewSheetConfigPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${configId}/edit`)}
+            onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}/edit`)}
           >
             <IconEdit size={18} />
             Edit

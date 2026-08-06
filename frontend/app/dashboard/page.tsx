@@ -175,7 +175,7 @@ export default function DashboardPage() {
     setTournaments((prev) => [...prev, t])
     setCounts((prev) => ({ ...prev, [t.id]: { events: 0, volunteers: 0 } }))
     setShowModal(false)
-    router.push(`/dashboard/${t.id}/overview`)
+    router.push(`/dashboard/tournaments/${t.id}/overview`)
   }
 
   function dismissBanner(id: number, snoozeDays: number) {
@@ -238,7 +238,7 @@ export default function DashboardPage() {
                 <TournamentCard
                   key={t.id} tournament={t}
                   counts={counts[t.id] ?? { events: null, volunteers: null }}
-                  onClick={() => router.push(`/dashboard/${t.id}/overview`)}
+                  onClick={() => router.push(`/dashboard/tournaments/${t.id}/overview`)}
                 />
               ))}
             </div>

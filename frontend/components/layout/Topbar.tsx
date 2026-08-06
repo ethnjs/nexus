@@ -46,14 +46,14 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
     await refresh();
     setSelectedTournament(t);
     setShowNewModal(false);
-    router.push(`/dashboard/${t.id}/overview`);
+    router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
 
   function handleSelect(t: Tournament) {
     setSelectedTournament(t);
     setDropdownOpen(false);
     const segment = window.location.pathname.split("/").pop() ?? "overview";
-    router.push(`/dashboard/${t.id}/${segment}`);
+    router.push(`/dashboard/tournaments/${t.id}/${segment}`);
   }
 
   return (

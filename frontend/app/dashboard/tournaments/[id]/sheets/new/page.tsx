@@ -148,7 +148,7 @@ function SaveConfirmModal({
 export default function NewSheetPage() {
   const router       = useRouter();
   const params       = useParams();
-  const tournamentId = Number(params.tournamentId);
+  const tournamentId = Number(params.id);
 
   const [step, setStep] = useState<Step>("url");
 
@@ -472,7 +472,7 @@ export default function NewSheetPage() {
   return (
     <div style={{ width: "100%" }}>
       <button
-        onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}
+        onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}
         style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "20px", background: "none", border: "none", cursor: "pointer", padding: 0, fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}
         onMouseEnter={(e) => { e.currentTarget.style.color = "var(--color-text-primary)"; }}
         onMouseLeave={(e) => { e.currentTarget.style.color = "var(--color-text-tertiary)"; }}
@@ -669,7 +669,7 @@ export default function NewSheetPage() {
             </div>
           )}
 
-          <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
+          <div><Button variant="primary" size="lg" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets`)}>Back to Sheets</Button></div>
         </div>
       )}
 

@@ -211,7 +211,7 @@ function CardMenu({
     {
       label: "Edit",
       icon: <IconEdit size={16} />,
-      action: () => { router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
+      action: () => { router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
     },
     {
       label: "Delete",
@@ -366,7 +366,7 @@ function ConfigCard({
   return (
     <>
       <div
-        onClick={() => router.push(`/dashboard/${tournamentId}/sheets/${cfg.id}`)}
+        onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}`)}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         style={{
@@ -504,7 +504,7 @@ function ConfigCard({
 export default function SheetsPage() {
   const router = useRouter();
   const params = useParams();
-  const tournamentId = params.tournamentId as string;
+  const tournamentId = params.id as string;
 
   const [configs, setConfigs] = useState<SheetConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -530,7 +530,7 @@ export default function SheetsPage() {
           <Button
             variant="primary"
             size="sm"
-            onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+            onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/new`)}
           >
             <IconPlus />
             Add Sheet
@@ -561,7 +561,7 @@ export default function SheetsPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => router.push(`/dashboard/${tournamentId}/sheets/new`)}
+              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/new`)}
             >
               <IconPlus />
               Add your first sheet

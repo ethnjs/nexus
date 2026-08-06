@@ -31,7 +31,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const [expanded, setExpanded] = useState(false);
   const pathname = usePathname();
   const width = expanded ? EXPANDED_W : COLLAPSED_W;
-  const base = `/dashboard/${tournamentId}`;
+  const base = `/dashboard/tournaments/${tournamentId}`;
 
   function handleMouseEnter() {
     setExpanded(true);

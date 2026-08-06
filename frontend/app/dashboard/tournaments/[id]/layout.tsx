@@ -42,9 +42,9 @@ export default function TournamentLayout({
   params,
 }: {
   children: ReactNode;
-  params: Promise<{ tournamentId: string }>;
+  params: Promise<{ id: string }>;
 }) {
-  const { tournamentId } = use(params);
+  const { id: tournamentId } = use(params);
 
   return (
     <TournamentProvider>
