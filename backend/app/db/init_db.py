@@ -28,7 +28,7 @@ def seed_dev_data(db: Session) -> None:
     - 1 regular user account  (role="user", tournament_director membership)
     - 1 sample tournament owned by the regular user, with DEFAULT_ROLES populated
     - TD membership for the regular user (holds the tournament_director role)
-    - Volunteer membership for the admin (holds the event_supervisor role)
+    - Volunteer membership for the admin (holds the volunteer role)
       — demonstrates that admin can also hold a per-tournament membership
 
     Idempotent — skips if admin already exists.
@@ -84,7 +84,7 @@ def seed_dev_data(db: Session) -> None:
     role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
     db.add_all(role_rows)
     db.flush()  # get role ids
-    roles_by_key = {r.key: r for r in role_rows}
+    roles_by_label = {r.label: r for r in role_rows}
 
     # TD membership for the regular user — holds the tournament_director role
     td_membership = TournamentMembership(
@@ -96,7 +96,7 @@ def seed_dev_data(db: Session) -> None:
     db.add(td_membership)
     db.flush()
     db.add(TournamentMembershipRole(
-        membership_id=td_membership.id, role_id=roles_by_key["tournament_director"].id,
+        membership_id=td_membership.id, role_id=roles_by_label["Tournament Director"].id,
     ))
 
     # Volunteer membership for admin — demonstrates cross-role scenario:
@@ -110,12 +110,12 @@ def seed_dev_data(db: Session) -> None:
     db.add(admin_membership)
     db.flush()
     db.add(TournamentMembershipRole(
-        membership_id=admin_membership.id, role_id=roles_by_key["event_supervisor"].id,
+        membership_id=admin_membership.id, role_id=roles_by_label["Volunteer"].id,
     ))
 
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, event_supervisor in sample tournament)")
+    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, volunteer in sample tournament)")
     print("✓ Seeded: td@nexus.dev / td1234  (role=user, tournament_director in sample tournament)")
     print(f"✓ Seeded tournament: '{tournament.name}'")
 

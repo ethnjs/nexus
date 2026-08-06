@@ -9,17 +9,9 @@ from app.core.tournament.permissions import ALL_PERMISSIONS
 # Role definition schema — create/update schema for TournamentRole rows.
 # ---------------------------------------------------------------------------
 class RoleDefinition(BaseModel):
-    key: str                    # snake_case identifier, matches TournamentMembershipRole assignments
     label: str                  # human-readable name shown in the UI
     permissions: list[str] = [] # subset of ALL_PERMISSIONS from permissions.py
     rank: int                   # lower = higher authority; see TournamentRole.rank
-
-    @field_validator("key")
-    @classmethod
-    def validate_key(cls, v: str) -> str:
-        if not v.replace("_", "").isalnum():
-            raise ValueError("key must be snake_case alphanumeric")
-        return v
 
     @field_validator("permissions")
     @classmethod
@@ -41,17 +33,9 @@ class RoleDefinition(BaseModel):
 
 class RoleUpdate(BaseModel):
     """Partial update — all fields optional."""
-    key: str | None = None
     label: str | None = None
     permissions: list[str] | None = None
     rank: int | None = None
-
-    @field_validator("key")
-    @classmethod
-    def validate_key(cls, v: str | None) -> str | None:
-        if v is not None and not v.replace("_", "").isalnum():
-            raise ValueError("key must be snake_case alphanumeric")
-        return v
 
     @field_validator("permissions")
     @classmethod
@@ -76,7 +60,6 @@ class RoleUpdate(BaseModel):
 class RoleRead(BaseModel):
     id: int
     tournament_id: int
-    key: str
     label: str
     permissions: list[str]
     rank: int

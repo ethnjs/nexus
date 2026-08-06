@@ -453,7 +453,6 @@ class TournamentRole(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    key = Column(String(64), nullable=False)          # snake_case identifier
     label = Column(String(255), nullable=False)        # human-readable name
 
     # List of permission strings from ALL_PERMISSIONS in core/permissions.py.
@@ -476,7 +475,7 @@ class TournamentRole(Base):
     memberships = relationship("TournamentMembershipRole", back_populates="role", cascade="all, delete-orphan")
 
     __table_args__ = (
-        UniqueConstraint("tournament_id", "key", name="uq_tournament_role_key"),
+        UniqueConstraint("tournament_id", "label", name="uq_tournament_role_label"),
     )
 
 

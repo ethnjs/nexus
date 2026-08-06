@@ -116,7 +116,7 @@ def apply_default_role_template(
         log_action(
             db, tournament_id, current_user.id, ROLE_CREATED,
             target_type="role", target_id=role.id,
-            extra_data={"key": role.key, "label": role.label, "rank": role.rank, "permissions": role.permissions},
+            extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
         )
 
     db.commit()
@@ -161,13 +161,13 @@ def create_role(
 
     existing = (
         db.query(TournamentRole)
-        .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.key == payload.key)
+        .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.label == payload.label)
         .first()
     )
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Role '{payload.key}' already exists in this tournament",
+            detail=f"Role '{payload.label}' already exists in this tournament",
         )
 
     role = TournamentRole(tournament_id=tournament_id, **payload.model_dump())
@@ -177,7 +177,7 @@ def create_role(
     log_action(
         db, tournament_id, current_user.id, ROLE_CREATED,
         target_type="role", target_id=role.id,
-        extra_data={"key": role.key, "label": role.label, "rank": role.rank, "permissions": role.permissions},
+        extra_data={"label": role.label, "rank": role.rank, "permissions": role.permissions},
     )
 
     db.commit()
@@ -206,16 +206,16 @@ def update_role(
     target_rank = updates.get("rank", role.rank)
     _validate_rank_bound(current_user, tournament, target_rank, db)
 
-    if "key" in updates and updates["key"] != role.key:
+    if "label" in updates and updates["label"] != role.label:
         existing = (
             db.query(TournamentRole)
-            .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.key == updates["key"])
+            .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.label == updates["label"])
             .first()
         )
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"Role '{updates['key']}' already exists in this tournament",
+                detail=f"Role '{updates['label']}' already exists in this tournament",
             )
 
     changes = {
@@ -320,7 +320,7 @@ def delete_role(
     log_action(
         db, tournament_id, current_user.id, ROLE_DELETED,
         target_type="role", target_id=role.id,
-        extra_data={"key": role.key, "label": role.label, "rank": role.rank},
+        extra_data={"label": role.label, "rank": role.rank},
     )
 
     db.delete(role)
@@ -462,11 +462,11 @@ def update_membership_roles(
             target_type="membership", target_id=m.id,
             extra_data={
                 "added": [
-                    {"role_id": rid, "role_key": roles_by_id[rid].key, "role_label": roles_by_id[rid].label}
+                    {"role_id": rid, "role_label": roles_by_id[rid].label}
                     for rid in to_add
                 ],
                 "removed": [
-                    {"role_id": rid, "role_key": roles_by_id[rid].key, "role_label": roles_by_id[rid].label}
+                    {"role_id": rid, "role_label": roles_by_id[rid].label}
                     for rid in to_remove
                 ],
             },

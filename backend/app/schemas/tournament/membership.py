@@ -19,7 +19,7 @@ class AvailabilitySlot(BaseModel):
 class ScheduleSlot(BaseModel):
     """A single day-of block assignment."""
     block: int   # block number
-    duty: str    # role key or free string, e.g. "event_supervisor"
+    duty: str    # role label or free string, e.g. "Event Supervisor"
 
 
 class MembershipMeUpdate(BaseModel):

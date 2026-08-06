@@ -68,85 +68,71 @@ ALL_PERMISSIONS: list[str] = [
 
 DEFAULT_ROLES: list[dict] = [
     {
-        "key":         "tournament_director",
         "label":       "Tournament Director",
         "rank":        10,
         "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS],
     },
     {
-        "key":         "volunteer_coordinator",
         "label":       "Volunteer Coordinator",
         "rank":        20,
         "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS],
     },
     {
-        "key":         "test_coordinator",
         "label":       "Test Coordinator",
         "rank":        20,
         "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES],
     },
     {
-        "key":         "materials_coordinator",
         "label":       "Materials Coordinator",
         "rank":        20,
         "permissions": [],
     },
     {
-        "key":         "logistics",
         "label":       "Logistics Coordinator",
         "rank":        20,
         "permissions": [],
     },
     {
-        "key":         "runner",
         "label":       "Runner",
         "rank":        20,
         "permissions": [],
     },
     {
-        "key":         "scoremaster",
         "label":       "Scoremaster",
         "rank":        20,
         "permissions": [],
     },
     {
-        "key":         "lead_event_supervisor",
         "label":       "Lead Event Supervisor",
         "rank":        30,
         "permissions": [],
     },
     {
-        "key":         "volunteer",
         "label":       "Volunteer",
         "rank":        40,
         "permissions": [],
     },
     {
-        "key":         "scoring",
         "label":       "Scoring",
         "rank":        40,
         "permissions": [],
     },
     {
-        "key":         "arbitrations",
         "label":       "Arbitrations",
         "rank":        40,
         "permissions": [],
     },
     {
-        "key":         "awards",
         "label":       "Awards",
         "rank":        40,
         "permissions": [],
     },
     {
-        "key":         "test_writer",
         "label":       "Test Writer",
         "rank":        40,
         "permissions": [],
     },
     {
-        "key":         "test_reviewer",
         "label":       "Test Reviewer",
         "rank":        40,
         "permissions": [],

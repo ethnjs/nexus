@@ -449,7 +449,6 @@ export interface ScheduleSlot {
 export interface Role {
   id:             number
   tournament_id:  number
-  key:            string
   label:          string
   permissions:    string[]
   rank:           number
@@ -530,7 +529,6 @@ export type Permission =
   | 'manage_events'
 
 export interface RoleDefinition {
-  key:         string
   label:       string
   permissions: Permission[]
   rank:        number
