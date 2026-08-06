@@ -478,14 +478,8 @@ def update_membership_roles(
             db, tournament_id, current_user.id, MEMBERSHIP_ROLES_UPDATED,
             target_type="membership", target_id=m.id,
             extra_data={
-                "added": [
-                    {"role_id": rid, "role_label": roles_by_id[rid].label}
-                    for rid in to_add
-                ],
-                "removed": [
-                    {"role_id": rid, "role_label": roles_by_id[rid].label}
-                    for rid in to_remove
-                ],
+                "added": [roles_by_id[rid].label for rid in to_add],
+                "removed": [roles_by_id[rid].label for rid in to_remove],
             },
         )
 
