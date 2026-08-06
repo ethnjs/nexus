@@ -3,6 +3,7 @@
 import { ReactNode, useState, useEffect } from "react";
 import { use } from "react";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
+import { MyMembershipProvider } from "@/lib/useMyMembership";
 import { Sidebar, COLLAPSED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { tournamentsApi } from "@/lib/api";
@@ -48,9 +49,11 @@ export default function TournamentLayout({
 
   return (
     <TournamentProvider>
-      <TournamentShell tournamentId={tournamentId}>
-        {children}
-      </TournamentShell>
+      <MyMembershipProvider tournamentId={tournamentId}>
+        <TournamentShell tournamentId={tournamentId}>
+          {children}
+        </TournamentShell>
+      </MyMembershipProvider>
     </TournamentProvider>
   );
 }
