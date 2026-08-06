@@ -2,7 +2,9 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
-from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
+from app.core.tournament.permissions import (
+    MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
+)
 from app.db.session import get_db
 from app.models.models import (
     Tournament,
@@ -11,7 +13,8 @@ from app.models.models import (
     User,
 )
 from app.schemas.tournament.membership import (
-    MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeUpdate, MembershipSlimResponse,
+    MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
+    MembershipMeUpdate, MembershipSlimResponse,
 )
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
@@ -108,6 +111,45 @@ def search_memberships(
         .all()
     )
     return [MembershipSlimResponse.model_validate(m) for m in memberships]
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/me/ — any member
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.get("/me/", response_model=MembershipMeResponse)
+def get_my_membership(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_membership()),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    membership = (
+        db.query(TournamentMembership)
+        .options(joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role))
+        .filter(
+            TournamentMembership.tournament_id == tournament_id,
+            TournamentMembership.user_id == current_user.id,
+        )
+        .first()
+    )
+    permissions = sorted(get_user_permissions(current_user, tournament_id, db))
+    is_owner = current_user.id == tournament.owner_id
+
+    # No row only for a site admin who never joined — require_membership()
+    # already granted access via its admin bypass.
+    if not membership:
+        return MembershipMeResponse(
+            membership_id=None, is_owner=is_owner, status=None, roles=[], permissions=permissions,
+        )
+
+    return MembershipMeResponse(
+        membership_id=membership.id, is_owner=is_owner, status=membership.status,
+        roles=membership.roles, permissions=permissions,
+    )
 
 
 # ---------------------------------------------------------------------------

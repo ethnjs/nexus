@@ -503,11 +503,22 @@ export interface MembershipCoordinatorUpdate {
   notes?:    string | null
 }
 
+// GET .../memberships/me/ — current user's membership + effective permissions
+export interface MembershipMe {
+  membership_id: number | null
+  is_owner:       boolean
+  status:         MembershipStatus | null
+  roles:          Role[]
+  permissions:    Permission[]
+}
+
 export const membershipsApi = {
   list: (tournamentId: number) =>
     api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`),
   get: (tournamentId: number, id: number) =>
     api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
+  getMe: (tournamentId: number) =>
+    api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
   updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
   update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>

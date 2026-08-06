@@ -60,12 +60,19 @@ class _MembershipRolesMixin(BaseModel):
 
 
 class MembershipSlimResponse(_MembershipRolesMixin):
-    """List view — members page roster. No onboarding/logistics fields;
-    those live behind the per-member expand panel (MembershipFullResponse)."""
+    """List view — members page roster. No onboarding/logistics fields."""
     id: int
     source: str
     join_code_id: int | None = None
     user: UserSlimResponse
+
+
+class MembershipMeResponse(_MembershipRolesMixin):
+    """GET .../memberships/me/ — current user's membership + effective permissions."""
+    membership_id: int | None
+    is_owner: bool
+    status: str | None = None
+    permissions: list[str] = []
 
 
 class MembershipFullResponse(_MembershipRolesMixin):
