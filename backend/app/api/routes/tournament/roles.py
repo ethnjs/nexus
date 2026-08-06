@@ -218,11 +218,20 @@ def update_role(
                 detail=f"Role '{updates['label']}' already exists in this tournament",
             )
 
-    changes = {
-        field: {"old": getattr(role, field), "new": value}
-        for field, value in updates.items()
-        if getattr(role, field) != value
-    }
+    changes = []
+    for field, value in updates.items():
+        old_value = getattr(role, field)
+        if old_value == value:
+            continue
+        if field == "permissions":
+            old_set, new_set = set(old_value or []), set(value or [])
+            changes.append({
+                "field": "permissions",
+                "added": sorted(new_set - old_set),
+                "removed": sorted(old_set - new_set),
+            })
+        else:
+            changes.append({"field": field, "old": old_value, "new": value})
 
     for field, value in updates.items():
         setattr(role, field, value)
