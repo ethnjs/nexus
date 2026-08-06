@@ -354,39 +354,3 @@ def require_permission(
             )
         return current_user
     return _dependency
-
-
-def require_any_permission(
-    *permissions: str,
-    tournament_id_param: str = "tournament_id",
-):
-    """
-    Dependency factory — requires the current user to hold AT LEAST ONE of
-    `permissions` in the tournament identified by `tournament_id_param`.
-
-    Usage:
-        @router.post("/{tournament_id}/events/")
-        def create_event(
-            tournament_id: int,
-            ...
-            _: None = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_EVENTS)),
-        ):
-    """
-    def _dependency(
-        tournament_id: int,
-        current_user: "User" = Depends(get_current_user),
-        db: Session = Depends(get_db),
-    ) -> "User":
-        if not has_any_membership(current_user, tournament_id, db):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Tournament not found",
-            )
-        user_permissions = get_user_permissions(current_user, tournament_id, db)
-        if not any(p in user_permissions for p in permissions):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return current_user
-    return _dependency
