@@ -300,11 +300,6 @@ class Tournament(Base):
     # deadlines that live in TournamentDeadline.
     registration_opens_at = Column(DateTime(timezone=True), nullable=True)
 
-    # Setup-checklist click-flags for items with no other derivable signal
-    # (e.g. "visibility"). Shape: {"visibility": {"completed_at": ...,
-    # "completed_by": <user_id>}}. Reassign the whole dict when mutating.
-    setup_progress = Column(JSON, nullable=False, default=dict)
-
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
