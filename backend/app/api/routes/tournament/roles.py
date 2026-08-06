@@ -1,7 +1,7 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.tournament.audit import (
     MEMBERSHIP_ROLES_UPDATED,
@@ -324,6 +324,50 @@ def delete_role(
 
     db.delete(role)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/roles/{role_id}/members/?search=
+# manage_roles. Powers the "Manage Members" tab in the roles editor —
+# returns every membership currently holding this role, optionally filtered
+# by name/email. Tournaments are small enough (rarely 150+ members) that this
+# returns the full filtered list rather than paginating.
+# ---------------------------------------------------------------------------
+@router.get("/{role_id}/members/", response_model=list[MembershipSlimResponse])
+def list_role_members(
+    tournament_id: int,
+    role_id: int,
+    search: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
+):
+    _get_role_or_404(role_id, tournament_id, db)
+
+    query = (
+        db.query(TournamentMembership)
+        .join(TournamentMembershipRole, TournamentMembershipRole.membership_id == TournamentMembership.id)
+        .join(User, User.id == TournamentMembership.user_id)
+        .filter(
+            TournamentMembership.tournament_id == tournament_id,
+            TournamentMembershipRole.role_id == role_id,
+        )
+    )
+    if search:
+        like = f"%{search}%"
+        query = query.filter(
+            (User.first_name.ilike(like)) | (User.last_name.ilike(like)) | (User.email.ilike(like))
+        )
+
+    memberships = (
+        query
+        .options(
+            joinedload(TournamentMembership.user),
+            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        )
+        .order_by(TournamentMembership.id)
+        .all()
+    )
+    return [MembershipSlimResponse.model_validate(m) for m in memberships]
 
 
 # ---------------------------------------------------------------------------
