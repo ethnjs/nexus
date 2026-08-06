@@ -11,8 +11,8 @@ ADDING A NEW PERMISSION:
 
 ADDING A NEW DEFAULT ROLE:
   1. Add a RoleDefinition-shaped entry to DEFAULT_ROLES, including rank.
-  2. It's served as a preview via GET /tournaments/{id}/roles/default-template/
-     for TDs to review/edit before saving — not auto-populated on create.
+  2. It's bulk-created via POST /tournaments/{id}/roles/apply-template/, the
+     empty-state action — not auto-populated on create.
 """
 
 from __future__ import annotations
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all below
-MANAGE_ROLES       = "manage_roles"        # create/edit/delete roles, assign/remove roles on memberships
-MANAGE_MEMBERS     = "manage_members"      # read + write membership/roster pages
+MANAGE_ROLES       = "manage_roles"        # role *definitions* only — create/edit/delete a role, reorder rank
+MANAGE_MEMBERS     = "manage_members"      # membership data — roster + assign member roles
 MANAGE_EVENTS      = "manage_events"       # read + write events page
 
 # Ordered list for documentation / UI display purposes

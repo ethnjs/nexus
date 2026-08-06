@@ -1,7 +1,7 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import (
     MEMBERSHIP_ROLES_UPDATED,
@@ -12,6 +12,7 @@ from app.core.tournament.audit import (
 )
 from app.core.tournament.permissions import (
     DEFAULT_ROLES,
+    MANAGE_MEMBERS,
     MANAGE_ROLES,
     get_highest_rank,
     require_membership,
@@ -327,54 +328,12 @@ def delete_role(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/roles/{role_id}/members/?search=
-# manage_roles. Powers the "Manage Members" tab in the roles editor —
-# returns every membership currently holding this role, optionally filtered
-# by name/email. Tournaments are small enough (rarely 150+ members) that this
-# returns the full filtered list rather than paginating.
-# ---------------------------------------------------------------------------
-@router.get("/{role_id}/members/", response_model=list[MembershipSlimResponse])
-def list_role_members(
-    tournament_id: int,
-    role_id: int,
-    search: str | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_ROLES)),
-):
-    _get_role_or_404(role_id, tournament_id, db)
-
-    query = (
-        db.query(TournamentMembership)
-        .join(TournamentMembershipRole, TournamentMembershipRole.membership_id == TournamentMembership.id)
-        .join(User, User.id == TournamentMembership.user_id)
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembershipRole.role_id == role_id,
-        )
-    )
-    if search:
-        like = f"%{search}%"
-        query = query.filter(
-            (User.first_name.ilike(like)) | (User.last_name.ilike(like)) | (User.email.ilike(like))
-        )
-
-    memberships = (
-        query
-        .options(
-            joinedload(TournamentMembership.user),
-            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
-        )
-        .order_by(TournamentMembership.id)
-        .all()
-    )
-    return [MembershipSlimResponse.model_validate(m) for m in memberships]
-
-
-# ---------------------------------------------------------------------------
 # Membership role assignment — a sub-resource of memberships, so nested under
-# /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Kept in
-# this module (not memberships.py) since it's role-management logic gated by
-# MANAGE_ROLES, same as the CRUD routes above.
+# /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Gated on
+# MANAGE_MEMBERS (assigning a role to a member is member data, not a
+# role-definition edit — see core/tournament/permissions.py), but kept in
+# this module rather than memberships.py since it shares _get_role_or_404-
+# style helpers and rank-bound logic with the role CRUD routes above.
 # ---------------------------------------------------------------------------
 membership_roles_router = APIRouter(
     prefix="/tournaments/{tournament_id}/memberships/{membership_id}/roles",
@@ -399,8 +358,8 @@ def _validate_role_action(
     """
     Rank-bound checks for assigning/removing `role` on `membership`. Owner and
     platform admins bypass entirely — same rationale as _validate_rank_bound
-    above: this route is gated on MANAGE_ROLES alone, MANAGE_TOURNAMENT is not
-    a role-management bypass.
+    above: this route is gated on MANAGE_MEMBERS alone, MANAGE_TOURNAMENT is
+    not a bypass.
 
     Two independent checks, both must pass:
       1. The role being assigned/removed must not outrank the actor's own
@@ -438,7 +397,13 @@ def _validate_role_action(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
-# manage_roles, rank-bound (see _validate_role_action)
+# manage_members, rank-bound (see _validate_role_action)
+#
+# Assigning/removing a role on a member is member data (this member's role
+# assignments), not a role-definition edit — see the MANAGE_ROLES vs
+# MANAGE_MEMBERS split documented in core/tournament/permissions.py. Rank
+# bounds still apply: a MANAGE_MEMBERS holder can only touch roles at or
+# below their own rank, same as before.
 #
 # Batch add/remove in one call — staff commonly add or remove several roles
 # (or a mix of both) on a member at once, so one PATCH covers it instead of
@@ -457,7 +422,7 @@ def update_membership_roles(
     membership_id: int,
     payload: RoleAssignmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:

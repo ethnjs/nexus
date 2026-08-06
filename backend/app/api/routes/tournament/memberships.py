@@ -1,5 +1,5 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
@@ -49,6 +49,61 @@ def list_memberships(
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
+        .order_by(TournamentMembership.id)
+        .all()
+    )
+    return [MembershipSlimResponse.model_validate(m) for m in memberships]
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=
+# manage_members. Member-data search: searches all tournament members by
+# name/email; role_id narrows to members holding that role (powers the roles
+# editor's "Manage Members" tab); exclude_role_id drops members who already
+# hold that role (powers its "Add Members" picker). role_id and
+# exclude_role_id are independent filters and can be combined.
+# Registered before "/{membership_id}/" so the literal path always wins.
+# Tournaments are small enough (rarely 150+ members) to return the full
+# filtered list rather than paginating.
+# ---------------------------------------------------------------------------
+@router.get("/search/", response_model=list[MembershipSlimResponse])
+def search_memberships(
+    tournament_id: int,
+    q: str | None = Query(default=None),
+    role_id: int | None = Query(default=None),
+    exclude_role_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    query = (
+        db.query(TournamentMembership)
+        .join(User, User.id == TournamentMembership.user_id)
+        .filter(TournamentMembership.tournament_id == tournament_id)
+    )
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            (User.first_name.ilike(like)) | (User.last_name.ilike(like)) | (User.email.ilike(like))
+        )
+    if role_id is not None:
+        held_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == role_id)
+        )
+        query = query.filter(TournamentMembership.id.in_(held_role))
+    if exclude_role_id is not None:
+        held_by_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == exclude_role_id)
+        )
+        query = query.filter(TournamentMembership.id.notin_(held_by_role))
+
+    memberships = (
+        query
+        .options(
+            joinedload(TournamentMembership.user),
+            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        )
         .order_by(TournamentMembership.id)
         .all()
     )
