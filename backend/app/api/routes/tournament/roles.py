@@ -80,21 +80,48 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/roles/default-template/
-# manage_roles
-# Returns the static DEFAULT_ROLES list as-is (no DB filtering against roles
-# that already exist) for the frontend to preview, let the TD edit, and save
-# by looping the existing POST/PATCH routes below — no separate bulk-apply
-# route or audit action, ordinary role_created/role_updated entries cover it.
+# POST /tournaments/{tournament_id}/roles/apply-template/ — manage_roles
+# Bulk-creates DEFAULT_ROLES as real TournamentRole rows. Only valid when the
+# tournament has zero roles — this is the empty-state action, not a merge/
+# top-up; once any role exists, further changes go through the normal
+# create/update/reorder routes below (single source of truth for rank math,
+# rather than the frontend replicating it to offer an editable preview).
+# Logs one ordinary role_created entry per row — no separate
+# roles_template_applied audit action.
 # Registered before "/{role_id}/" so the literal path always wins.
 # ---------------------------------------------------------------------------
-@router.get("/default-template/", response_model=list[RoleDefinition])
-def get_default_role_template(
+@router.post("/apply-template/", response_model=list[RoleRead], status_code=status.HTTP_201_CREATED)
+def apply_default_role_template(
     tournament_id: int,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    return DEFAULT_ROLES
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    existing = db.query(TournamentRole).filter(TournamentRole.tournament_id == tournament_id).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Tournament already has roles — apply-template is only valid when starting from zero",
+        )
+
+    roles = [TournamentRole(tournament_id=tournament_id, **r) for r in DEFAULT_ROLES]
+    db.add_all(roles)
+    db.flush()  # get role ids before logging
+
+    for role in roles:
+        log_action(
+            db, tournament_id, current_user.id, ROLE_CREATED,
+            target_type="role", target_id=role.id,
+            extra_data={"key": role.key, "label": role.label, "rank": role.rank, "permissions": role.permissions},
+        )
+
+    db.commit()
+    for role in roles:
+        db.refresh(role)
+    return roles
 
 
 # ---------------------------------------------------------------------------
