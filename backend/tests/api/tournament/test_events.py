@@ -63,15 +63,15 @@ def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
 
 
 def test_create_event_non_member_forbidden(client, td_user, other_tournament):
-    """Non-members get 403 on write routes — permission check fires before existence check."""
+    """Non-members get 404 — membership existence check fires before permission."""
     login(client, "td@test.com", "tdpass")
-    assert _make_event(client, other_tournament.id).status_code == 403
+    assert _make_event(client, other_tournament.id).status_code == 404
 
 
 def test_create_event_volunteer_member_forbidden(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert _make_event(client, other_tournament.id).status_code == 403
 
@@ -104,12 +104,14 @@ def test_list_events_ordered_by_division_name(client, td_user, td_tournament):
     assert names[2] == "Hovercraft"
 
 
-def test_list_events_view_events_permission_sufficient(
+def test_list_events_requires_manage_events(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    """There's no separate read-only view_events tier — listing requires
+    manage_events, same as write. A no-permission role is forbidden."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 200
+    assert client.get(f"/tournaments/{other_tournament.id}/events/").status_code == 403
 
 
 def test_list_events_non_member_gets_404(client, td_user, other_tournament):
@@ -132,7 +134,7 @@ def test_get_event(client, td_user, td_tournament):
 def test_get_event_wrong_tournament_404(
     client, td_user, td_tournament, other_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Test Coordinator")
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     assert client.get(
@@ -163,7 +165,7 @@ def test_update_event(client, td_user, td_tournament):
 def test_update_event_volunteer_cannot_patch(
     client, td_user, other_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
     event = _make_event(client, other_tournament.id).json()
     login(client, "td@test.com", "tdpass")

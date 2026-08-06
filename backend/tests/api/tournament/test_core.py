@@ -26,7 +26,7 @@ def test_list_my_tournaments_excludes_others(
 def test_list_my_tournaments_includes_volunteer_membership(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     ids = [t["id"] for t in client.get("/tournaments/me/").json()]
     assert other_tournament.id in ids
@@ -62,16 +62,17 @@ def test_create_tournament_minimal(client, td_user):
     assert data["is_verified"] is False
 
 
-def test_create_tournament_auto_populates_default_roles(client, td_user):
+def test_create_tournament_has_zero_roles(client, td_user):
+    """New tournaments start with zero TournamentRole rows — the owner has
+    full permissions via owner_id, and sets up roles later via apply-template
+    or custom creation."""
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={"name": "Auto Roles", "location": "Test Location"})
     assert response.status_code == 201
-    keys = [r["key"] for r in response.json()["roles"]]
-    assert "tournament_director" in keys
-    assert "event_supervisor" in keys
+    assert response.json()["roles"] == []
 
 
-def test_create_tournament_auto_creates_td_membership(client, td_user, db):
+def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user, db):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={"name": "Auto TournamentMembership", "location": "Test Location"})
     assert response.status_code == 201
@@ -81,14 +82,13 @@ def test_create_tournament_auto_creates_td_membership(client, td_user, db):
         TournamentMembership.tournament_id == tournament_id,
     ).first()
     assert membership is not None
-    role_keys = [
-        role.key for role in
+    roles_held = (
         db.query(TournamentRole)
         .join(TournamentMembershipRole, TournamentMembershipRole.role_id == TournamentRole.id)
         .filter(TournamentMembershipRole.membership_id == membership.id)
         .all()
-    ]
-    assert "tournament_director" in role_keys
+    )
+    assert roles_held == []
 
 
 def test_create_tournament_full(client, td_user):
@@ -146,7 +146,7 @@ def test_get_tournament_admin_can_access_any(client, admin_user, td_tournament):
 def test_get_tournament_volunteer_member_can_access(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/").status_code == 200
 
@@ -170,7 +170,7 @@ def test_update_tournament_td_can_patch(client, td_user, td_tournament):
 def test_update_tournament_volunteer_member_cannot_patch(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.patch(
         f"/tournaments/{other_tournament.id}/", json={"name": "Sneaky"}
@@ -208,7 +208,7 @@ def test_delete_tournament_admin_can_delete(client, admin_user, td_tournament):
 def test_delete_tournament_non_owner_member_cannot_delete(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "tournament_director")
+    grant_role(db, other_tournament, td_user, "Tournament Director")
     login(client, "td@test.com", "tdpass")
     assert client.delete(f"/tournaments/{other_tournament.id}/").status_code == 403
 

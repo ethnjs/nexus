@@ -147,7 +147,7 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
     db.add_all(role_rows)
     db.flush()
-    td_role = next(r for r in role_rows if r.key == "tournament_director")
+    td_role = next(r for r in role_rows if r.label == "Tournament Director")
 
     membership = TournamentMembership(
         user_id=owner.id,
@@ -164,12 +164,13 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     return tournament
 
 
-def grant_role(db: Session, tournament: Tournament, user: User, role_key: str, status: str = "confirmed") -> TournamentMembership:
+def grant_role(db: Session, tournament: Tournament, user: User, role_label: str, status: str = "confirmed") -> TournamentMembership:
     """
     Give `user` a membership in `tournament` holding the role identified by
-    `role_key` (must already exist on the tournament — DEFAULT_ROLES covers
-    every key used across the test suite). Reuses an existing membership if
-    one is already there instead of erroring on the unique constraint.
+    `role_label` (must already exist on the tournament — DEFAULT_ROLES covers
+    every label used across the test suite, alongside any custom roles a
+    test creates directly). Reuses an existing membership if one is already
+    there instead of erroring on the unique constraint.
     """
     membership = (
         db.query(TournamentMembership)
@@ -183,11 +184,11 @@ def grant_role(db: Session, tournament: Tournament, user: User, role_key: str, s
 
     role = (
         db.query(TournamentRole)
-        .filter(TournamentRole.tournament_id == tournament.id, TournamentRole.key == role_key)
+        .filter(TournamentRole.tournament_id == tournament.id, TournamentRole.label == role_label)
         .first()
     )
     if role is None:
-        raise ValueError(f"No TournamentRole with key={role_key!r} on tournament {tournament.id}")
+        raise ValueError(f"No TournamentRole with label={role_label!r} on tournament {tournament.id}")
 
     db.add(TournamentMembershipRole(membership_id=membership.id, role_id=role.id))
     db.commit()

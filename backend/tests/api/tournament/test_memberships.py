@@ -66,10 +66,10 @@ def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
     assert "status" not in row
 
 
-def test_list_memberships_requires_view_volunteers(
+def test_list_memberships_requires_manage_members(
     client, td_user, other_tournament, db
 ):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
         f"/tournaments/{other_tournament.id}/memberships/"
@@ -77,9 +77,10 @@ def test_list_memberships_requires_view_volunteers(
 
 
 def test_list_memberships_no_membership_in_tournament(client, td_user):
-    """Permission check fires before existence check — 403, not 404, for a tournament the user isn't in."""
+    """Membership existence check fires before permission — 404, not 403, so
+    a tournament the user isn't in never leaks its existence."""
     login(client, "td@test.com", "tdpass")
-    assert client.get("/tournaments/9999/memberships/").status_code == 403
+    assert client.get("/tournaments/9999/memberships/").status_code == 404
 
 
 def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
@@ -87,12 +88,12 @@ def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
     from app.models.models import User as UserModel
     u = _make_user(db, "coach@example.com")
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-    membership = grant_role(db, td_tournament, user, "event_supervisor")
+    membership = grant_role(db, td_tournament, user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
     assert response.status_code == 200
     row = next(m for m in response.json() if m["id"] == membership.id)
-    assert [r["key"] for r in row["roles"]] == ["event_supervisor"]
+    assert [r["label"] for r in row["roles"]] == ["Volunteer"]
 
 
 # ---------------------------------------------------------------------------
@@ -131,10 +132,10 @@ def test_get_membership_wrong_tournament(client, td_user, td_tournament, other_t
     ).status_code == 404
 
 
-def test_get_membership_requires_view_volunteers(client, td_user, other_tournament, db):
+def test_get_membership_requires_manage_members(client, td_user, other_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, other_tournament.id, u["id"])
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
         f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
@@ -145,11 +146,11 @@ def test_get_membership_includes_roles(client, td_user, td_tournament, db):
     from app.models.models import User as UserModel
     u = _make_user(db, "coach2@example.com")
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-    membership = grant_role(db, td_tournament, user, "event_supervisor")
+    membership = grant_role(db, td_tournament, user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
     assert response.status_code == 200
-    assert [r["key"] for r in response.json()["roles"]] == ["event_supervisor"]
+    assert [r["label"] for r in response.json()["roles"]] == ["Volunteer"]
 
 
 # ---------------------------------------------------------------------------
@@ -294,10 +295,10 @@ def test_update_membership_ignores_onboarding_fields(client, td_user, td_tournam
     assert response.json()["lunch_order"] == "Veggie Wrap"
 
 
-def test_update_membership_requires_manage_volunteers(client, td_user, other_tournament, db):
+def test_update_membership_requires_manage_members(client, td_user, other_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, other_tournament.id, u["id"])
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
         f"/tournaments/{other_tournament.id}/memberships/{m.id}/",
@@ -335,10 +336,10 @@ def test_delete_membership_not_found(client, td_user, td_tournament):
     ).status_code == 404
 
 
-def test_delete_membership_requires_manage_volunteers(client, td_user, other_tournament, db):
+def test_delete_membership_requires_manage_members(client, td_user, other_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, other_tournament.id, u["id"])
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.delete(
         f"/tournaments/{other_tournament.id}/memberships/{m.id}/"

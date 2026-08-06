@@ -99,7 +99,7 @@ def test_join_tournament_rejects_expired_code(client, td_user, td_tournament, ot
 
 
 def test_join_tournament_rejects_existing_member(client, td_user, td_tournament, other_user, db):
-    grant_role(db, td_tournament, other_user, "event_supervisor")
+    grant_role(db, td_tournament, other_user, "Volunteer")
     make_tournament_join_code(db, td_tournament.id, td_user.id, code="AGAIN123")
     login(client, "other@test.com", "otherpass")
 

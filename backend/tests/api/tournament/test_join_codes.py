@@ -39,7 +39,7 @@ def test_list_join_codes_td_can_access(client, td_user, td_tournament, db):
 
 
 def test_list_join_codes_volunteer_forbidden(client, td_user, other_tournament, db):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/join-codes/").status_code == 403
 
@@ -80,7 +80,7 @@ def test_create_join_code_never_expires_when_omitted(client, td_user, td_tournam
 
 
 def test_create_join_code_volunteer_forbidden(client, td_user, other_tournament, db):
-    grant_role(db, other_tournament, td_user, "event_supervisor")
+    grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.post(f"/tournaments/{other_tournament.id}/join-codes/", json={}).status_code == 403
 
