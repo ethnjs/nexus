@@ -129,8 +129,12 @@ def other_user(db):
 def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     """
     Create a tournament owned by `owner`, populate DEFAULT_ROLES, and give
-    `owner` a confirmed membership holding the tournament_director role —
-    mirrors what POST /tournaments/ does for a real signup.
+    `owner` a confirmed membership holding the tournament_director role.
+
+    POST /tournaments/ itself no longer auto-seeds roles (new tournaments
+    start with zero) — this fixture seeds them directly so the rest of the
+    test suite (grant_role and friends) has roles to assign without every
+    test doing it itself.
     """
     tournament = Tournament(
         name=name,

@@ -11,8 +11,8 @@ ADDING A NEW PERMISSION:
 
 ADDING A NEW DEFAULT ROLE:
   1. Add a RoleDefinition-shaped entry to DEFAULT_ROLES, including rank.
-  2. It will be auto-populated into every newly created tournament's
-     TournamentRole rows. Existing tournaments are unaffected.
+  2. It's served as a preview via GET /tournaments/{id}/roles/default-template/
+     for TDs to review/edit before saving — not auto-populated on create.
 """
 
 from __future__ import annotations
@@ -58,15 +58,19 @@ ALL_PERMISSIONS: list[str] = [
 
 # ---------------------------------------------------------------------------
 # Default role definitions
-# Auto-populated as TournamentRole rows when a tournament is created (unless
-# the TD supplies their own roles in the create payload). TDs can customise
-# roles (add/edit/delete) at any time after creation via the roles API.
+# NOT auto-populated on tournament create — new tournaments start with zero
+# roles (the Owner still has full permissions via Tournament.owner_id, so
+# nothing breaks). This list is served as a preview via
+# GET /tournaments/{id}/roles/default-template/ for the TD to review, edit,
+# and save (looping the existing POST/PATCH role routes) from the roles UI's
+# empty state.
 #
-# Rank tiers (lower = higher authority):
-#   1: Tournament Director
-#   2: Volunteer/Test/Materials/Logistics Coordinator, Runner, Scoremaster
-#   3: Lead Event Supervisor
-#   4: Event Supervisor, Scoring, Arbitrations, Awards, Test Writer/Reviewer
+# Rank tiers (lower = higher authority; sparse gaps of 10 to leave room for
+# drag-to-reorder without a full rebalance — see core/roles.py):
+#   10: Tournament Director
+#   20: Volunteer/Test/Materials/Logistics Coordinator, Runner, Scoremaster
+#   30: Lead Event Supervisor
+#   40: Event Supervisor, Scoring, Arbitrations, Awards, Test Writer/Reviewer
 # Owner is NOT in this list — it's never a role, it's Tournament.owner_id.
 # ---------------------------------------------------------------------------
 
@@ -74,7 +78,7 @@ DEFAULT_ROLES: list[dict] = [
     {
         "key":         "tournament_director",
         "label":       "Tournament Director",
-        "rank":        1,
+        "rank":        10,
         "permissions": [
             MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_VOLUNTEERS, MANAGE_EVENTS,
             MANAGE_MATERIALS, MANAGE_LOGISTICS, VIEW_VOLUNTEERS, VIEW_EVENTS,
@@ -83,79 +87,79 @@ DEFAULT_ROLES: list[dict] = [
     {
         "key":         "volunteer_coordinator",
         "label":       "Volunteer Coordinator",
-        "rank":        2,
+        "rank":        20,
         "permissions": [MANAGE_VOLUNTEERS, VIEW_VOLUNTEERS],
     },
     {
         "key":         "test_coordinator",
         "label":       "Test Coordinator",
-        "rank":        2,
+        "rank":        20,
         "permissions": [MANAGE_EVENTS, VIEW_EVENTS],
     },
     {
         "key":         "materials_coordinator",
         "label":       "Materials Coordinator",
-        "rank":        2,
+        "rank":        20,
         "permissions": [MANAGE_MATERIALS],
     },
     {
         "key":         "logistics",
         "label":       "Logistics Coordinator",
-        "rank":        2,
+        "rank":        20,
         "permissions": [MANAGE_LOGISTICS],
     },
     {
         "key":         "runner",
         "label":       "Runner",
-        "rank":        2,
+        "rank":        20,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "scoremaster",
         "label":       "Scoremaster",
-        "rank":        2,
+        "rank":        20,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "lead_event_supervisor",
         "label":       "Lead Event Supervisor",
-        "rank":        3,
+        "rank":        30,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "event_supervisor",
         "label":       "Event Supervisor",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "scoring",
         "label":       "Scoring",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "arbitrations",
         "label":       "Arbitrations",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "awards",
         "label":       "Awards",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "test_writer",
         "label":       "Test Writer",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
     {
         "key":         "test_reviewer",
         "label":       "Test Reviewer",
-        "rank":        4,
+        "rank":        40,
         "permissions": [VIEW_EVENTS],
     },
 ]

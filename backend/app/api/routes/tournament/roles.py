@@ -10,6 +10,7 @@ from app.core.tournament.audit import (
     log_action,
 )
 from app.core.tournament.permissions import (
+    DEFAULT_ROLES,
     MANAGE_ROLES,
     MANAGE_TOURNAMENT,
     get_highest_rank,
@@ -59,6 +60,25 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create or edit a role at or above your own rank",
         )
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/roles/default-template/
+# manage_tournament or manage_roles — same gating as create/update, since this
+# only feeds the "apply default template" empty-state flow on the roles page.
+# Returns the static DEFAULT_ROLES list as-is (no DB filtering against roles
+# that already exist) for the frontend to preview, let the TD edit, and save
+# by looping the existing POST/PATCH routes below — no separate bulk-apply
+# route or audit action, ordinary role_created/role_updated entries cover it.
+# Registered before "/{role_id}/" so the literal path always wins.
+# ---------------------------------------------------------------------------
+@router.get("/default-template/", response_model=list[RoleDefinition])
+def get_default_role_template(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+):
+    return DEFAULT_ROLES
 
 
 # ---------------------------------------------------------------------------

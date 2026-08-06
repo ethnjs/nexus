@@ -4,14 +4,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, log_action
 from app.core.tournament.permissions import (
-    DEFAULT_ROLES,
     MANAGE_TOURNAMENT,
     require_membership,
     require_permission,
     has_any_membership,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
+from app.models.models import Tournament, TournamentMembership, User
 from app.schemas.tournament import (
     TournamentCreate, TournamentRead, TournamentUpdate, TransferOwnershipRequest,
 )
@@ -58,10 +57,10 @@ def list_my_tournaments(
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/ — any authenticated user
-# Auto-populates DEFAULT_ROLES for the new tournament and assigns the
-# creator the Tournament Director role. Custom roles are set up afterward
-# via the roles API (POST/PATCH/DELETE /tournaments/{id}/roles/), not at
-# creation time.
+# New tournaments start with zero TournamentRole rows — the Owner already has
+# full permissions via the owner_id short-circuit in get_user_permissions(),
+# so they can operate immediately and set up roles later (empty-state "apply
+# default template" flow, or custom roles) via the roles API.
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=TournamentRead, status_code=status.HTTP_201_CREATED)
 def create_tournament(
@@ -75,14 +74,10 @@ def create_tournament(
     # would trip that check before the other field is set.
     tournament = Tournament(**payload.model_dump(exclude_none=True), owner_id=current_user.id)
     db.add(tournament)
-    db.flush()  # get tournament.id before creating roles/membership
+    db.flush()  # get tournament.id before creating membership
 
-    role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
-    db.add_all(role_rows)
-    db.flush()  # get role ids
-    td_role = next(r for r in role_rows if r.key == "tournament_director")
-
-    # Auto-create a confirmed membership for the creator, holding the TD role.
+    # Confirmed membership for the creator, no roles yet — owner_id alone
+    # already grants full permissions.
     membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=tournament.id,
@@ -90,8 +85,6 @@ def create_tournament(
         source="manual",
     )
     db.add(membership)
-    db.flush()  # get membership.id
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=td_role.id))
 
     db.commit()
     db.refresh(tournament)
