@@ -12,10 +12,9 @@ from app.core.tournament.audit import (
 from app.core.tournament.permissions import (
     DEFAULT_ROLES,
     MANAGE_ROLES,
-    MANAGE_TOURNAMENT,
     get_highest_rank,
-    require_any_permission,
     require_membership,
+    require_permission,
 )
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
@@ -45,10 +44,10 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
     """
     A MANAGE_ROLES holder can never create or edit a role that outranks (or
     ties) their own highest role. Only the Owner and platform admins are
-    exempt — MANAGE_TOURNAMENT does NOT bypass this: it's the tournament
-    metadata permission, not an implicit "outrank everyone" grant. The
-    Tournament Director role holds both MANAGE_TOURNAMENT and MANAGE_ROLES
-    and sits at rank 1, so it can still modify every role — that falls out
+    exempt. MANAGE_TOURNAMENT holders don't even reach this check — role
+    routes are gated on MANAGE_ROLES alone, MANAGE_TOURNAMENT is not a
+    tournament-admin override. The Tournament Director role holds both and
+    sits at the top rank, so it can still modify every role — that falls out
     of being the highest rank, not a permission bypass.
     """
     if user.id == tournament.owner_id or user.role == "admin":
@@ -64,8 +63,7 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/roles/default-template/
-# manage_tournament or manage_roles — same gating as create/update, since this
-# only feeds the "apply default template" empty-state flow on the roles page.
+# manage_roles
 # Returns the static DEFAULT_ROLES list as-is (no DB filtering against roles
 # that already exist) for the frontend to preview, let the TD edit, and save
 # by looping the existing POST/PATCH routes below — no separate bulk-apply
@@ -76,7 +74,7 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
 def get_default_role_template(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
     return DEFAULT_ROLES
 
@@ -100,14 +98,14 @@ def list_roles(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/roles/ — manage_tournament or manage_roles (rank-bound)
+# POST /tournaments/{tournament_id}/roles/ — manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=RoleRead, status_code=status.HTTP_201_CREATED)
 def create_role(
     tournament_id: int,
     payload: RoleDefinition,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -142,7 +140,7 @@ def create_role(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament or manage_roles (rank-bound)
+# PATCH /tournaments/{tournament_id}/roles/{role_id}/ — manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
 @router.patch("/{role_id}/", response_model=RoleRead)
 def update_role(
@@ -150,7 +148,7 @@ def update_role(
     role_id: int,
     payload: RoleUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -196,7 +194,7 @@ def update_role(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/roles/{role_id}/ — manage_tournament or manage_roles (rank-bound)
+# DELETE /tournaments/{tournament_id}/roles/{role_id}/ — manage_roles (rank-bound)
 # Cascades to MembershipRole rows (FK ondelete="CASCADE") — no blocking check
 # for roles currently assigned to members.
 # ---------------------------------------------------------------------------
@@ -205,7 +203,7 @@ def delete_role(
     tournament_id: int,
     role_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:
@@ -252,9 +250,9 @@ def _validate_role_action(
 ) -> None:
     """
     Rank-bound checks for assigning/removing `role` on `membership`. Owner and
-    platform admins bypass entirely — MANAGE_TOURNAMENT does NOT bypass (same
-    rationale as _validate_rank_bound above: it's the tournament metadata
-    permission, not a role-management bypass).
+    platform admins bypass entirely — same rationale as _validate_rank_bound
+    above: this route is gated on MANAGE_ROLES alone, MANAGE_TOURNAMENT is not
+    a role-management bypass.
 
     Two independent checks, both must pass:
       1. The role being assigned/removed must not outrank the actor's own
@@ -292,7 +290,7 @@ def _validate_role_action(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
-# manage_tournament or manage_roles, rank-bound (see _validate_role_action)
+# manage_roles, rank-bound (see _validate_role_action)
 #
 # Batch add/remove in one call — staff commonly add or remove several roles
 # (or a mix of both) on a member at once, so one PATCH covers it instead of
@@ -311,7 +309,7 @@ def update_membership_roles(
     membership_id: int,
     payload: RoleAssignmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
     tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
     if not tournament:

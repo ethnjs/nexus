@@ -365,11 +365,11 @@ def require_any_permission(
     `permissions` in the tournament identified by `tournament_id_param`.
 
     Usage:
-        @router.post("/{tournament_id}/roles/")
-        def create_role(
+        @router.post("/{tournament_id}/events/")
+        def create_event(
             tournament_id: int,
             ...
-            _: None = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_ROLES)),
+            _: None = Depends(require_any_permission(MANAGE_TOURNAMENT, MANAGE_EVENTS)),
         ):
     """
     def _dependency(
