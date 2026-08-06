@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from typing import Literal
+from pydantic import BaseModel, field_validator, model_validator
 from app.core.tournament.permissions import ALL_PERMISSIONS
 
 
@@ -83,6 +84,30 @@ class RoleRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class RoleReorder(BaseModel):
+    """
+    Body for PATCH /roles/{role_id}/reorder/. Which neighbor-rank fields are
+    required depends on drop_type — see core/tournament/roles.compute_new_rank.
+    """
+    drop_type: Literal["join_group", "new_rank_between", "new_rank_at_top", "new_rank_at_bottom"]
+    target_group_rank: int | None = None  # join_group
+    rank_above: int | None = None         # new_rank_between, new_rank_at_bottom
+    rank_below: int | None = None         # new_rank_between, new_rank_at_top
+
+    @model_validator(mode="after")
+    def validate_fields_for_drop_type(self) -> "RoleReorder":
+        required = {
+            "join_group": ["target_group_rank"],
+            "new_rank_between": ["rank_above", "rank_below"],
+            "new_rank_at_top": ["rank_below"],
+            "new_rank_at_bottom": ["rank_above"],
+        }[self.drop_type]
+        missing = [f for f in required if getattr(self, f) is None]
+        if missing:
+            raise ValueError(f"drop_type '{self.drop_type}' requires: {missing}")
+        return self
 
 
 class RoleAssignmentUpdate(BaseModel):

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import (
@@ -16,9 +17,10 @@ from app.core.tournament.permissions import (
     require_membership,
     require_permission,
 )
+from app.core.tournament.roles import compute_new_rank, rebalance_tournament_ranks
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
-from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleUpdate
+from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleReorder, RoleUpdate
 from app.schemas.tournament.membership import MembershipSlimResponse
 from app.api.routes.tournament.memberships import _get_membership_or_404
 
@@ -58,6 +60,22 @@ def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Sess
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot create or edit a role at or above your own rank",
+        )
+
+    # Defense in depth: a MANAGE_ROLES holder's own rank is always >= the
+    # tournament's live minimum rank (their rank comes from a role that
+    # exists in this tournament), so this is implied by the check above —
+    # but it's checked live rather than against a hardcoded floor, since
+    # ranks are sparse now and there's no fixed "1 = top" constant to lean on.
+    min_rank = (
+        db.query(func.min(TournamentRole.rank))
+        .filter(TournamentRole.tournament_id == tournament.id)
+        .scalar()
+    )
+    if min_rank is not None and rank < min_rank:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot create or edit a role above the tournament's highest existing role",
         )
 
 
@@ -186,6 +204,65 @@ def update_role(
             db, tournament_id, current_user.id, ROLE_UPDATED,
             target_type="role", target_id=role.id,
             extra_data={"changes": changes},
+        )
+
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/roles/{role_id}/reorder/ — manage_roles (rank-bound)
+# Drag-to-reorder in the sidebar editor. Body carries drop_type plus whatever
+# neighbor rank values the frontend has on hand (see RoleReorder). If there's
+# no integer room between the neighbors, rebalances the whole tournament's
+# ranks to 10/20/30... first, translates the request's rank values through
+# the rebalance's remap, and retries once.
+# ---------------------------------------------------------------------------
+@router.patch("/{role_id}/reorder/", response_model=RoleRead)
+def reorder_role(
+    tournament_id: int,
+    role_id: int,
+    payload: RoleReorder,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    role = _get_role_or_404(role_id, tournament_id, db)
+    old_rank = role.rank  # captured before a possible rebalance mutates it
+    # The role's current rank must also be one the actor is allowed to touch —
+    # not just the rank it's moving to (a role currently outranking the actor
+    # shouldn't be movable just because the destination rank happens to be low).
+    _validate_rank_bound(current_user, tournament, old_rank, db)
+
+    kwargs = {
+        k: v for k, v in payload.model_dump(exclude={"drop_type"}).items()
+        if v is not None
+    }
+
+    new_rank = compute_new_rank(payload.drop_type, **kwargs)
+    if new_rank is None or new_rank <= 0:
+        remap = rebalance_tournament_ranks(db, tournament_id)
+        db.flush()
+        kwargs = {k: remap.get(v, v) for k, v in kwargs.items()}
+        new_rank = compute_new_rank(payload.drop_type, **kwargs)
+        if new_rank is None or new_rank <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to compute a rank for this position",
+            )
+
+    _validate_rank_bound(current_user, tournament, new_rank, db)
+    role.rank = new_rank
+
+    if old_rank != new_rank:
+        log_action(
+            db, tournament_id, current_user.id, ROLE_UPDATED,
+            target_type="role", target_id=role.id,
+            extra_data={"changes": {"rank": {"old": old_rank, "new": new_rank}}},
         )
 
     db.commit()
