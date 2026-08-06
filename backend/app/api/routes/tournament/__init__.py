@@ -201,10 +201,17 @@ def transfer_ownership(
     old_owner_id = tournament.owner_id
     tournament.owner_id = payload.new_owner_id
 
+    def _display_name(user: User) -> str:
+        name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+        return name or user.email
+
     log_action(
         db, tournament_id, current_user.id, OWNERSHIP_TRANSFERRED,
         target_type="tournament", target_id=tournament.id,
-        extra_data={"old_owner_id": old_owner_id, "new_owner_id": payload.new_owner_id},
+        extra_data={
+            "old": {"id": old_owner_id, "name": _display_name(current_user)},
+            "new": {"id": payload.new_owner_id, "name": _display_name(new_owner_membership.user)},
+        },
     )
 
     db.commit()
