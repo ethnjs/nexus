@@ -156,3 +156,119 @@ def test_deactivate_join_code_twice_rejected(client, td_user, td_tournament, db)
 def test_deactivate_join_code_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.delete(f"/tournaments/{td_tournament.id}/join-codes/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/staff-invites/ — manage_tournament
+# mock_send_email is autouse (patches email_service._send), so every test
+# here already has it — request it directly to assert on/configure it.
+# ---------------------------------------------------------------------------
+
+def test_staff_invite_sends_to_all_and_logs_audit(client, td_user, td_tournament, db, mock_send_email):
+    from app.core.tournament.audit import STAFF_INVITE_SENT
+    from app.models.models import AuditLogEntry
+
+    join_code = make_join_code(db, td_tournament.id, td_user.id, code="INVITE01")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com", "b@example.com"]},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert sorted(data["sent"]) == ["a@example.com", "b@example.com"]
+    assert data["failed"] == []
+    assert data["join_code"]["id"] == join_code.id
+    assert mock_send_email.call_count == 2
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == STAFF_INVITE_SENT)
+        .first()
+    )
+    assert entry is not None
+    assert entry.target_type == "join_code"
+    assert entry.target_id == join_code.id
+    assert set(entry.extra_data["emails"]) == {"a@example.com", "b@example.com"}
+    assert entry.extra_data["join_code"] == join_code.code
+    assert "failed" not in entry.extra_data
+
+
+def test_staff_invite_partial_failure_reported(client, td_user, td_tournament, db, mock_send_email):
+    from app.core.tournament.audit import STAFF_INVITE_SENT
+    from app.models.models import AuditLogEntry
+
+    join_code = make_join_code(db, td_tournament.id, td_user.id, code="INVITE02")
+    login(client, "td@test.com", "tdpass")
+
+    async def flaky_send(to, subject, text, html):
+        if to == "bad@example.com":
+            raise RuntimeError("Resend rejected this address")
+
+    mock_send_email.side_effect = flaky_send
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["good@example.com", "bad@example.com"]},
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["sent"] == ["good@example.com"]
+    assert data["failed"] == ["bad@example.com"]
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.action == STAFF_INVITE_SENT)
+        .first()
+    )
+    assert entry.extra_data["failed"] == ["bad@example.com"]
+
+
+def test_staff_invite_join_code_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": 9999, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 404
+
+
+def test_staff_invite_join_code_wrong_tournament(client, td_user, td_tournament, other_tournament, other_user, db):
+    join_code = make_join_code(db, other_tournament.id, other_user.id, code="WRONGTN1")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 404
+
+
+def test_staff_invite_volunteer_forbidden(client, td_user, other_tournament, db):
+    join_code = make_join_code(db, other_tournament.id, td_user.id, code="FORBID01")
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 403
+
+
+def test_staff_invite_non_member_gets_404(client, td_user, other_tournament, other_user, db):
+    join_code = make_join_code(db, other_tournament.id, other_user.id, code="NONMEM01")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 404
+
+
+def test_staff_invite_unauthenticated(client, td_tournament, td_user, db):
+    join_code = make_join_code(db, td_tournament.id, td_user.id, code="NOAUTH01")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 401

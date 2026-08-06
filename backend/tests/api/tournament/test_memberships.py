@@ -1,14 +1,23 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from app.models.models import TournamentMembership
+from app.models.models import TournamentMembership, TournamentRole
 from tests.conftest import grant_role, login
 
 
-def _make_user(db, email="alice@example.com"):
+def get_role_id_by_label(db, tournament_id: int, label: str) -> int:
+    return (
+        db.query(TournamentRole)
+        .filter(TournamentRole.tournament_id == tournament_id, TournamentRole.label == label)
+        .first()
+        .id
+    )
+
+
+def _make_user(db, email="alice@example.com", first_name="Alice", last_name="Smith"):
     """Create a user directly in the DB — bypasses the admin-only POST /users/ route."""
     from app.models.models import User as UserModel
-    user = UserModel(first_name="Alice", last_name="Smith", email=email)
+    user = UserModel(first_name=first_name, last_name=last_name, email=email)
     db.add(user)
     db.commit()
     db.refresh(user)
@@ -94,6 +103,88 @@ def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
     assert response.status_code == 200
     row = next(m for m in response.json() if m["id"] == membership.id)
     assert [r["label"] for r in row["roles"]] == ["Volunteer"]
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=
+# manage_members. Registered before /{membership_id}/ so it must not be
+# swallowed by that route.
+# ---------------------------------------------------------------------------
+
+def test_search_memberships_by_name(client, td_user, td_tournament, db):
+    zed = _make_user(db, "zed@example.com", first_name="Zed", last_name="Zephyr")
+    priya = _make_user(db, "priya@example.com", first_name="Priya", last_name="Patel")
+    _make_membership(db, td_tournament.id, zed["id"])
+    _make_membership(db, td_tournament.id, priya["id"])
+    login(client, "td@test.com", "tdpass")
+
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?q=Priya")
+    assert response.status_code == 200
+    emails = [m["user"]["email"] for m in response.json()]
+    assert emails == ["priya@example.com"]
+
+
+def test_search_memberships_by_email(client, td_user, td_tournament, db):
+    zed = _make_user(db, "zed@example.com", first_name="Zed", last_name="Zephyr")
+    priya = _make_user(db, "priya@example.com", first_name="Priya", last_name="Patel")
+    _make_membership(db, td_tournament.id, zed["id"])
+    _make_membership(db, td_tournament.id, priya["id"])
+    login(client, "td@test.com", "tdpass")
+
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?q=zed@example")
+    assert response.status_code == 200
+    emails = [m["user"]["email"] for m in response.json()]
+    assert emails == ["zed@example.com"]
+
+
+def test_search_memberships_by_role_id(client, td_user, td_tournament, db):
+    from app.models.models import User as UserModel
+    u = _make_user(db, "coach@example.com")
+    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
+    grant_role(db, td_tournament, user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+
+    role_id = get_role_id_by_label(db, td_tournament.id, "Volunteer")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?role_id={role_id}")
+    assert response.status_code == 200
+    emails = [m["user"]["email"] for m in response.json()]
+    assert emails == ["coach@example.com"]
+
+
+def test_search_memberships_exclude_role_id(client, td_user, td_tournament, db):
+    """td_user already holds Tournament Director from the fixture — excluding
+    that role should drop them from the results."""
+    role_id = get_role_id_by_label(db, td_tournament.id, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?exclude_role_id={role_id}")
+    assert response.status_code == 200
+    emails = [m["user"]["email"] for m in response.json()]
+    assert "td@test.com" not in emails
+
+
+def test_search_memberships_no_filters_returns_all(client, td_user, td_tournament, db):
+    zed = _make_user(db, "zed@example.com")
+    _make_membership(db, td_tournament.id, zed["id"])
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/")
+    assert response.status_code == 200
+    assert len(response.json()) >= 2
+
+
+def test_search_memberships_requires_manage_members(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/memberships/search/"
+    ).status_code == 403
+
+
+def test_search_memberships_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/memberships/search/"
+    ).status_code == 404
 
 
 # ---------------------------------------------------------------------------

@@ -1,8 +1,11 @@
 """Tests for TournamentRole CRUD and membership-role assignment
 (app/api/routes/tournament/roles.py)."""
 from tests.conftest import grant_role, login
-from app.core.tournament.permissions import MANAGE_MEMBERS, MANAGE_ROLES
-from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
+from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
+from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
+from app.models.models import (
+    AuditLogEntry, Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User,
+)
 
 
 def make_role(db, tournament: Tournament, label: str, rank: int, permissions=None) -> TournamentRole:
@@ -66,6 +69,92 @@ def test_list_roles_ordered_by_rank(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     ranks = [r["rank"] for r in client.get(f"/tournaments/{td_tournament.id}/roles/").json()]
     assert ranks == sorted(ranks)
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/roles/apply-template/ — manage_roles,
+# empty-state only (409 once any role exists)
+# ---------------------------------------------------------------------------
+
+def _make_empty_tournament(client, name="Empty Tournament") -> int:
+    """POST /tournaments/ itself no longer seeds roles — this is the real
+    empty-state path apply-template is meant to be called against."""
+    response = client.post("/tournaments/", json={"name": name, "location": "Test Location"})
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_apply_template_owner_can_apply_on_empty_tournament(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client)
+
+    response = client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
+    assert response.status_code == 201
+    data = response.json()
+    assert len(data) == len(DEFAULT_ROLES)
+    labels = {r["label"] for r in data}
+    assert labels == {r["label"] for r in DEFAULT_ROLES}
+
+    td_role = next(r for r in data if r["label"] == "Tournament Director")
+    assert td_role["rank"] == 10
+    assert "manage_tournament" in td_role["permissions"]
+
+    volunteer_role = next(r for r in data if r["label"] == "Volunteer")
+    assert volunteer_role["rank"] == 40
+    assert volunteer_role["permissions"] == []
+
+
+def test_apply_template_logs_role_created_per_row_no_template_action(client, td_user, db):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client)
+    client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
+
+    entries = db.query(AuditLogEntry).filter(
+        AuditLogEntry.tournament_id == tournament_id,
+    ).all()
+    assert len(entries) == len(DEFAULT_ROLES)
+    assert all(e.action == ROLE_CREATED for e in entries)
+
+
+def test_apply_template_conflict_when_roles_already_exist(client, td_user, td_tournament):
+    """td_tournament already has DEFAULT_ROLES seeded via the test fixture."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/roles/apply-template/")
+    assert response.status_code == 409
+
+
+def test_apply_template_non_owner_without_manage_roles_forbidden(client, td_user, other_user, db):
+    """A member with no role at all (nothing to grant MANAGE_ROLES from,
+    since the tournament has zero roles) can't apply the template."""
+    login(client, "other@test.com", "otherpass")
+    tournament_id = _make_empty_tournament(client, name="Empty For Other")
+
+    membership = TournamentMembership(
+        user_id=td_user.id, tournament_id=tournament_id, status="confirmed", source="manual",
+    )
+    db.add(membership)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
+    assert response.status_code == 403
+
+
+def test_apply_template_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{other_tournament.id}/roles/apply-template/").status_code == 404
+
+
+def test_apply_template_unauthenticated(client, td_tournament):
+    assert client.post(f"/tournaments/{td_tournament.id}/roles/apply-template/").status_code == 401
+
+
+def test_apply_template_admin_bypasses(client, admin_user, td_user):
+    login(client, "td@test.com", "tdpass")
+    tournament_id = _make_empty_tournament(client, name="Empty For Admin")
+    login(client, "admin@test.com", "adminpass")
+    response = client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
+    assert response.status_code == 201
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +270,159 @@ def test_update_role_manage_roles_holder_cannot_uprank_to_own_rank(client, td_us
         f"/tournaments/{other_tournament.id}/roles/{target.id}/", json={"rank": 2}
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/roles/{role_id}/reorder/ — manage_roles (rank-bound)
+# td_tournament's DEFAULT_ROLES ranks: 10 (TD), 20 (six coordinator/runner/
+# scoremaster roles), 30 (Lead Event Supervisor), 40 (six bottom-tier roles).
+# ---------------------------------------------------------------------------
+
+def test_reorder_join_group(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")  # currently rank 40
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "join_group", "target_group_rank": 20},
+    )
+    assert response.status_code == 200
+    assert response.json()["rank"] == 20
+
+
+def test_reorder_new_rank_between(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")  # currently rank 40
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "new_rank_between", "rank_above": 20, "rank_below": 30},
+    )
+    assert response.status_code == 200
+    assert response.json()["rank"] == 25
+
+
+def test_reorder_new_rank_at_top(client, td_user, td_tournament, db):
+    """rank_below=20 (the second tier) gives 20-RANK_GAP=10 — which happens
+    to tie with the real TD role, a valid outcome (ties are allowed)."""
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "new_rank_at_top", "rank_below": 20},
+    )
+    assert response.status_code == 200
+    assert response.json()["rank"] == 10
+
+
+def test_reorder_new_rank_at_bottom(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "new_rank_at_bottom", "rank_above": 40},
+    )
+    assert response.status_code == 200
+    assert response.json()["rank"] == 50
+
+
+def test_reorder_logs_role_updated_with_rank_change(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "join_group", "target_group_rank": 20},
+    )
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(AuditLogEntry.tournament_id == td_tournament.id, AuditLogEntry.target_id == role_id)
+        .order_by(AuditLogEntry.id.desc())
+        .first()
+    )
+    assert entry.action == ROLE_UPDATED
+    assert entry.extra_data == {"changes": [{"field": "rank", "old": 40, "new": 20}]}
+
+
+def test_reorder_no_room_triggers_rebalance(client, td_user, td_tournament, db):
+    """Two custom roles one rank apart leave no integer midpoint — the route
+    rebalances the whole tournament to 10/20/30... first, translates the
+    request's neighbor values through the remap, and retries once."""
+    make_role(db, td_tournament, "Tight A", rank=5)
+    make_role(db, td_tournament, "Tight B", rank=6)
+    mover = make_role(db, td_tournament, "Mover", rank=999)
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{mover.id}/reorder/",
+        json={"drop_type": "new_rank_between", "rank_above": 5, "rank_below": 6},
+    )
+    assert response.status_code == 200
+    # distinct old ranks {5,6,10,20,30,40,999} -> remap to 10,20,30,40,50,60,70
+    # in order, so 5->10, 6->20; retried midpoint is (10+20)//2 = 15.
+    assert response.json()["rank"] == 15
+
+    db.refresh(mover)
+    td_role = db.query(TournamentRole).filter(
+        TournamentRole.tournament_id == td_tournament.id, TournamentRole.label == "Tournament Director",
+    ).first()
+    assert td_role.rank == 30
+
+
+def test_reorder_manage_roles_holder_cannot_move_role_to_own_rank(client, td_user, other_tournament, db):
+    make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES])
+    target = make_role(db, other_tournament, "Photographer", rank=5)
+    grant_role(db, other_tournament, td_user, "Coordinator")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/roles/{target.id}/reorder/",
+        json={"drop_type": "new_rank_between", "rank_above": 1, "rank_below": 2},
+    )
+    assert response.status_code == 403
+
+
+def test_reorder_manage_roles_holder_cannot_move_role_that_outranks_them(client, td_user, other_tournament, db):
+    make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES])
+    higher = make_role(db, other_tournament, "Director Deputy", rank=1)
+    grant_role(db, other_tournament, td_user, "Coordinator")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/roles/{higher.id}/reorder/",
+        json={"drop_type": "new_rank_at_bottom", "rank_above": 5},
+    )
+    assert response.status_code == 403
+
+
+def test_reorder_not_found(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/9999/reorder/",
+        json={"drop_type": "join_group", "target_group_rank": 20},
+    )
+    assert response.status_code == 404
+
+
+def test_reorder_missing_required_field_for_drop_type_422(client, td_user, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "new_rank_between", "rank_above": 20},
+    )
+    assert response.status_code == 422
+
+
+def test_reorder_unauthenticated(client, td_tournament, db):
+    role_id = get_role_id(db, td_tournament.id, "Volunteer")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/roles/{role_id}/reorder/",
+        json={"drop_type": "join_group", "target_group_rank": 20},
+    )
+    assert response.status_code == 401
 
 
 # ---------------------------------------------------------------------------
