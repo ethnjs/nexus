@@ -5,8 +5,8 @@ from app.models.models import TournamentMembership, TournamentMembershipRole, To
 # Required fields every TournamentCreate payload needs now (state/level/division
 # + non-null dates). Tests that only care about other fields spread this in.
 REQUIRED_FIELDS = {
-    "start_date": "2025-05-21T08:00:00",
-    "end_date": "2025-05-23T18:00:00",
+    "start_date": "2025-05-21",
+    "end_date": "2025-05-23",
     "state": "Southern California",
     "level": "invitational",
     "division": ["B", "C"],
@@ -111,8 +111,8 @@ def test_create_tournament_full(client, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={
         "name": "Nationals",
-        "start_date": "2025-05-21T08:00:00",
-        "end_date": "2025-05-23T18:00:00",
+        "start_date": "2025-05-21",
+        "end_date": "2025-05-23",
         "location": "USC",
         "state": "Southern California",
         "level": "nationals",
@@ -132,8 +132,8 @@ def test_create_tournament_invalid_dates(client, td_user):
     assert client.post("/tournaments/", json={
         **REQUIRED_FIELDS,
         "name": "Bad Dates",
-        "start_date": "2025-11-15T08:00:00",
-        "end_date": "2025-11-14T08:00:00",
+        "start_date": "2025-11-15",
+        "end_date": "2025-11-14",
         "location": "Test Location",
     }).status_code == 422
 

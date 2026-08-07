@@ -7,8 +7,8 @@ from tests.conftest import grant_role, login
 # now, so the checklist no longer tracks "dates"/"location" — they're
 # unconditionally set on every tournament from creation onward.
 REQUIRED_FIELDS = {
-    "start_date": "2026-05-21T08:00:00",
-    "end_date": "2026-05-23T18:00:00",
+    "start_date": "2026-05-21",
+    "end_date": "2026-05-23",
     "state": "Southern California",
     "level": "invitational",
     "division": ["B", "C"],

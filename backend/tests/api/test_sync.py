@@ -32,8 +32,8 @@ COLUMN_MAPPINGS = {
 def _make_tournament(client):
     return client.post("/tournaments/", json={
         "name": "Nationals",
-        "start_date": "2026-05-21T08:00:00",
-        "end_date": "2026-05-23T18:00:00",
+        "start_date": "2026-05-21",
+        "end_date": "2026-05-23",
         "location": "Test Location",
         "state": "Southern California",
         "level": "nationals",
