@@ -9,6 +9,7 @@ import {
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
 import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
+import { todayLocalDateString } from "@/lib/date";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -357,6 +358,7 @@ export default function OnboardingPage() {
                 <Input
                   type="date"
                   value={profileData.date_of_birth ?? ""}
+                  max={todayLocalDateString()}
                   onChange={(e) => {
                     setProfileData((d) => ({ ...d, date_of_birth: e.target.value }));
                     setErrors((er) => ({ ...er, date_of_birth: undefined }));
