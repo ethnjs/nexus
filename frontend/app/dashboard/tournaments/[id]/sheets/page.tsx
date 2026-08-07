@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
@@ -322,7 +323,6 @@ function ConfigCard({
   const [showConfirm, setShowConfirm] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
-  const [hovered, setHovered] = useState(false);
 
   const hasDuplicates = duplicates.length > 0;
 
@@ -365,19 +365,11 @@ function ConfigCard({
 
   return (
     <>
-      <div
+      <Card
+        hoverable
+        borderColor={hasDuplicates ? "var(--color-warning)" : undefined}
         onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}`)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          background: "var(--color-surface)",
-          border: `1px solid ${hasDuplicates ? "var(--color-warning)" : hovered ? "var(--color-border-strong)" : "var(--color-border)"}`,
-          borderRadius: "var(--radius-md)",
-          padding: "16px 20px",
-          cursor: "pointer",
-          transition: "border-color 120ms ease, box-shadow 120ms ease",
-          boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-sm)",
-        }}
+        style={{ padding: "16px 20px", cursor: "pointer" }}
       >
         {hasDuplicates && (
           <div style={{
@@ -476,7 +468,7 @@ function ConfigCard({
             />
           </div>
         </div>
-      </div>
+      </Card>
 
       {showConfirm && (
         <SyncConfirmModal

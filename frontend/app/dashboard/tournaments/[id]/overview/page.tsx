@@ -4,12 +4,11 @@ import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { setupChecklistApi, SetupChecklistItem, SetupChecklistResponse } from "@/lib/api";
-import { IconCheckCircle } from "@/components/ui/Icons";
+import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
+import { ChecklistMeter } from "@/components/tournament/setup/ChecklistMeter";
+import { ChecklistCard } from "@/components/tournament/setup/ChecklistCard";
 
 // ─── Checklist config ───────────────────────────────────────────────────────
-// Steps H (settings shell), J (roles editor), K (staff invite modal) build the
-// targets below — dates/location/roles routes 404 until Step H/J land.
 
 interface ChecklistConfigEntry {
   buildable: boolean;
@@ -27,99 +26,6 @@ const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
   shifts:       { buildable: false, onClick: null },
   buildings:    { buildable: false, onClick: null },
 };
-
-// ─── Meter ──────────────────────────────────────────────────────────────────
-
-function ChecklistMeter({ completed, total }: { completed: number; total: number }) {
-  const pct = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-  return (
-    <div style={{ marginBottom: "24px" }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: "8px" }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-          Setup progress
-        </span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-          {completed} / {total} complete
-        </span>
-      </div>
-      <div
-        role="progressbar"
-        aria-valuenow={completed}
-        aria-valuemin={0}
-        aria-valuemax={total}
-        style={{
-          height: "8px",
-          borderRadius: "var(--radius-sm)",
-          background: "var(--color-accent-subtle)",
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            height: "100%",
-            width: `${pct}%`,
-            background: "var(--color-accent)",
-            borderRadius: "var(--radius-sm)",
-            transition: "width 200ms ease",
-          }}
-        />
-      </div>
-    </div>
-  );
-}
-
-// ─── Checklist card ─────────────────────────────────────────────────────────
-
-function ChecklistCard({
-  item,
-  onClick,
-}: {
-  item: SetupChecklistItem;
-  onClick: (() => void) | null;
-}) {
-  const [hovered, setHovered] = useState(false);
-  const clickable = onClick !== null;
-  const complete = item.status === "complete";
-
-  return (
-    <div
-      onClick={clickable ? onClick : undefined}
-      onMouseEnter={() => clickable && setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: "var(--color-surface)",
-        border: `1px solid ${hovered ? "var(--color-border-strong)" : "var(--color-border)"}`,
-        borderRadius: "var(--radius-md)",
-        padding: "16px 18px",
-        cursor: clickable ? "pointer" : "default",
-        opacity: clickable ? 1 : 0.55,
-        boxShadow: hovered ? "var(--shadow-md)" : "var(--shadow-sm)",
-        transition: "border-color 120ms ease, box-shadow 120ms ease",
-        display: "flex", alignItems: "center", gap: "10px",
-      }}
-    >
-      {complete ? (
-        <IconCheckCircle size={18} style={{ color: "var(--color-success)", flexShrink: 0 }} />
-      ) : (
-        <div style={{
-          width: "18px", height: "18px", borderRadius: "50%",
-          border: "1.5px solid var(--color-border-strong)", flexShrink: 0,
-        }} />
-      )}
-      <div>
-        <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, color: "var(--color-text-primary)" }}>
-          {item.label}
-        </div>
-        {!clickable && (
-          <div style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
-            Coming soon
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
