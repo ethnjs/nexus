@@ -9,7 +9,7 @@ import {
   IconEvents,
   IconSheets,
   IconSettings,
-  IconChevronRight,
+  IconChevronDown,
 } from "@/components/ui/Icons";
 
 export const COLLAPSED_W = 52;
@@ -210,7 +210,10 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
               }}>
                 Settings
               </span>
-              <IconChevronRight size={12} expanded={showSettingsSub} />
+              <IconChevronDown
+                size={12}
+                style={{ transform: showSettingsSub ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}
+              />
             </>
           )}
         </button>
