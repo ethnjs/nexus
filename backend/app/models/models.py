@@ -277,11 +277,16 @@ class Tournament(Base):
     __tablename__ = "tournaments"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String(255), nullable=False)
-    start_date = Column(DateTime(timezone=True), nullable=True)
-    end_date = Column(DateTime(timezone=True), nullable=True)
+    name = Column(String(255), nullable=False)                 # excludes year, e.g. "Science Olympiad Invitational"
+    short_name = Column(String(64), nullable=True)              # includes abbreviation, e.g. "SoCal", "OC", "LA"
+    start_date = Column(DateTime(timezone=True), nullable=False)
+    end_date = Column(DateTime(timezone=True), nullable=False)
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
+
+    state = Column(String(32), nullable=False)
+    level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
+    division = Column(JSON, nullable=False, default=list)       # "A" | "B" | "C"
 
     # The user who created this tournament.
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)

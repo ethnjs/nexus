@@ -3,15 +3,29 @@
 other tables, not stored — see app/core/tournament/setup_checklist.py."""
 from tests.conftest import grant_role, login
 
+# start_date/end_date/state/level/division are all required on TournamentCreate
+# now, so "dates" is unconditionally complete at creation — see note on
+# test_checklist_fresh_tournament_dates_and_location_complete below.
+REQUIRED_FIELDS = {
+    "start_date": "2026-05-21T08:00:00",
+    "end_date": "2026-05-23T18:00:00",
+    "state": "Southern California",
+    "level": "invitational",
+    "division": ["B", "C"],
+}
+
 
 def _checklist_by_key(response_json):
     return {item["item_key"]: item["status"] for item in response_json["items"]}
 
 
-def test_checklist_fresh_tournament_only_location_complete(client, td_user):
+def test_checklist_fresh_tournament_dates_and_location_complete(client, td_user):
+    """"dates" is now always complete at creation since start_date/end_date are
+    required on TournamentCreate — this item may be worth removing/replacing
+    from the checklist since it can no longer be "not_started"."""
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Fresh", "location": "Test Location"}
+        "/tournaments/", json={"name": "Fresh", "location": "Test Location", **REQUIRED_FIELDS}
     ).json()["id"]
 
     response = client.get(f"/tournaments/{tournament_id}/setup-checklist/")
@@ -20,35 +34,20 @@ def test_checklist_fresh_tournament_only_location_complete(client, td_user):
     statuses = _checklist_by_key(data)
 
     assert statuses["location"] == "complete"
-    assert statuses["dates"] == "not_started"
+    assert statuses["dates"] == "complete"
     assert statuses["roles"] == "not_started"
     assert statuses["invite_staff"] == "not_started"
     for key in ("onboarding", "events", "shifts", "buildings"):
         assert statuses[key] == "not_started"
 
-    assert data["completed_count"] == 1
+    assert data["completed_count"] == 2
     assert data["total_count"] == 8
-
-
-def test_checklist_dates_complete_when_both_set(client, td_user):
-    login(client, "td@test.com", "tdpass")
-    tournament_id = client.post("/tournaments/", json={
-        "name": "Dated",
-        "location": "Test Location",
-        "start_date": "2026-05-21T08:00:00",
-        "end_date": "2026-05-23T18:00:00",
-    }).json()["id"]
-
-    statuses = _checklist_by_key(
-        client.get(f"/tournaments/{tournament_id}/setup-checklist/").json()
-    )
-    assert statuses["dates"] == "complete"
 
 
 def test_checklist_roles_complete_after_apply_template(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Rolled", "location": "Test Location"}
+        "/tournaments/", json={"name": "Rolled", "location": "Test Location", **REQUIRED_FIELDS}
     ).json()["id"]
     client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
 
@@ -61,7 +60,7 @@ def test_checklist_roles_complete_after_apply_template(client, td_user):
 def test_checklist_invite_staff_complete_after_invite(client, td_user, mock_send_email):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Invited", "location": "Test Location"}
+        "/tournaments/", json={"name": "Invited", "location": "Test Location", **REQUIRED_FIELDS}
     ).json()["id"]
     join_code = client.post(f"/tournaments/{tournament_id}/join-codes/", json={}).json()
     client.post(

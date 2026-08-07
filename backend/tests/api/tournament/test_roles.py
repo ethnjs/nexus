@@ -79,7 +79,15 @@ def test_list_roles_ordered_by_rank(client, td_user, td_tournament):
 def _make_empty_tournament(client, name="Empty Tournament") -> int:
     """POST /tournaments/ itself no longer seeds roles — this is the real
     empty-state path apply-template is meant to be called against."""
-    response = client.post("/tournaments/", json={"name": name, "location": "Test Location"})
+    response = client.post("/tournaments/", json={
+        "name": name,
+        "location": "Test Location",
+        "start_date": "2026-05-21T08:00:00",
+        "end_date": "2026-05-23T18:00:00",
+        "state": "Southern California",
+        "level": "invitational",
+        "division": ["B", "C"],
+    })
     assert response.status_code == 201
     return response.json()["id"]
 

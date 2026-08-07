@@ -17,6 +17,7 @@ Fixture hierarchy:
 """
 
 import os
+from datetime import datetime, timedelta, timezone
 import pytest
 
 os.environ.setdefault("APP_ENV", "development")
@@ -140,6 +141,11 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
         name=name,
         owner_id=owner.id,
         location="Test Location",
+        start_date=datetime.now(timezone.utc),
+        end_date=datetime.now(timezone.utc) + timedelta(days=1),
+        state="Southern California",
+        level="invitational",
+        division=["B", "C"],
     )
     db.add(tournament)
     db.flush()

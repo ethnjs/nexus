@@ -2,6 +2,16 @@
 from tests.conftest import grant_role, login
 from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole
 
+# Required fields every TournamentCreate payload needs now (state/level/division
+# + non-null dates). Tests that only care about other fields spread this in.
+REQUIRED_FIELDS = {
+    "start_date": "2025-05-21T08:00:00",
+    "end_date": "2025-05-23T18:00:00",
+    "state": "Southern California",
+    "level": "invitational",
+    "division": ["B", "C"],
+}
+
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/me/ — user's own tournaments
@@ -54,7 +64,9 @@ def test_list_my_tournaments_unauthenticated(client):
 
 def test_create_tournament_minimal(client, td_user):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Minimal Tournament", "location": "Test Location"})
+    response = client.post("/tournaments/", json={
+        "name": "Minimal Tournament", "location": "Test Location", **REQUIRED_FIELDS,
+    })
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Minimal Tournament"
@@ -67,14 +79,18 @@ def test_create_tournament_has_zero_roles(client, td_user):
     full permissions via owner_id, and sets up roles later via apply-template
     or custom creation."""
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Auto Roles", "location": "Test Location"})
+    response = client.post("/tournaments/", json={
+        "name": "Auto Roles", "location": "Test Location", **REQUIRED_FIELDS,
+    })
     assert response.status_code == 201
     assert response.json()["roles"] == []
 
 
 def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user, db):
     login(client, "td@test.com", "tdpass")
-    response = client.post("/tournaments/", json={"name": "Auto TournamentMembership", "location": "Test Location"})
+    response = client.post("/tournaments/", json={
+        "name": "Auto TournamentMembership", "location": "Test Location", **REQUIRED_FIELDS,
+    })
     assert response.status_code == 201
     tournament_id = response.json()["id"]
     membership = db.query(TournamentMembership).filter(
@@ -94,16 +110,19 @@ def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user
 def test_create_tournament_full(client, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={
-        "name": "Nationals 2025",
+        "name": "Nationals",
         "start_date": "2025-05-21T08:00:00",
         "end_date": "2025-05-23T18:00:00",
         "location": "USC",
+        "state": "Southern California",
+        "level": "nationals",
+        "division": ["B", "C"],
         "is_public": True,
         "registration_opens_at": "2025-01-01T00:00:00",
     })
     assert response.status_code == 201
     data = response.json()
-    assert data["name"] == "Nationals 2025"
+    assert data["name"] == "Nationals"
     assert data["is_public"] is True
     assert data["registration_opens_at"] is not None
 
@@ -111,6 +130,7 @@ def test_create_tournament_full(client, td_user):
 def test_create_tournament_invalid_dates(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
         "name": "Bad Dates",
         "start_date": "2025-11-15T08:00:00",
         "end_date": "2025-11-14T08:00:00",
@@ -118,8 +138,40 @@ def test_create_tournament_invalid_dates(client, td_user):
     }).status_code == 422
 
 
+def test_create_tournament_name_with_number_rejected(client, td_user):
+    """name must exclude the year — it's derived from start_date instead."""
+    login(client, "td@test.com", "tdpass")
+    assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "Nationals 2025",
+        "location": "Test Location",
+    }).status_code == 422
+
+
+def test_create_tournament_invalid_state_rejected(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "Bad State",
+        "location": "Test Location",
+        "state": "California",  # not valid — must be Southern/Northern California
+    }).status_code == 422
+
+
+def test_create_tournament_invalid_division_rejected(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "Bad Division",
+        "location": "Test Location",
+        "division": ["D"],
+    }).status_code == 422
+
+
 def test_create_tournament_unauthenticated(client):
-    assert client.post("/tournaments/", json={"name": "Sneaky", "location": "Nowhere"}).status_code == 401
+    assert client.post("/tournaments/", json={
+        "name": "Sneaky", "location": "Nowhere", **REQUIRED_FIELDS,
+    }).status_code == 401
 
 
 # ---------------------------------------------------------------------------
