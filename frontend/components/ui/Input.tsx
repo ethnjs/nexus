@@ -71,7 +71,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             paddingRight: sizing.paddingX,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
-            background: locked ? 'var(--color-accent-subtle)' : BACKGROUND_MAP[styleType],
+            background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[styleType],
             color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
             borderRadius: 'var(--radius-md)',
