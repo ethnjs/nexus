@@ -14,6 +14,9 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
       : fmt(tournament.start_date)
     : null;
 
+  const year = new Date(tournament.start_date).getFullYear();
+  const displayName = `${year} ${tournament.short_name || tournament.name}`;
+
   return (
     <Card
       hoverable
@@ -22,7 +25,7 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
       style={{ padding: "22px 24px", cursor: "pointer", display: "flex", flexDirection: "column", gap: "14px" }}
     >
       <h3 style={{ fontFamily: "Georgia, serif", fontSize: "19px", fontWeight: 400, color: "var(--color-text-primary)", lineHeight: 1.25 }}>
-        {tournament.name}
+        {displayName}
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
         {tournament.location && (

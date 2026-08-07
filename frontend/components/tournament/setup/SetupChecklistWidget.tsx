@@ -8,8 +8,6 @@ import { Card } from "@/components/ui/Card";
 import { ChecklistProgressRing } from "./ChecklistProgressRing";
 import { ChecklistCard } from "./ChecklistCard";
 
-// Steps H (settings shell), J (roles editor), K (staff invite modal) build the
-// targets below — dates/location/roles routes 404 until Step H/J land.
 interface ChecklistConfigEntry {
   buildable: boolean;
   onClick: ((router: ReturnType<typeof useRouter>, tournamentId: string) => void) | null;
@@ -19,7 +17,6 @@ const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
   dates:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/general`) },
   location:     { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/visibility`) },
   roles:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
-  // Step K builds the staff-invite modal — no target to wire yet.
   invite_staff: { buildable: false, onClick: null },
   onboarding:   { buildable: false, onClick: null },
   events:       { buildable: false, onClick: null },
