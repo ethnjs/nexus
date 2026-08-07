@@ -1,4 +1,5 @@
 import { ReactNode } from "react";
+import { Card } from "@/components/ui/Card";
 
 interface SettingsRowProps {
   label:    string;
@@ -42,14 +43,7 @@ export function SettingsSection({ title, children, variant = "normal" }: Setting
   const accentColor = variant === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)";
 
   return (
-    <div style={{
-      marginBottom: "24px",
-      background: variant === "danger" ? "var(--color-danger-subtle)" : "var(--color-surface)",
-      border: `1px solid ${variant === "danger" ? "var(--color-danger)" : "var(--color-border)"}`,
-      borderRadius: "var(--radius-lg)",
-      boxShadow: "var(--shadow-sm)",
-      padding: "8px 28px",
-    }}>
+    <Card radius="lg" variant={variant} style={{ marginBottom: "24px", padding: "8px 28px" }}>
       {title && (
         <div style={{
           fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
@@ -60,6 +54,6 @@ export function SettingsSection({ title, children, variant = "normal" }: Setting
         </div>
       )}
       <div>{children}</div>
-    </div>
+    </Card>
   );
 }
