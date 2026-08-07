@@ -10,9 +10,6 @@ from app.models.models import AuditLogEntry, Tournament, TournamentRole
 
 
 def get_checklist(db: Session, tournament: Tournament) -> dict:
-    has_dates = tournament.start_date is not None and tournament.end_date is not None
-    has_location = tournament.location is not None or tournament.university_id is not None
-
     has_roles = (
         db.query(TournamentRole)
         .filter(TournamentRole.tournament_id == tournament.id)
@@ -31,10 +28,6 @@ def get_checklist(db: Session, tournament: Tournament) -> dict:
     )
 
     items = [
-        {"item_key": "dates", "label": "Set Tournament Dates",
-         "status": "complete" if has_dates else "not_started"},
-        {"item_key": "location", "label": "Set Location",
-         "status": "complete" if has_location else "not_started"},
         {"item_key": "roles", "label": "Set Up Roles",
          "status": "complete" if has_roles else "not_started"},
         {"item_key": "invite_staff", "label": "Invite Staff",

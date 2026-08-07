@@ -4,8 +4,8 @@ other tables, not stored — see app/core/tournament/setup_checklist.py."""
 from tests.conftest import grant_role, login
 
 # start_date/end_date/state/level/division are all required on TournamentCreate
-# now, so "dates" is unconditionally complete at creation — see note on
-# test_checklist_fresh_tournament_dates_and_location_complete below.
+# now, so the checklist no longer tracks "dates"/"location" — they're
+# unconditionally set on every tournament from creation onward.
 REQUIRED_FIELDS = {
     "start_date": "2026-05-21T08:00:00",
     "end_date": "2026-05-23T18:00:00",
@@ -19,10 +19,7 @@ def _checklist_by_key(response_json):
     return {item["item_key"]: item["status"] for item in response_json["items"]}
 
 
-def test_checklist_fresh_tournament_dates_and_location_complete(client, td_user):
-    """"dates" is now always complete at creation since start_date/end_date are
-    required on TournamentCreate — this item may be worth removing/replacing
-    from the checklist since it can no longer be "not_started"."""
+def test_checklist_fresh_tournament_only_roles_and_invite_pending(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
         "/tournaments/", json={"name": "Fresh", "location": "Test Location", **REQUIRED_FIELDS}
@@ -33,15 +30,15 @@ def test_checklist_fresh_tournament_dates_and_location_complete(client, td_user)
     data = response.json()
     statuses = _checklist_by_key(data)
 
-    assert statuses["location"] == "complete"
-    assert statuses["dates"] == "complete"
+    assert "dates" not in statuses
+    assert "location" not in statuses
     assert statuses["roles"] == "not_started"
     assert statuses["invite_staff"] == "not_started"
     for key in ("onboarding", "events", "shifts", "buildings"):
         assert statuses[key] == "not_started"
 
-    assert data["completed_count"] == 2
-    assert data["total_count"] == 8
+    assert data["completed_count"] == 0
+    assert data["total_count"] == 6
 
 
 def test_checklist_roles_complete_after_apply_template(client, td_user):
