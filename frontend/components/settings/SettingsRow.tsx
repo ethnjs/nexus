@@ -15,7 +15,7 @@ export function SettingsRow({ label, helper, children, last = false }: SettingsR
       padding: "20px 0",
       borderBottom: last ? "none" : "1px solid var(--color-border)",
     }}>
-      <div style={{ flexShrink: 0, maxWidth: "220px", paddingTop: "10px" }}>
+      <div style={{ flexShrink: 0, maxWidth: "220px"}}>
         <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, color: "var(--color-text-primary)" }}>
           {label}
         </div>
