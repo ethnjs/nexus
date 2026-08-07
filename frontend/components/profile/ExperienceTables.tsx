@@ -598,12 +598,14 @@ export function VolunteerExperienceCompactEditor({ value, onChange, events }: Vo
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {value.map((row, i) => (
         <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <Input label="Tournament Name" type="text" value={row.tournament_name} onChange={e => updateRow(i, { tournament_name: e.target.value })} fullWidth />
+          <Input label="Tournament Name" type="text" charset="alpha" value={row.tournament_name} onChange={e => updateRow(i, { tournament_name: e.target.value })} fullWidth />
           <Input
             label="Year"
             type="text"
+            charset="numeric"
+            maxLength={4}
             value={row.year}
-            onChange={e => updateRow(i, { year: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+            onChange={e => updateRow(i, { year: e.target.value })}
             fullWidth
           />
           <Combobox
@@ -791,14 +793,16 @@ export function VolunteerExperienceSpreadsheet({
         <td style={cs}>
           <Input
             type="text"
+            charset="numeric"
+            maxLength={4}
             value={draft.year}
-            onChange={e => patch({ year: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+            onChange={e => patch({ year: e.target.value })}
             size="sm"
             fullWidth
           />
         </td>
         <td style={cs}>
-          <Input type="text" value={draft.tournament_name} onChange={e => patch({ tournament_name: e.target.value })} size="sm" fullWidth />
+          <Input type="text" charset="alpha" value={draft.tournament_name} onChange={e => patch({ tournament_name: e.target.value })} size="sm" fullWidth />
         </td>
         <td style={cs}>
           <Combobox

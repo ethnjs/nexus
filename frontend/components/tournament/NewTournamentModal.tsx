@@ -83,14 +83,16 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         <Input
           label="Name"
           required
+          charset="alpha"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Nationals @ USC"
+          placeholder="e.g. USC Invitational"
           fullWidth
           autoFocus
         />
         <Input
           label="Short Name"
+          charset="alpha"
           value={shortName}
           onChange={(e) => setShortName(e.target.value)}
           placeholder="e.g. SoCal, OC, LA"

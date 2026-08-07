@@ -1,11 +1,12 @@
 'use client'
 
-import { forwardRef, InputHTMLAttributes, useId } from 'react'
+import { forwardRef, InputHTMLAttributes, ChangeEvent, useId } from 'react'
 
 type InputFont  = 'sans' | 'mono' | 'serif'
 type InputSize  = 'xs' | 'sm' | 'md'
 // primary -- light gray; secondary -- white
 type InputStyleType = 'primary' | 'secondary'
+export type InputCharset = 'numeric' | 'alpha' | 'alphanumeric'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?:     string
@@ -15,8 +16,8 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   font?:      InputFont
   size?:      InputSize
   styleType?: InputStyleType
-
   locked?:    boolean
+  charset?:   InputCharset
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -36,11 +37,27 @@ const BACKGROUND_MAP: Record<InputStyleType, string> = {
   secondary: 'var(--color-surface)',
 }
 
+// Letters/numbers charsets also allow whitespace — a strict alpha-only
+// filter would block real-world names ("St. Mary's", "Team A-1").
+const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
+  numeric:      /[^0-9]/g,
+  alpha:        /[^a-zA-Z\s]/g,
+  alphanumeric: /[^a-zA-Z0-9\s]/g,
+}
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, charset, onChange, inputMode, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
+
+    function handleChange(e: ChangeEvent<HTMLInputElement>) {
+      if (charset) {
+        const filtered = e.target.value.replace(CHARSET_PATTERNS[charset], '')
+        if (filtered !== e.target.value) e.target.value = filtered
+      }
+      onChange?.(e)
+    }
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: fullWidth ? '100%' : undefined }}>
@@ -65,6 +82,8 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           id={inputId}
           required={required}
           disabled={locked || disabled}
+          inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
+          onChange={handleChange}
           style={{
             height: sizing.height,
             paddingLeft: sizing.paddingX,

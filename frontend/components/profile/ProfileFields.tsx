@@ -142,9 +142,11 @@ export function GraduationYearField({ value, onChange, error, onValidate }: Grad
   return (
     <Input
       type="text"
+      charset="numeric"
+      maxLength={4}
       value={value ?? ''}
       onChange={(e) => {
-        const raw = e.target.value.replace(/\D/g, '').slice(0, 4)
+        const raw = e.target.value
         onValidate?.(raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined)
         onChange(raw ? Number(raw) : undefined)
       }}
