@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { Tournament } from "@/lib/api";
+import { parseLocalDate } from "@/lib/date";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
@@ -24,6 +25,11 @@ interface TopbarProps {
 // ─── Tournament Dropdown ──────────────────────────────────────────────────────
 // Isolated into its own component so useTournament() is only called when
 // showDropdown=true and a TournamentProvider is present in the tree.
+
+function tournamentDisplayName(t: Tournament) {
+  const year = parseLocalDate(t.start_date).getFullYear();
+  return `${year} ${t.short_name || t.name}`;
+}
 
 function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }) {
   const router = useRouter();
@@ -71,7 +77,7 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
           }}
         >
           <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>
-            {selectedTournament ? selectedTournament.name : "Select tournament…"}
+            {selectedTournament ? tournamentDisplayName(selectedTournament) : "Select tournament…"}
           </span>
           <IconChevronDown />
         </button>
@@ -103,10 +109,10 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
                 onMouseEnter={(e) => { if (String(tournamentId) !== String(t.id)) e.currentTarget.style.background = "var(--color-bg)"; }}
                 onMouseLeave={(e) => { if (String(tournamentId) !== String(t.id)) e.currentTarget.style.background = "transparent"; }}
               >
-                <div>{t.name}</div>
-                {t.location && (
+                <div>{tournamentDisplayName(t)}</div>
+                {(t.location || t.university?.name) && (
                   <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
-                    {t.location}
+                    {t.location || t.university?.name}
                   </div>
                 )}
               </button>
