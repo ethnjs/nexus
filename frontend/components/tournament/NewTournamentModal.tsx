@@ -104,6 +104,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           options={universities}
           getId={(u) => u.id}
           getLabel={(u) => u.name}
+          getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
           value={locationText}
           onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched) }}
           placeholder="e.g. USC, Los Angeles CA"
