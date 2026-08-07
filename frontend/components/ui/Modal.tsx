@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useEffect, useState } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 type ModalType = 'normal' | 'danger'
@@ -30,6 +30,12 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
 
   const [mounted, setMounted] = useState(false)
   useEffect(() => setMounted(true), [])
+
+  // Only close if both mousedown and mouseup landed on the overlay itself —
+  // otherwise dragging a text selection from an input out past the modal
+  // edge fires a click on the overlay and closes it mid-selection.
+  const mouseDownOnOverlay = useRef(false)
+
   if (!mounted) return null
 
   return createPortal(
@@ -40,7 +46,10 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
         zIndex: 200,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      onClick={closeOnOverlayClick ? onClose : undefined}
+      onMouseDown={(e) => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
+      onClick={(e) => {
+        if (closeOnOverlayClick && mouseDownOnOverlay.current && e.target === e.currentTarget) onClose()
+      }}
     >
       <div
         style={{
