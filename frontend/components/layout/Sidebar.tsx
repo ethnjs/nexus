@@ -9,17 +9,24 @@ import {
   IconEvents,
   IconSheets,
   IconSettings,
+  IconChevronRight,
 } from "@/components/ui/Icons";
 
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
 const NAV_ITEMS = [
-  { segment: "overview",    icon: <IconHome />,               label: "Overview" },
-  { segment: "assignments", icon: <IconAssignments />,        label: "Assignments" },
-  { segment: "events",      icon: <IconEvents />,             label: "Events" },
-  { segment: "sheets",      icon: <IconSheets />,             label: "Sheets" },
-  { segment: "settings",    icon: <IconSettings size={18} />, label: "Settings" },
+  { segment: "overview",    icon: <IconHome />,        label: "Overview" },
+  { segment: "assignments", icon: <IconAssignments />, label: "Assignments" },
+  { segment: "events",      icon: <IconEvents />,      label: "Events" },
+  { segment: "sheets",      icon: <IconSheets />,      label: "Sheets" },
+];
+
+const SETTINGS_SUBITEMS = [
+  { segment: "general",    label: "General" },
+  { segment: "roles",      label: "Roles" },
+  { segment: "join-codes", label: "Invites" },
+  { segment: "audit-log",  label: "Audit Log" },
 ];
 
 interface SidebarProps {
@@ -29,9 +36,13 @@ interface SidebarProps {
 
 export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const [expanded, setExpanded] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
   const width = expanded ? EXPANDED_W : COLLAPSED_W;
   const base = `/dashboard/tournaments/${tournamentId}`;
+  const settingsBase = `${base}/settings`;
+  const onSettingsRoute = pathname.startsWith(settingsBase);
+  const showSettingsSub = expanded && (settingsOpen || onSettingsRoute);
 
   function handleMouseEnter() {
     setExpanded(true);
@@ -146,6 +157,109 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
             </Link>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((v) => !v)}
+          title={expanded ? undefined : "Settings"}
+          style={{
+            height: "38px",
+            borderRadius: "var(--radius-md)",
+            display: "flex", alignItems: "center",
+            gap: "10px",
+            paddingLeft: "10px",
+            paddingRight: "10px",
+            justifyContent: "flex-start",
+            width: "100%",
+            color: onSettingsRoute ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+            background: onSettingsRoute ? "var(--color-accent-subtle)" : "transparent",
+            position: "relative",
+            transition: "background var(--transition-fast), color var(--transition-fast)",
+            boxSizing: "border-box",
+            border: "none",
+            font: "inherit",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => {
+            if (!onSettingsRoute) {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-accent-subtle)";
+              (e.currentTarget as HTMLElement).style.color = "var(--color-text-primary)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!onSettingsRoute) {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = "var(--color-text-tertiary)";
+            }
+          }}
+        >
+          {onSettingsRoute && (
+            <div style={{
+              position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)",
+              width: "3px", height: "20px",
+              background: "var(--color-accent)", borderRadius: "0 3px 3px 0",
+            }} />
+          )}
+          <IconSettings size={18} />
+          {expanded && (
+            <>
+              <span style={{
+                flex: 1, textAlign: "left",
+                fontFamily: "var(--font-sans)", fontSize: "13px",
+                fontWeight: onSettingsRoute ? 600 : 400, whiteSpace: "nowrap", letterSpacing: "0.01em",
+              }}>
+                Settings
+              </span>
+              <IconChevronRight size={12} expanded={showSettingsSub} />
+            </>
+          )}
+        </button>
+
+        {showSettingsSub && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "20px" }}>
+            {SETTINGS_SUBITEMS.map(({ segment, label }) => {
+              const href = `${settingsBase}/${segment}`;
+              const isActive = pathname === href || pathname.startsWith(`${href}/`);
+
+              return (
+                <Link
+                  key={segment}
+                  href={href}
+                  style={{
+                    height: "32px",
+                    borderRadius: "var(--radius-md)",
+                    display: "flex", alignItems: "center",
+                    paddingLeft: "10px", paddingRight: "10px",
+                    color: isActive ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+                    background: isActive ? "var(--color-accent-subtle)" : "transparent",
+                    textDecoration: "none",
+                    transition: "background var(--transition-fast), color var(--transition-fast)",
+                    boxSizing: "border-box",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "var(--color-accent-subtle)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--color-text-primary)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--color-text-tertiary)";
+                    }
+                  }}
+                >
+                  <span style={{
+                    fontFamily: "var(--font-sans)", fontSize: "12px",
+                    fontWeight: isActive ? 600 : 400, whiteSpace: "nowrap",
+                  }}>
+                    {label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
     </aside>
   );
