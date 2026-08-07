@@ -48,59 +48,13 @@ def _validate_division(v: list[str]) -> list[str]:
     return sorted(set(v))
 
 
-class TournamentCreate(BaseModel):
-    name: str
-    short_name: str | None = None
-    start_date: datetime
-    end_date: datetime
-    university_id: int | None = None
-    location: str | None = None
-    state: str
-    level: str
-    division: list[str]
-    is_public: bool = False
-    registration_opens_at: datetime | None = None
-
-    @field_validator("name")
-    @classmethod
-    def validate_name(cls, v: str) -> str:
-        return _validate_name(v)
-
-    @field_validator("state")
-    @classmethod
-    def validate_state(cls, v: str) -> str:
-        return _validate_state(v)
-
-    @field_validator("level")
-    @classmethod
-    def validate_level(cls, v: str) -> str:
-        return _validate_level(v)
-
-    @field_validator("division")
-    @classmethod
-    def validate_division(cls, v: list[str]) -> list[str]:
-        return _validate_division(v)
-
-    @model_validator(mode="after")
-    def validate_dates(self) -> TournamentCreate:
-        if self.end_date < self.start_date:
-            raise ValueError("end_date must be after start_date")
-        return self
-
-
-class TournamentUpdate(BaseModel):
-    """Partial update — all fields optional."""
-    name: str | None = None
-    short_name: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
-    university_id: int | None = None
-    location: str | None = None
-    state: str | None = None
-    level: str | None = None
-    division: list[str] | None = None
-    is_public: bool | None = None
-    registration_opens_at: datetime | None = None
+class TournamentFieldValidators:
+    """Shared field validators for TournamentCreate/TournamentUpdate. Mixed in
+    rather than inherited from a common BaseModel because the two differ on
+    which fields are required — see Pydantic's "validators in reusable
+    mixins" pattern. Every field here is optional on at least one of the two
+    models, so validators uniformly guard for None (a value Create's required
+    fields will never actually receive)."""
 
     @field_validator("name")
     @classmethod
@@ -121,6 +75,53 @@ class TournamentUpdate(BaseModel):
     @classmethod
     def validate_division(cls, v: list[str] | None) -> list[str] | None:
         return _validate_division(v) if v is not None else v
+
+
+class TournamentCreate(TournamentFieldValidators, BaseModel):
+    name: str
+    short_name: str | None = None
+    start_date: datetime
+    end_date: datetime
+    university_id: int | None = None
+    location: str | None = None
+    state: str
+    level: str
+    division: list[str]
+    is_public: bool = False
+    registration_opens_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> TournamentCreate:
+        if self.end_date < self.start_date:
+            raise ValueError("end_date must be after start_date")
+        return self
+
+    @model_validator(mode="after")
+    def validate_source(self) -> TournamentCreate:
+        if bool(self.university_id) == bool(self.location):
+            raise ValueError("Tournament must have exactly one of university_id or location, not both.")
+        return self
+
+
+class TournamentUpdate(TournamentFieldValidators, BaseModel):
+    """Partial update — all fields optional."""
+    name: str | None = None
+    short_name: str | None = None
+    start_date: datetime | None = None
+    end_date: datetime | None = None
+    university_id: int | None = None
+    location: str | None = None
+    state: str | None = None
+    level: str | None = None
+    division: list[str] | None = None
+    is_public: bool | None = None
+    registration_opens_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> TournamentUpdate:
+        if self.university_id is not None and self.location is not None:
+            raise ValueError("Tournament must have exactly one of university_id or location, not both.")
+        return self
 
 
 class TransferOwnershipRequest(BaseModel):

@@ -127,8 +127,11 @@ def update_tournament(
 
     update_data = payload.model_dump(exclude_none=True)
 
-    for field, value in update_data.items():
-        setattr(tournament, field, value)
+    try:
+        for field, value in update_data.items():
+            setattr(tournament, field, value)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     db.commit()
     db.refresh(tournament)

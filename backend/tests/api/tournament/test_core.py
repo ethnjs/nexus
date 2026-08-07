@@ -1,6 +1,6 @@
 """Tests for /tournaments/ core CRUD endpoints (app/api/routes/tournament/__init__.py)."""
 from tests.conftest import grant_role, login
-from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole
+from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, University
 
 # Required fields every TournamentCreate payload needs now (state/level/division
 # + non-null dates). Tests that only care about other fields spread this in.
@@ -158,6 +158,28 @@ def test_create_tournament_invalid_state_rejected(client, td_user):
     }).status_code == 422
 
 
+def test_create_tournament_both_location_and_university_id_rejected(client, td_user, db):
+    university = University(name="MIT")
+    db.add(university)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "Both Sources",
+        "location": "Test Location",
+        "university_id": university.id,
+    }).status_code == 422
+
+
+def test_create_tournament_neither_location_nor_university_id_rejected(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.post("/tournaments/", json={
+        **REQUIRED_FIELDS,
+        "name": "No Source",
+    }).status_code == 422
+
+
 def test_create_tournament_invalid_division_rejected(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.post("/tournaments/", json={
@@ -241,6 +263,37 @@ def test_update_tournament_is_public(client, td_user, td_tournament):
     response = client.patch(f"/tournaments/{td_tournament.id}/", json={"is_public": True})
     assert response.status_code == 200
     assert response.json()["is_public"] is True
+
+
+def test_update_tournament_both_location_and_university_id_rejected(client, td_user, td_tournament, db):
+    university = University(name="MIT")
+    db.add(university)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={
+        "location": "Somewhere",
+        "university_id": university.id,
+    })
+    assert response.status_code == 422
+
+
+def test_update_tournament_university_id_conflicts_with_existing_location_rejected(
+    client, td_user, td_tournament, db
+):
+    """td_tournament already has location set (see conftest) — patching in a
+    university_id without clearing location hits Tournament.validate_tournament_source
+    in models.py, not the TournamentUpdate schema (which only sees this patch,
+    not the tournament's existing row)."""
+    university = University(name="MIT")
+    db.add(university)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={
+        "university_id": university.id,
+    })
+    assert response.status_code == 400
 
 
 # ---------------------------------------------------------------------------

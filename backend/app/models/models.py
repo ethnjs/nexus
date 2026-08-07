@@ -324,16 +324,17 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
 
-    # Schema Validator: at least one of "university_id" or "location" must be set
+    # Schema Validator: exactly one of "university_id" or "location" must be set (XOR)
     @validates("university_id", "location")
     def validate_tournament_source(self, key, value):
         # Determine the other field's value
         univ = value if key == "university_id" else self.university_id
         loc = value if key == "location" else self.location
 
-        # If both are None, raise a validation error. At least one must be set.
         if not univ and not loc:
             raise ValueError("Tournament must have either a university_id or a location.")
+        if univ and loc:
+            raise ValueError("Tournament must have only one of university_id or location, not both.")
 
         return value
 
