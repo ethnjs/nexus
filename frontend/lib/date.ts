@@ -7,3 +7,12 @@ export function todayLocalDateString(): string {
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+// Parses a "YYYY-MM-DD" date-only string (e.g. Tournament.start_date/end_date)
+// into a local-time Date. new Date(d) instead reads the string as UTC
+// midnight, which shifts to the previous day in negative-UTC-offset
+// timezones — splitting and constructing a local Date avoids that.
+export function parseLocalDate(d: string): Date {
+  const [year, month, day] = d.split("-").map(Number);
+  return new Date(year, month - 1, day);
+}

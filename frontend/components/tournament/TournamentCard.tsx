@@ -1,4 +1,5 @@
 import { Tournament } from "@/lib/api";
+import { parseLocalDate } from "@/lib/date";
 import { Card } from "@/components/ui/Card";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
@@ -6,7 +7,7 @@ export interface CardCounts { events: number | null; volunteers: number | null }
 
 export function TournamentCard({ tournament, counts, onClick }: { tournament: Tournament; counts: CardCounts; onClick: () => void }) {
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    parseLocalDate(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
   const dateRange = tournament.start_date
     ? tournament.end_date && tournament.end_date !== tournament.start_date
@@ -14,7 +15,7 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
       : fmt(tournament.start_date)
     : null;
 
-  const year = new Date(tournament.start_date).getFullYear();
+  const year = parseLocalDate(tournament.start_date).getFullYear();
   const displayName = `${year} ${tournament.short_name || tournament.name}`;
 
   return (

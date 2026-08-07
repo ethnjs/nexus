@@ -49,6 +49,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     if (!name.trim()) { setError('Name is required'); return }
     if (/\d/.test(name)) { setError('Name must not contain numbers — the year is added automatically'); return }
     if (!startDate || !endDate) { setError('Start and end date are required'); return }
+    // YYYY-MM-DD strings compare lexicographically in chronological order
+    if (endDate < startDate) { setError('End date cannot be before start date'); return }
     if (!matchedState) { setError('State is required — pick one from the list'); return }
     if (!matchedLevel) { setError('Level is required — pick one from the list'); return }
     if (division.length === 0) { setError('Select at least one division'); return }

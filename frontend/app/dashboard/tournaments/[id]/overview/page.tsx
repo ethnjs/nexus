@@ -2,6 +2,7 @@
 
 import { useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
+import { parseLocalDate } from "@/lib/date";
 import { SetupChecklistWidget } from "@/components/tournament/setup/SetupChecklistWidget";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
@@ -13,7 +14,7 @@ export default function OverviewPage() {
   const { selectedTournament } = useTournament();
 
   const fmt = (d: string) =>
-    new Date(d).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
+    parseLocalDate(d).toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
 
   const dateRange = selectedTournament?.start_date
     ? selectedTournament.end_date && selectedTournament.end_date !== selectedTournament.start_date
@@ -24,7 +25,7 @@ export default function OverviewPage() {
   const place = selectedTournament?.location || selectedTournament?.university?.name;
 
   const heading = selectedTournament
-    ? `${new Date(selectedTournament.start_date).getFullYear()} ${selectedTournament.name}`
+    ? `${parseLocalDate(selectedTournament.start_date).getFullYear()} ${selectedTournament.name}`
     : "—";
 
   const metadata = selectedTournament && (
