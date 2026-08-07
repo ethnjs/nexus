@@ -72,13 +72,14 @@ def create_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    # exclude_none: Tournament.validate_tournament_source fires per-field as
-    # the declarative constructor assigns kwargs in order — explicitly
-    # assigning None to whichever of university_id/location wasn't provided
-    # would trip that check before the other field is set.
     tournament = Tournament(**payload.model_dump(exclude_none=True), owner_id=current_user.id)
     db.add(tournament)
-    db.flush()  # get tournament.id before creating membership
+
+    try:
+        db.flush()  # get tournament.id before creating membership
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     # Confirmed membership for the creator, no roles yet — owner_id alone
     # already grants full permissions.
@@ -125,15 +126,20 @@ def update_tournament(
     if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    update_data = payload.model_dump(exclude_none=True)
+    # exclude_unset (not exclude_none) — a client swapping location<->university
+    # must be able to explicitly send the cleared field as null; exclude_none
+    # would silently drop it before it ever reaches setattr.
+    update_data = payload.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        setattr(tournament, field, value)
 
     try:
-        for field, value in update_data.items():
-            setattr(tournament, field, value)
+        db.commit()
     except ValueError as e:
+        db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    db.commit()
     db.refresh(tournament)
     return _serialize(tournament)
 

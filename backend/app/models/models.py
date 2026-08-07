@@ -8,10 +8,10 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column, event,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship, validates
+from sqlalchemy.orm import relationship
 from typing import Optional
 
 from app.db.session import Base
@@ -324,19 +324,21 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
 
-    # Schema Validator: exactly one of "university_id" or "location" must be set (XOR)
-    @validates("university_id", "location")
-    def validate_tournament_source(self, key, value):
-        # Determine the other field's value
-        univ = value if key == "university_id" else self.university_id
-        loc = value if key == "location" else self.location
 
-        if not univ and not loc:
-            raise ValueError("Tournament must have either a university_id or a location.")
-        if univ and loc:
-            raise ValueError("Tournament must have only one of university_id or location, not both.")
-
-        return value
+# Exactly one of university_id/location must be set (XOR). Checked once on
+# the final in-memory state right before flush, not per-attribute — a
+# @validates hook would reject the (necessarily invalid) intermediate state
+# hit while swapping from one source to the other, regardless of which
+# field gets assigned first.
+@event.listens_for(Tournament, "before_insert")
+@event.listens_for(Tournament, "before_update")
+def _validate_tournament_source(mapper, connection, target: Tournament):
+    univ = bool(target.university_id)
+    loc = bool(target.location)
+    if not univ and not loc:
+        raise ValueError("Tournament must have either a university_id or a location.")
+    if univ and loc:
+        raise ValueError("Tournament must have only one of university_id or location, not both.")
 
 # ---------------------------------------------------------------------------
 # Tournament Membership
