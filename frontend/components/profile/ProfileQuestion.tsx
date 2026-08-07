@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button"
 
 interface ProfileQuestionProps {
   question: string
+  required?: boolean
   children: React.ReactNode
   onSkip?: () => void
   onNext?: () => void
@@ -12,6 +13,7 @@ interface ProfileQuestionProps {
 
 export function ProfileQuestion({
   question,
+  required = false,
   children,
   onSkip = undefined,
   onNext = undefined,
@@ -29,6 +31,7 @@ export function ProfileQuestion({
         color: 'var(--color-text-secondary)',
       }}>
         {question}
+        {required && <span style={{ color: 'var(--color-danger)', marginLeft: '3px' }}>*</span>}
       </label>
 
       {children}

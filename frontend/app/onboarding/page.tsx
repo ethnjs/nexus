@@ -155,6 +155,23 @@ export default function OnboardingPage() {
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     if (!original) return;
+
+    const ers: Record<string, string | undefined> = {};
+    if (!name.first.trim()) ers.first_name = "Cannot be empty.";
+    if (!name.last.trim()) ers.last_name = "Cannot be empty.";
+    const phoneErr = validatePhone(phone);
+    if (phoneErr) ers.phone = phoneErr;
+    const dobErr = validateDateOfBirth(profileData.date_of_birth ?? "");
+    if (dobErr) ers.date_of_birth = dobErr;
+
+    if (Object.keys(ers).length > 0) {
+      setErrors((er) => ({ ...er, ...ers }));
+      if (ers.first_name || ers.last_name) setState(STATE.NAME);
+      else if (ers.phone) setState(STATE.PHONE);
+      else setState(STATE.DATE_OF_BIRTH);
+      return;
+    }
+
     setLoading(true);
     setErrors({});
 
@@ -259,6 +276,7 @@ export default function OnboardingPage() {
           <ProfileCard>
             <ProfileQuestion
               question="What is your name?"
+              required
               onNext={() => {
                 const ers: Record<string, string | undefined> = {};
                 if (!name.first.trim()) ers.first_name = "Cannot be empty.";
@@ -298,6 +316,7 @@ export default function OnboardingPage() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your phone number?"
+                required
                 onNext={() => {
                   const err = validatePhone(phone);
                   if (err) {
@@ -324,6 +343,7 @@ export default function OnboardingPage() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your date of birth?"
+                required
                 onNext={() => {
                   const err = validateDateOfBirth(profileData.date_of_birth ?? "");
                   if (err) {
