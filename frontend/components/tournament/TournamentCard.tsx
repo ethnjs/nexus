@@ -17,6 +17,7 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
 
   const year = parseLocalDate(tournament.start_date).getFullYear();
   const displayName = `${year} ${tournament.short_name || tournament.name}`;
+  const place = tournament.location || tournament.university?.name;
 
   return (
     <Card
@@ -29,16 +30,16 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
         {displayName}
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-        {tournament.location && (
+        {place && (
           <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
             <IconLocation />
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{tournament.location}</span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{place}</span>
           </div>
         )}
         {dateRange && (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-tertiary)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
             <IconCalendar />
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px" }}>{dateRange}</span>
+            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{dateRange}</span>
           </div>
         )}
       </div>
