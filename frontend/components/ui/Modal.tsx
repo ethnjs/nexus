@@ -7,9 +7,10 @@ interface ModalProps {
   onClose: () => void
   children: ReactNode
   width?: number
+  closeOnOverlayClick?: boolean
 }
 
-export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
+export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -27,7 +28,7 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
         zIndex: 200,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      onClick={onClose}
+      onClick={closeOnOverlayClick ? onClose : undefined}
     >
       <div
         style={{
