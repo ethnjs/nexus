@@ -592,6 +592,26 @@ export const tournamentJoinCodesApi = {
 }
 
 // -------------------------------------------------------------------------
+// Setup checklist — /tournaments/{id}/setup-checklist/
+// -------------------------------------------------------------------------
+export interface SetupChecklistItem {
+  item_key: string
+  label:    string
+  status:   'not_started' | 'complete'
+}
+
+export interface SetupChecklistResponse {
+  items:           SetupChecklistItem[]
+  completed_count: number
+  total_count:     number
+}
+
+export const setupChecklistApi = {
+  get: (tournamentId: number) =>
+    api.get<SetupChecklistResponse>(`/tournaments/${tournamentId}/setup-checklist/`),
+}
+
+// -------------------------------------------------------------------------
 // Join — single redemption entry point shared by tournament & chapter codes
 // -------------------------------------------------------------------------
 export interface JoinRedeemResponse {
