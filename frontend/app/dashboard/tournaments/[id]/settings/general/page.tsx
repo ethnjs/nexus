@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import {
-  tournamentsApi, Tournament,
+  tournamentsApi, universitiesApi, Tournament, University,
   TournamentState, TournamentLevel, TournamentDivision,
   TOURNAMENT_STATES, TOURNAMENT_LEVELS, TOURNAMENT_DIVISIONS,
   ApiError,
@@ -26,28 +26,30 @@ const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, l
 const STATE_OPTIONS: TournamentState[] = [...TOURNAMENT_STATES];
 
 interface GeneralDraft {
-  name:       string;
-  short_name: string;
-  location:   string;
-  start_date: string;
-  end_date:   string;
-  state:      TournamentState | "";
-  level:      TournamentLevel | "";
-  division:   TournamentDivision[];
-  is_public:  boolean;
+  name:          string;
+  short_name:    string;
+  location:      string;        // display text — free-text location, or the matched university's name
+  university_id: number | null; // non-null when location is a matched university, not free text
+  start_date:    string;
+  end_date:      string;
+  state:         TournamentState | "";
+  level:         TournamentLevel | "";
+  division:      TournamentDivision[];
+  is_public:     boolean;
 }
 
 function toDraft(t: Tournament): GeneralDraft {
   return {
-    name:       t.name,
-    short_name: t.short_name ?? "",
-    location:   t.location ?? "",
-    start_date: t.start_date,
-    end_date:   t.end_date,
-    state:      t.state,
-    level:      t.level,
-    division:   t.division,
-    is_public:  t.is_public,
+    name:          t.name,
+    short_name:    t.short_name ?? "",
+    location:      t.location ?? t.university?.name ?? "",
+    university_id: t.university?.id ?? null,
+    start_date:    t.start_date,
+    end_date:      t.end_date,
+    state:         t.state,
+    level:         t.level,
+    division:      t.division,
+    is_public:     t.is_public,
   };
 }
 
@@ -58,6 +60,7 @@ export default function GeneralSettingsPage() {
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
+  const [universities, setUniversities] = useState<University[]>([]);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
@@ -65,6 +68,10 @@ export default function GeneralSettingsPage() {
   useEffect(() => {
     if (selectedTournament) setDraft(toDraft(selectedTournament));
   }, [selectedTournament]);
+
+  useEffect(() => {
+    universitiesApi.list().then(setUniversities).catch(() => {});
+  }, []);
 
   const canEdit = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
 
@@ -94,11 +101,18 @@ export default function GeneralSettingsPage() {
 
     if (!draft.name.trim()) { setErrors((e) => ({ ...e, name: "Cannot be empty." })); setSaving(false); return; }
     if (/\d/.test(draft.name)) { setErrors((e) => ({ ...e, name: "Name must not contain numbers." })); setSaving(false); return; }
+    if (!draft.university_id && !draft.location.trim()) { setSaveError("Location is required."); setSaving(false); return; }
     if (!draft.start_date || !draft.end_date) { setSaveError("Start and end date are required."); setSaving(false); return; }
     if (draft.end_date < draft.start_date) { setSaveError("End date cannot be before start date."); setSaving(false); return; }
     if (!draft.state) { setSaveError("State is required — pick one from the list."); setSaving(false); return; }
     if (!draft.level) { setSaveError("Level is required — pick one from the list."); setSaving(false); return; }
     if (draft.division.length === 0) { setSaveError("Select at least one division."); setSaving(false); return; }
+
+    // Explicit nulls clear whichever field isn't the active source — the
+    // backend now applies both atomically (see models.py's before_flush check).
+    const source = draft.university_id
+      ? { university_id: draft.university_id, location: null }
+      : { location: draft.location.trim(), university_id: null };
 
     try {
       const updated = await tournamentsApi.update(tournamentId, {
@@ -110,10 +124,7 @@ export default function GeneralSettingsPage() {
         level:      draft.level,
         division:   draft.division,
         is_public:  draft.is_public,
-        // Location editing is only offered for location-based tournaments —
-        // switching source type (location <-> university) isn't supported
-        // by the backend PATCH route yet.
-        ...(selectedTournament.location ? { location: draft.location.trim() } : {}),
+        ...source,
       });
       setSelectedTournament(updated);
     } catch (error: unknown) {
@@ -167,15 +178,15 @@ export default function GeneralSettingsPage() {
           />
         </SettingsRow>
         <SettingsRow label="Location">
-          {selectedTournament.location ? (
-            <Input
-              fullWidth
-              value={draft.location}
-              onChange={(e) => setDraft((d) => d && { ...d, location: e.target.value })}
-            />
-          ) : (
-            <Input fullWidth locked value={selectedTournament.university?.name ?? ""} />
-          )}
+          <Combobox
+            options={universities}
+            getId={(u) => u.id}
+            getLabel={(u) => u.name}
+            getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
+            value={draft.location}
+            onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
+            placeholder="e.g. USC"
+          />
         </SettingsRow>
         <SettingsRow label="Dates">
           <div style={{ display: "flex", gap: "10px" }}>
