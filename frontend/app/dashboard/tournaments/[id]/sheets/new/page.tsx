@@ -18,6 +18,7 @@ import {
 import { IconArrowLeft, IconCheckCircle, IconWarning } from "@/components/ui/Icons";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
+import { Modal } from "@/components/ui/Modal";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { Input } from "@/components/ui/Input";
 import { StepIndicator } from "@/components/ui/StepIndicator";
@@ -107,39 +108,28 @@ function SaveConfirmModal({
   onCancel:   () => void;
 }) {
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onCancel}
-    >
-      <div
-        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "28px", width: 420, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "12px" }}>
-          Add duplicate sheet tab?
-        </h2>
-        <div style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", padding: "12px 14px", marginBottom: "20px" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-            <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
-            This tab is already connected as:
-          </p>
-          <ul style={{ margin: 0, paddingLeft: "18px" }}>
-            {duplicates.map((d) => (
-              <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                <strong>{d.label}</strong> ({d.sheet_name})
-              </li>
-            ))}
-          </ul>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
-            Having multiple configs pointing at the same sheet tab is allowed, but syncing them may overwrite each other&apos;s data if they map to the same fields.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Go back</Button>
-          <Button variant="primary"   size="md" fullWidth onClick={onConfirm}>Add anyway</Button>
-        </div>
+    <Modal title="Add duplicate sheet tab?" onClose={onCancel} width={420}>
+      <div style={{ background: "var(--color-warning-subtle)", border: "1px solid var(--color-warning)", borderRadius: "var(--radius-md)", padding: "12px 14px", marginBottom: "20px" }}>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+          <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
+          This tab is already connected as:
+        </p>
+        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+          {duplicates.map((d) => (
+            <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+              <strong>{d.label}</strong> ({d.sheet_name})
+            </li>
+          ))}
+        </ul>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+          Having multiple configs pointing at the same sheet tab is allowed, but syncing them may overwrite each other&apos;s data if they map to the same fields.
+        </p>
       </div>
-    </div>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Go back</Button>
+        <Button variant="primary"   size="md" fullWidth onClick={onConfirm}>Add anyway</Button>
+      </div>
+    </Modal>
   );
 }
 

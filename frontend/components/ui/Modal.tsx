@@ -12,9 +12,13 @@ interface ModalProps {
   width?: number
   closeOnOverlayClick?: boolean
   type?: ModalType
+  /** Merged onto the panel's own style — e.g. maxHeight + display: 'flex',
+   * flexDirection: 'column' so a child can scroll internally via flex: 1,
+   * overflowY: 'auto' instead of the panel growing past the viewport. */
+  contentStyle?: React.CSSProperties
 }
 
-export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, type = 'normal' }: ModalProps) {
+export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, type = 'normal', contentStyle }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -47,6 +51,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
           width,
           maxWidth: 'calc(100vw - 32px)',
           boxShadow: 'var(--shadow-lg)',
+          ...contentStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -56,6 +61,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
             fontSize: '22px',
             color: type === 'danger' ? 'var(--color-danger)' : 'var(--color-text-primary)',
             marginBottom: '20px',
+            flexShrink: 0,
           }}>
             {title}
           </h2>

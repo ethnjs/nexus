@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Modal } from "@/components/ui/Modal";
 import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
@@ -64,62 +65,38 @@ function SyncConfirmModal({
   onCancel: () => void;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0,
-        background: "rgba(0,0,0,0.35)",
-        zIndex: 200,
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-      onClick={onCancel}
-    >
-      <div
-        style={{
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "28px",
-          width: 420,
-          maxWidth: "calc(100vw - 32px)",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "12px" }}>
-          Sync this sheet?
-        </h2>
-        <div style={{
-          background: "var(--color-warning-subtle)",
-          border: "1px solid var(--color-warning)",
-          borderRadius: "var(--radius-md)",
-          padding: "12px 14px",
-          marginBottom: "20px",
-        }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
-            <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
-            This tab is also used by:
-          </p>
-          <ul style={{ margin: 0, paddingLeft: "18px" }}>
-            {duplicates.map((d) => (
-              <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                <strong>{d.label}</strong> ({SHEET_TYPE_LABELS[d.sheet_type] ?? d.sheet_type})
-              </li>
-            ))}
-          </ul>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
-            Syncing <strong>{cfg.label}</strong> may overwrite data written by those configs if they map to the same fields.
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
-            Cancel
-          </Button>
-          <Button variant="primary" size="md" fullWidth onClick={onConfirm}>
-            Sync anyway
-          </Button>
-        </div>
+    <Modal title="Sync this sheet?" onClose={onCancel} width={420}>
+      <div style={{
+        background: "var(--color-warning-subtle)",
+        border: "1px solid var(--color-warning)",
+        borderRadius: "var(--radius-md)",
+        padding: "12px 14px",
+        marginBottom: "20px",
+      }}>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", marginBottom: "6px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px" }}>
+          <IconWarning size={14} style={{ color: "var(--color-warning)", flexShrink: 0 }} />
+          This tab is also used by:
+        </p>
+        <ul style={{ margin: 0, paddingLeft: "18px" }}>
+          {duplicates.map((d) => (
+            <li key={d.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+              <strong>{d.label}</strong> ({SHEET_TYPE_LABELS[d.sheet_type] ?? d.sheet_type})
+            </li>
+          ))}
+        </ul>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "8px" }}>
+          Syncing <strong>{cfg.label}</strong> may overwrite data written by those configs if they map to the same fields.
+        </p>
       </div>
-    </div>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>
+          Cancel
+        </Button>
+        <Button variant="primary" size="md" fullWidth onClick={onConfirm}>
+          Sync anyway
+        </Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -137,42 +114,19 @@ function DeleteConfirmModal({
   loading: boolean;
 }) {
   return (
-    <div
-      style={{
-        position: "fixed", inset: 0, zIndex: 200,
-        background: "rgba(0,0,0,0.35)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-      }}
-      onClick={onCancel}
-    >
-      <div
-        style={{
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          padding: "28px",
-          width: 400,
-          maxWidth: "calc(100vw - 32px)",
-          boxShadow: "var(--shadow-lg)",
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "8px" }}>
-          Delete config?
-        </h2>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
-          <strong>{cfg.label}</strong> will be permanently deleted. Volunteer data is unaffected.
-        </p>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel} disabled={loading}>
-            Cancel
-          </Button>
-          <Button variant="danger" size="md" fullWidth onClick={onConfirm} loading={loading}>
-            Delete
-          </Button>
-        </div>
+    <Modal title="Delete config?" onClose={onCancel} width={400}>
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
+        <strong>{cfg.label}</strong> will be permanently deleted. Volunteer data is unaffected.
+      </p>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel} disabled={loading}>
+          Cancel
+        </Button>
+        <Button variant="danger" size="md" fullWidth onClick={onConfirm} loading={loading}>
+          Delete
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

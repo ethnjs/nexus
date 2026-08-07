@@ -2,6 +2,7 @@
 
 import { ValidationIssue } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { Modal } from "@/components/ui/Modal";
 
 // ─── Shared issue card ────────────────────────────────────────────────────────
 
@@ -73,17 +74,9 @@ function SectionLabel({ children, color, topMargin }: { children: React.ReactNod
 
 function ModalShell({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onClose}
-    >
-      <div
-        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "28px", width: 640, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)", display: "flex", flexDirection: "column", gap: "16px" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
+    <Modal onClose={onClose} width={640} contentStyle={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {children}
+    </Modal>
   );
 }
 
