@@ -37,7 +37,7 @@ const BACKGROUND_MAP: Record<InputStyleType, string> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -57,11 +57,13 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             }}
           >
             {label}
+            {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </label>
         )}
         <input
           ref={ref}
           id={inputId}
+          required={required}
           disabled={locked || disabled}
           style={{
             height: sizing.height,

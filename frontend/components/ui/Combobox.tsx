@@ -18,6 +18,7 @@ interface ComboboxProps<T> {
   allowFreeText?: boolean
   placeholder?:   string
   label?:         string
+  required?:      boolean
   maxResults?:    number
   error?: string
   size?: ComboboxSize
@@ -36,6 +37,7 @@ export function Combobox<T>({
   allowFreeText = true,
   placeholder,
   label,
+  required,
   maxResults = 8,
   error,
   size = 'md',
@@ -75,6 +77,7 @@ export function Combobox<T>({
     <div style={{ position: 'relative' }}>
       <Input
         label={label}
+        required={required}
         type="text"
         value={value}
         placeholder={placeholder ?? "Type to search..."}

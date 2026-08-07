@@ -344,19 +344,25 @@ export const adminUsersApi = {
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
-export type TournamentLevel = 'regionals' | 'state' | 'nationals' | 'invitational'
-export type TournamentDivision = 'A' | 'B' | 'C'
-export type TournamentState =
-  | 'Alabama' | 'Alaska' | 'Arizona' | 'Arkansas' | 'Colorado' | 'Connecticut'
-  | 'Delaware' | 'Florida' | 'Georgia' | 'Hawaii' | 'Idaho' | 'Illinois' | 'Indiana'
-  | 'Iowa' | 'Kansas' | 'Kentucky' | 'Louisiana' | 'Maine' | 'Maryland'
-  | 'Massachusetts' | 'Michigan' | 'Minnesota' | 'Mississippi' | 'Missouri'
-  | 'Montana' | 'Nebraska' | 'Nevada' | 'New Hampshire' | 'New Jersey'
-  | 'New Mexico' | 'New York' | 'North Carolina' | 'North Dakota' | 'Ohio'
-  | 'Oklahoma' | 'Oregon' | 'Pennsylvania' | 'Rhode Island' | 'South Carolina'
-  | 'South Dakota' | 'Tennessee' | 'Texas' | 'Utah' | 'Vermont' | 'Virginia'
-  | 'Washington' | 'West Virginia' | 'Wisconsin' | 'Wyoming'
-  | 'Southern California' | 'Northern California'
+export const TOURNAMENT_LEVELS = ['regionals', 'state', 'nationals', 'invitational'] as const
+export type TournamentLevel = typeof TOURNAMENT_LEVELS[number]
+
+export const TOURNAMENT_DIVISIONS = ['A', 'B', 'C'] as const
+export type TournamentDivision = typeof TOURNAMENT_DIVISIONS[number]
+
+export const TOURNAMENT_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'Colorado', 'Connecticut',
+  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana',
+  'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
+  'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
+  'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey',
+  'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
+  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
+  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia',
+  'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+  'Southern California', 'Northern California',
+] as const
+export type TournamentState = typeof TOURNAMENT_STATES[number]
 
 export interface Tournament {
   id:                     number
