@@ -344,13 +344,31 @@ export const adminUsersApi = {
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
+export type TournamentLevel = 'regionals' | 'state' | 'nationals' | 'invitational'
+export type TournamentDivision = 'A' | 'B' | 'C'
+export type TournamentState =
+  | 'Alabama' | 'Alaska' | 'Arizona' | 'Arkansas' | 'Colorado' | 'Connecticut'
+  | 'Delaware' | 'Florida' | 'Georgia' | 'Hawaii' | 'Idaho' | 'Illinois' | 'Indiana'
+  | 'Iowa' | 'Kansas' | 'Kentucky' | 'Louisiana' | 'Maine' | 'Maryland'
+  | 'Massachusetts' | 'Michigan' | 'Minnesota' | 'Mississippi' | 'Missouri'
+  | 'Montana' | 'Nebraska' | 'Nevada' | 'New Hampshire' | 'New Jersey'
+  | 'New Mexico' | 'New York' | 'North Carolina' | 'North Dakota' | 'Ohio'
+  | 'Oklahoma' | 'Oregon' | 'Pennsylvania' | 'Rhode Island' | 'South Carolina'
+  | 'South Dakota' | 'Tennessee' | 'Texas' | 'Utah' | 'Vermont' | 'Virginia'
+  | 'Washington' | 'West Virginia' | 'Wisconsin' | 'Wyoming'
+  | 'Southern California' | 'Northern California'
+
 export interface Tournament {
   id:                     number
   name:                   string
-  start_date:             string | null
-  end_date:               string | null
+  short_name:             string | null
+  start_date:             string
+  end_date:               string
   university:             University | null
   location:               string | null
+  state:                  TournamentState
+  level:                  TournamentLevel
+  division:               TournamentDivision[]
   is_public:              boolean
   is_verified:            boolean
   registration_opens_at:  string | null
@@ -360,24 +378,44 @@ export interface Tournament {
   updated_at:             string
 }
 
-export interface TournamentCreate {
+// location xor university_id — exactly one required, matches backend TournamentCreate
+export type TournamentCreate = {
   name:                   string
-  start_date?:            string | null
-  end_date?:              string | null
-  university_id?:         number | null
-  location?:              string | null
+  short_name?:            string | null
+  start_date:             string
+  end_date:               string
+  state:                  TournamentState
+  level:                  TournamentLevel
+  division:               TournamentDivision[]
   is_public?:             boolean
   registration_opens_at?: string | null
+} & (
+  | { location: string; university_id?: never }
+  | { university_id: number; location?: never }
+)
+
+export interface TournamentUpdate {
+  name?:                   string
+  short_name?:             string | null
+  start_date?:             string
+  end_date?:               string
+  university_id?:          number | null
+  location?:               string | null
+  state?:                  TournamentState
+  level?:                  TournamentLevel
+  division?:               TournamentDivision[]
+  is_public?:              boolean
+  registration_opens_at?:  string | null
 }
 
 export const tournamentsApi = {
   // GET /tournaments/me/ — tournaments the current user has any membership in
-  list:   ()                                            => api.get<Tournament[]>('/tournaments/me/'),
-  get:    (id: number)                                  => api.get<Tournament>(`/tournaments/${id}/`),
-  create: (body: TournamentCreate)                      => api.post<Tournament>('/tournaments/', body),
-  update: (id: number, body: Partial<TournamentCreate>) => api.patch<Tournament>(`/tournaments/${id}/`, body),
-  delete: (id: number)                                  => api.delete<void>(`/tournaments/${id}/`),
-  transferOwnership: (id: number, newOwnerId: number)   =>
+  list:   ()                                       => api.get<Tournament[]>('/tournaments/me/'),
+  get:    (id: number)                             => api.get<Tournament>(`/tournaments/${id}/`),
+  create: (body: TournamentCreate)                 => api.post<Tournament>('/tournaments/', body),
+  update: (id: number, body: TournamentUpdate)     => api.patch<Tournament>(`/tournaments/${id}/`, body),
+  delete: (id: number)                             => api.delete<void>(`/tournaments/${id}/`),
+  transferOwnership: (id: number, newOwnerId: number) =>
     api.post<Tournament>(`/tournaments/${id}/transfer-ownership/`, { new_owner_id: newOwnerId }),
 }
 
