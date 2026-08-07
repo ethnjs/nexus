@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { tournamentsApi, tournamentEventsApi, membershipsApi, Tournament, UserMeSlim, authApi, ApiError } from "@/lib/api"
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal"
 import { Topbar } from "@/components/layout/Topbar"
+import { PageHeader } from "@/components/ui/PageHeader"
 import { Banner, BannerProps } from "@/components/ui/Banner"
 import { Button } from "@/components/ui/Button"
 import { IconPlus, IconCalendar, IconLocation } from "@/components/ui/Icons"
@@ -204,18 +205,16 @@ export default function DashboardPage() {
             )
           })}
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "24px" }}>
-            <div>
-              <h1 style={{ fontSize: "28px", marginBottom: "4px" }}>Tournaments</h1>
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)" }}>
-                {loading["page"] ? "" : tournaments.length === 0 ? "No tournaments yet" : `${tournaments.length} tournament${tournaments.length !== 1 ? "s" : ""}`}
-              </p>
-            </div>
-            <Button variant="primary" size="md" onClick={() => setShowModal(true)}>
-              <IconPlus />
-              Add Tournament
-            </Button>
-          </div>
+          <PageHeader
+            heading="Tournaments"
+            subheading={loading["page"] ? "" : tournaments.length === 0 ? "No tournaments yet" : `${tournaments.length} tournament${tournaments.length !== 1 ? "s" : ""}`}
+            action={
+              <Button variant="primary" size="md" onClick={() => setShowModal(true)}>
+                <IconPlus />
+                Add Tournament
+              </Button>
+            }
+          />
 
           {loading["page"] ? (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
