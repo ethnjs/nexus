@@ -1,31 +1,45 @@
 import { ReactNode } from 'react'
+import { Card } from './Card'
 
 interface PageHeaderProps {
-  title: string
-  subtitle?: string
-  action?: ReactNode
+  text?:       ReactNode
+  heading:     string
+  subheading?: string
+  metadata?:   ReactNode
+  action?:     ReactNode
 }
 
-export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
+export function PageHeader({ text, heading, subheading, metadata, action }: PageHeaderProps) {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'flex-start',
-      justifyContent: 'space-between',
-      marginBottom: '28px',
+    <Card radius="lg" style={{
+      marginBottom: '24px', padding: '20px 28px',
+      display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px',
     }}>
       <div>
-        <h1 style={{ fontSize: '28px', lineHeight: 1.2, marginBottom: subtitle ? '4px' : 0 }}>
-          {title}
-        </h1>
-        {subtitle && (
-          <p style={{
-            fontFamily: 'var(--font-sans)',
-            fontSize: '13px',
-            color: 'var(--color-text-secondary)',
+        {text && (
+          <div style={{
+            fontFamily: 'Georgia, serif', fontSize: '15px',
+            letterSpacing: '0.18em', textTransform: 'uppercase',
+            color: 'var(--color-text-primary)', marginBottom: '5px',
           }}>
-            {subtitle}
+            {text}
+          </div>
+        )}
+        <h1 style={{ fontFamily: 'Georgia, serif', fontSize: '28px', lineHeight: 1.2 }}>
+          {heading}
+        </h1>
+        {subheading && (
+          <p style={{
+            fontFamily: 'var(--font-sans)', fontSize: '13px',
+            color: 'var(--color-text-secondary)', marginTop: '4px',
+          }}>
+            {subheading}
           </p>
+        )}
+        {metadata && (
+          <div style={{ marginTop: '8px' }}>
+            {metadata}
+          </div>
         )}
       </div>
       {action && (
@@ -33,6 +47,6 @@ export function PageHeader({ title, subtitle, action }: PageHeaderProps) {
           {action}
         </div>
       )}
-    </div>
+    </Card>
   )
 }

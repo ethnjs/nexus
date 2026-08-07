@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
-import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 import { DeactivateAccountModal } from "@/components/settings/DeactivateAccountModal";
 import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
@@ -183,7 +183,7 @@ export default function AccountSettingsPage() {
 
   return (
     <div>
-      <SettingsPageHeading title="Account" />
+      <PageHeader heading="Account" />
 
       <SettingsSection>
         <SettingsRow label="First name">

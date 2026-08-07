@@ -13,6 +13,7 @@ import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
 import {
@@ -250,25 +251,7 @@ export default function OnboardingPage() {
         maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
         display: "flex", flexDirection: "column", gap: "5px",
       }}>
-        <div style={{
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "var(--shadow-sm)",
-          padding: "32px",
-        }}>
-          <div style={{
-            fontFamily: "Georgia, serif", fontSize: "15px",
-            letterSpacing: "0.18em", textTransform: "uppercase",
-            color: "var(--color-text-primary)", userSelect: "none",
-            marginBottom: "5px",
-          }}>
-            NEXUS
-          </div>
-          <h1 style={{ fontFamily: "var(--font-sans)", fontSize: "28px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-            Complete Your Profile
-          </h1>
-        </div>
+        <PageHeader text="NEXUS" heading="Complete Your Profile" />
 
         <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           <ProfileCard>

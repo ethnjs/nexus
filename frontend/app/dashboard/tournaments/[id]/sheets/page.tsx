@@ -516,8 +516,8 @@ export default function SheetsPage() {
   return (
     <div style={{ width: "100%" }}>
       <PageHeader
-        title="Sheets"
-        subtitle="Connect Google Sheets to sync volunteer data into NEXUS."
+        heading="Sheets"
+        subheading="Connect Google Sheets to sync volunteer data into NEXUS."
         action={
           <Button
             variant="primary"

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
-import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { PasswordChecklist } from "@/components/auth/PasswordChecklist";
 import { SessionList } from "@/components/settings/SessionList";
 
@@ -76,7 +76,7 @@ export default function SecuritySettingsPage() {
 
   return (
     <div>
-      <SettingsPageHeading title="Security" />
+      <PageHeader heading="Security" />
 
       <SettingsSection title="Password">
         <form onSubmit={handleSubmit}>

@@ -7,6 +7,7 @@ import { useMyMembership } from "@/lib/useMyMembership";
 import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
 import { ChecklistMeter } from "@/components/tournament/setup/ChecklistMeter";
 import { ChecklistCard } from "@/components/tournament/setup/ChecklistCard";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 // ─── Checklist config ───────────────────────────────────────────────────────
 
@@ -54,23 +55,24 @@ export default function OverviewPage() {
       : fmt(selectedTournament.start_date)
     : null;
 
+  const metadata = (selectedTournament?.location || dateRange) && (
+    <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+      {selectedTournament?.location && (
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+          {selectedTournament.location}
+        </span>
+      )}
+      {dateRange && (
+        <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+          {dateRange}
+        </span>
+      )}
+    </div>
+  );
+
   return (
     <div>
-      <h1 style={{ fontSize: "28px", lineHeight: 1.2, marginBottom: "4px" }}>
-        {selectedTournament?.name ?? "—"}
-      </h1>
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "28px" }}>
-        {selectedTournament?.location && (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            {selectedTournament.location}
-          </span>
-        )}
-        {dateRange && (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-            {dateRange}
-          </span>
-        )}
-      </div>
+      <PageHeader heading={selectedTournament?.name ?? "—"} metadata={metadata} />
 
       {!membershipLoading && canSeeChecklist && checklist && (
         <>
