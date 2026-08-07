@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -35,23 +35,28 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
-  const width = expanded ? EXPANDED_W : COLLAPSED_W;
   const base = `/dashboard/tournaments/${tournamentId}`;
   const settingsBase = `${base}/settings`;
   const onSettingsRoute = pathname.startsWith(settingsBase);
+  // Locked open on settings routes — the sub-nav labels need to stay
+  // readable without requiring the mouse to stay parked on the rail.
+  const expanded = hovered || onSettingsRoute;
+  const width = expanded ? EXPANDED_W : COLLAPSED_W;
   const showSettingsSub = expanded && (settingsOpen || onSettingsRoute);
 
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
+
   function handleMouseEnter() {
-    setExpanded(true);
-    onExpandedChange?.(true);
+    setHovered(true);
   }
 
   function handleMouseLeave() {
-    setExpanded(false);
-    onExpandedChange?.(false);
+    setHovered(false);
   }
 
   return (
