@@ -5,7 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
-import { ChecklistMeter } from "@/components/tournament/setup/ChecklistMeter";
+import { ChecklistProgressRing } from "@/components/tournament/setup/ChecklistProgressRing";
 import { ChecklistCard } from "@/components/tournament/setup/ChecklistCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 
@@ -75,9 +75,11 @@ export default function OverviewPage() {
       <PageHeader heading={selectedTournament?.name ?? "—"} metadata={metadata} />
 
       {!membershipLoading && canSeeChecklist && checklist && (
-        <>
-          <ChecklistMeter completed={checklist.completed_count} total={checklist.total_count} />
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
+          <div style={{
+            flex: 1,
+            display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px",
+          }}>
             {checklist.items.map((item) => {
               const config = CHECKLIST_CONFIG[item.item_key];
               const onClick = config?.buildable && config.onClick
@@ -86,7 +88,10 @@ export default function OverviewPage() {
               return <ChecklistCard key={item.item_key} item={item} onClick={onClick} />;
             })}
           </div>
-        </>
+          <div style={{ flexShrink: 0 }}>
+            <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} />
+          </div>
+        </div>
       )}
     </div>
   );
