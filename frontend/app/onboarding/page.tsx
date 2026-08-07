@@ -13,6 +13,7 @@ import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Topbar } from "@/components/layout/Topbar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
@@ -247,11 +248,12 @@ export default function OnboardingPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
+      <Topbar showWordmark showAvatar={false} />
       <div style={{
         maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
         display: "flex", flexDirection: "column", gap: "5px",
       }}>
-        <PageHeader text="NEXUS" heading="Complete Your Profile" />
+        <PageHeader heading="Complete Your Profile" />
 
         <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           <ProfileCard>
