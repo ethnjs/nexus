@@ -57,7 +57,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
         borderRight: "1px solid var(--color-border)",
         display: "flex",
         flexDirection: "column",
-        alignItems: expanded ? "stretch" : "center",
+        alignItems: "stretch",
         transition: "width 0.2s ease",
         overflow: "hidden",
         zIndex: 50,
@@ -90,7 +90,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
       <nav style={{
         display: "flex", flexDirection: "column", gap: "2px",
         flex: 1, padding: "10px 6px",
-        alignItems: expanded ? "stretch" : "center",
+        alignItems: "stretch",
       }}>
         {NAV_ITEMS.map(({ segment, icon, label }) => {
           const href = `${base}/${segment}`;
@@ -106,10 +106,10 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
                 borderRadius: "var(--radius-md)",
                 display: "flex", alignItems: "center",
                 gap: "10px",
-                paddingLeft:  expanded ? "10px" : "0",
-                paddingRight: expanded ? "10px" : "0",
-                justifyContent: expanded ? "flex-start" : "center",
-                width: expanded ? "100%" : "38px",
+                paddingLeft:  "10px",
+                paddingRight: "10px",
+                justifyContent: "flex-start",
+                width: "100%",
                 color: isActive ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
                 background: isActive ? "var(--color-accent-subtle)" : "transparent",
                 textDecoration: "none",
