@@ -1,8 +1,15 @@
-export function ChecklistProgressRing({ completed, total }: { completed: number; total: number }) {
+export function ChecklistProgressRing({
+  completed,
+  total,
+  size = 200,
+}: {
+  completed: number;
+  total: number;
+  size?: number;
+}) {
   const pct = total > 0 ? completed / total : 0;
-  const size = 148;
-  const stroke = 12;
-  const radius = (size - stroke) / 2;
+  const strokeW = 8; // viewBox units (viewBox is 0 0 100 100)
+  const radius = 50 - strokeW / 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - pct);
 
@@ -12,38 +19,33 @@ export function ChecklistProgressRing({ completed, total }: { completed: number;
       aria-valuenow={completed}
       aria-valuemin={0}
       aria-valuemax={total}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "10px" }}
+      style={{ position: "relative", width: size, height: size, flexShrink: 0 }}
     >
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-        Setup progress
-      </span>
-      <div style={{ position: "relative", width: size, height: size }}>
-        <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-          <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="var(--color-accent-subtle)" strokeWidth={stroke} />
-          <circle
-            cx={size / 2}
-            cy={size / 2}
-            r={radius}
-            fill="none"
-            stroke="var(--color-accent)"
-            strokeWidth={stroke}
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={offset}
-            style={{ transition: "stroke-dashoffset 200ms ease" }}
-          />
-        </svg>
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-        }}>
-          <span style={{ fontFamily: "Georgia, serif", fontSize: "28px", color: "var(--color-text-primary)", lineHeight: 1 }}>
-            {completed}/{total}
-          </span>
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
-            complete
-          </span>
-        </div>
+      <svg viewBox="0 0 100 100" style={{ width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
+        <circle cx={50} cy={50} r={radius} fill="none" stroke="var(--color-accent-subtle)" strokeWidth={strokeW} />
+        <circle
+          cx={50}
+          cy={50}
+          r={radius}
+          fill="none"
+          stroke="var(--color-accent)"
+          strokeWidth={strokeW}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={offset}
+          style={{ transition: "stroke-dashoffset 200ms ease" }}
+        />
+      </svg>
+      <div style={{
+        position: "absolute", inset: 0,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "4px",
+      }}>
+        <span style={{ fontFamily: "Georgia, serif", fontSize: "38px", color: "var(--color-text-primary)", lineHeight: 1 }}>
+          {completed}/{total}
+        </span>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
+          tasks complete
+        </span>
       </div>
     </div>
   );

@@ -1,50 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
-import { useMyMembership } from "@/lib/useMyMembership";
-import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
-import { ChecklistProgressRing } from "@/components/tournament/setup/ChecklistProgressRing";
-import { ChecklistCard } from "@/components/tournament/setup/ChecklistCard";
+import { SetupChecklistWidget } from "@/components/tournament/setup/SetupChecklistWidget";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-// ─── Checklist config ───────────────────────────────────────────────────────
-
-interface ChecklistConfigEntry {
-  buildable: boolean;
-  onClick: ((router: ReturnType<typeof useRouter>, tournamentId: string) => void) | null;
-}
-
-const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
-  dates:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/general`) },
-  location:     { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/visibility`) },
-  roles:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
-  // Step K builds the staff-invite modal — no target to wire yet.
-  invite_staff: { buildable: false, onClick: null },
-  onboarding:   { buildable: false, onClick: null },
-  events:       { buildable: false, onClick: null },
-  shifts:       { buildable: false, onClick: null },
-  buildings:    { buildable: false, onClick: null },
-};
-
-// ─── Page ───────────────────────────────────────────────────────────────────
-
 export default function OverviewPage() {
-  const router = useRouter();
   const params = useParams();
   const tournamentId = params.id as string;
   const { selectedTournament } = useTournament();
-  const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-
-  const [checklist, setChecklist] = useState<SetupChecklistResponse | null>(null);
-
-  const canSeeChecklist = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
-
-  useEffect(() => {
-    if (!canSeeChecklist) return;
-    setupChecklistApi.get(Number(tournamentId)).then(setChecklist).catch(() => setChecklist(null));
-  }, [canSeeChecklist, tournamentId]);
 
   const fmt = (d: string) =>
     new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -74,25 +38,9 @@ export default function OverviewPage() {
     <div>
       <PageHeader heading={selectedTournament?.name ?? "—"} metadata={metadata} />
 
-      {!membershipLoading && canSeeChecklist && checklist && (
-        <div style={{ display: "flex", gap: "24px", alignItems: "flex-start" }}>
-          <div style={{
-            flex: 1,
-            display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "10px",
-          }}>
-            {checklist.items.map((item) => {
-              const config = CHECKLIST_CONFIG[item.item_key];
-              const onClick = config?.buildable && config.onClick
-                ? () => config.onClick!(router, tournamentId)
-                : null;
-              return <ChecklistCard key={item.item_key} item={item} onClick={onClick} />;
-            })}
-          </div>
-          <div style={{ flexShrink: 0 }}>
-            <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} />
-          </div>
-        </div>
-      )}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "16px" }}>
+        <SetupChecklistWidget tournamentId={tournamentId} />
+      </div>
     </div>
   );
 }
