@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { membershipsApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
+import { Modal } from "@/components/ui/Modal";
 import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
   RichMappingRow,
@@ -57,26 +58,15 @@ function DeleteConfigModal({
   onCancel: () => void;
 }) {
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.35)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onCancel}
-    >
-      <div
-        style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)", padding: "28px", width: 420, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", marginBottom: "12px" }}>
-          Delete sheet config?
-        </h2>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
-          <strong>{label}</strong> will be permanently deleted. Volunteer data that was synced from this sheet will not be affected.
-        </p>
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
-          <Button variant="danger" size="md" fullWidth onClick={onConfirm}>Delete config</Button>
-        </div>
+    <Modal title="Delete sheet config?" onClose={onCancel} width={420}>
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginBottom: "20px" }}>
+        <strong>{label}</strong> will be permanently deleted. Volunteer data that was synced from this sheet will not be affected.
+      </p>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
+        <Button variant="danger" size="md" fullWidth onClick={onConfirm}>Delete config</Button>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -104,66 +94,54 @@ function DeleteMembershipsModal({
   };
 
   return (
-    <div
-      style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 200, display: "flex", alignItems: "center", justifyContent: "center" }}
-      onClick={onCancel}
-    >
-      <div
-        style={{ background: "var(--color-surface)", border: "2px solid var(--color-danger)", borderRadius: "var(--radius-lg)", padding: "28px", width: 480, maxWidth: "calc(100vw - 32px)", boxShadow: "var(--shadow-lg)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-danger)", marginBottom: "16px" }}>
-          Delete config + memberships?
-        </h2>
-
-        <div style={{ background: "var(--color-danger-subtle)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", padding: "14px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "8px" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-danger)", display: "flex", alignItems: "center", gap: "6px" }}>
-            <IconWarning size={14} style={{ flexShrink: 0 }} />
-            Read carefully before continuing
-          </p>
-          <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "5px" }}>
-            {[
-              `The sheet config "${label}" will be permanently deleted.`,
-              "All memberships in this tournament will be deleted — even if they have positions assigned. (Temp behavior: does not cross-reference live sheet rows.)",
-              "If this sheet tab is shared with another config, those memberships will also be deleted.",
-              "User accounts are never deleted.",
-              "This action cannot be undone.",
-            ].map((w, i) => (
-              <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{w}</li>
-            ))}
-          </ul>
-        </div>
-
-        <div style={{ marginBottom: "20px" }}>
-          <label style={{
-            fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-            textTransform: "uppercase", letterSpacing: "0.07em",
-            color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
-          }}>Type DELETE to confirm</label>
-          <input
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-            placeholder="DELETE"
-            autoFocus
-            style={inputStyle}
-          />
-        </div>
-
-        <div style={{ display: "flex", gap: "10px" }}>
-          <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
-          <Button
-            variant="danger"
-            size="md"
-            fullWidth
-            disabled={!confirmed}
-            loading={loading}
-            onClick={onConfirm}
-          >
-            Delete config + memberships
-          </Button>
-        </div>
+    <Modal title="Delete config + memberships?" onClose={onCancel} width={480} type="danger">
+      <div style={{ background: "var(--color-danger-subtle)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", padding: "14px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-danger)", display: "flex", alignItems: "center", gap: "6px" }}>
+          <IconWarning size={14} style={{ flexShrink: 0 }} />
+          Read carefully before continuing
+        </p>
+        <ul style={{ margin: 0, paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "5px" }}>
+          {[
+            `The sheet config "${label}" will be permanently deleted.`,
+            "All memberships in this tournament will be deleted — even if they have positions assigned. (Temp behavior: does not cross-reference live sheet rows.)",
+            "If this sheet tab is shared with another config, those memberships will also be deleted.",
+            "User accounts are never deleted.",
+            "This action cannot be undone.",
+          ].map((w, i) => (
+            <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{w}</li>
+          ))}
+        </ul>
       </div>
-    </div>
+
+      <div style={{ marginBottom: "20px" }}>
+        <label style={{
+          fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+          textTransform: "uppercase", letterSpacing: "0.07em",
+          color: "var(--color-text-tertiary)", display: "block", marginBottom: "6px",
+        }}>Type DELETE to confirm</label>
+        <input
+          value={typed}
+          onChange={(e) => setTyped(e.target.value)}
+          placeholder="DELETE"
+          autoFocus
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Button variant="secondary" size="md" fullWidth onClick={onCancel}>Cancel</Button>
+        <Button
+          variant="danger"
+          size="md"
+          fullWidth
+          disabled={!confirmed}
+          loading={loading}
+          onClick={onConfirm}
+        >
+          Delete config + memberships
+        </Button>
+      </div>
+    </Modal>
   );
 }
 

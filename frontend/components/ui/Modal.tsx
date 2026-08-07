@@ -1,6 +1,9 @@
 'use client'
 
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+type ModalType = 'normal' | 'danger'
 
 interface ModalProps {
   title?: string
@@ -8,9 +11,10 @@ interface ModalProps {
   children: ReactNode
   width?: number
   closeOnOverlayClick?: boolean
+  type?: ModalType
 }
 
-export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true }: ModalProps) {
+export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, type = 'normal' }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -20,7 +24,11 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
-  return (
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+  if (!mounted) return null
+
+  return createPortal(
     <div
       style={{
         position: 'fixed', inset: 0,
@@ -33,7 +41,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
       <div
         style={{
           background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
+          border: type === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
           borderRadius: 'var(--radius-lg)',
           padding: '28px',
           width,
@@ -46,7 +54,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
           <h2 style={{
             fontFamily: 'var(--font-serif)',
             fontSize: '22px',
-            color: 'var(--color-text-primary)',
+            color: type === 'danger' ? 'var(--color-danger)' : 'var(--color-text-primary)',
             marginBottom: '20px',
           }}>
             {title}
@@ -54,6 +62,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
