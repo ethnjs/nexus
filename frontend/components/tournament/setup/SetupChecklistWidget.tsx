@@ -14,8 +14,6 @@ interface ChecklistConfigEntry {
 }
 
 const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
-  dates:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/general`) },
-  location:     { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/visibility`) },
   roles:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
   invite_staff: { buildable: false, onClick: null },
   onboarding:   { buildable: false, onClick: null },
