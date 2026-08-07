@@ -279,8 +279,8 @@ class Tournament(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)                 # excludes year, e.g. "Science Olympiad Invitational"
     short_name = Column(String(64), nullable=True)              # includes abbreviation, e.g. "SoCal", "OC", "LA"
-    start_date = Column(DateTime(timezone=True), nullable=False)
-    end_date = Column(DateTime(timezone=True), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     location = Column(String(255), nullable=True)
 

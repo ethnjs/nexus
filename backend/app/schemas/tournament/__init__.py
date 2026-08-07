@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.tournament.role import RoleRead
@@ -80,8 +80,8 @@ class TournamentFieldValidators:
 class TournamentCreate(TournamentFieldValidators, BaseModel):
     name: str
     short_name: str | None = None
-    start_date: datetime
-    end_date: datetime
+    start_date: date
+    end_date: date
     university_id: int | None = None
     location: str | None = None
     state: str
@@ -107,8 +107,8 @@ class TournamentUpdate(TournamentFieldValidators, BaseModel):
     """Partial update — all fields optional."""
     name: str | None = None
     short_name: str | None = None
-    start_date: datetime | None = None
-    end_date: datetime | None = None
+    start_date: date | None = None
+    end_date: date | None = None
     university_id: int | None = None
     location: str | None = None
     state: str | None = None
@@ -132,8 +132,8 @@ class TournamentRead(BaseModel):
     id: int
     name: str
     short_name: str | None = None
-    start_date: datetime
-    end_date: datetime
+    start_date: date
+    end_date: date
     university: UniversityResponse | None = None
     location: str | None = None
     state: str
