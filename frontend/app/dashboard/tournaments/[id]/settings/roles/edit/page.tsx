@@ -16,8 +16,9 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
+import { RoleMembersTab } from "@/components/tournament/settings/RoleMembersTab";
+import { RoleDraft, RoleEditorForm } from "@/components/tournament/settings/RoleEditorForm";
 import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
-import { RoleDraft, RoleEditorForm } from "./RoleEditorForm";
 
 function draftDiffers(draft: RoleDraft, role: Role): boolean {
   return draft.label.trim() !== role.label
@@ -35,7 +36,7 @@ export default function RoleEditorPage() {
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [roles, setRoles] = useState<Role[] | null>(null);
-  const [memberCounts, setMemberCounts] = useState<Record<number, number>>({});
+  const [memberships, setMemberships] = useState<MembershipSlim[]>([]);
   const [creatingRole, setCreatingRole] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>(undefined);
 
@@ -46,6 +47,7 @@ export default function RoleEditorPage() {
     const fromQuery = Number(searchParams.get("role"));
     return Number.isFinite(fromQuery) && fromQuery > 0 ? fromQuery : null;
   });
+  const [activeTab, setActiveTab] = useState<"details" | "members">("details");
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -71,17 +73,24 @@ export default function RoleEditorPage() {
     setRoles(next);
   }, [tournamentId]);
 
+  const refreshMemberships = useCallback(async () => {
+    const next = await membershipsApi.list(tournamentId).catch(() => []);
+    setMemberships(next);
+  }, [tournamentId]);
+
   // Fetched once — switching the active role never re-triggers this.
   useEffect(() => {
     refreshRoles();
-    membershipsApi.list(tournamentId).then((members: MembershipSlim[]) => {
-      const counts: Record<number, number> = {};
-      for (const m of members) {
-        for (const r of m.roles) counts[r.id] = (counts[r.id] ?? 0) + 1;
-      }
-      setMemberCounts(counts);
-    }).catch(() => {});
-  }, [tournamentId, refreshRoles]);
+    refreshMemberships();
+  }, [tournamentId, refreshRoles, refreshMemberships]);
+
+  const memberCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const m of memberships) {
+      for (const r of m.roles) counts[r.id] = (counts[r.id] ?? 0) + 1;
+    }
+    return counts;
+  }, [memberships]);
 
   // The index page already shows a locked "No access" state for this — send
   // anyone without manage_roles back there instead of letting them sit here.
@@ -287,18 +296,48 @@ export default function RoleEditorPage() {
 
         <div style={{ flex: 1, minWidth: 0 }}>
           {activeRole ? (
-            <RoleEditorForm
-              tournamentId={tournamentId}
-              role={activeRole}
-              draft={draftFor(activeRole)}
-              setDraft={setDraft}
-              locked={lockReason(activeRole) !== null}
-              memberCount={memberCounts[activeRole.id] ?? 0}
-              onDeleted={async () => {
-                await refreshRoles();
-                setActiveRoleId(null);
-              }}
-            />
+            <>
+              <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--color-border)", marginBottom: "16px" }}>
+                {(["details", "members"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    style={{
+                      padding: "10px 4px", marginRight: "20px", border: "none", background: "transparent", cursor: "pointer",
+                      borderBottom: activeTab === tab ? "2px solid var(--color-accent)" : "2px solid transparent",
+                      fontFamily: "var(--font-sans)", fontSize: "13px",
+                      fontWeight: activeTab === tab ? 600 : 500,
+                      color: activeTab === tab ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+                    }}
+                  >
+                    {tab === "details" ? "Details" : `Members — ${memberCounts[activeRole.id] ?? 0}`}
+                  </button>
+                ))}
+              </div>
+
+              {activeTab === "details" ? (
+                <RoleEditorForm
+                  tournamentId={tournamentId}
+                  role={activeRole}
+                  draft={draftFor(activeRole)}
+                  setDraft={setDraft}
+                  locked={lockReason(activeRole) !== null}
+                  memberCount={memberCounts[activeRole.id] ?? 0}
+                  onDeleted={async () => {
+                    await refreshRoles();
+                    setActiveRoleId(null);
+                  }}
+                />
+              ) : (
+                <RoleMembersTab
+                  tournamentId={tournamentId}
+                  role={activeRole}
+                  locked={lockReason(activeRole) !== null}
+                  onChanged={refreshMemberships}
+                />
+              )}
+            </>
           ) : (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", padding: "12px" }}>
               Select a role from the list to edit it.

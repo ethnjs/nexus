@@ -576,6 +576,15 @@ export const membershipsApi = {
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
   updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
     api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
+  // role_id narrows to members holding that role; exclude_role_id drops
+  // members who already hold it — independent filters, combinable with q.
+  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number }) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q)
+    if (params.role_id !== undefined) qs.set('role_id', String(params.role_id))
+    if (params.exclude_role_id !== undefined) qs.set('exclude_role_id', String(params.exclude_role_id))
+    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/search/?${qs.toString()}`)
+  },
 }
 
 // -------------------------------------------------------------------------
