@@ -11,6 +11,8 @@ import {
   IconSettings,
   IconChevronDown,
 } from "@/components/ui/Icons";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
 
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
@@ -41,6 +43,11 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const base = `/dashboard/tournaments/${tournamentId}`;
   const settingsBase = `${base}/settings`;
   const onSettingsRoute = pathname.startsWith(settingsBase);
+
+  const { user: currentUser } = useAuth();
+  const { membership, hasPermission } = useMyMembership();
+  const canManageRoles = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_roles");
+  const settingsSubitems = SETTINGS_SUBITEMS.filter(({ segment }) => segment !== "roles" || canManageRoles);
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.
   const expanded = hovered || onSettingsRoute;
@@ -225,7 +232,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
 
         {showSettingsSub && (
           <div style={{ display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "20px" }}>
-            {SETTINGS_SUBITEMS.map(({ segment, label }) => {
+            {settingsSubitems.map(({ segment, label }) => {
               const href = `${settingsBase}/${segment}`;
               const isActive = pathname === href || pathname.startsWith(`${href}/`);
 

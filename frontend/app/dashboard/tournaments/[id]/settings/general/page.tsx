@@ -353,7 +353,6 @@ export default function GeneralSettingsPage() {
         {membership && !membership.is_owner && (
           <SettingsRow
             label="Leave tournament"
-            helper="Remove yourself from this tournament."
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last
           >

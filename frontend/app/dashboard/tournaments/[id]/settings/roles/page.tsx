@@ -136,6 +136,21 @@ export default function RolesSettingsPage() {
     );
   }
 
+  if (!canManageRoles) {
+    return (
+      <div>
+        <PageHeader heading="Roles" subheading="Tournament Settings" />
+        <Card radius="lg" style={{ padding: "8px" }}>
+          <EmptyState
+            icon={<IconLock size={28} />}
+            title="No access"
+            description="You need the manage roles permission to view this page."
+          />
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader heading="Roles" subheading="Tournament Settings" />
