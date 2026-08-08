@@ -229,6 +229,43 @@ def update_membership(
 
 
 # ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/me/ — self-service
+# Lets a non-owner leave a tournament. The owner must transfer ownership
+# first — leaving without doing so would strand the tournament ownerless.
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.delete("/me/", status_code=status.HTTP_204_NO_CONTENT)
+def leave_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    if not tournament:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if tournament.owner_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transfer ownership before leaving this tournament.",
+        )
+
+    m = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.tournament_id == tournament_id,
+            TournamentMembership.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    db.delete(m)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
 # Removes a user from the tournament.
 # ---------------------------------------------------------------------------

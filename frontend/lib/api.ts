@@ -563,6 +563,8 @@ export const membershipsApi = {
     api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
   getMe: (tournamentId: number) =>
     api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
+  leaveMe: (tournamentId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/memberships/me/`),
   updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
   update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
