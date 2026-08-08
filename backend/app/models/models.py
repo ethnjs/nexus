@@ -301,6 +301,13 @@ class Tournament(Base):
     # tournament can be public but not yet verified.
     is_verified = Column(Boolean, nullable=False, default=False)
 
+    # Independent of is_public — orthogonal, not a third visibility state.
+    # Blocks all POST/PATCH/DELETE across this tournament's routes and drops it 
+    # from public listing regardless of is_public, so history stays immutable. 
+    # Owner can unarchive; auto-archived tournaments past end_date can only be 
+    # unarchived by an admin.
+    is_archived = Column(Boolean, nullable=False, default=False)
+
     # Gates join/visibility behavior — load-bearing, unlike the informational
     # deadlines that live in TournamentDeadline.
     registration_opens_at = Column(DateTime(timezone=True), nullable=True)

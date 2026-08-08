@@ -2,7 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, log_action
+from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, log_action
+# Aliased — this module's own GET /{tournament_id}/ route handler is also
+# named get_tournament, which would otherwise collide.
+from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
@@ -32,6 +35,7 @@ def _serialize(tournament: Tournament) -> dict:
         "division": tournament.division,
         "is_public": tournament.is_public,
         "is_verified": tournament.is_verified,
+        "is_archived": tournament.is_archived,
         "registration_opens_at": tournament.registration_opens_at,
         "owner_id": tournament.owner_id,
         "roles": tournament.roles,
@@ -106,9 +110,7 @@ def get_tournament(
     current_user: User = Depends(require_membership()),
 ):
     """Any user with a membership in this tournament can view it."""
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = fetch_tournament(tournament_id, db)
     return _serialize(tournament)
 
 
@@ -122,9 +124,8 @@ def update_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = fetch_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     # exclude_unset (not exclude_none) — a client swapping location<->university
     # must be able to explicitly send the cleared field as null; exclude_none
@@ -154,10 +155,10 @@ def delete_tournament(
     current_user: User = Depends(get_current_user),
 ):
     """Only the tournament owner (creator) or an admin can delete a tournament."""
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    tournament = fetch_tournament(tournament_id, db)
 
     # 404 if no membership (don't leak existence)
-    if not has_any_membership(current_user, tournament_id, db) or not tournament:
+    if not has_any_membership(current_user, tournament_id, db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     if current_user.role != "admin" and tournament.owner_id != current_user.id:
@@ -166,8 +167,78 @@ def delete_tournament(
             detail="Only the tournament owner can delete this tournament",
         )
 
+    require_not_archived(tournament)
+
     db.delete(tournament)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/archive/ — owner or admin only
+# Deliberately does NOT call require_not_archived() — that would make an
+# already-archived tournament permanently stuck (see unarchive below).
+# ---------------------------------------------------------------------------
+@router.post("/{tournament_id}/archive/", response_model=TournamentRead)
+def archive_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = fetch_tournament(tournament_id, db)
+
+    if not has_any_membership(current_user, tournament_id, db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if current_user.role != "admin" and tournament.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the tournament owner can archive this tournament",
+        )
+
+    tournament.is_archived = True
+
+    log_action(
+        db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
+        target_type="tournament", target_id=tournament.id,
+        extra_data={"is_archived": True},
+    )
+
+    db.commit()
+    db.refresh(tournament)
+    return _serialize(tournament)
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/unarchive/ — owner or admin only
+# ---------------------------------------------------------------------------
+@router.post("/{tournament_id}/unarchive/", response_model=TournamentRead)
+def unarchive_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = fetch_tournament(tournament_id, db)
+
+    if not has_any_membership(current_user, tournament_id, db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if current_user.role != "admin" and tournament.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the tournament owner can unarchive this tournament",
+        )
+
+    tournament.is_archived = False
+
+    log_action(
+        db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
+        target_type="tournament", target_id=tournament.id,
+        extra_data={"is_archived": False},
+    )
+
+    db.commit()
+    db.refresh(tournament)
+    return _serialize(tournament)
 
 
 # ---------------------------------------------------------------------------
@@ -182,13 +253,10 @@ def transfer_ownership(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    tournament = fetch_tournament(tournament_id, db)
 
     # 404 if no membership (don't leak existence)
     if not has_any_membership(current_user, tournament_id, db):
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
-    if not tournament:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     if tournament.owner_id != current_user.id:

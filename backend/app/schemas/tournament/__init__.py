@@ -141,6 +141,7 @@ class TournamentRead(BaseModel):
     division: list[str]
     is_public: bool
     is_verified: bool
+    is_archived: bool
     registration_opens_at: datetime | None = None
     owner_id: int
     roles: list[RoleRead] = []

@@ -1,10 +1,11 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
 from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
+from app.core.tournament import get_tournament
 from app.db.session import get_db
 from app.models.models import Tournament, User
 from app.schemas.tournament import TournamentRead
@@ -42,14 +43,11 @@ def set_tournament_verified(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
+    tournament = get_tournament(tournament_id, db)
     tournament.is_verified = payload.is_verified
 
     log_action(
-        db, tournament_id, current_user.id, TOURNAMENT_VERIFIED,
+        db, tournament.id, current_user.id, TOURNAMENT_VERIFIED,
         target_type="tournament", target_id=tournament.id,
         extra_data={"is_verified": payload.is_verified},
     )

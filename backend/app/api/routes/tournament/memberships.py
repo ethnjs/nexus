@@ -2,12 +2,12 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
-    Tournament,
     TournamentMembership,
     TournamentMembershipRole,
     User,
@@ -41,9 +41,7 @@ def list_memberships(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    get_tournament(tournament_id, db)
 
     memberships = (
         db.query(TournamentMembership)
@@ -123,9 +121,7 @@ def get_my_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_membership()),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
 
     membership = (
         db.query(TournamentMembership)
@@ -178,6 +174,9 @@ def update_my_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     m = (
         db.query(TournamentMembership)
         .filter(
@@ -214,6 +213,9 @@ def update_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     m = _get_membership_or_404(membership_id, tournament_id, db)
 
     update_data = payload.model_dump(exclude_none=True)
@@ -240,9 +242,7 @@ def leave_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
 
     if tournament.owner_id == current_user.id:
         raise HTTPException(
@@ -276,6 +276,9 @@ def delete_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     m = _get_membership_or_404(membership_id, tournament_id, db)
     db.delete(m)
     db.commit()

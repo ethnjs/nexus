@@ -9,9 +9,10 @@ from app.core.join_codes import apply_join_code_update, deactivate_join_code, ge
 from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
-from app.models.models import JoinCode, Tournament, User
+from app.models.models import JoinCode, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
 from app.services.email_service import send_staff_invite_emails
 
@@ -56,9 +57,8 @@ def create_join_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     expires_at = None
     if payload.expires_in_hours is not None:
@@ -103,6 +103,9 @@ def update_join_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     join_code = _get_join_code_or_404(code_id, tournament_id, db)
     old_label = join_code.label
     old_expires_at = join_code.expires_at
@@ -143,6 +146,9 @@ def deactivate_tournament_join_code(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     join_code = _get_join_code_or_404(code_id, tournament_id, db)
     deactivate_join_code(join_code)
 
@@ -174,9 +180,8 @@ async def send_staff_invites(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     join_code = _get_join_code_or_404(payload.join_code_id, tournament_id, db)
 

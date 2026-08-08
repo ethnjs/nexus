@@ -2,9 +2,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentEvent, Tournament, User
+from app.models.models import TournamentEvent, User
 from app.schemas.tournament.event import EventCreate, EventRead, EventUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
@@ -53,9 +54,7 @@ def list_events(
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
     """List all events for a tournament, ordered by division then name."""
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    get_tournament(tournament_id, db)
 
     events = (
         db.query(TournamentEvent)
@@ -89,16 +88,15 @@ def create_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     # Validate tournament_id in body matches path
     if payload.tournament_id != tournament_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="tournament_id in body does not match URL",
         )
-
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
     existing = db.query(TournamentEvent).filter(
         TournamentEvent.tournament_id == tournament_id,
@@ -129,6 +127,9 @@ def update_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     event = _get_event_or_404(event_id, tournament_id, db)
 
     for field, value in payload.model_dump(exclude_none=True).items():
@@ -149,6 +150,9 @@ def delete_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
     event = _get_event_or_404(event_id, tournament_id, db)
     db.delete(event)
     db.commit()

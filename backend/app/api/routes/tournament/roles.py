@@ -18,6 +18,7 @@ from app.core.tournament.permissions import (
     require_membership,
     require_permission,
 )
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.roles import compute_new_rank, rebalance_tournament_ranks
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
@@ -97,9 +98,8 @@ def apply_default_role_template(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     existing = db.query(TournamentRole).filter(TournamentRole.tournament_id == tournament_id).first()
     if existing:
@@ -153,9 +153,8 @@ def create_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     _validate_rank_bound(current_user, tournament, payload.rank, db)
 
@@ -196,9 +195,8 @@ def update_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     role = _get_role_or_404(role_id, tournament_id, db)
     updates = payload.model_dump(exclude_none=True)
@@ -264,9 +262,8 @@ def reorder_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     role = _get_role_or_404(role_id, tournament_id, db)
     old_rank = role.rank  # captured before a possible rebalance mutates it
@@ -319,9 +316,8 @@ def delete_role(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_ROLES)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     role = _get_role_or_404(role_id, tournament_id, db)
     _validate_rank_bound(current_user, tournament, role.rank, db)
@@ -441,9 +437,8 @@ def update_membership_roles(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    if not tournament:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     m = _get_membership_or_404(membership_id, tournament_id, db)
 
