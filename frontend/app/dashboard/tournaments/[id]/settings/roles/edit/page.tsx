@@ -387,7 +387,7 @@ const RoleNavRow = memo(function RoleNavRow({ role, displayLabel, active, lockRe
       style={{
         ...dragStyle,
         display: "flex", alignItems: "center", gap: "8px", width: "100%",
-        padding: "7px 8px", border: "none", cursor: locked ? "pointer" : "grab",
+        padding: "7px 8px", border: "none", cursor: "pointer",
         borderRadius: "var(--radius-md)",
         background: active ? "var(--color-accent-subtle)" : "transparent",
         ...indicatorStyle,
