@@ -94,6 +94,8 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
     def validate_dates(self) -> TournamentCreate:
         if self.end_date < self.start_date:
             raise ValueError("end_date must be after start_date")
+        if self.start_date < date.today():
+            raise ValueError("start_date cannot be in the past")
         return self
 
     @model_validator(mode="after")
@@ -116,6 +118,14 @@ class TournamentUpdate(TournamentFieldValidators, BaseModel):
     division: list[str] | None = None
     is_public: bool | None = None
     registration_opens_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def validate_dates(self) -> TournamentUpdate:
+        if self.start_date is not None and self.end_date is not None and self.end_date < self.start_date:
+            raise ValueError("end_date must be after start_date")
+        if self.start_date is not None and self.start_date < date.today():
+            raise ValueError("start_date cannot be in the past")
+        return self
 
     @model_validator(mode="after")
     def validate_source(self) -> TournamentUpdate:

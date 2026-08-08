@@ -50,6 +50,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     if (/\d/.test(name)) { setError('Name must not contain numbers — the year is added automatically'); return }
     if (!startDate || !endDate) { setError('Start and end date are required'); return }
     // YYYY-MM-DD strings compare lexicographically in chronological order
+    const today = new Date().toISOString().slice(0, 10)
+    if (startDate < today) { setError('Start date cannot be in the past'); return }
     if (endDate < startDate) { setError('End date cannot be before start date'); return }
     if (!matchedState) { setError('State is required — pick one from the list'); return }
     if (!matchedLevel) { setError('Level is required — pick one from the list'); return }
@@ -118,6 +120,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
             type="date"
             value={startDate}
             onChange={(e) => setStartDate(e.target.value)}
+            min={new Date().toISOString().slice(0, 10)}
             fullWidth
           />
           <Input

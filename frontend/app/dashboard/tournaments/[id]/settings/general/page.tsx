@@ -118,6 +118,7 @@ export default function GeneralSettingsPage() {
     if (/\d/.test(draft.name)) { setErrors((e) => ({ ...e, name: "Name must not contain numbers." })); setSaving(false); return; }
     if (!draft.university_id && !draft.location.trim()) { setSaveError("Location is required."); setSaving(false); return; }
     if (!draft.start_date || !draft.end_date) { setSaveError("Start and end date are required."); setSaving(false); return; }
+    if (draft.start_date < new Date().toISOString().slice(0, 10)) { setSaveError("Start date cannot be in the past."); setSaving(false); return; }
     if (draft.end_date < draft.start_date) { setSaveError("End date cannot be before start date."); setSaving(false); return; }
     if (!draft.state) { setSaveError("State is required — pick one from the list."); setSaving(false); return; }
     if (!draft.level) { setSaveError("Level is required — pick one from the list."); setSaving(false); return; }
@@ -204,6 +205,7 @@ export default function GeneralSettingsPage() {
                   type="date"
                   fullWidth
                   locked={isArchived}
+                  min={new Date().toISOString().slice(0, 10)}
                   value={draft.start_date}
                   onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
                 />
