@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { Tournament } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
@@ -34,6 +35,8 @@ function tournamentDisplayName(t: Tournament) {
 function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }) {
   const router = useRouter();
   const { tournaments, selectedTournament, setSelectedTournament, refresh } = useTournament();
+  // Not an <a>, so the guard's click intercept can't see it — wrap explicitly.
+  const { guard } = useUnsavedChanges();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -56,10 +59,12 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
   }
 
   function handleSelect(t: Tournament) {
-    setSelectedTournament(t);
-    setDropdownOpen(false);
     const segment = window.location.pathname.split("/").pop() ?? "overview";
-    router.push(`/dashboard/tournaments/${t.id}/${segment}`);
+    guard(() => {
+      setSelectedTournament(t);
+      setDropdownOpen(false);
+      router.push(`/dashboard/tournaments/${t.id}/${segment}`);
+    });
   }
 
   return (

@@ -5,6 +5,7 @@ import { use } from "react";
 import { usePathname } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider } from "@/lib/useMyMembership";
+import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { tournamentsApi } from "@/lib/api";
@@ -59,9 +60,13 @@ export default function TournamentLayout({
   return (
     <TournamentProvider>
       <MyMembershipProvider tournamentId={tournamentId}>
-        <TournamentShell tournamentId={tournamentId}>
-          {children}
-        </TournamentShell>
+        {/* Above the shell so Sidebar/Topbar can read the dirty flag a nested
+            page (e.g. the roles editor) registers. */}
+        <UnsavedChangesProvider>
+          <TournamentShell tournamentId={tournamentId}>
+            {children}
+          </TournamentShell>
+        </UnsavedChangesProvider>
       </MyMembershipProvider>
     </TournamentProvider>
   );

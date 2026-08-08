@@ -1,11 +1,12 @@
 "use client";
 
-import { Fragment, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { rolesApi, ApiError, Role } from "@/lib/api";
+import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { rolesApi, ApiError, Permission, Role } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
 import { defaultNewRoleLabel, nextBottomRank } from "@/lib/roleReorder";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -16,7 +17,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
-import { RoleFieldSave, RoleFieldSaveProvider, RoleListProvider } from "./RoleFieldSaveContext";
+import { RoleDraft, RoleDraftsProvider, RoleListProvider, draftDiffers } from "./RoleEditorContext";
 
 export default function RoleEditorLayout({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -30,13 +31,6 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [creatingRole, setCreatingRole] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>(undefined);
-
-  // Debounced label preview from the detail page's Name input — id null means
-  // no override active.
-  const [labelPreview, setLabelPreview] = useState<{ id: number; label: string } | null>(null);
-  const previewLabel = useCallback((roleId: number, label: string | null) => {
-    setLabelPreview(label === null ? null : { id: roleId, label });
-  }, []);
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -74,26 +68,88 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
   const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
 
-  // The active page (only the [roleId] editor, not /new) registers its own
-  // label/permissions draft here so both it and the nav reorder above share
-  // one save bar instead of popping up two.
-  const [fieldSave, setFieldSave] = useState<RoleFieldSave | null>(null);
+  // Field drafts for every role the user has touched, not just the open one —
+  // page.tsx unmounts on every role switch, this layout doesn't.
+  const [drafts, setDrafts] = useState<Record<number, RoleDraft>>({});
+  const [fieldSaving, setFieldSaving] = useState(false);
+  const [fieldError, setFieldError] = useState<string | undefined>(undefined);
 
-  const isDirty = reorder.isDirty || !!fieldSave?.isDirty;
-  const saving = reorder.saving || !!fieldSave?.saving;
-  const error = reorder.error ?? fieldSave?.error;
+  const rolesRef = useRef<Role[] | null>(roles);
+  rolesRef.current = roles;
 
+  const draftFor = useCallback((role: Role): RoleDraft => (
+    drafts[role.id] ?? { label: role.label, permissions: role.permissions as Permission[] }
+  ), [drafts]);
+
+  const setDraft = useCallback((roleId: number, patch: Partial<RoleDraft>) => {
+    setDrafts((cur) => {
+      const role = rolesRef.current?.find((r) => r.id === roleId);
+      if (!role) return cur;
+      const base = cur[roleId] ?? { label: role.label, permissions: role.permissions as Permission[] };
+      return { ...cur, [roleId]: { ...base, ...patch } };
+    });
+  }, []);
+
+  // Drop drafts for roles that no longer exist (deleted while editing).
+  useEffect(() => {
+    if (!roles) return;
+    setDrafts((cur) => {
+      const ids = new Set(roles.map((r) => r.id));
+      const kept = Object.entries(cur).filter(([id]) => ids.has(Number(id)));
+      return kept.length === Object.keys(cur).length ? cur : Object.fromEntries(kept);
+    });
+  }, [roles]);
+
+  const pendingEdits = useMemo(
+    () => (roles ?? []).filter((r) => drafts[r.id] && draftDiffers(drafts[r.id], r)),
+    [roles, drafts],
+  );
+
+  const isDirty = reorder.isDirty || pendingEdits.length > 0;
+  const saving = reorder.saving || fieldSaving;
+  const error = reorder.error ?? fieldError;
+
+  const roleDrafts = useMemo(() => ({ draftFor, setDraft }), [draftFor, setDraft]);
+
+  // Reorder plus every pending field edit commit together — the save bar is
+  // shared, so Save means "save everything I've changed anywhere in here".
   async function handleSaveAll() {
-    await Promise.all([
-      reorder.isDirty ? reorder.save() : Promise.resolve(),
-      fieldSave?.isDirty ? fieldSave.save() : Promise.resolve(),
-    ]);
+    setFieldError(undefined);
+    const edits = pendingEdits;
+    if (edits.length > 0) setFieldSaving(true);
+    try {
+      await Promise.all([
+        reorder.isDirty ? reorder.save() : Promise.resolve(),
+        ...edits.map((r) => rolesApi.update(tournamentId, r.id, {
+          label: drafts[r.id].label.trim(),
+          permissions: drafts[r.id].permissions,
+        })),
+      ]);
+      setDrafts({});
+    } catch (err: unknown) {
+      setFieldError(err instanceof ApiError ? err.message : "Failed to save role.");
+    } finally {
+      // Refetch either way — on a partial failure this clears the drafts that
+      // did land and keeps the ones that didn't.
+      if (edits.length > 0) await refreshRoles();
+      setFieldSaving(false);
+    }
   }
 
   function handleCancelAll() {
     reorder.cancel();
-    fieldSave?.cancel();
+    setDrafts({});
+    setFieldError(undefined);
   }
+
+  // Switching roles inside the editor is free; leaving it while dirty prompts.
+  const { guard } = useUnsavedChanges();
+  useBlockNavigation(isDirty, `/dashboard/tournaments/${tournamentId}/settings/roles/`);
+
+  // Stable so memoized nav rows don't re-render on every draft keystroke.
+  const handleSelectRole = useCallback((roleId: number) => {
+    router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${roleId}`);
+  }, [router, tournamentId]);
 
   // Skips a separate "new role" form — creates a placeholder immediately and
   // drops the user straight into editing it (including reordering it right
@@ -140,7 +196,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`)}
+              onClick={() => guard(() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`))}
               style={{
                 padding: "4px 6px",
                 fontSize: "11px", fontWeight: 700,
@@ -190,11 +246,11 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
                     <Fragment key={role.id}>
                       <RoleNavRow
                         role={role}
-                        displayLabel={labelPreview?.id === role.id ? labelPreview.label : role.label}
+                        displayLabel={drafts[role.id]?.label.trim() || role.label}
                         active={role.id === activeRoleId}
                         lockReason={lockReason(role)}
                         dropIndicator={reorder.dropIndicatorFor(role)}
-                        onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
+                        onSelect={handleSelectRole}
                       />
                       {ri < group.length - 1 && (
                         <RoleDropDivider state={reorder.dividerStateFor(role, group[ri + 1])} />
@@ -209,10 +265,10 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
         </Card>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <RoleListProvider value={{ roles, refreshRoles, lockReason, previewLabel }}>
-            <RoleFieldSaveProvider value={setFieldSave}>
+          <RoleListProvider value={{ roles, refreshRoles, lockReason }}>
+            <RoleDraftsProvider value={roleDrafts}>
               {children}
-            </RoleFieldSaveProvider>
+            </RoleDraftsProvider>
           </RoleListProvider>
         </div>
       </div>
@@ -234,10 +290,12 @@ interface RoleNavRowProps {
   active:        boolean;
   lockReason:    string | null;
   dropIndicator: { noop: boolean } | null;
-  onClick:       () => void;
+  onSelect:      (roleId: number) => void;
 }
 
-function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onClick }: RoleNavRowProps) {
+// Memoized: the layout re-renders on every draft keystroke now that drafts
+// live here, and only the edited role's row actually changes.
+const RoleNavRow = memo(function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onSelect }: RoleNavRowProps) {
   const locked = lockReason !== null;
   const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
 
@@ -252,7 +310,7 @@ function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onC
       ref={(node) => { setGripRef(node); setDropRef(node); }}
       {...(locked ? {} : gripProps)}
       type="button"
-      onClick={onClick}
+      onClick={() => onSelect(role.id)}
       style={{
         ...dragStyle,
         display: "flex", alignItems: "center", gap: "8px", width: "100%",
@@ -287,4 +345,4 @@ function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onC
       )}
     </button>
   );
-}
+});
