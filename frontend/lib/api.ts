@@ -594,6 +594,15 @@ export interface RoleDefinition {
   rank:        number
 }
 
+// Matches RoleReorder — which fields are required depends on drop_type,
+// see core/tournament/roles.compute_new_rank.
+export interface RoleReorderPayload {
+  drop_type:          'join_group' | 'new_rank_between' | 'new_rank_at_top' | 'new_rank_at_bottom'
+  target_group_rank?: number
+  rank_above?:        number
+  rank_below?:        number
+}
+
 export const rolesApi = {
   list: (tournamentId: number) =>
     api.get<Role[]>(`/tournaments/${tournamentId}/roles/`),
@@ -603,6 +612,10 @@ export const rolesApi = {
     api.patch<Role>(`/tournaments/${tournamentId}/roles/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/roles/${id}/`),
+  applyTemplate: (tournamentId: number) =>
+    api.post<Role[]>(`/tournaments/${tournamentId}/roles/apply-template/`, {}),
+  reorder: (tournamentId: number, id: number, body: RoleReorderPayload) =>
+    api.patch<Role>(`/tournaments/${tournamentId}/roles/${id}/reorder/`, body),
 }
 
 // -------------------------------------------------------------------------
