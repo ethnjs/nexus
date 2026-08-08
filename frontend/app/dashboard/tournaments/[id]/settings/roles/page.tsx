@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, memo, useEffect, useMemo, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  DndContext, DragEndEvent, DragOverEvent, PointerSensor,
+  DndContext, DragEndEvent, DragMoveEvent, PointerSensor,
   closestCenter, useDraggable, useDroppable, useSensor, useSensors,
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
@@ -61,8 +61,17 @@ export default function RolesSettingsPage() {
     return lockReason(role) !== null;
   }
 
-  function loadRoles() {
-    rolesApi.list(tournamentId).then(setRoles).catch(() => setLoadError("Failed to load roles."));
+  // Bumped per request so a slow earlier resync can't clobber a newer one.
+  const loadSeq = useRef(0);
+
+  async function loadRoles() {
+    const seq = ++loadSeq.current;
+    try {
+      const next = await rolesApi.list(tournamentId);
+      if (seq === loadSeq.current) setRoles(next);
+    } catch {
+      setLoadError("Failed to load roles.");
+    }
   }
 
   useEffect(() => {
@@ -96,7 +105,11 @@ export default function RolesSettingsPage() {
   // (join/above/below, or a muted "no-op") before the drop actually happens.
   const [dropZone, setDropZone] = useState<{ id: number; zone: DropZoneKind; noop: boolean } | null>(null);
 
-  function handleDragOver(event: DragOverEvent) {
+  // Wired to onDragMove as well as onDragOver: dnd-kit only fires onDragOver
+  // when over.id *changes*, which sampled the zone once per row crossing —
+  // so "above" on the first row and "below" on the last row (and "join"
+  // anywhere) were unreachable, since nothing is ever crossed into there.
+  function handleDragOver(event: DragMoveEvent) {
     const { active, over } = event;
     if (!roles || !over || active.id === over.id) { setDropZone(null); return; }
 
@@ -112,27 +125,41 @@ export default function RolesSettingsPage() {
     const zone: DropZoneKind = relative < 0.3 ? "above" : relative > 0.7 ? "below" : "join";
 
     const action = computeReorderAction(roles, draggedRole, targetRole, zone);
-    setDropZone({ id: targetRole.id, zone, noop: action.noop });
+    // Now runs every pointer move — keep the state object identity stable when
+    // nothing changed so the memoized rows/dividers don't re-render.
+    setDropZone((prev) =>
+      prev && prev.id === targetRole.id && prev.zone === zone && prev.noop === action.noop
+        ? prev
+        : { id: targetRole.id, zone, noop: action.noop },
+    );
   }
 
+  // A drop applied against ranks from before the previous drop's resync would
+  // compute its neighbors from stale data, so drops are serialized.
+  const reordering = useRef(false);
+
   async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
+    const { active } = event;
     const zone = dropZone;
     setDropZone(null);
-    if (!roles || !over || !zone || active.id === over.id) return;
+    if (!roles || !zone || reordering.current) return;
 
     const draggedRole = roles.find((r) => r.id === active.id);
-    const targetRole = roles.find((r) => r.id === over.id);
-    if (!draggedRole || !targetRole) return;
+    // Target comes from the previewed zone, not the drop event's `over`, so
+    // what gets applied is always what the indicator was showing.
+    const targetRole = roles.find((r) => r.id === zone.id);
+    if (!draggedRole || !targetRole || draggedRole.id === targetRole.id) return;
 
     const action = computeReorderAction(roles, draggedRole, targetRole, zone.zone);
     if (action.noop) return;
 
+    reordering.current = true;
     try {
       await rolesApi.reorder(tournamentId, draggedRole.id, action.payload);
     } finally {
       // A rebalance may have shifted other ranks — always resync from the server.
-      loadRoles();
+      await loadRoles();
+      reordering.current = false;
     }
   }
 
@@ -240,6 +267,7 @@ export default function RolesSettingsPage() {
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
+              onDragMove={handleDragOver}
               onDragOver={handleDragOver}
               onDragEnd={handleDragEnd}
               onDragCancel={() => setDropZone(null)}
