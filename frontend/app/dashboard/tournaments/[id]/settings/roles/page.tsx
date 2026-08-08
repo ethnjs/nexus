@@ -280,6 +280,9 @@ export default function RolesSettingsPage() {
                 // the same insertion point.
                 function dividerState(prev: Role | null, next: Role | null): "success" | "noop" | null {
                   if (!dropZone) return null;
+                  // Never light the divider between two roles already tied
+                  // to each other — that boundary is internal to the group.
+                  if (prev && next && prev.rank === next.rank) return null;
                   const matches =
                     (prev && dropZone.id === prev.id && dropZone.zone === "below") ||
                     (next && dropZone.id === next.id && dropZone.zone === "above");
@@ -480,7 +483,7 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
         style={{
           ...dragStyle,
           display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS, alignItems: "center",
-          padding: "10px 8px",
+          padding: "5px 4px",
           borderRadius: "var(--radius-md)",
           borderTop: "2px solid transparent",
           borderBottom: "2px solid transparent",
