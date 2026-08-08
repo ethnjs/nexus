@@ -12,9 +12,6 @@ interface ModalProps {
   width?: number
   closeOnOverlayClick?: boolean
   type?: ModalType
-  /** Merged onto the panel's own style — e.g. maxHeight + display: 'flex',
-   * flexDirection: 'column' so a child can scroll internally via flex: 1,
-   * overflowY: 'auto' instead of the panel growing past the viewport. */
   contentStyle?: React.CSSProperties
 }
 
@@ -53,7 +50,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
     >
       <div
         style={{
-          background: 'var(--color-surface)',
+          background: type === 'danger' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
           border: type === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
           borderRadius: 'var(--radius-lg)',
           padding: '28px',

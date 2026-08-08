@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
+import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import {
@@ -17,9 +18,10 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { IconShield } from "@/components/ui/Icons";
 import { Spinner } from "@/components/ui/Spinner";
+import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
+import { TransferOwnershipModal } from "@/components/tournament/settings/TransferOwnershipModal";
+import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
@@ -55,7 +57,9 @@ function toDraft(t: Tournament): GeneralDraft {
 
 export default function GeneralSettingsPage() {
   const params = useParams();
+  const router = useRouter();
   const tournamentId = Number(params.id);
+  const { user: currentUser } = useAuth();
   const { selectedTournament, setSelectedTournament } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
@@ -64,6 +68,10 @@ export default function GeneralSettingsPage() {
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
+  const [showLeaveModal, setShowLeaveModal] = useState(false);
 
   useEffect(() => {
     if (selectedTournament) setDraft(toDraft(selectedTournament));
@@ -142,130 +150,179 @@ export default function GeneralSettingsPage() {
     );
   }
 
-  if (!canEdit) {
-    return (
-      <div>
-        <PageHeader heading="General" />
-        <EmptyState
-          icon={<IconShield size={24} />}
-          title="No access"
-          description="You don't have permission to manage this tournament's settings."
-        />
-      </div>
-    );
-  }
-
   return (
     <div>
       <PageHeader heading="General" subheading="Tournament Settings"/>
 
-      <SettingsSection title="Details">
-        <SettingsRow label="Name">
-          <Input
-            fullWidth
-            charset="alpha"
-            value={draft.name}
-            onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
-            error={errors.name}
-          />
-        </SettingsRow>
-        <SettingsRow label="Short name">
-          <Input
-            fullWidth
-            charset="alpha"
-            value={draft.short_name}
-            onChange={(e) => setDraft((d) => d && { ...d, short_name: e.target.value })}
-          />
-        </SettingsRow>
-        <SettingsRow label="Location">
-          <Combobox
-            options={universities}
-            getId={(u) => u.id}
-            getLabel={(u) => u.name}
-            getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
-            value={draft.location}
-            onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
-            placeholder="e.g. USC"
-          />
-        </SettingsRow>
-        <SettingsRow label="Dates">
-          <div style={{ display: "flex", gap: "10px" }}>
-            <Input
-              label="Start"
-              type="date"
-              fullWidth
-              value={draft.start_date}
-              onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
-            />
-            <Input
-              label="End"
-              type="date"
-              fullWidth
-              value={draft.end_date}
-              onChange={(e) => setDraft((d) => d && { ...d, end_date: e.target.value })}
-            />
-          </div>
-        </SettingsRow>
-        <SettingsRow label="State">
-          <Combobox
-            options={STATE_OPTIONS}
-            getId={(s) => s}
-            getLabel={(s) => s}
-            allowFreeText={false}
-            value={draft.state}
-            onChange={(_, matched) => setDraft((d) => d && { ...d, state: matched ?? "" })}
-          />
-        </SettingsRow>
-        <SettingsRow label="Level">
-          <Combobox
-            options={LEVEL_OPTIONS}
-            getId={(o) => o.value}
-            getLabel={(o) => o.label}
-            allowFreeText={false}
-            value={LEVEL_OPTIONS.find((o) => o.value === draft.level)?.label ?? ""}
-            onChange={(_, matched) => setDraft((d) => d && { ...d, level: matched?.value ?? "" })}
-          />
-        </SettingsRow>
-        <SettingsRow label="Division" last>
-          <div style={{ display: "flex", gap: "8px" }}>
-            {TOURNAMENT_DIVISIONS.map((d) => (
+      {canEdit && (
+        <>
+          <SettingsSection title="Details">
+            <SettingsRow label="Name">
+              <Input
+                fullWidth
+                charset="alpha"
+                value={draft.name}
+                onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
+                error={errors.name}
+              />
+            </SettingsRow>
+            <SettingsRow label="Short name">
+              <Input
+                fullWidth
+                charset="alpha"
+                value={draft.short_name}
+                onChange={(e) => setDraft((d) => d && { ...d, short_name: e.target.value })}
+              />
+            </SettingsRow>
+            <SettingsRow label="Location">
+              <Combobox
+                options={universities}
+                getId={(u) => u.id}
+                getLabel={(u) => u.name}
+                getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
+                value={draft.location}
+                onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
+                placeholder="e.g. USC"
+              />
+            </SettingsRow>
+            <SettingsRow label="Dates">
+              <div style={{ display: "flex", gap: "10px" }}>
+                <Input
+                  label="Start"
+                  type="date"
+                  fullWidth
+                  value={draft.start_date}
+                  onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
+                />
+                <Input
+                  label="End"
+                  type="date"
+                  fullWidth
+                  value={draft.end_date}
+                  onChange={(e) => setDraft((d) => d && { ...d, end_date: e.target.value })}
+                />
+              </div>
+            </SettingsRow>
+            <SettingsRow label="State">
+              <Combobox
+                options={STATE_OPTIONS}
+                getId={(s) => s}
+                getLabel={(s) => s}
+                allowFreeText={false}
+                value={draft.state}
+                onChange={(_, matched) => setDraft((d) => d && { ...d, state: matched ?? "" })}
+              />
+            </SettingsRow>
+            <SettingsRow label="Level">
+              <Combobox
+                options={LEVEL_OPTIONS}
+                getId={(o) => o.value}
+                getLabel={(o) => o.label}
+                allowFreeText={false}
+                value={LEVEL_OPTIONS.find((o) => o.value === draft.level)?.label ?? ""}
+                onChange={(_, matched) => setDraft((d) => d && { ...d, level: matched?.value ?? "" })}
+              />
+            </SettingsRow>
+            <SettingsRow label="Division" last>
+              <div style={{ display: "flex", gap: "8px" }}>
+                {TOURNAMENT_DIVISIONS.map((d) => (
+                  <Button
+                    key={d}
+                    type="button"
+                    variant={draft.division.includes(d) ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => toggleDivision(d)}
+                  >
+                    {d}
+                  </Button>
+                ))}
+              </div>
+            </SettingsRow>
+          </SettingsSection>
+
+          <SettingsSection title="Visibility">
+            <SettingsRow label="Public directory" helper="Show this tournament in the public directory.">
               <Button
-                key={d}
                 type="button"
-                variant={draft.division.includes(d) ? "primary" : "secondary"}
+                variant={draft.is_public ? "primary" : "secondary"}
                 size="sm"
-                onClick={() => toggleDivision(d)}
+                onClick={() => setDraft((d) => d && { ...d, is_public: !d.is_public })}
               >
-                {d}
+                {draft.is_public ? "Public" : "Private"}
               </Button>
-            ))}
-          </div>
-        </SettingsRow>
+            </SettingsRow>
+            <SettingsRow label="Verification" helper="Get verified by NEXUS admin." last>
+              {selectedTournament.is_verified ? (
+                <Badge variant="confirmed">Verified</Badge>
+              ) : (
+                <Button type="button" variant="secondary" size="sm" disabled>
+                  Request
+                </Button>
+              )}
+            </SettingsRow>
+          </SettingsSection>
+        </>
+      )}
+
+      <SettingsSection title="Danger Zone" variant="danger">
+        {membership?.is_owner ? (
+          <>
+            <SettingsRow label="Transfer ownership" helper="Give another member full ownership of this tournament.">
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
+                  Transfer
+                </Button>
+              </div>
+            </SettingsRow>
+            <SettingsRow label="Delete tournament" helper="Permanently delete this tournament and everything in it." last>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+                  Delete
+                </Button>
+              </div>
+            </SettingsRow>
+          </>
+        ) : (
+          <SettingsRow label="Leave tournament" helper="Remove yourself from this tournament." last>
+            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button type="button" variant="danger" size="md" onClick={() => setShowLeaveModal(true)}>
+                Leave
+              </Button>
+            </div>
+          </SettingsRow>
+        )}
       </SettingsSection>
 
-      <SettingsSection title="Visibility">
-        <SettingsRow label="Public directory" helper="Show this tournament in the public directory.">
-          <Button
-            type="button"
-            variant={draft.is_public ? "primary" : "secondary"}
-            size="sm"
-            onClick={() => setDraft((d) => d && { ...d, is_public: !d.is_public })}
-          >
-            {draft.is_public ? "Public" : "Private"}
-          </Button>
-        </SettingsRow>
-        <SettingsRow label="Verification" helper="Get verified by NEXUS admin." last>
-          {selectedTournament.is_verified ? (
-            <Badge variant="confirmed">Verified</Badge>
-          ) : (
-            <Button type="button" variant="secondary" size="sm" disabled>
-              Request
-            </Button>
-          )}
-        </SettingsRow>
-      </SettingsSection>
+      {canEdit && (
+        <FloatingSaveBar visible={isDirty} saving={saving} error={saveError} onSave={handleSave} onCancel={handleCancel} />
+      )}
 
-      <FloatingSaveBar visible={isDirty} saving={saving} error={saveError} onSave={handleSave} onCancel={handleCancel} />
+      {showDeleteModal && selectedTournament && (
+        <DeleteTournamentModal
+          tournamentId={tournamentId}
+          tournamentName={selectedTournament.name}
+          onClose={() => setShowDeleteModal(false)}
+          onDeleted={() => router.push("/dashboard")}
+        />
+      )}
+
+      {showTransferModal && currentUser && (
+        <TransferOwnershipModal
+          tournamentId={tournamentId}
+          currentUserId={currentUser.id}
+          onClose={() => setShowTransferModal(false)}
+          onTransferred={() => { window.location.href = window.location.pathname; }}
+        />
+      )}
+
+      {showLeaveModal && selectedTournament && (
+        <LeaveTournamentModal
+          tournamentId={tournamentId}
+          tournamentName={selectedTournament.name}
+          onClose={() => setShowLeaveModal(false)}
+          onLeft={() => router.push("/dashboard")}
+        />
+      )}
     </div>
   );
 }
