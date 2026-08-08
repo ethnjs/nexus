@@ -159,7 +159,7 @@ def test_deactivate_join_code_not_found(client, td_user, td_tournament):
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — manage_invites
+# POST /tournaments/{tournament_id}/staff-invites/ — owner only, no admin bypass
 # mock_send_email is autouse (patches email_service._send), so every test
 # here already has it — request it directly to assert on/configure it.
 # ---------------------------------------------------------------------------
@@ -250,6 +250,32 @@ def test_staff_invite_volunteer_forbidden(client, td_user, other_tournament, db)
     login(client, "td@test.com", "tdpass")
     response = client.post(
         f"/tournaments/{other_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 403
+
+
+def test_staff_invite_non_owner_with_manage_invites_forbidden(client, td_user, other_tournament, db):
+    """Owner-only: holding manage_invites via a role isn't enough — only
+    other_tournament's owner (other_user) can send staff invites."""
+    join_code = make_join_code(db, other_tournament.id, td_user.id, code="FORBID02")
+    grant_role(db, other_tournament, td_user, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/staff-invites/",
+        json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
+    )
+    assert response.status_code == 403
+
+
+def test_staff_invite_admin_without_ownership_forbidden(client, admin_user, td_user, td_tournament, db):
+    """No admin bypass here, unlike require_permission() — ownership is
+    checked directly, so even a site admin needs to actually own the
+    tournament."""
+    join_code = make_join_code(db, td_tournament.id, td_user.id, code="FORBID03")
+    login(client, "admin@test.com", "adminpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/staff-invites/",
         json={"join_code_id": join_code.id, "emails": ["a@example.com"]},
     )
     assert response.status_code == 403

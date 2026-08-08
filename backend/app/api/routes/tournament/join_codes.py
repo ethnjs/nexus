@@ -10,7 +10,9 @@ from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
+from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.models import JoinCode, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
@@ -155,7 +157,9 @@ def deactivate_tournament_join_code(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — manage_invites
+# POST /tournaments/{tournament_id}/staff-invites/ — owner only, no admin
+# bypass. Ownership sits above the role/permission system entirely here —
+# unlike require_permission(), this doesn't grant site admins access.
 # Sends one personalized invite email per address via send_staff_invite_emails
 # (parallel, per-recipient — not BCC). join_code_id must already exist; if the
 # TD chose "create new code" in the invite modal, the frontend calls
@@ -171,9 +175,19 @@ async def send_staff_invites(
     tournament_id: int,
     payload: StaffInviteCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_INVITES)),
+    current_user: User = Depends(get_current_user),
 ):
     tournament = get_tournament(tournament_id, db)
+
+    # 404 before 403 — don't leak tournament existence to non-members
+    if not has_any_membership(current_user, tournament_id, db):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+    if tournament.owner_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only the tournament owner can send staff invites",
+        )
+
     require_not_archived(tournament)
 
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
