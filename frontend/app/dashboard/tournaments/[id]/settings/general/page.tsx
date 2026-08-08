@@ -258,22 +258,38 @@ export default function GeneralSettingsPage() {
           </SettingsSection>
 
           <SettingsSection title="Visibility">
-            <SettingsRow label="Public directory" helper="Show this tournament in the public directory.">
-              <Button
-                type="button"
-                variant={draft.is_public ? "primary" : "secondary"}
-                size="sm"
-                disabled={isArchived}
-                onClick={() => setDraft((d) => d && { ...d, is_public: !d.is_public })}
-              >
-                {draft.is_public ? "Public" : "Private"}
-              </Button>
+            <SettingsRow label="Visibility" helper="Public tournaments are discoverable and joinable without a join code.">
+              <div style={{ display: "flex", gap: "8px" }}>
+                <Button
+                  type="button"
+                  variant={draft.is_public ? "primary" : "secondary"}
+                  size="sm"
+                  disabled={isArchived}
+                  onClick={() => setDraft((d) => d && { ...d, is_public: true })}
+                >
+                  Public
+                </Button>
+                <Button
+                  type="button"
+                  variant={!draft.is_public ? "primary" : "secondary"}
+                  size="sm"
+                  disabled={isArchived}
+                  onClick={() => setDraft((d) => d && { ...d, is_public: false })}
+                >
+                  Private
+                </Button>
+              </div>
             </SettingsRow>
-            <SettingsRow label="Verification" helper="Get verified by NEXUS admin." last>
+            <SettingsRow
+              label="Verification"
+              helper="Get verified by NEXUS admin."
+              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+              last
+            >
               {selectedTournament.is_verified ? (
                 <Badge variant="confirmed">Verified</Badge>
               ) : (
-                <Button type="button" variant="secondary" size="sm" disabled>
+                <Button type="button" variant="secondary" size="md" disabled>
                   Request
                 </Button>
               )}
