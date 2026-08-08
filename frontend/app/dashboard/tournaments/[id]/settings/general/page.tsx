@@ -157,6 +157,8 @@ export default function GeneralSettingsPage() {
     );
   }
 
+  const isArchived = selectedTournament.is_archived;
+
   return (
     <div>
       <PageHeader heading="General" subheading="Tournament Settings"/>
@@ -168,6 +170,7 @@ export default function GeneralSettingsPage() {
               <Input
                 fullWidth
                 charset="alpha"
+                locked={isArchived}
                 value={draft.name}
                 onChange={(e) => setDraft((d) => d && { ...d, name: e.target.value })}
                 error={errors.name}
@@ -177,6 +180,7 @@ export default function GeneralSettingsPage() {
               <Input
                 fullWidth
                 charset="alpha"
+                locked={isArchived}
                 value={draft.short_name}
                 onChange={(e) => setDraft((d) => d && { ...d, short_name: e.target.value })}
               />
@@ -190,6 +194,7 @@ export default function GeneralSettingsPage() {
                 value={draft.location}
                 onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
                 placeholder="e.g. USC"
+                disabled={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Dates">
@@ -198,6 +203,7 @@ export default function GeneralSettingsPage() {
                   label="Start"
                   type="date"
                   fullWidth
+                  locked={isArchived}
                   value={draft.start_date}
                   onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
                 />
@@ -205,6 +211,7 @@ export default function GeneralSettingsPage() {
                   label="End"
                   type="date"
                   fullWidth
+                  locked={isArchived}
                   value={draft.end_date}
                   onChange={(e) => setDraft((d) => d && { ...d, end_date: e.target.value })}
                 />
@@ -218,6 +225,7 @@ export default function GeneralSettingsPage() {
                 allowFreeText={false}
                 value={draft.state}
                 onChange={(_, matched) => setDraft((d) => d && { ...d, state: matched ?? "" })}
+                disabled={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Level">
@@ -228,6 +236,7 @@ export default function GeneralSettingsPage() {
                 allowFreeText={false}
                 value={LEVEL_OPTIONS.find((o) => o.value === draft.level)?.label ?? ""}
                 onChange={(_, matched) => setDraft((d) => d && { ...d, level: matched?.value ?? "" })}
+                disabled={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Division" last>
@@ -238,6 +247,7 @@ export default function GeneralSettingsPage() {
                     type="button"
                     variant={draft.division.includes(d) ? "primary" : "secondary"}
                     size="sm"
+                    disabled={isArchived}
                     onClick={() => toggleDivision(d)}
                   >
                     {d}
@@ -253,6 +263,7 @@ export default function GeneralSettingsPage() {
                 type="button"
                 variant={draft.is_public ? "primary" : "secondary"}
                 size="sm"
+                disabled={isArchived}
                 onClick={() => setDraft((d) => d && { ...d, is_public: !d.is_public })}
               >
                 {draft.is_public ? "Public" : "Private"}
@@ -302,7 +313,7 @@ export default function GeneralSettingsPage() {
             helper="Give another member full ownership of this tournament."
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
+            <Button type="button" variant="danger" size="md" disabled={isArchived} onClick={() => setShowTransferModal(true)}>
               Transfer
             </Button>
           </SettingsRow>
@@ -311,11 +322,11 @@ export default function GeneralSettingsPage() {
         {isOwnerOrAdmin && (
           <SettingsRow
             label="Delete tournament"
-            helper="Permanently delete this tournament and everything in it."
+            helper={isArchived ? "Unarchive first to delete this tournament." : "Permanently delete this tournament and everything in it."}
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last={!membership || membership.is_owner}
           >
-            <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+            <Button type="button" variant="danger" size="md" disabled={isArchived} onClick={() => setShowDeleteModal(true)}>
               Delete
             </Button>
           </SettingsRow>

@@ -23,6 +23,7 @@ interface ComboboxProps<T> {
   error?: string
   size?: ComboboxSize
   styleType?: ComboboxStyleType
+  disabled?: boolean
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -42,6 +43,7 @@ export function Combobox<T>({
   error,
   size = 'md',
   styleType = 'primary',
+  disabled = false,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
 
@@ -55,6 +57,7 @@ export function Combobox<T>({
   const dropdownOpen = open && (matches.length > 0 || showCustomRow)
 
   function handleTextChange(text: string) {
+    if (disabled) return
     const t = text.trim().toLowerCase()
     const match = t ? options.find(o => getLabel(o).toLowerCase() === t) ?? null : null
     onChange(text, match)
@@ -82,14 +85,15 @@ export function Combobox<T>({
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={e => handleTextChange(e.target.value)}
-        onFocus={() => setOpen(true)}
+        onFocus={() => !disabled && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         error={displayedError}
         size={size}
         styleType={styleType}
+        locked={disabled}
         fullWidth
       />
-      {dropdownOpen && (
+      {dropdownOpen && !disabled && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
           background: 'var(--color-surface)',
