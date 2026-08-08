@@ -15,6 +15,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import { IconArrowLeft, IconLock, IconGripVertical, IconPlus, IconUserShield } from "@/components/ui/Icons";
+import { RoleFieldSave, RoleFieldSaveProvider } from "./RoleFieldSaveContext";
 
 export default function RoleEditorLayout({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -52,6 +53,27 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
   }, [tournamentId]);
 
   const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
+
+  // The active page (only the [roleId] editor, not /new) registers its own
+  // label/permissions draft here so both it and the nav reorder above share
+  // one save bar instead of popping up two.
+  const [fieldSave, setFieldSave] = useState<RoleFieldSave | null>(null);
+
+  const isDirty = reorder.isDirty || !!fieldSave?.isDirty;
+  const saving = reorder.saving || !!fieldSave?.saving;
+  const error = reorder.error ?? fieldSave?.error;
+
+  async function handleSaveAll() {
+    await Promise.all([
+      reorder.isDirty ? reorder.save() : Promise.resolve(),
+      fieldSave?.isDirty ? fieldSave.save() : Promise.resolve(),
+    ]);
+  }
+
+  function handleCancelAll() {
+    reorder.cancel();
+    fieldSave?.cancel();
+  }
 
   if (membershipLoading || roles === null) {
     return (
@@ -131,16 +153,18 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
         </Card>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          {children}
+          <RoleFieldSaveProvider value={setFieldSave}>
+            {children}
+          </RoleFieldSaveProvider>
         </div>
       </div>
 
       <FloatingSaveBar
-        visible={reorder.isDirty}
-        saving={reorder.saving}
-        error={reorder.error}
-        onSave={reorder.save}
-        onCancel={reorder.cancel}
+        visible={isDirty}
+        saving={saving}
+        error={error}
+        onSave={handleSaveAll}
+        onCancel={handleCancelAll}
       />
     </div>
   );
