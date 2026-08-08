@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { rolesApi, Role } from "@/lib/api";
+import { rolesApi, ApiError, Role } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
+import { defaultNewRoleLabel, nextBottomRank } from "@/lib/roleReorder";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -28,6 +29,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [creatingRole, setCreatingRole] = useState(false);
+  const [createError, setCreateError] = useState<string | undefined>(undefined);
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -88,13 +90,22 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
   // Skips a separate "new role" form — creates a placeholder immediately and
   // drops the user straight into editing it (including reordering it right
-  // there in the nav), same as every other role.
+  // there in the nav), same as every other role. Rank and label are computed
+  // from the current list so clicking this repeatedly without editing the
+  // previous role never collides (same rank would tie them, same label 409s).
   async function handleCreateRole() {
     setCreatingRole(true);
+    setCreateError(undefined);
     try {
-      const role = await rolesApi.create(tournamentId, { label: "New Role", permissions: [], rank: 999999 });
+      const role = await rolesApi.create(tournamentId, {
+        label: defaultNewRoleLabel(roles?.map((r) => r.label) ?? []),
+        permissions: [],
+        rank: nextBottomRank(roles ?? []),
+      });
       await refreshRoles();
       router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`);
+    } catch (err: unknown) {
+      setCreateError(err instanceof ApiError ? err.message : "Failed to create role.");
     } finally {
       setCreatingRole(false);
     }
@@ -140,12 +151,23 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
                 loading={creatingRole}
                 onClick={handleCreateRole}
                 title="New role"
-                style={{ width: "22px", height: "22px", padding: 0 }}
+                style={{ width: "22px", height: "22px", padding: 0, gap: 0 }}
               >
-                <IconPlus size={12} />
+                {/* Button always renders its own spinner when loading — hide
+                    the icon instead of showing both in a 22px square. */}
+                {!creatingRole && <IconPlus size={12} />}
               </Button>
             )}
           </div>
+
+          {createError && (
+            <p style={{
+              fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)",
+              padding: "0 4px 8px",
+            }}>
+              {createError}
+            </p>
+          )}
 
           <DndContext {...reorder.dndProps}>
             <RoleDropDivider state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)} />

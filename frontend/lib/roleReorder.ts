@@ -4,6 +4,24 @@ export type DropZoneKind = "above" | "below" | "join";
 
 export const RANK_STEP = 10;
 
+// Slots a brand-new role in cleanly below every existing role, fitting the
+// normal 10/20/30... scheme instead of an arbitrary placeholder that would
+// tie every un-renumbered new role together at the same rank.
+export function nextBottomRank(roles: Role[]): number {
+  return (roles.length ? Math.max(...roles.map((r) => r.rank)) : 0) + RANK_STEP;
+}
+
+// "New Role", then "New Role 2", "New Role 3"... — the backend rejects
+// duplicate labels, so creating several unedited roles in a row needs unique
+// defaults rather than colliding on the same name.
+export function defaultNewRoleLabel(existingLabels: string[]): string {
+  const taken = new Set(existingLabels);
+  if (!taken.has("New Role")) return "New Role";
+  let n = 2;
+  while (taken.has(`New Role ${n}`)) n++;
+  return `New Role ${n}`;
+}
+
 // Consecutive roles sharing a rank are peers — neither can edit the other
 // (see validate_rank_bound's `rank <= actor_rank`) — so they're treated as one
 // group instead of a flat list.
