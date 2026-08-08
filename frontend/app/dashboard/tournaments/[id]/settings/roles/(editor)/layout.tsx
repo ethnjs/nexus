@@ -52,6 +52,14 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
     rolesApi.list(tournamentId).then(setRoles).catch(() => setRoles([]));
   }, [tournamentId]);
 
+  // The index page already shows a locked "No access" state for this — send
+  // anyone without manage_roles back there instead of letting them sit here.
+  useEffect(() => {
+    if (!membershipLoading && !canManageRoles) {
+      router.replace(`/dashboard/tournaments/${tournamentId}/settings/roles`);
+    }
+  }, [membershipLoading, canManageRoles, router, tournamentId]);
+
   const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
 
   // The active page (only the [roleId] editor, not /new) registers its own
@@ -75,7 +83,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
     fieldSave?.cancel();
   }
 
-  if (membershipLoading || roles === null) {
+  if (membershipLoading || roles === null || !canManageRoles) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
         <Spinner size="lg" />
