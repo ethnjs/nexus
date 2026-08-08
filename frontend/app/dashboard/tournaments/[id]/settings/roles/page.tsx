@@ -96,6 +96,20 @@ export default function RolesSettingsPage() {
     }
   }
 
+  const [creatingRole, setCreatingRole] = useState(false);
+
+  // No separate "new role" form — create a placeholder immediately and drop
+  // the user straight into editing it, same as the nav rail's "+" does.
+  async function handleCreateRole() {
+    setCreatingRole(true);
+    try {
+      const role = await rolesApi.create(tournamentId, { label: "New Role", permissions: [], rank: 999999 });
+      router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`);
+    } finally {
+      setCreatingRole(false);
+    }
+  }
+
   // Dragging only mutates this hook's local draft — nothing hits the network
   // until Save, so no GET round-trip can flash a stale order mid-reorder.
   const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
@@ -143,7 +157,7 @@ export default function RolesSettingsPage() {
                   <Button type="button" variant="primary" size="sm" loading={applying} onClick={handleApplyTemplate}>
                     Apply default template
                   </Button>
-                  <Button type="button" variant="secondary" size="sm" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/new`)}>
+                  <Button type="button" variant="secondary" size="sm" loading={creatingRole} onClick={handleCreateRole}>
                     Create role
                   </Button>
                 </div>
@@ -173,7 +187,8 @@ export default function RolesSettingsPage() {
             {canManageRoles && (
               <Button
                 type="button" variant="primary" size="md"
-                onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/new`)}
+                loading={creatingRole}
+                onClick={handleCreateRole}
               >
                 <IconPlus size={14} /> Create Role
               </Button>

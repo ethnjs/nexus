@@ -21,13 +21,13 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
   const params = useParams();
   const router = useRouter();
   const tournamentId = Number(params.id);
-  // Only present on /settings/roles/[roleId] — undefined on /settings/roles/new.
-  const activeRoleId = params.roleId ? Number(params.roleId) : undefined;
+  const activeRoleId = Number(params.roleId);
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [roles, setRoles] = useState<Role[] | null>(null);
+  const [creatingRole, setCreatingRole] = useState(false);
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -86,6 +86,20 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
     fieldSave?.cancel();
   }
 
+  // Skips a separate "new role" form — creates a placeholder immediately and
+  // drops the user straight into editing it (including reordering it right
+  // there in the nav), same as every other role.
+  async function handleCreateRole() {
+    setCreatingRole(true);
+    try {
+      const role = await rolesApi.create(tournamentId, { label: "New Role", permissions: [], rank: 999999 });
+      await refreshRoles();
+      router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`);
+    } finally {
+      setCreatingRole(false);
+    }
+  }
+
   if (membershipLoading || roles === null || !canManageRoles) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
@@ -123,7 +137,8 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
                 type="button"
                 variant="secondary"
                 size="sm"
-                onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/new`)}
+                loading={creatingRole}
+                onClick={handleCreateRole}
                 title="New role"
                 style={{ width: "22px", height: "22px", padding: 0 }}
               >
