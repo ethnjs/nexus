@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { Input } from "@/components/ui/Input";
-import { Select } from "@/components/ui/Select";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
@@ -485,11 +485,11 @@ export default function EditSheetPage() {
         {/* ── Config fields ── */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
           <Input label="Label" id="label" value={label} onChange={(e) => setLabel(e.target.value)} font="sans" fullWidth />
-          <Select label="Sheet Type" value={sheetType} onChange={(v) => setSheetType(v as SheetType)} options={SHEET_TYPES} fullWidth />
+          <Dropdown label="Sheet Type" value={sheetType} onChange={(v) => setSheetType(v as SheetType)} options={SHEET_TYPES} fullWidth />
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: "16px", alignItems: "end" }}>
-          <Select label="Sheet Tab" value={selectedTab} onChange={handleTabChange} options={availableTabs.map((tab) => ({ value: tab, label: tab }))} fullWidth />
+          <Dropdown label="Sheet Tab" value={selectedTab} onChange={handleTabChange} options={availableTabs.map((tab) => ({ value: tab, label: tab }))} fullWidth />
           <label style={{ display: "flex", alignItems: "center", gap: "8px", height: "44px", cursor: "pointer", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)", flexShrink: 0 }}>
             <input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} style={{ accentColor: "var(--color-accent)", width: "14px", height: "14px" }} />
             Active

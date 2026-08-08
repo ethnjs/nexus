@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -8,7 +8,8 @@ import { Tournament } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
-import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { IconPlus } from "@/components/ui/Icons";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import Link from "next/link";
 
@@ -34,22 +35,9 @@ function tournamentDisplayName(t: Tournament) {
 
 function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }) {
   const router = useRouter();
-  const { tournaments, selectedTournament, setSelectedTournament, refresh } = useTournament();
-  // Not an <a>, so the guard's click intercept can't see it — wrap explicitly.
+  const { tournaments, setSelectedTournament, refresh } = useTournament();
   const { guard } = useUnsavedChanges();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, []);
 
   async function handleCreated(t: Tournament) {
     await refresh();
@@ -58,88 +46,34 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
     router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
 
-  function handleSelect(t: Tournament) {
+  function handleChange(value: string) {
+    const t = tournaments.find((c) => String(c.id) === value);
+    if (!t) return;
     const segment = window.location.pathname.split("/").pop() ?? "overview";
     guard(() => {
       setSelectedTournament(t);
-      setDropdownOpen(false);
       router.push(`/dashboard/tournaments/${t.id}/${segment}`);
     });
   }
 
   return (
     <>
-      <div ref={dropdownRef} style={{ position: "relative" }}>
-        <button
-          onClick={() => setDropdownOpen((v) => !v)}
-          style={{
-            height: "34px", width: "280px", padding: "0 10px",
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
-            background: "var(--color-bg)",
-            display: "flex", alignItems: "center", gap: "8px",
-            fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-            color: "var(--color-text-primary)", cursor: "pointer",
-          }}
-        >
-          <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "left" }}>
-            {selectedTournament ? tournamentDisplayName(selectedTournament) : "Select tournament…"}
-          </span>
-          <IconChevronDown />
-        </button>
-
-        {dropdownOpen && (
-          <div style={{
-            position: "absolute", top: "calc(100% + 6px)", left: 0, width: "280px",
-            background: "var(--color-surface)", border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
-            overflow: "hidden", zIndex: 100,
-          }}>
-            {tournaments.length === 0 && (
-              <p style={{ padding: "12px 16px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-                No tournaments yet
-              </p>
-            )}
-            {tournaments.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => handleSelect(t)}
-                style={{
-                  display: "block", width: "100%", padding: "10px 16px",
-                  border: "none", borderBottom: "1px solid var(--color-border)",
-                  background: String(tournamentId) === String(t.id) ? "var(--color-accent-subtle)" : "transparent",
-                  fontFamily: "var(--font-sans)", fontSize: "13px",
-                  fontWeight: String(tournamentId) === String(t.id) ? 600 : 400,
-                  color: "var(--color-text-primary)", textAlign: "left", cursor: "pointer",
-                }}
-                onMouseEnter={(e) => { if (String(tournamentId) !== String(t.id)) e.currentTarget.style.background = "var(--color-bg)"; }}
-                onMouseLeave={(e) => { if (String(tournamentId) !== String(t.id)) e.currentTarget.style.background = "transparent"; }}
-              >
-                <div>{tournamentDisplayName(t)}</div>
-                {(t.location || t.university?.name) && (
-                  <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
-                    {t.location || t.university?.name}
-                  </div>
-                )}
-              </button>
-            ))}
-            <button
-              onClick={() => { setDropdownOpen(false); setShowNewModal(true); }}
-              style={{
-                display: "flex", alignItems: "center", gap: "8px",
-                width: "100%", padding: "10px 16px",
-                border: "none", background: "transparent",
-                fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-                color: "var(--color-text-primary)", cursor: "pointer",
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <IconPlus />
-              New tournament
-            </button>
-          </div>
-        )}
-      </div>
+      <Dropdown
+        value={String(tournamentId ?? "")}
+        onChange={handleChange}
+        options={tournaments.map((t) => ({
+          value: String(t.id),
+          label: tournamentDisplayName(t),
+          subtitle: t.location || t.university?.name,
+        }))}
+        placeholder="Select tournament…"
+        width={280}
+        searchable={tournaments.length > 8}
+        emptyMessage="No tournaments yet"
+        footerLabel="New tournament"
+        footerIcon={<IconPlus />}
+        onFooterClick={() => setShowNewModal(true)}
+      />
 
       {showNewModal && (
         <NewTournamentModal onClose={() => setShowNewModal(false)} onCreated={handleCreated} />

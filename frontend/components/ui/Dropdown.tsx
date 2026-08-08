@@ -5,53 +5,82 @@ import {
   useRef,
   useEffect,
   useId,
+  ReactNode,
   KeyboardEvent,
 } from 'react'
 import { IconChevronDown } from './Icons'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// TODO(decision): SelectOption.value is string-only. Accepting string | number would require
-// changing SelectProps.value and onChange signature, propagating to all call sites.
+// TODO(decision): DropdownOption.value is string-only. Accepting string | number would require
+// changing DropdownProps.value and onChange signature, propagating to all call sites.
 // Current workaround: convert numbers to string at the call site with String().
-export interface SelectOption {
+export interface DropdownOption {
   value:     string
   label:     string
+  /** Secondary line rendered under the label, e.g. a location or subtitle. */
+  subtitle?: string
   disabled?: boolean
 }
 
-export interface SelectOptionGroup {
+export interface DropdownOptionGroup {
   group:   string
-  options: SelectOption[]
+  options: DropdownOption[]
 }
 
-export type SelectItem = SelectOption | SelectOptionGroup
+export type DropdownItem = DropdownOption | DropdownOptionGroup
 
-function isGroup(item: SelectItem): item is SelectOptionGroup {
+function isGroup(item: DropdownItem): item is DropdownOptionGroup {
   return 'group' in item
 }
 
-function flatOptions(items: SelectItem[]): SelectOption[] {
+function flatOptions(items: DropdownItem[]): DropdownOption[] {
   return items.flatMap((item) => (isGroup(item) ? item.options : [item]))
+}
+
+function matchesQuery(opt: DropdownOption, query: string): boolean {
+  return opt.label.toLowerCase().includes(query) || (opt.subtitle?.toLowerCase().includes(query) ?? false)
+}
+
+// Filters options/groups by query, dropping groups left with no matches.
+function filterItems(items: DropdownItem[], query: string): DropdownItem[] {
+  if (!query) return items
+  return items.flatMap((item): DropdownItem[] => {
+    if (isGroup(item)) {
+      const matched = item.options.filter((o) => matchesQuery(o, query))
+      return matched.length ? [{ ...item, options: matched }] : []
+    }
+    return matchesQuery(item, query) ? [item] : []
+  })
 }
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
-interface SelectProps {
+interface DropdownProps {
   value:        string
   onChange:     (value: string) => void
-  options:      SelectItem[]
+  options:      DropdownItem[]
   label?:       string
   placeholder?: string
   error?:       string
   locked?:      boolean
   fullWidth?:   boolean
   size?:        'sm' | 'md'
-  /** Minimum width of the trigger in px. Useful for sm selects that need a fixed floor. */
+  /** Minimum width of the trigger in px. Useful for sm dropdowns that need a fixed floor. */
   minWidth?:    number
+  /** Fixed width of the trigger (and panel) in px, e.g. for a dropdown that sits in a fixed-width toolbar slot. */
+  width?:       number
   // primary -- var(--color-bg); secondary (default) -- var(--color-surface).
   variant?:     'primary' | 'secondary'
   id?:          string
+  /** Message shown in the panel when there are no options. */
+  emptyMessage?: string
+  /** Shows a search field at the top of the panel that filters options by label/subtitle. */
+  searchable?:   boolean
+  /** Trailing action row rendered below the options, e.g. "+ New tournament". */
+  footerLabel?:  string
+  footerIcon?:   ReactNode
+  onFooterClick?: () => void
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -78,7 +107,7 @@ type PanelPos =
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function Select({
+export function Dropdown({
   value,
   onChange,
   options,
@@ -89,25 +118,38 @@ export function Select({
   fullWidth = false,
   size = 'md',
   minWidth,
-  variant = 'secondary',
+  width,
+  variant = 'primary',
   id,
-}: SelectProps) {
+  emptyMessage,
+  searchable = false,
+  footerLabel,
+  footerIcon,
+  onFooterClick,
+}: DropdownProps) {
   const generatedId               = useId()
   const triggerId                 = id ?? generatedId
   const [open, setOpen]           = useState(false)
   const [focused, setFocused]     = useState(false)
   const [activeIdx, setActiveIdx] = useState<number>(-1)
   const [panelPos, setPanelPos]   = useState<PanelPos | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
   const containerRef              = useRef<HTMLDivElement>(null)
   const triggerRef                = useRef<HTMLButtonElement>(null)
   const listRef                   = useRef<HTMLDivElement>(null)
+  const searchRef                 = useRef<HTMLInputElement>(null)
 
   const sizing    = SIZE_MAP[size]
   const triggerBg = BACKGROUND_MAP[variant]
 
-  const flat         = flatOptions(options)
-  const selected     = flat.find((o) => o.value === value)
-  const displayLabel = selected?.label ?? placeholder
+  // `flat` drives keyboard nav/rendering and narrows as the user searches;
+  // `flatAll` stays unfiltered so the trigger keeps showing the selected
+  // label even after the panel closes with a stale search query.
+  const visibleOptions = searchable ? filterItems(options, searchQuery.trim().toLowerCase()) : options
+  const flat          = flatOptions(visibleOptions)
+  const flatAll        = flatOptions(options)
+  const selected       = flatAll.find((o) => o.value === value)
+  const displayLabel   = selected?.label ?? placeholder
 
   // ── Update panel position — flip upward when not enough space below ───────
 
@@ -127,7 +169,8 @@ export function Select({
   }
 
   useEffect(() => {
-    if (!open) { setPanelPos(null); return }
+    if (!open) { setPanelPos(null); setSearchQuery(''); return }
+    if (searchable) searchRef.current?.focus()
     updatePanelPos()
     window.addEventListener('scroll', updatePanelPos, true)
     window.addEventListener('resize', updatePanelPos)
@@ -172,36 +215,36 @@ export function Select({
 
   // ── Keyboard handling ─────────────────────────────────────────────────────
 
+  function moveActive(direction: 1 | -1) {
+    setActiveIdx((prev) => {
+      let next = prev + direction
+      while (next >= 0 && next < flat.length && flat[next]?.disabled) next += direction
+      return next >= 0 && next < flat.length ? next : prev
+    })
+  }
+
+  function selectActive() {
+    const opt = flat[activeIdx]
+    if (opt && !opt.disabled) { onChange(opt.value); setOpen(false) }
+  }
+
+  // Trigger button: Enter/Space both open the panel and (once open) confirm
+  // the active option, since there's no text field competing for those keys.
   function handleKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
     if (locked) return
     switch (e.key) {
       case 'Enter':
       case ' ':
         e.preventDefault()
-        if (open) {
-          const opt = flat[activeIdx]
-          if (opt && !opt.disabled) { onChange(opt.value); setOpen(false) }
-        } else {
-          setOpen(true)
-        }
+        if (open) { selectActive() } else { setOpen(true) }
         break
       case 'ArrowDown':
         e.preventDefault()
-        if (!open) { setOpen(true); break }
-        setActiveIdx((prev) => {
-          let next = prev + 1
-          while (next < flat.length && flat[next]?.disabled) next++
-          return next < flat.length ? next : prev
-        })
+        if (!open) { setOpen(true) } else { moveActive(1) }
         break
       case 'ArrowUp':
         e.preventDefault()
-        if (!open) { setOpen(true); break }
-        setActiveIdx((prev) => {
-          let next = prev - 1
-          while (next >= 0 && flat[next]?.disabled) next--
-          return next >= 0 ? next : prev
-        })
+        if (!open) { setOpen(true) } else { moveActive(-1) }
         break
       case 'Escape':
         e.preventDefault()
@@ -209,6 +252,30 @@ export function Select({
         break
       case 'Tab':
         setOpen(false)
+        break
+    }
+  }
+
+  // Search field: the panel is already open and the field owns text input,
+  // so Space must stay a literal character — only nav/confirm keys are handled.
+  function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    switch (e.key) {
+      case 'Enter':
+        e.preventDefault()
+        selectActive()
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        moveActive(1)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        moveActive(-1)
+        break
+      case 'Escape':
+        e.preventDefault()
+        setOpen(false)
+        triggerRef.current?.focus()
         break
     }
   }
@@ -231,7 +298,7 @@ export function Select({
         </label>
       )}
 
-      <div ref={containerRef} style={{ position: 'relative', width: fullWidth ? '100%' : undefined }}>
+      <div ref={containerRef} style={{ position: 'relative', width: fullWidth ? '100%' : width ? `${width}px` : undefined }}>
         {/* Trigger */}
         <button
           ref={triggerRef}
@@ -250,16 +317,17 @@ export function Select({
             alignItems:     'center',
             justifyContent: 'space-between',
             gap:            '8px',
-            width:          fullWidth ? '100%' : undefined,
+            width:          fullWidth ? '100%' : width ? `${width}px` : undefined,
             minWidth:       minWidth ? `${minWidth}px` : undefined,
             height:         `${sizing.height}px`,
             padding:        '0 10px',
-            fontFamily:     'var(--font-mono)',
+            fontFamily:     'var(--font-sans)',
             fontSize:       sizing.triggerFontSize,
+            fontWeight:     500,
             color:          selected ? 'var(--color-text-primary)' : 'var(--color-text-tertiary)',
             background:     triggerBg,
             border:         `1px solid ${borderColor}`,
-            borderRadius:   'var(--radius-sm)',
+            borderRadius:   'var(--radius-md)',
             cursor:         locked ? 'not-allowed' : 'pointer',
             opacity:        locked ? 0.6 : 1,
             outline:        'none',
@@ -296,14 +364,40 @@ export function Select({
               zIndex:       9999,
               background:   'var(--color-surface)',
               border:       '1px solid var(--color-border)',
-              borderRadius: 'var(--radius-md)',
+              borderRadius: 'var(--radius-lg)',
               boxShadow:    'var(--shadow-lg)',
-              padding:      '4px',
-              maxHeight:    `${PANEL_MAX_HEIGHT}px`,
-              overflowY:    'auto',
+              overflow:     'hidden',
             }}
           >
-            {options.map((item, groupIdx) => {
+            {searchable && (
+              <div style={{ padding: '6px 8px' }}>
+                <input
+                  ref={searchRef}
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => { setSearchQuery(e.target.value); setActiveIdx(0) }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Search..."
+                  style={{
+                    width: '100%', height: '26px',
+                    padding: '0 8px', boxSizing: 'border-box',
+                    fontFamily: 'var(--font-sans)', fontSize: '12px',
+                    color: 'var(--color-text-primary)',
+                    background: 'var(--color-bg)',
+                    border: '1px solid var(--color-border)',
+                    borderRadius: 'var(--radius-sm)',
+                    outline: 'none',
+                  }}
+                />
+              </div>
+            )}
+            <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: 'auto' }}>
+            {flat.length === 0 && emptyMessage && (
+              <p style={{ padding: '12px 16px', fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-tertiary)' }}>
+                {emptyMessage}
+              </p>
+            )}
+            {visibleOptions.map((item, groupIdx) => {
               if (isGroup(item)) {
                 return (
                   <div key={item.group}>
@@ -333,6 +427,33 @@ export function Select({
                 <OptionRow key={item.value} opt={item} idx={idx} activeIdx={activeIdx} selectedValue={value} size={size} onSelect={(v) => { onChange(v); setOpen(false) }} onHover={setActiveIdx} />
               )
             })}
+            </div>
+
+            {footerLabel && (
+              <>
+                {flat.length > 0 && <div style={{ height: '1px', background: 'var(--color-border)' }} />}
+                <div
+                  role="button"
+                  onClick={() => { onFooterClick?.(); setOpen(false) }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '10px 16px',
+                    fontFamily: 'var(--font-sans)',
+                    fontSize: sizing.optionFontSize,
+                    fontWeight: 500,
+                    color: 'var(--color-text-primary)',
+                    cursor: 'pointer',
+                    userSelect: 'none',
+                    transition: 'background 80ms ease',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg)' }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                >
+                  {footerIcon}
+                  {footerLabel}
+                </div>
+              </>
+            )}
           </div>
         )}
 
@@ -351,7 +472,7 @@ export function Select({
 function OptionRow({
   opt, idx, activeIdx, selectedValue, size, onSelect, onHover,
 }: {
-  opt:           SelectOption
+  opt:           DropdownOption
   idx:           number
   activeIdx:     number
   selectedValue: string
@@ -388,7 +509,14 @@ function OptionRow({
         whiteSpace:     'nowrap',
       }}
     >
-      <span>{opt.label}</span>
+      <div style={{ overflow: 'hidden' }}>
+        <div>{opt.label}</div>
+        {opt.subtitle && (
+          <div style={{ fontSize: '10px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
+            {opt.subtitle}
+          </div>
+        )}
+      </div>
       {isSelected && (
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none" style={{ flexShrink: 0, marginLeft: '8px', color: 'var(--color-accent)' }}>
           <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

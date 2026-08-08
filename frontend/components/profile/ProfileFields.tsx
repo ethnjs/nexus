@@ -1,7 +1,7 @@
 'use client'
 
 import { Input } from "@/components/ui/Input"
-import { Select } from "@/components/ui/Select"
+import { Dropdown } from "@/components/ui/Dropdown"
 import { ButtonGroup } from "@/components/ui/ButtonGroup"
 import { Combobox } from "@/components/ui/Combobox"
 import { Textarea } from "@/components/ui/Textarea"
@@ -43,7 +43,7 @@ interface StudentStatusFieldProps {
 
 export function StudentStatusField({ value, onChange }: StudentStatusFieldProps) {
   return (
-    <Select
+    <Dropdown
       value={value ?? ''}
       onChange={(v) => onChange(v as STUDENT_STATUS)}
       options={[
@@ -114,7 +114,7 @@ interface YearLevelFieldProps {
 
 export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) {
   return (
-    <Select
+    <Dropdown
       value={value !== undefined ? String(value) : ''}
       onChange={(v) => onChange(Number(v))}
       options={[
