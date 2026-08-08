@@ -19,8 +19,12 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 import {
-  IconPlus, IconSearch, IconLock, IconEye, IconEdit, IconTrash, IconGripVertical, IconUser, IconShield,
+  IconPlus, IconSearch, IconLock, IconEye, IconEdit, IconTrash, IconGripVertical, IconUser, IconUserShield,
 } from "@/components/ui/Icons";
+
+// Shared between the header row and each RoleRow so the label/members/actions
+// columns line up: role label, member count, edit+delete buttons.
+const ROLE_ROW_COLUMNS = "1fr 90px 92px";
 
 export default function RolesSettingsPage() {
   const params = useParams();
@@ -132,7 +136,7 @@ export default function RolesSettingsPage() {
       {roles.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
-            icon={<IconShield size={28} />}
+            icon={<IconUserShield size={28} />}
             title="No roles yet"
             description="Start from the default template, or create roles from scratch."
             action={
@@ -180,6 +184,7 @@ export default function RolesSettingsPage() {
 
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginBottom: "16px" }}>
             Members use the permissions of every role they hold. Drag roles to reorder their authority.
+            Roles grouped inside a dashed border share the same rank — they&rsquo;re peers and can&rsquo;t edit each other.
           </p>
 
           {loadError && (
@@ -190,13 +195,14 @@ export default function RolesSettingsPage() {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "flex", justifyContent: "space-between",
-              padding: "12px 8px", fontFamily: "var(--font-sans)", fontSize: "11px",
+              display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS,
+              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
               color: "var(--color-text-tertiary)",
             }}>
               <span>Roles — {roles.length}</span>
-              <span>Members</span>
+              <span style={{ textAlign: "center" }}>Members</span>
+              <span />
             </div>
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -209,9 +215,9 @@ export default function RolesSettingsPage() {
                       flexDirection: "column",
                       gap:          "2px",
                       marginBottom: "6px",
-                      padding:      group.length > 1 ? "4px" : undefined,
-                      border:       group.length > 1 ? "1px dashed var(--color-border-strong)" : undefined,
-                      borderRadius: group.length > 1 ? "var(--radius-md)" : undefined,
+                      padding:      "4px",
+                      border:       group.length > 1 ? "1px dashed var(--color-border-strong)" : "1px solid transparent",
+                      borderRadius: "var(--radius-md)",
                     }}
                   >
                     {group.map((role) => (
@@ -274,6 +280,7 @@ function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRo
     id: role.id,
     disabled: locked,
   });
+  const [hovered, setHovered] = useState(false);
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -284,53 +291,66 @@ function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRo
   return (
     <div
       ref={setNodeRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         ...style,
-        display: "flex", alignItems: "center", gap: "10px",
+        position: "relative",
+        display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS, alignItems: "center",
         padding: "10px 8px",
         borderRadius: "var(--radius-md)",
         borderTop: isOver && !locked ? "2px solid var(--color-success)" : "2px solid transparent",
         cursor: locked ? "not-allowed" : undefined,
       }}
     >
+      {/* Floats outside the row's own padding so it never reserves layout
+          space — locked shows a persistent lock, unlocked fades in on hover. */}
       <span
         {...(locked ? {} : attributes)}
         {...(locked ? {} : listeners)}
         style={{
+          position: "absolute", left: "-16px", top: "50%", transform: "translateY(-50%)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          width: "18px", color: "var(--color-text-tertiary)",
+          color: "var(--color-text-tertiary)",
           cursor: locked ? "not-allowed" : "grab",
+          opacity: locked || hovered ? 1 : 0,
+          pointerEvents: locked || hovered ? "auto" : "none",
+          transition: "opacity 120ms ease",
         }}
       >
         {locked ? <IconLock size={13} /> : <IconGripVertical size={14} />}
       </span>
 
-      <span style={{
-        display: "flex", alignItems: "center", justifyContent: "center",
-        width: "24px", height: "24px", borderRadius: "50%",
-        background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
-        flexShrink: 0,
-      }}>
-        <IconShield size={12} />
-      </span>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+        <span style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: "24px", height: "24px", borderRadius: "50%",
+          background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
+          flexShrink: 0,
+        }}>
+          <IconUserShield size={12} />
+        </span>
 
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>
-        {role.label}
-      </span>
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
+          {role.label}
+        </span>
+      </div>
 
       <span style={{
-        display: "flex", alignItems: "center", gap: "6px",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
         fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)",
-        width: "60px", justifyContent: "flex-end",
       }}>
         {memberCount} <IconUser size={12} />
       </span>
 
-      <div style={{ display: "flex", gap: "6px" }}>
+      <div style={{ display: "flex", gap: "6px", justifySelf: "end" }}>
         <Button type="button" variant="secondary" size="sm" onClick={locked ? onView : onEdit} style={{ padding: "0 10px" }}>
           {locked ? <IconEye size={13} /> : <IconEdit size={13} />}
         </Button>
-        <Button type="button" variant="secondary" size="sm" disabled={locked} onClick={onDelete} style={{ padding: "0 10px" }}>
+        <Button
+          type="button" variant="secondary" size="sm" disabled={locked} onClick={onDelete}
+          style={{ padding: "0 10px", color: "var(--color-danger)" }}
+        >
           <IconTrash size={13} />
         </Button>
       </div>
