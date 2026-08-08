@@ -15,7 +15,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import { IconArrowLeft, IconLock, IconGripVertical, IconPlus, IconUserShield } from "@/components/ui/Icons";
-import { RoleFieldSave, RoleFieldSaveProvider } from "./RoleFieldSaveContext";
+import { RoleFieldSave, RoleFieldSaveProvider, RoleListProvider } from "./RoleFieldSaveContext";
 
 export default function RoleEditorLayout({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -48,9 +48,12 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
   const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
-  useEffect(() => {
-    rolesApi.list(tournamentId).then(setRoles).catch(() => setRoles([]));
+  const refreshRoles = useCallback(async () => {
+    const next = await rolesApi.list(tournamentId).catch(() => []);
+    setRoles(next);
   }, [tournamentId]);
+
+  useEffect(() => { refreshRoles(); }, [refreshRoles]);
 
   // The index page already shows a locked "No access" state for this — send
   // anyone without manage_roles back there instead of letting them sit here.
@@ -161,9 +164,11 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
         </Card>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <RoleFieldSaveProvider value={setFieldSave}>
-            {children}
-          </RoleFieldSaveProvider>
+          <RoleListProvider value={{ roles, refreshRoles, lockReason }}>
+            <RoleFieldSaveProvider value={setFieldSave}>
+              {children}
+            </RoleFieldSaveProvider>
+          </RoleListProvider>
         </div>
       </div>
 

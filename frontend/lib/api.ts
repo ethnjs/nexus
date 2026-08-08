@@ -589,6 +589,33 @@ export type Permission =
   | 'manage_events'
   | 'manage_invites'
 
+export const ALL_PERMISSIONS: Permission[] = [
+  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites',
+]
+
+export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
+  manage_tournament: {
+    label: 'Manage Tournament',
+    description: 'Edit tournament settings and view the audit log.',
+  },
+  manage_roles: {
+    label: 'Manage Roles',
+    description: 'Create, edit, and delete role definitions, and reorder rank.',
+  },
+  manage_members: {
+    label: 'Manage Members',
+    description: 'View and manage the member roster, and assign roles to members.',
+  },
+  manage_events: {
+    label: 'Manage Events',
+    description: 'Create and manage events, assign events to buildings, add event shifts, and manage event start and end times.',
+  },
+  manage_invites: {
+    label: 'Manage Invites',
+    description: 'Create invite links to the tournament and manage existing ones.',
+  },
+}
+
 export interface RoleDefinition {
   label:       string
   permissions: Permission[]
