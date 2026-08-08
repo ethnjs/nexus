@@ -29,6 +29,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import os
+    scheduler = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
         from app.db.session import SessionLocal
         from app.db.seed_canon_events import seed_events_and_categories
@@ -42,7 +43,22 @@ async def lifespan(app: FastAPI):
             init_db()
             with SessionLocal() as db:
                 seed_dev_data(db)
+
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from app.core.tournament.scheduler import archive_ended_tournaments
+
+        def _run_archive_job():
+            with SessionLocal() as db:
+                archive_ended_tournaments(db)
+
+        scheduler = BackgroundScheduler()
+        scheduler.add_job(_run_archive_job, "cron", hour=0, minute=5, id="archive_ended_tournaments")
+        scheduler.start()
+
     yield
+
+    if scheduler is not None:
+        scheduler.shutdown(wait=False)
 
 
 app = FastAPI(

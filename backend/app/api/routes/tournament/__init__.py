@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
@@ -198,6 +198,7 @@ def archive_tournament(
         )
 
     tournament.is_archived = True
+    tournament.archive_override_at = None
 
     log_action(
         db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
@@ -242,6 +243,9 @@ def unarchive_tournament(
             )
 
     tournament.is_archived = False
+    
+    if has_ended:
+        tournament.archive_override_at = datetime.now(timezone.utc)
 
     log_action(
         db, tournament_id, current_user.id, TOURNAMENT_UNARCHIVED,

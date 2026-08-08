@@ -24,21 +24,9 @@ def utcnow():
 
 
 # ---------------------------------------------------------------------------
-# UserSession
-# Backs authentication — replaces the previous stateless JWT so sessions can
-# be listed and individually or collectively revoked (e.g. "log out
-# everywhere" in account settings).
-#
-# token_hash uses a fast hash (SHA-256), not bcrypt — unlike VerificationToken,
-# this gets checked on every authenticated request. The raw token is already
-# high-entropy random, so slow adaptive hashing isn't needed here and would
-# add unacceptable per-request latency. Lookup is a direct indexed equality
-# match, not a loop-and-verify like consume_verification_token.
-#
-# Fixed 7-day expiration from creation — no sliding renewal. last_active_at
-# is updated on a throttle (not every request), purely for the "active Xh
-# ago" display in the settings device list — it's not used in expiration
-# or validity checks, only revoked_at + expires_at are.
+# UserSession — backs auth, lets sessions be listed/revoked individually.
+# token_hash is SHA-256 (fast, checked every request), not bcrypt.
+# last_active_at is display-only, not used in validity checks.
 # ---------------------------------------------------------------------------
 class UserSession(Base):
     __tablename__ = "sessions"
@@ -59,17 +47,9 @@ class UserSession(Base):
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
-# Verification Token
-# Backs signup email verification, email-change, and password reset.
-# One raw token is emailed to the user; only its hash is stored here.
-#
-# purpose: "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
-#   new_email is only ever set for "email_change" and "email_change_revert" rows.
-#   For "email_change_revert" it's overloaded to mean "the email this token
-#   reverts TO" (i.e. the pre-takeover address), not "the new email".
-#
-# On create, any prior unconsumed row for the same (user_id, purpose) is
-# marked used_at (stale-token guarding) — see app/core/verification_tokens.py.
+# VerificationToken — backs signup verify, email-change, password reset.
+# Only the hash is stored; raw token is emailed. new_email is set for
+# email_change* purposes only (for revert, it's the address to revert TO).
 # ---------------------------------------------------------------------------
 class VerificationToken(Base):
     __tablename__ = "verification_tokens"
@@ -88,21 +68,8 @@ class VerificationToken(Base):
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
-# University
-# A master lookup registry of standardized post-secondary institutions.
-#
-# Serves as the single source of truth across the platform to eliminate free-text
-# inconsistency (e.g., preventing "OSU" vs "Ohio State University"). Both User
-# profiles and Tournaments reference this table to establish structural ties.
-#
-# unique constraints:
-#   name: The full official name of the institution (e.g., "Stanford University").
-#
-# nullable fields:
-#   abbreviation: Common shorthand or acronym (e.g., "MIT", "UCB") used for
-#     compact UI rendering, dashboard badges, and quick search indexing.
-#   location: General geographic descriptor (e.g., "Berkeley, CA") used to provide
-#     context on proximity for tournament planning or regional chapter groupings.
+# University — canonical lookup table so free-text names ("OSU" vs "Ohio
+# State University") don't fragment. Referenced by both User and Tournament.
 # ---------------------------------------------------------------------------
 class University(Base):
     __tablename__ = "universities"
@@ -155,19 +122,9 @@ class Event(Base):
 
 
 # ---------------------------------------------------------------------------
-# User
-# Core identity — volunteers, TDs, and admins all live here.
-#
-# role = "admin" | "user"
-#   "admin" — superuser, bypasses all tournament-level permission checks.
-#             Used for testing and platform management. Can still hold
-#             memberships in tournaments like any other user.
-#   "user"  — everyone else. Tournament-level access is determined by
-#             TournamentMembershipRole assignments and the permissions
-#             defined on each TournamentRole.
-#
-# Volunteers synced from sheets have hashed_password=None and cannot log in
-# until the volunteer login phase is built.
+# User — core identity for volunteers, TDs, and admins.
+# role="admin" bypasses all tournament permission checks; "user" is gated by
+# TournamentMembershipRole. Sheet-synced volunteers have hashed_password=None.
 # ---------------------------------------------------------------------------
 class User(Base):
     __tablename__ = "users"
@@ -244,9 +201,7 @@ class UserCompetitionExperience(Base):
     event = relationship("Event", back_populates="user_competition_experience")
 
 # ---------------------------------------------------------------------------
-# Volunteer Experience
-# 
-# NOTE: manual entry only, auto-populate NEXUS tournament history onto user's profile
+# UserVolunteerExperience — manual entry only for now
 # ---------------------------------------------------------------------------
 class UserVolunteerExperience(Base):
     __tablename__ = "user_volunteer_experience"
@@ -260,10 +215,7 @@ class UserVolunteerExperience(Base):
     event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
     role = Column(String(63), nullable=False)
     
-    # keys: "event", "other"
-    #   - "event" only on manual add, for custom event names (doesn't exist in cannonical list)
-    #   - "other" extra notes from user on their experience
-    notes = Column(JSON, nullable=True)
+    notes = Column(JSON, nullable=True)  # {"event": custom name, "other": free notes}
 
     user = relationship("User", back_populates="volunteer_experience")
     event = relationship("Event", back_populates="user_volunteer_experience")
@@ -288,29 +240,24 @@ class Tournament(Base):
     level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
     division = Column(JSON, nullable=False, default=list)       # "A" | "B" | "C"
 
-    # The user who created this tournament.
-    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # creator
 
-    # TD-controlled — whether this tournament shows up in the public directory
-    # (as upcoming, not necessarily verified). False = invite-only via
-    # JoinCode.
+    # TD-controlled — shows in the public directory. False = invite-only.
     is_public = Column(Boolean, nullable=False, default=False)
 
-    # Platform-admin-only — manually flipped after reviewing a tournament.
-    # Never settable by the tournament's own TD. Independent of is_public: a
-    # tournament can be public but not yet verified.
+    # Admin-only, independent of is_public — a tournament can be public but
+    # not yet verified.
     is_verified = Column(Boolean, nullable=False, default=False)
 
-    # Independent of is_public — orthogonal, not a third visibility state.
-    # Blocks all POST/PATCH/DELETE across this tournament's routes and drops it 
-    # from public listing regardless of is_public, so history stays immutable. 
-    # Owner can unarchive; auto-archived tournaments past end_date can only be 
-    # unarchived by an admin.
+    # Read-only history — blocks writes, drops from public listing. Owner can
+    # unarchive; admin-only once past end_date. Independent of is_public.
     is_archived = Column(Boolean, nullable=False, default=False)
 
-    # Gates join/visibility behavior — load-bearing, unlike the informational
-    # deadlines that live in TournamentDeadline.
-    registration_opens_at = Column(DateTime(timezone=True), nullable=True)
+    # Set on a past-due unarchive so the daily job (tournament/scheduler.py)
+    # won't re-archive it. Cleared on re-archive.
+    archive_override_at = Column(DateTime(timezone=True), nullable=True)
+
+    registration_opens_at = Column(DateTime(timezone=True), nullable=True)  # gates joining, unlike TournamentDeadline
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -332,11 +279,9 @@ class Tournament(Base):
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
 
 
-# Exactly one of university_id/location must be set (XOR). Checked once on
-# the final in-memory state right before flush, not per-attribute — a
-# @validates hook would reject the (necessarily invalid) intermediate state
-# hit while swapping from one source to the other, regardless of which
-# field gets assigned first.
+# Exactly one of university_id/location (XOR). Checked at flush, not
+# per-attribute, so swapping one for the other doesn't hit a false-invalid
+# intermediate state.
 @event.listens_for(Tournament, "before_insert")
 @event.listens_for(Tournament, "before_update")
 def _validate_tournament_source(mapper, connection, target: Tournament):
@@ -348,21 +293,9 @@ def _validate_tournament_source(mapper, connection, target: Tournament):
         raise ValueError("Tournament must have only one of university_id or location, not both.")
 
 # ---------------------------------------------------------------------------
-# Tournament Membership
-# Links a User to a Tournament — their full volunteer record for that event.
-#
-# Title(s) + permission level within this tournament are now driven by
-# TournamentMembershipRole (see `roles` relationship below), not a JSON
-# column — see TournamentRole/TournamentMembershipRole.
-#
-# schedule: day-of block assignments (e.g. [{"block": 1, "duty": "event_supervisor"}])
-#   Only populated for volunteers with day-of duties. One entry per block.
-#   duty is a free string, typically a role key.
-#
-# Tournament-specific free-form data (e.g. general_volunteer_interest, transportation,
-# carpool_seats, t-shirt preferences, etc.) lives in extra_data. There's no
-# structured schema for these keys currently — that's redesigned later as
-# part of a separate forms system.
+# TournamentMembership — links a User to a Tournament (their volunteer
+# record). Roles/permissions come from TournamentMembershipRole, not a
+# column here. Misc form data lives in extra_data (no schema yet).
 # ---------------------------------------------------------------------------
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
@@ -378,21 +311,15 @@ class TournamentMembership(Base):
         Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
     )
 
-    # How this membership was created — "join_code" | "public" | "manual"
-    # ("manual" = staff added directly, incl. owner-on-creation and sync
-    # import; slated for removal once manual add-by-staff goes away)
-    source = Column(String(32), nullable=False)
+    source = Column(String(32), nullable=False)  # "join_code" | "public" | "manual"
 
-    # Which code was redeemed, if source == "join_code". Null for public
-    # self-joins. SET NULL on code deletion so history survives the code.
+    # Join code redeemed, if source=="join_code". SET NULL on code delete so
+    # history survives.
     join_code_id = Column(
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
     )
 
-    # Day-of block schedule — [{block: int, duty: str}, ...]
-    # One entry per block. duty is a free string (typically a role key).
-    # e.g. [{"block": 1, "duty": "event_supervisor"}, {"block": 7, "duty": "scoring"}]
-    schedule = Column(JSON, nullable=True)
+    schedule = Column(JSON, nullable=True)  # [{block, duty}, ...] — day-of assignments
 
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
@@ -403,22 +330,11 @@ class TournamentMembership(Base):
     # Specific event names they prefer — ["Boomilever", "Hovercraft"]
     event_preference = Column(JSON, nullable=True)
 
-    # Normalized availability — [{date, start, end}, ...]
-    # Parsed from form at sync time to match block format for easy comparison
-    availability = Column(JSON, nullable=True)
-
-    # Lunch order — stored as JSON dict for structured orders
-    # e.g. {"protein": "Chicken", "drink": "Coke"}
-    # or simple string for single-field lunch orders
-    lunch_order = Column(JSON, nullable=True)
+    availability = Column(JSON, nullable=True)  # [{date, start, end}, ...], normalized to block format
+    lunch_order = Column(JSON, nullable=True)   # dict for structured orders, or a plain string
 
     notes = Column(Text, nullable=True)
-
-    # Catch-all for tournament-specific fields — e.g. transportation,
-    # carpool_seats, general_volunteer_interest, dietary restrictions
-    # override, etc. No structured schema for these keys currently; that's
-    # redesigned later as part of a separate forms system.
-    extra_data = Column(JSON, nullable=True)
+    extra_data = Column(JSON, nullable=True)  # catch-all form fields, no schema yet
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -444,24 +360,16 @@ class TournamentMembership(Base):
         
         return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 21)
     
-    # TODO: Add @is_over_18.expression / @is_over_21.expression using date-arithmetic
-    # (dob + interval '18 years' <= tournament.start_date) so tournament directors can
-    # filter registrations server-side instead of client-side. Needed once dashboard
-    # moves age filtering to backend / registration lists get large enough to paginate.
+    # TODO: add .expression variants for server-side age filtering once needed.
 
     __table_args__ = (
-        # One membership per user per tournament
         UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
     )
 
 
 # ---------------------------------------------------------------------------
-# Tournament Role
-# Relational replacement for Tournament.volunteer_schema["positions"]. Each row
-# is one role definable by a TD for their tournament (e.g. "Tournament
-# Director", "Test Writer") carrying a fixed set of permission strings and a
-# rank used to bound staff-management actions (see TournamentMembershipRole, Step 7 of
-# the roles/permissions rebuild).
+# TournamentRole — one row per TD-definable role (e.g. "Test Writer"),
+# carrying permission strings and a rank that bounds staff-management actions.
 # ---------------------------------------------------------------------------
 class TournamentRole(Base):
     __tablename__ = "tournament_roles"
@@ -470,17 +378,12 @@ class TournamentRole(Base):
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     label = Column(String(255), nullable=False)        # human-readable name
 
-    # List of permission strings from ALL_PERMISSIONS in core/permissions.py.
-    # Kept as JSON rather than a junction table deliberately — permissions are a
-    # small, fixed, code-defined enum (adding one requires a deploy, not a runtime
-    # action), so there's no relational benefit to normalizing them, and a junction
-    # table would add a join to the permission-check hot path for no query gain.
+    # Strings from ALL_PERMISSIONS (core/permissions.py). JSON, not a junction
+    # table — permissions are a small fixed enum, no relational benefit.
     permissions = Column(JSON, nullable=False, default=list)
 
-    # Lower number = higher authority. Ties are allowed and expected (e.g. the
-    # four coordinator roles all share a rank). Used to bound what a MANAGE_ROLES
-    # holder can assign/remove. The tournament Owner is NOT a role and has no
-    # rank; it sits structurally above rank 1.
+    # Lower = higher authority; ties allowed. Bounds what MANAGE_ROLES can
+    # touch. Owner isn't a role — sits above rank 1 structurally.
     rank = Column(Integer, nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -495,11 +398,7 @@ class TournamentRole(Base):
 
 
 # ---------------------------------------------------------------------------
-# Tournament Membership Role
-# Join table assigning a TournamentRole to a TournamentMembership. Replacement
-# for TournamentMembership.positions (JSON array of role key strings). Named
-# with the "Tournament" prefix to avoid ambiguity with ChapterMembership's
-# own role/permission concept.
+# TournamentMembershipRole — join table: TournamentRole <-> TournamentMembership.
 # ---------------------------------------------------------------------------
 class TournamentMembershipRole(Base):
     __tablename__ = "tournament_membership_roles"
@@ -517,19 +416,9 @@ class TournamentMembershipRole(Base):
 
 
 # ---------------------------------------------------------------------------
-# Join Code
-# Invite-link mechanism shared by tournaments (is_public=False, and as an
-# optional recruiting channel for public ones) and alumni chapters. Exactly
-# one of tournament_id/chapter_id is set — enforced by ck_join_code_one_target
-# — so `code` is globally unique and a single /join lookup can resolve which
-# onboarding flow to send someone through without checking two tables.
-#
-# Redeeming a tournament code creates a bare TournamentMembership with no
-# roles attached and status="interested" — staff assign roles afterward.
-# Redeeming a chapter code creates a ChapterMembership with role="member"
-# directly, since chapters don't have a staff-assignment step.
-# is_active is fully manual for now; whether a code should auto-deactivate
-# once a registration deadline passes is deferred.
+# JoinCode — shared invite-link mechanism for tournaments and chapters.
+# Exactly one of tournament_id/chapter_id is set (ck_join_code_one_target),
+# so a single /join lookup resolves the right onboarding flow.
 # ---------------------------------------------------------------------------
 class JoinCode(Base):
     __tablename__ = "join_codes"
@@ -638,11 +527,7 @@ class SheetConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# AlumniChapter
-# Regional organizations or networks where alumni coordinate and connect.
-#
-# A chapter defines a specific geographic hub (e.g., "Bay Area"). It acts
-# as the parent container for both regional leadership roles and local events.
+# AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
 # ---------------------------------------------------------------------------
 
 class AlumniChapter(Base):
@@ -661,12 +546,7 @@ class AlumniChapter(Base):
 
 
 # ---------------------------------------------------------------------------
-# ChapterMembership
-# Explicit join table managing the connection between users and chapters.
-#
-# Tracks the structural relationship determining which alumni belong to
-# which regional hub. It provides the database anchor for user-chapter
-# association, serving as the foundation for assigning leadership positions.
+# ChapterMembership — join table, User <-> AlumniChapter.
 # ---------------------------------------------------------------------------
 
 class ChapterMembership(Base):
@@ -674,10 +554,8 @@ class ChapterMembership(Base):
 
     id = Column(Integer, primary_key=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    # unique=True on user_id, so users can only join one chapter at DataBase level
-    role = Column(String(32), nullable=False, default="member")
-    # "lead", | "officer" | "member"
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
+    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
     joined_at = Column(DateTime(timezone=True), default=utcnow)
 
     # Relationships
@@ -687,11 +565,7 @@ class ChapterMembership(Base):
 
 
 # ---------------------------------------------------------------------------
-# TournamentChapter
-# Junction table mapping AlumniChapters to affiliated Tournaments.
-#
-# Enables a many-to-many relationship tracking which alumni chapters are
-# supporting, hosting, or participating in specific Science Olympiad tournaments.
+# TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
 # ---------------------------------------------------------------------------
 
 class TournamentChapter(Base):
