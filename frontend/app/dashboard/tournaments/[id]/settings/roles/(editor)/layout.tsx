@@ -9,11 +9,12 @@ import { rolesApi, Role } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
-import { IconLock, IconGripVertical, IconPlus, IconUserShield } from "@/components/ui/Icons";
+import { IconArrowLeft, IconLock, IconGripVertical, IconPlus, IconUserShield } from "@/components/ui/Icons";
 
 export default function RoleEditorLayout({ children }: { children: ReactNode }) {
   const params = useParams();
@@ -66,6 +67,38 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
         <Card radius="lg" style={{ width: "260px", flexShrink: 0, padding: "8px" }}>
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "4px 4px 8px", marginBottom: "4px", borderBottom: "1px solid var(--color-border)",
+          }}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`)}
+              style={{
+                padding: "4px 6px",
+                fontSize: "11px", fontWeight: 700,
+                letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-secondary)",
+              }}
+            >
+              <IconArrowLeft size={12} /> Back
+            </Button>
+
+            {canManageRoles && (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/new`)}
+                title="New role"
+                style={{ width: "22px", height: "22px", padding: 0 }}
+              >
+                <IconPlus size={12} />
+              </Button>
+            )}
+          </div>
+
           <DndContext {...reorder.dndProps}>
             <RoleDropDivider state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)} />
             {reorder.groups.map((group, gi) => (
@@ -95,22 +128,6 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
               </Fragment>
             ))}
           </DndContext>
-
-          {canManageRoles && (
-            <button
-              type="button"
-              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/new`)}
-              style={{
-                display: "flex", alignItems: "center", gap: "8px", width: "100%",
-                marginTop: "4px", padding: "8px", border: "none", background: "transparent",
-                borderRadius: "var(--radius-md)", cursor: "pointer",
-                fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              <IconPlus size={14} /> New Role
-            </button>
-          )}
         </Card>
 
         <div style={{ flex: 1, minWidth: 0 }}>
