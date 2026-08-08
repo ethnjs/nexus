@@ -334,7 +334,6 @@ function RoleRow({ role, lockReason, memberCount, onView, onEdit, onDelete }: Ro
           padding: "10px 8px",
           borderRadius: "var(--radius-md)",
           borderTop: isOver && !locked ? "2px solid var(--color-success)" : "2px solid transparent",
-          cursor: locked ? "not-allowed" : undefined,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
