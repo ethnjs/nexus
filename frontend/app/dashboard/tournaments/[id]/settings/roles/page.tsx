@@ -201,16 +201,31 @@ export default function RolesSettingsPage() {
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={filteredRoles.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-                {filteredRoles.map((role) => (
-                  <RoleRow
-                    key={role.id}
-                    role={role}
-                    locked={isLocked(role)}
-                    memberCount={memberCounts[role.id] ?? 0}
-                    onView={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
-                    onEdit={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
-                    onDelete={() => setDeleteTarget(role)}
-                  />
+                {groupByRank(filteredRoles).map((group) => (
+                  <div
+                    key={group[0].id}
+                    style={{
+                      display:      "flex",
+                      flexDirection: "column",
+                      gap:          "2px",
+                      marginBottom: "6px",
+                      padding:      group.length > 1 ? "4px" : undefined,
+                      border:       group.length > 1 ? "1px dashed var(--color-border-strong)" : undefined,
+                      borderRadius: group.length > 1 ? "var(--radius-md)" : undefined,
+                    }}
+                  >
+                    {group.map((role) => (
+                      <RoleRow
+                        key={role.id}
+                        role={role}
+                        locked={isLocked(role)}
+                        memberCount={memberCounts[role.id] ?? 0}
+                        onView={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
+                        onEdit={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
+                        onDelete={() => setDeleteTarget(role)}
+                      />
+                    ))}
+                  </div>
                 ))}
               </SortableContext>
             </DndContext>
@@ -230,6 +245,19 @@ export default function RolesSettingsPage() {
       )}
     </div>
   );
+}
+
+// Consecutive roles sharing a rank are peers — neither can edit the other
+// (see validate_rank_bound's `rank <= actor_rank`) — so they're rendered as
+// one visually clustered group instead of a flat list.
+function groupByRank(roles: Role[]): Role[][] {
+  const groups: Role[][] = [];
+  for (const role of roles) {
+    const last = groups[groups.length - 1];
+    if (last && last[0].rank === role.rank) last.push(role);
+    else groups.push([role]);
+  }
+  return groups;
 }
 
 interface RoleRowProps {
