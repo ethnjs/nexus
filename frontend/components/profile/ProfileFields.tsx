@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/ui/Input"
 import { Select } from "@/components/ui/Select"
-import { RadioGroup } from "@/components/ui/RadioGroup"
+import { ButtonGroup } from "@/components/ui/ButtonGroup"
 import { Combobox } from "@/components/ui/Combobox"
 import { Textarea } from "@/components/ui/Textarea"
 import { STUDENT_STATUS, SHIRT_SIZE, University } from "@/lib/api"
@@ -173,25 +173,21 @@ export function EmployerField({ value, onChange, error }: EmployerFieldProps) {
 // Yes/No toggle (used for competed-before / volunteered-before / has-dietary)
 // -------------------------------------------------------------------------
 interface YesNoFieldProps {
-  name: string
   value: boolean | null
   onChange: (value: boolean) => void
-  disabled?: boolean
+  locked?: boolean
 }
 
-export function YesNoField({ name, value, onChange, disabled }: YesNoFieldProps) {
+export function YesNoField({ value, onChange, locked }: YesNoFieldProps) {
   return (
-    <RadioGroup
-      name={name}
-      value={value === true ? "yes" : value === false ? "no" : null}
-      onChange={(v) => onChange(v === "yes")}
+    <ButtonGroup
       options={[
         { value: "yes", label: "Yes" },
         { value: "no", label: "No" },
       ]}
-      showCircle={false}
-      solid
-      disabled={disabled}
+      value={value === true ? "yes" : value === false ? "no" : ""}
+      onChange={(v) => onChange(v === "yes")}
+      locked={locked}
     />
   )
 }
@@ -206,13 +202,10 @@ interface ShirtSizeFieldProps {
 
 export function ShirtSizeField({ value, onChange }: ShirtSizeFieldProps) {
   return (
-    <RadioGroup
-      name="shirt"
-      value={value ?? null}
-      onChange={(v) => onChange(v as SHIRT_SIZE)}
+    <ButtonGroup
       options={["XS", "S", "M", "L", "XL", "XXL"].map((size) => ({ value: size, label: size }))}
-      showCircle={false}
-      solid
+      value={value ?? ""}
+      onChange={(v) => onChange(v as SHIRT_SIZE)}
     />
   )
 }

@@ -22,7 +22,7 @@ import { Modal } from "@/components/ui/Modal";
 import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
 import { Input } from "@/components/ui/Input";
 import { StepIndicator } from "@/components/ui/StepIndicator";
-import { RadioOption } from "@/components/ui/RadioOption";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
 import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
@@ -521,19 +521,23 @@ export default function NewSheetPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
             <div>
               <label style={fieldLabelStyle}>Sheet Tab</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {validateResult.sheet_names.map((name) => (
-                  <RadioOption key={name} name="sheet_name" value={name} checked={selectedSheet === name} onChange={setSelectedSheet} label={name} mono />
-                ))}
-              </div>
+              <ButtonGroup
+                direction="column"
+                fullWidth
+                options={validateResult.sheet_names.map((name) => ({ value: name, label: name }))}
+                value={selectedSheet ?? ""}
+                onChange={setSelectedSheet}
+              />
             </div>
             <div>
               <label style={fieldLabelStyle}>Sheet Type</label>
-              <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                {SHEET_TYPES.map(({ value, label, description }) => (
-                  <RadioOption key={value} name="sheet_type" value={value} checked={sheetType === value} onChange={(v) => setSheetType(v as SheetType)} label={label} description={description} />
-                ))}
-              </div>
+              <ButtonGroup
+                direction="column"
+                fullWidth
+                options={SHEET_TYPES}
+                value={sheetType}
+                onChange={(v) => setSheetType(v as SheetType)}
+              />
             </div>
           </div>
 

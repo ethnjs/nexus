@@ -513,14 +513,13 @@ export default function OnboardingPage() {
               >
                 <div>
                   <YesNoField
-                    name="competed"
                     value={effectiveHasCompetitionExp ? true : (profileData.has_competition_experience ?? null)}
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_competition_experience: val }));
                       if (state >= STATE.COMPETED_BEFORE + 2) return;
                       setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
                     }}
-                    disabled={competitionLocked}
+                    locked={competitionLocked}
                   />
                   {competitionLocked && (
                     <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -568,14 +567,13 @@ export default function OnboardingPage() {
               >
                 <div>
                   <YesNoField
-                    name="volunteered"
                     value={effectiveHasVolunteerExp ? true : (profileData.has_volunteer_experience ?? null)}
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
                       if (state >= STATE.SHIRT_SIZE) return;
                       setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
                     }}
-                    disabled={volunteerLocked}
+                    locked={volunteerLocked}
                   />
                   {volunteerLocked && (
                     <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -639,7 +637,6 @@ export default function OnboardingPage() {
                   isActive={state === STATE.DIETARY_RESTRICTIONS}
                 >
                   <YesNoField
-                    name="dietary"
                     value={hasDietary}
                     onChange={(val) => {
                       setHasDietary(val);

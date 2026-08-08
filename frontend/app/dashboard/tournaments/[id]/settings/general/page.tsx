@@ -16,6 +16,7 @@ import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow"
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Badge } from "@/components/ui/Badge";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Spinner } from "@/components/ui/Spinner";
@@ -242,45 +243,23 @@ export default function GeneralSettingsPage() {
               />
             </SettingsRow>
             <SettingsRow label="Division" last>
-              <div style={{ display: "flex", gap: "8px" }}>
-                {TOURNAMENT_DIVISIONS.map((d) => (
-                  <Button
-                    key={d}
-                    type="button"
-                    variant={draft.division.includes(d) ? "primary" : "secondary"}
-                    size="sm"
-                    disabled={isArchived}
-                    onClick={() => toggleDivision(d)}
-                  >
-                    {d}
-                  </Button>
-                ))}
-              </div>
+              <ButtonGroup
+                options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
+                value={draft.division}
+                onChange={(v) => toggleDivision(v as TournamentDivision)}
+                locked={isArchived}
+              />
             </SettingsRow>
           </SettingsSection>
 
           <SettingsSection title="Visibility">
             <SettingsRow label="Visibility" helper="Public tournaments are discoverable and joinable without a join code.">
-              <div style={{ display: "flex", gap: "8px" }}>
-                <Button
-                  type="button"
-                  variant={draft.is_public ? "primary" : "secondary"}
-                  size="sm"
-                  disabled={isArchived}
-                  onClick={() => setDraft((d) => d && { ...d, is_public: true })}
-                >
-                  Public
-                </Button>
-                <Button
-                  type="button"
-                  variant={!draft.is_public ? "primary" : "secondary"}
-                  size="sm"
-                  disabled={isArchived}
-                  onClick={() => setDraft((d) => d && { ...d, is_public: false })}
-                >
-                  Private
-                </Button>
-              </div>
+              <ButtonGroup
+                options={[{ value: "public", label: "Public" }, { value: "private", label: "Private" }]}
+                value={draft.is_public ? "public" : "private"}
+                onChange={(v) => setDraft((d) => d && { ...d, is_public: v === "public" })}
+                locked={isArchived}
+              />
             </SettingsRow>
             <SettingsRow
               label="Verification"

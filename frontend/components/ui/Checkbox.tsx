@@ -1,7 +1,6 @@
 'use client'
 
-// Native input + accentColor, matching RadioOption's approach rather than a
-// fully custom control like Toggle.
+// Native input + accentColor, rather than a fully custom control like Toggle.
 interface CheckboxProps {
   checked:  boolean
   onChange: (checked: boolean) => void
