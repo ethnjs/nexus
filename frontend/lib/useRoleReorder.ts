@@ -47,7 +47,28 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  useEffect(() => { setDraft(roles ?? []); setError(undefined); }, [roles]);
+  // True on mount and right after this hook's own save — a clean reset onto
+  // the new `roles` is correct there. Any other `roles` change (e.g. another
+  // part of the page creating a role) means someone else's action shouldn't
+  // silently discard an in-progress unsaved drag — merge instead: keep the
+  // draft's pending order for roles still present, append anything new.
+  const expectResetRef = useRef(true);
+
+  useEffect(() => {
+    const source = roles ?? [];
+    setDraft((prevDraft) => {
+      if (expectResetRef.current) {
+        expectResetRef.current = false;
+        return source;
+      }
+      const sourceIds = new Set(source.map((r) => r.id));
+      const draftIds = new Set(prevDraft.map((r) => r.id));
+      const kept = prevDraft.filter((r) => sourceIds.has(r.id));
+      const added = source.filter((r) => !draftIds.has(r.id));
+      return [...kept, ...added];
+    });
+    setError(undefined);
+  }, [roles]);
 
   // Drag handlers read live values through refs so their identity stays stable
   // across the many re-renders a single drag causes.
@@ -138,6 +159,7 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     try {
       const updated = await rolesApi.reorderBulk(tournamentId, changes);
       // Adopt the server's ranks as the new baseline instead of re-GETting.
+      expectResetRef.current = true;
       const ranks = new Map(updated.map((r) => [r.id, r.rank]));
       onSaved?.(draftRef.current.map((r) => {
         const rank = ranks.get(r.id);
