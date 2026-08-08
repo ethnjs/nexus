@@ -17,10 +17,12 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.roles import compute_new_rank, rebalance_tournament_ranks, validate_rank_bound, validate_role_action
+from app.core.tournament.roles import validate_rank_bound, validate_role_action
 from app.db.session import get_db
 from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, User
-from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleReorder, RoleUpdate
+from app.schemas.tournament.role import (
+    RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleRead, RoleUpdate,
+)
 from app.schemas.tournament.membership import MembershipSlimResponse
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
@@ -70,6 +72,49 @@ def apply_default_role_template(
     for role in roles:
         db.refresh(role)
     return roles
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/roles/reorder-bulk/ — manage_roles (rank-bound)
+# Final ranks are computed client-side (drag-and-drop preview); this just
+# validates rank-bound authority and applies them atomically.
+# Registered before "/{role_id}/" so the literal path always wins.
+# ---------------------------------------------------------------------------
+@router.patch("/reorder-bulk/", response_model=list[RoleRead])
+def reorder_roles_bulk(
+    tournament_id: int,
+    payload: RoleBulkReorder,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_ROLES)),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    roles_by_id = {
+        item.role_id: get_scoped_or_404(db, TournamentRole, item.role_id, tournament_id, "Role")
+        for item in payload.roles
+    }
+
+    changes = []
+    for item in payload.roles:
+        role = roles_by_id[item.role_id]
+        # Both the current and destination rank must be within the actor's authority.
+        validate_rank_bound(current_user, tournament, role.rank, db)
+        validate_rank_bound(current_user, tournament, item.rank, db)
+        if role.rank != item.rank:
+            changes.append({"role_id": role.id, "label": role.label, "old": role.rank, "new": item.rank})
+            role.rank = item.rank
+
+    if changes:
+        log_action(
+            db, tournament_id, current_user.id, ROLE_UPDATED,
+            target_type="role", extra_data={"bulk_reorder": changes},
+        )
+
+    db.commit()
+    for role in roles_by_id.values():
+        db.refresh(role)
+    return [roles_by_id[item.role_id] for item in payload.roles]
 
 
 # ---------------------------------------------------------------------------
@@ -186,64 +231,6 @@ def update_role(
             db, tournament_id, current_user.id, ROLE_UPDATED,
             target_type="role", target_id=role.id,
             extra_data={"changes": changes},
-        )
-
-    db.commit()
-    db.refresh(role)
-    return role
-
-
-# ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/roles/{role_id}/reorder/ — manage_roles (rank-bound)
-# Drag-to-reorder in the sidebar editor. Body carries drop_type plus whatever
-# neighbor rank values the frontend has on hand (see RoleReorder). If there's
-# no integer room between the neighbors, rebalances the whole tournament's
-# ranks to 10/20/30... first, translates the request's rank values through
-# the rebalance's remap, and retries once.
-# ---------------------------------------------------------------------------
-@router.patch("/{role_id}/reorder/", response_model=RoleRead)
-def reorder_role(
-    tournament_id: int,
-    role_id: int,
-    payload: RoleReorder,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_ROLES)),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-
-    role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
-    old_rank = role.rank  # captured before a possible rebalance mutates it
-    # The role's current rank must also be one the actor is allowed to touch —
-    # not just the rank it's moving to (a role currently outranking the actor
-    # shouldn't be movable just because the destination rank happens to be low).
-    validate_rank_bound(current_user, tournament, old_rank, db)
-
-    kwargs = {
-        k: v for k, v in payload.model_dump(exclude={"drop_type"}).items()
-        if v is not None
-    }
-
-    new_rank = compute_new_rank(payload.drop_type, **kwargs)
-    if new_rank is None or new_rank <= 0:
-        remap = rebalance_tournament_ranks(db, tournament_id)
-        db.flush()
-        kwargs = {k: remap.get(v, v) for k, v in kwargs.items()}
-        new_rank = compute_new_rank(payload.drop_type, **kwargs)
-        if new_rank is None or new_rank <= 0:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Unable to compute a rank for this position",
-            )
-
-    validate_rank_bound(current_user, tournament, new_rank, db)
-    role.rank = new_rank
-
-    if old_rank != new_rank:
-        log_action(
-            db, tournament_id, current_user.id, ROLE_UPDATED,
-            target_type="role", target_id=role.id,
-            extra_data={"changes": [{"field": "rank", "old": old_rank, "new": new_rank}]},
         )
 
     db.commit()

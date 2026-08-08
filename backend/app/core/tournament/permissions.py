@@ -61,11 +61,8 @@ ALL_PERMISSIONS: list[str] = [
 # empty state.
 #
 # Rank tiers (lower = higher authority; sparse gaps of 10 to leave room for
-# drag-to-reorder without a full rebalance — see core/roles.py):
-#   10: Tournament Director
-#   20: Volunteer/Test/Materials/Logistics Coordinator, Runner, Scoremaster
-#   30: Lead Event Supervisor
-#   40: Event Supervisor, Scoring, Arbitrations, Awards, Test Writer/Reviewer
+# drag-to-reorder without a full rebalance)
+# 
 # Owner is NOT in this list — it's never a role, it's Tournament.owner_id.
 # ---------------------------------------------------------------------------
 
@@ -86,58 +83,48 @@ DEFAULT_ROLES: list[dict] = [
         "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES],
     },
     {
-        "label":       "Materials Coordinator",
-        "rank":        20,
-        "permissions": [],
-    },
-    {
-        "label":       "Logistics Coordinator",
-        "rank":        20,
-        "permissions": [],
-    },
-    {
         "label":       "Runner",
-        "rank":        20,
-        "permissions": [],
-    },
-    {
-        "label":       "Scoremaster",
-        "rank":        20,
-        "permissions": [],
-    },
-    {
-        "label":       "Lead Event Supervisor",
         "rank":        30,
         "permissions": [],
     },
     {
-        "label":       "Volunteer",
+        "label":       "Scoremaster",
+        "rank":        30,
+        "permissions": [],
+    },
+    {
+        "label":       "Lead Event Supervisor",
         "rank":        40,
+        "permissions": [],
+    },
+    {
+        "label":       "Volunteer",
+        "rank":        50,
         "permissions": [],
     },
     {
         "label":       "Scoring",
-        "rank":        40,
+        "rank":        50,
         "permissions": [],
     },
     {
         "label":       "Arbitrations",
-        "rank":        40,
+        "rank":        50,
         "permissions": [],
     },
     {
         "label":       "Awards",
-        "rank":        40,
+        "rank":        50,
         "permissions": [],
     },
     {
         "label":       "Test Writer",
-        "rank":        40,
+        "rank":        50,
         "permissions": [],
     },
     {
         "label":       "Test Reviewer",
-        "rank":        40,
+        "rank":        50,
         "permissions": [],
     },
 ]
