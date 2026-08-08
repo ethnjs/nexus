@@ -267,28 +267,36 @@ export default function GeneralSettingsPage() {
       <SettingsSection title="Danger Zone" variant="danger">
         {membership?.is_owner ? (
           <>
-            <SettingsRow label="Transfer ownership" helper="Give another member full ownership of this tournament.">
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
-                  Transfer
-                </Button>
-              </div>
+            <SettingsRow
+              label="Transfer ownership"
+              helper="Give another member full ownership of this tournament."
+              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+            >
+              <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
+                Transfer
+              </Button>
             </SettingsRow>
-            <SettingsRow label="Delete tournament" helper="Permanently delete this tournament and everything in it." last>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
-                  Delete
-                </Button>
-              </div>
+            <SettingsRow
+              label="Delete tournament"
+              helper="Permanently delete this tournament and everything in it."
+              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+              last
+            >
+              <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+                Delete
+              </Button>
             </SettingsRow>
           </>
         ) : (
-          <SettingsRow label="Leave tournament" helper="Remove yourself from this tournament." last>
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button type="button" variant="danger" size="md" onClick={() => setShowLeaveModal(true)}>
-                Leave
-              </Button>
-            </div>
+          <SettingsRow
+            label="Leave tournament"
+            helper="Remove yourself from this tournament."
+            contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+            last
+          >
+            <Button type="button" variant="danger" size="md" onClick={() => setShowLeaveModal(true)}>
+              Leave
+            </Button>
           </SettingsRow>
         )}
       </SettingsSection>

@@ -1,14 +1,15 @@
-import { ReactNode } from "react";
+import { CSSProperties, ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 
 interface SettingsRowProps {
-  label:    string;
-  helper?:  string;
-  children: ReactNode;
-  last?:    boolean;
+  label:        string;
+  helper?:      string;
+  children:     ReactNode;
+  last?:        boolean;
+  contentStyle?: CSSProperties;
 }
 
-export function SettingsRow({ label, helper, children, last = false }: SettingsRowProps) {
+export function SettingsRow({ label, helper, children, last = false, contentStyle }: SettingsRowProps) {
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "24px",
@@ -25,7 +26,7 @@ export function SettingsRow({ label, helper, children, last = false }: SettingsR
           </div>
         )}
       </div>
-      <div style={{ flex: 1, maxWidth: "360px" }}>
+      <div style={{ flex: 1, maxWidth: "360px", ...contentStyle }}>
         {children}
       </div>
     </div>

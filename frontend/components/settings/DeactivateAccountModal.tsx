@@ -38,7 +38,7 @@ export function DeactivateAccountModal({ onClose }: DeactivateAccountModalProps)
   }
 
   return (
-    <Modal title="Deactivate account" onClose={onClose}>
+    <Modal title="Deactivate account" onClose={onClose} type="danger">
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           Your account will be deactivated and every session signed out. This is reversible —

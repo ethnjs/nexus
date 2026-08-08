@@ -275,19 +275,24 @@ export default function AccountSettingsPage() {
       </SettingsSection>
 
       <SettingsSection title="Danger zone" variant="danger">
-        <SettingsRow label="Deactivate account" helper="Temporarily disable your account. Contact support to reactivate.">
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
-              Deactivate
-            </Button>
-          </div>
+        <SettingsRow
+          label="Deactivate account"
+          helper="Temporarily disable your account. Contact support to reactivate."
+          contentStyle={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}
+        >
+          <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
+            Deactivate
+          </Button>
         </SettingsRow>
-        <SettingsRow label="Delete account" helper="Permanently delete your account and all associated data. This cannot be undone." last>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
-              Delete
-            </Button>
-          </div>
+        <SettingsRow
+          label="Delete account"
+          helper="Permanently delete your account and all associated data. This cannot be undone."
+          contentStyle={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}
+          last
+        >
+          <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+            Delete
+          </Button>
         </SettingsRow>
       </SettingsSection>
 

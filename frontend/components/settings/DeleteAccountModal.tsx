@@ -40,7 +40,7 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
 
   if (step === "warning") {
     return (
-      <Modal title="Delete account" onClose={onClose}>
+      <Modal title="Delete account" onClose={onClose} type="danger">
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
             This permanently deletes your account and everything tied to it. It cannot be undone.
@@ -60,7 +60,7 @@ export function DeleteAccountModal({ onClose }: DeleteAccountModalProps) {
   }
 
   return (
-    <Modal title="Delete account" onClose={onClose}>
+    <Modal title="Delete account" onClose={onClose} type="danger">
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           Enter your password and type <strong>{CONFIRM_PHRASE}</strong> to permanently delete your account.
