@@ -289,70 +289,77 @@ function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRo
   };
 
   return (
+    // Negative margin + matching padding pulls the box's left edge out into
+    // the gutter where the grip floats, so that space is part of this
+    // element's own hit-test box — hovering toward the grip no longer
+    // crosses a "dead zone" that would fire onMouseLeave before it arrives.
     <div
-      ref={setNodeRef}
+      style={{ position: "relative", marginLeft: "-31px", paddingLeft: "31px", boxSizing: "border-box" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        ...style,
-        position: "relative",
-        display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS, alignItems: "center",
-        padding: "10px 8px",
-        borderRadius: "var(--radius-md)",
-        borderTop: isOver && !locked ? "2px solid var(--color-success)" : "2px solid transparent",
-        cursor: locked ? "not-allowed" : undefined,
-      }}
     >
-      {/* Floats outside the row's own padding so it never reserves layout
-          space — locked shows a persistent lock, unlocked fades in on hover. */}
       <span
         {...(locked ? {} : attributes)}
         {...(locked ? {} : listeners)}
         style={{
-          position: "absolute", left: "-16px", top: "50%", transform: "translateY(-50%)",
+          position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
           display: "flex", alignItems: "center", justifyContent: "center",
-          color: "var(--color-text-tertiary)",
+          width: "25px", height: "25px",
+          border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
+          background: "var(--color-surface)", color: "var(--color-text-tertiary)",
           cursor: locked ? "not-allowed" : "grab",
           opacity: locked || hovered ? 1 : 0,
           pointerEvents: locked || hovered ? "auto" : "none",
           transition: "opacity 120ms ease",
         }}
       >
-        {locked ? <IconLock size={13} /> : <IconGripVertical size={14} />}
+        {locked ? <IconLock size={12} /> : <IconGripVertical size={16} />}
       </span>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+      <div
+        ref={setNodeRef}
+        style={{
+          ...style,
+          display: "grid", gridTemplateColumns: ROLE_ROW_COLUMNS, alignItems: "center",
+          padding: "10px 8px",
+          borderRadius: "var(--radius-md)",
+          borderTop: isOver && !locked ? "2px solid var(--color-success)" : "2px solid transparent",
+          cursor: locked ? "not-allowed" : undefined,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+          <span style={{
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "24px", height: "24px", borderRadius: "50%",
+            background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
+            flexShrink: 0,
+          }}>
+            <IconUserShield size={12} />
+          </span>
+
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
+            {role.label}
+          </span>
+        </div>
+
         <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: "24px", height: "24px", borderRadius: "50%",
-          background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
-          flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
+          fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)",
         }}>
-          <IconUserShield size={12} />
+          {memberCount} <IconUser size={12} />
         </span>
 
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
-          {role.label}
-        </span>
-      </div>
-
-      <span style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: "6px",
-        fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)",
-      }}>
-        {memberCount} <IconUser size={12} />
-      </span>
-
-      <div style={{ display: "flex", gap: "6px", justifySelf: "end" }}>
-        <Button type="button" variant="secondary" size="sm" onClick={locked ? onView : onEdit} style={{ padding: "0 10px" }}>
-          {locked ? <IconEye size={13} /> : <IconEdit size={13} />}
-        </Button>
-        <Button
-          type="button" variant="secondary" size="sm" disabled={locked} onClick={onDelete}
-          style={{ padding: "0 10px", color: "var(--color-danger)" }}
-        >
-          <IconTrash size={13} />
-        </Button>
+        <div style={{ display: "flex", gap: "6px", justifySelf: "end" }}>
+          <Button type="button" variant="secondary" size="sm" onClick={locked ? onView : onEdit} style={{ padding: "0 10px" }}>
+            {locked ? <IconEye size={13} /> : <IconEdit size={13} />}
+          </Button>
+          <Button
+            type="button" variant="secondary" size="sm" disabled={locked} onClick={onDelete}
+            style={{ padding: "0 10px", color: "var(--color-danger)" }}
+          >
+            <IconTrash size={13} />
+          </Button>
+        </div>
       </div>
     </div>
   );
