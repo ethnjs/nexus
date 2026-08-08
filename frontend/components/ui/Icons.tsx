@@ -170,6 +170,46 @@ export function IconDotsVertical({ size = 16, ...props }: IconProps) {
   );
 }
  
+export function IconLock({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconEye({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <path d="M1 8s2.5-5 7-5 7 5 7 5-2.5 5-7 5-7-5-7-5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+      <circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+export function IconSearch({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M13.5 13.5l-2.8-2.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconGripVertical({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <circle cx="6" cy="3.5" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="3.5" r="1.1" fill="currentColor" />
+      <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="6" cy="12.5" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="12.5" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconExport({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
