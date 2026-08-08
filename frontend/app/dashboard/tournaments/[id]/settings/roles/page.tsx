@@ -17,6 +17,7 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 import {
   IconPlus, IconSearch, IconLock, IconEye, IconEdit, IconTrash, IconGripVertical, IconUser, IconUserShield,
@@ -49,11 +50,17 @@ export default function RolesSettingsPage() {
     return Math.min(...membership.roles.map((r) => r.rank));
   }, [membership]);
 
+  // Returns why a role can't be edited, or null if it's editable.
+  function lockReason(role: Role): string | null {
+    if (!canManageRoles) return "You don't have permission to manage roles.";
+    if (isAdmin || isOwner) return null;
+    if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
+    if (role.rank <= ownRank) return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
+    return null;
+  }
+
   function isLocked(role: Role): boolean {
-    if (!canManageRoles) return true;
-    if (isAdmin || isOwner) return false;
-    if (ownRank === null) return true;
-    return role.rank <= ownRank;
+    return lockReason(role) !== null;
   }
 
   function loadRoles() {
@@ -224,7 +231,7 @@ export default function RolesSettingsPage() {
                       <RoleRow
                         key={role.id}
                         role={role}
-                        locked={isLocked(role)}
+                        lockReason={lockReason(role)}
                         memberCount={memberCounts[role.id] ?? 0}
                         onView={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
                         onEdit={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`)}
@@ -268,14 +275,15 @@ function groupByRank(roles: Role[]): Role[][] {
 
 interface RoleRowProps {
   role:         Role;
-  locked:       boolean;
+  lockReason:   string | null;
   memberCount:  number;
   onView:       () => void;
   onEdit:       () => void;
   onDelete:     () => void;
 }
 
-function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRowProps) {
+function RoleRow({ role, lockReason, memberCount, onView, onEdit, onDelete }: RoleRowProps) {
+  const locked = lockReason !== null;
   const { attributes, listeners, setNodeRef, transform, transition, isDragging, isOver } = useSortable({
     id: role.id,
     disabled: locked,
@@ -298,23 +306,25 @@ function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRo
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <span
-        {...(locked ? {} : attributes)}
-        {...(locked ? {} : listeners)}
-        style={{
-          position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: "25px", height: "25px",
-          border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-          background: "var(--color-surface)", color: "var(--color-text-tertiary)",
-          cursor: locked ? "not-allowed" : "grab",
-          opacity: locked || hovered ? 1 : 0,
-          pointerEvents: locked || hovered ? "auto" : "none",
-          transition: "opacity 120ms ease",
-        }}
-      >
-        {locked ? <IconLock size={12} /> : <IconGripVertical size={16} />}
-      </span>
+      {!locked && (
+        <span
+          {...attributes}
+          {...listeners}
+          style={{
+            position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            width: "25px", height: "25px",
+            border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
+            background: "var(--color-surface)", color: "var(--color-text-tertiary)",
+            cursor: "grab",
+            opacity: hovered ? 1 : 0,
+            pointerEvents: hovered ? "auto" : "none",
+            transition: "opacity 120ms ease",
+          }}
+        >
+          <IconGripVertical size={16} />
+        </span>
+      )}
 
       <div
         ref={setNodeRef}
@@ -336,6 +346,14 @@ function RoleRow({ role, locked, memberCount, onView, onEdit, onDelete }: RoleRo
           }}>
             <IconUserShield size={12} />
           </span>
+
+          {locked && (
+            <Tooltip variant="info" message={lockReason} showIcon={false}>
+              <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+                <IconLock size={13} />
+              </span>
+            </Tooltip>
+          )}
 
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
             {role.label}
