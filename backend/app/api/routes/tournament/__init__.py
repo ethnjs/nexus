@@ -1,8 +1,12 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, log_action
+from app.core.tournament.audit import (
+    OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED, log_action,
+)
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
@@ -198,7 +202,6 @@ def archive_tournament(
     log_action(
         db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
         target_type="tournament", target_id=tournament.id,
-        extra_data={"is_archived": True},
     )
 
     db.commit()
@@ -207,7 +210,11 @@ def archive_tournament(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/unarchive/ — owner or admin only
+# POST /tournaments/{tournament_id}/unarchive/ — owner or admin, admin-only
+# once the tournament has ended. A tournament past its end_date was (or will
+# be) auto-archived as a historical record — only an admin can pull it back
+# out, same as the doc's "rare case" framing. One still archived ahead of its
+# end_date (a manual archive) stays owner-unarchivable.
 # ---------------------------------------------------------------------------
 @router.post("/{tournament_id}/unarchive/", response_model=TournamentRead)
 def unarchive_tournament(
@@ -220,18 +227,25 @@ def unarchive_tournament(
     if not has_any_membership(current_user, tournament_id, db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    if current_user.role != "admin" and tournament.owner_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only the tournament owner can unarchive this tournament",
-        )
+    has_ended = tournament.end_date is not None and tournament.end_date < date.today()
+
+    if current_user.role != "admin":
+        if has_ended:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only an admin can unarchive a tournament that has already ended",
+            )
+        if tournament.owner_id != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only the tournament owner can unarchive this tournament",
+            )
 
     tournament.is_archived = False
 
     log_action(
-        db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
+        db, tournament_id, current_user.id, TOURNAMENT_UNARCHIVED,
         target_type="tournament", target_id=tournament.id,
-        extra_data={"is_archived": False},
     )
 
     db.commit()
