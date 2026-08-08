@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { ApiError, MembershipSlim, membershipsApi } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Spinner } from "@/components/ui/Spinner";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { IconSearch } from "@/components/ui/Icons";
@@ -65,23 +67,16 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
           Select members to add to role <strong>{roleLabel}</strong>.
         </p>
 
-        <div style={{ position: "relative" }}>
-          <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--color-text-tertiary)" }}>
-            <IconSearch size={14} />
-          </span>
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search members"
-            autoFocus
-            style={{
-              width: "100%", height: "36px", paddingLeft: "34px", paddingRight: "12px", boxSizing: "border-box",
-              fontFamily: "var(--font-sans)", fontSize: "13px",
-              background: "var(--color-bg)", border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)", outline: "none",
-            }}
-          />
-        </div>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search members"
+          icon={<IconSearch size={14} />}
+          font="sans"
+          size="sm"
+          fullWidth
+          autoFocus
+        />
 
         <div style={{ height: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}>
           {candidates === null ? (
@@ -100,12 +95,12 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
               <label
                 key={m.id}
                 style={{
-                  display: "flex", alignItems: "center", gap: "10px", padding: "6px 4px",
+                  display: "flex", alignItems: "center", gap: "10px", padding: "6px 4px 6px 12px",
                   borderRadius: "var(--radius-md)", cursor: "pointer",
                   background: checked ? "var(--color-accent-subtle)" : "transparent",
                 }}
               >
-                <input type="checkbox" checked={checked} onChange={() => toggle(m.id)} />
+                <Checkbox checked={checked} onChange={() => toggle(m.id)} />
                 <AvatarCircle user={m.user} size={28} />
                 <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>

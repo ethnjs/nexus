@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, InputHTMLAttributes, ChangeEvent, useId } from 'react'
+import { forwardRef, InputHTMLAttributes, ChangeEvent, ReactNode, useId } from 'react'
 
 type InputFont  = 'sans' | 'mono' | 'serif'
 type InputSize  = 'xs' | 'sm' | 'md'
@@ -18,6 +18,8 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   styleType?: InputStyleType
   locked?:    boolean
   charset?:   InputCharset
+  /** Leading icon (e.g. a search glyph) rendered inside the field's left edge. */
+  icon?:      ReactNode
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -46,7 +48,7 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, charset, onChange, inputMode, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -77,38 +79,48 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </label>
         )}
-        <input
-          ref={ref}
-          id={inputId}
-          required={required}
-          disabled={locked || disabled}
-          inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
-          onChange={handleChange}
-          style={{
-            height: sizing.height,
-            paddingLeft: sizing.paddingX,
-            paddingRight: sizing.paddingX,
-            fontFamily: FONT_MAP[font],
-            fontSize: sizing.fontSize,
-            background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[styleType],
-            color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
-            border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
-            borderRadius: 'var(--radius-md)',
-            outline: 'none',
-            width: fullWidth ? '100%' : undefined,
-            cursor: locked ? 'not-allowed' : undefined,
-            transition: 'border-color 150ms ease',
-          }}
-          onFocus={e => {
-            e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
-          }}
-          onBlur={e => {
-            e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
-          }}
-          className={className}
-          value={value ?? ''}
-          {...props}
-        />
+        <div style={{ position: 'relative', width: fullWidth ? '100%' : undefined }}>
+          {icon && (
+            <span style={{
+              position: 'absolute', left: sizing.paddingX, top: '50%', transform: 'translateY(-50%)',
+              display: 'flex', color: 'var(--color-text-tertiary)', pointerEvents: 'none',
+            }}>
+              {icon}
+            </span>
+          )}
+          <input
+            ref={ref}
+            id={inputId}
+            required={required}
+            disabled={locked || disabled}
+            inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
+            onChange={handleChange}
+            style={{
+              height: sizing.height,
+              paddingLeft: icon ? `calc(${sizing.paddingX} * 2 + 14px)` : sizing.paddingX,
+              paddingRight: sizing.paddingX,
+              fontFamily: FONT_MAP[font],
+              fontSize: sizing.fontSize,
+              background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[styleType],
+              color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
+              border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
+              borderRadius: 'var(--radius-md)',
+              outline: 'none',
+              width: fullWidth ? '100%' : undefined,
+              cursor: locked ? 'not-allowed' : undefined,
+              transition: 'border-color 150ms ease',
+            }}
+            onFocus={e => {
+              e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
+            }}
+            onBlur={e => {
+              e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
+            }}
+            className={className}
+            value={value ?? ''}
+            {...props}
+          />
+        </div>
         {error && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
             {error}

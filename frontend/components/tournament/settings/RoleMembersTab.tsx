@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ApiError, MembershipSlim, Role, membershipsApi } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconSearch, IconX } from "@/components/ui/Icons";
@@ -56,20 +57,15 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-        <div style={{ position: "relative", flex: 1 }}>
-          <span style={{ position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "var(--color-text-tertiary)" }}>
-            <IconSearch size={14} />
-          </span>
-          <input
+        <div style={{ flex: 1 }}>
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search members"
-            style={{
-              width: "100%", height: "36px", paddingLeft: "34px", paddingRight: "12px", boxSizing: "border-box",
-              fontFamily: "var(--font-sans)", fontSize: "13px",
-              background: "var(--color-surface)", border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)", outline: "none",
-            }}
+            icon={<IconSearch size={14} />}
+            font="sans"
+            size="sm"
+            fullWidth
           />
         </div>
         {!locked && (
