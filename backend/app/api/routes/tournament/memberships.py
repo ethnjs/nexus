@@ -2,7 +2,8 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
@@ -19,16 +20,6 @@ from app.schemas.tournament.membership import (
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
-
-
-def _get_membership_or_404(membership_id: int, tournament_id: int, db: Session) -> TournamentMembership:
-    """Fetch membership and validate it belongs to the given tournament."""
-    m = db.query(TournamentMembership).filter(TournamentMembership.id == membership_id).first()
-    if not m:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-    if m.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-    return m
 
 
 # ---------------------------------------------------------------------------
@@ -123,14 +114,9 @@ def get_my_membership(
 ):
     tournament = get_tournament(tournament_id, db)
 
-    membership = (
-        db.query(TournamentMembership)
-        .options(joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role))
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembership.user_id == current_user.id,
-        )
-        .first()
+    membership = get_membership_by_user(
+        db, tournament_id, current_user.id,
+        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
     )
     permissions = sorted(get_user_permissions(current_user, tournament_id, db))
     is_owner = current_user.id == tournament.owner_id
@@ -158,7 +144,7 @@ def get_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    m = _get_membership_or_404(membership_id, tournament_id, db)
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
     return MembershipFullResponse.model_validate(m)
 
 
@@ -177,14 +163,7 @@ def update_my_membership(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    m = (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembership.user_id == current_user.id,
-        )
-        .first()
-    )
+    m = get_membership_by_user(db, tournament_id, current_user.id)
     if not m:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
@@ -216,7 +195,7 @@ def update_membership(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    m = _get_membership_or_404(membership_id, tournament_id, db)
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
 
     update_data = payload.model_dump(exclude_none=True)
     if "schedule" in update_data and payload.schedule:
@@ -250,14 +229,7 @@ def leave_tournament(
             detail="Transfer ownership before leaving this tournament.",
         )
 
-    m = (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembership.user_id == current_user.id,
-        )
-        .first()
-    )
+    m = get_membership_by_user(db, tournament_id, current_user.id)
     if not m:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
@@ -279,6 +251,6 @@ def delete_membership(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    m = _get_membership_or_404(membership_id, tournament_id, db)
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
     db.delete(m)
     db.commit()

@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentEvent, User
@@ -29,19 +29,6 @@ def _serialize(event: TournamentEvent) -> dict:
         "created_at": event.created_at,
         "updated_at": event.updated_at,
     }
-
-
-def _get_event_or_404(event_id: int, tournament_id: int, db: Session) -> TournamentEvent:
-    """
-    Fetch event by ID and validate it belongs to the given tournament.
-    Returns 404 if not found or tournament mismatch — prevents cross-tournament access.
-    """
-    event = db.query(TournamentEvent).filter(TournamentEvent.id == event_id).first()
-    if not event:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
-    if event.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
-    return event
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +62,7 @@ def get_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    return _serialize(_get_event_or_404(event_id, tournament_id, db))
+    return _serialize(get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event"))
 
 
 # ---------------------------------------------------------------------------
@@ -130,7 +117,7 @@ def update_event(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    event = _get_event_or_404(event_id, tournament_id, db)
+    event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
 
     for field, value in payload.model_dump(exclude_none=True).items():
         setattr(event, field, value)
@@ -153,6 +140,6 @@ def delete_event(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    event = _get_event_or_404(event_id, tournament_id, db)
+    event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
     db.delete(event)
     db.commit()

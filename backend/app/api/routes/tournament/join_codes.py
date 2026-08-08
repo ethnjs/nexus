@@ -9,7 +9,7 @@ from app.core.join_codes import apply_join_code_update, deactivate_join_code, ge
 from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import JoinCode, User
@@ -17,13 +17,6 @@ from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpda
 from app.services.email_service import send_staff_invite_emails
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
-
-
-def _get_join_code_or_404(code_id: int, tournament_id: int, db: Session) -> JoinCode:
-    jc = db.query(JoinCode).filter(JoinCode.id == code_id).first()
-    if not jc or jc.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Join code not found")
-    return jc
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +99,7 @@ def update_join_code(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    join_code = _get_join_code_or_404(code_id, tournament_id, db)
+    join_code = get_scoped_or_404(db, JoinCode, code_id, tournament_id, "Join code")
     old_label = join_code.label
     old_expires_at = join_code.expires_at
 
@@ -149,7 +142,7 @@ def deactivate_tournament_join_code(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    join_code = _get_join_code_or_404(code_id, tournament_id, db)
+    join_code = get_scoped_or_404(db, JoinCode, code_id, tournament_id, "Join code")
     deactivate_join_code(join_code)
 
     log_action(
@@ -183,7 +176,7 @@ async def send_staff_invites(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    join_code = _get_join_code_or_404(payload.join_code_id, tournament_id, db)
+    join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/tournaments/join?code={join_code.code}"
     failed = await send_staff_invite_emails(payload.emails, tournament.name, join_url)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import (
@@ -14,71 +13,19 @@ from app.core.tournament.permissions import (
     DEFAULT_ROLES,
     MANAGE_MEMBERS,
     MANAGE_ROLES,
-    get_highest_rank,
     require_membership,
     require_permission,
 )
-from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.roles import compute_new_rank, rebalance_tournament_ranks
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.roles import compute_new_rank, rebalance_tournament_ranks, validate_rank_bound, validate_role_action
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User
+from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, User
 from app.schemas.tournament.role import RoleAssignmentUpdate, RoleDefinition, RoleRead, RoleReorder, RoleUpdate
 from app.schemas.tournament.membership import MembershipSlimResponse
-from app.api.routes.tournament.memberships import _get_membership_or_404
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
 router = APIRouter(prefix="/tournaments/{tournament_id}/roles", tags=["tournaments"])
-
-
-def _get_role_or_404(role_id: int, tournament_id: int, db: Session) -> TournamentRole:
-    """
-    Fetch role by ID and validate it belongs to the given tournament.
-    Returns 404 if not found or tournament mismatch — prevents cross-tournament access.
-    """
-    role = db.query(TournamentRole).filter(TournamentRole.id == role_id).first()
-    if not role:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
-    if role.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
-    return role
-
-
-def _validate_rank_bound(user: User, tournament: Tournament, rank: int, db: Session) -> None:
-    """
-    A MANAGE_ROLES holder can never create or edit a role that outranks (or
-    ties) their own highest role. Only the Owner and platform admins are
-    exempt. MANAGE_TOURNAMENT holders don't even reach this check — role
-    routes are gated on MANAGE_ROLES alone, MANAGE_TOURNAMENT is not a
-    tournament-admin override. The Tournament Director role holds both and
-    sits at the top rank, so it can still modify every role — that falls out
-    of being the highest rank, not a permission bypass.
-    """
-    if user.id == tournament.owner_id or user.role == "admin":
-        return
-
-    actor_rank = get_highest_rank(user, tournament.id, db)
-    if actor_rank is None or rank <= actor_rank:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot create or edit a role at or above your own rank",
-        )
-
-    # Defense in depth: a MANAGE_ROLES holder's own rank is always >= the
-    # tournament's live minimum rank (their rank comes from a role that
-    # exists in this tournament), so this is implied by the check above —
-    # but it's checked live rather than against a hardcoded floor, since
-    # ranks are sparse now and there's no fixed "1 = top" constant to lean on.
-    min_rank = (
-        db.query(func.min(TournamentRole.rank))
-        .filter(TournamentRole.tournament_id == tournament.id)
-        .scalar()
-    )
-    if min_rank is not None and rank < min_rank:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot create or edit a role above the tournament's highest existing role",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +103,7 @@ def create_role(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    _validate_rank_bound(current_user, tournament, payload.rank, db)
+    validate_rank_bound(current_user, tournament, payload.rank, db)
 
     existing = (
         db.query(TournamentRole)
@@ -198,11 +145,11 @@ def update_role(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    role = _get_role_or_404(role_id, tournament_id, db)
+    role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
     updates = payload.model_dump(exclude_none=True)
 
     target_rank = updates.get("rank", role.rank)
-    _validate_rank_bound(current_user, tournament, target_rank, db)
+    validate_rank_bound(current_user, tournament, target_rank, db)
 
     if "label" in updates and updates["label"] != role.label:
         existing = (
@@ -265,12 +212,12 @@ def reorder_role(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    role = _get_role_or_404(role_id, tournament_id, db)
+    role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
     old_rank = role.rank  # captured before a possible rebalance mutates it
     # The role's current rank must also be one the actor is allowed to touch —
     # not just the rank it's moving to (a role currently outranking the actor
     # shouldn't be movable just because the destination rank happens to be low).
-    _validate_rank_bound(current_user, tournament, old_rank, db)
+    validate_rank_bound(current_user, tournament, old_rank, db)
 
     kwargs = {
         k: v for k, v in payload.model_dump(exclude={"drop_type"}).items()
@@ -289,7 +236,7 @@ def reorder_role(
                 detail="Unable to compute a rank for this position",
             )
 
-    _validate_rank_bound(current_user, tournament, new_rank, db)
+    validate_rank_bound(current_user, tournament, new_rank, db)
     role.rank = new_rank
 
     if old_rank != new_rank:
@@ -319,8 +266,8 @@ def delete_role(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    role = _get_role_or_404(role_id, tournament_id, db)
-    _validate_rank_bound(current_user, tournament, role.rank, db)
+    role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
+    validate_rank_bound(current_user, tournament, role.rank, db)
 
     # Count before delete — the FK cascade removes these rows, so this is
     # the only chance to record how many memberships lose the role.
@@ -345,8 +292,8 @@ def delete_role(
 # /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Gated on
 # MANAGE_MEMBERS (assigning a role to a member is member data, not a
 # role-definition edit — see core/tournament/permissions.py), but kept in
-# this module rather than memberships.py since it shares _get_role_or_404-
-# style helpers and rank-bound logic with the role CRUD routes above.
+# this module rather than memberships.py since it shares get_scoped_or_404
+# usage and rank-bound logic with the role CRUD routes above.
 # ---------------------------------------------------------------------------
 membership_roles_router = APIRouter(
     prefix="/tournaments/{tournament_id}/memberships/{membership_id}/roles",
@@ -354,63 +301,9 @@ membership_roles_router = APIRouter(
 )
 
 
-def _get_role_in_tournament_or_404(role_id: int, tournament_id: int, db: Session) -> TournamentRole:
-    role = db.query(TournamentRole).filter(TournamentRole.id == role_id).first()
-    if not role or role.tournament_id != tournament_id:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
-    return role
-
-
-def _validate_role_action(
-    actor: User,
-    tournament: Tournament,
-    membership: TournamentMembership,
-    role: TournamentRole,
-    db: Session,
-) -> None:
-    """
-    Rank-bound checks for assigning/removing `role` on `membership`. Owner and
-    platform admins bypass entirely — same rationale as _validate_rank_bound
-    above: this route is gated on MANAGE_MEMBERS alone, MANAGE_TOURNAMENT is
-    not a bypass.
-
-    Two independent checks, both must pass:
-      1. The role being assigned/removed must not outrank the actor's own
-         highest rank. Self-demotion is naturally exempt (a role you're
-         removing from yourself is by definition one of your own roles, so
-         it can never outrank your own highest rank); self-promotion
-         (assigning yourself a role above your own rank) is blocked like
-         any other case.
-      2. The target member's highest-ranked role overall must not outrank
-         the actor — except when acting on your own membership, where this
-         is a no-op (you can't outrank yourself).
-    """
-    if actor.id == tournament.owner_id or actor.role == "admin":
-        return
-
-    actor_rank = get_highest_rank(actor, tournament.id, db)
-    if actor_rank is None:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
-
-    if role.rank < actor_rank:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot assign or remove a role that outranks your own",
-        )
-
-    is_self = membership.user_id == actor.id
-    if not is_self:
-        target_rank = get_highest_rank(membership.user, tournament.id, db)
-        if target_rank is not None and target_rank < actor_rank:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot modify roles for a member who outranks you",
-            )
-
-
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
-# manage_members, rank-bound (see _validate_role_action)
+# manage_members, rank-bound (see validate_role_action in core/tournament/roles.py)
 #
 # Assigning/removing a role on a member is member data (this member's role
 # assignments), not a role-definition edit — see the MANAGE_ROLES vs
@@ -440,16 +333,16 @@ def update_membership_roles(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    m = _get_membership_or_404(membership_id, tournament_id, db)
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
 
     touched_role_ids = set(payload.add) | set(payload.remove)
     roles_by_id = {
-        role_id: _get_role_in_tournament_or_404(role_id, tournament_id, db)
+        role_id: get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
         for role_id in touched_role_ids
     }
 
     for role in roles_by_id.values():
-        _validate_role_action(current_user, tournament, m, role, db)
+        validate_role_action(current_user, tournament, m, role, db)
 
     currently_held_ids = {
         mr.role_id for mr in
