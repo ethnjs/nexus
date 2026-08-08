@@ -83,7 +83,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
           />
         </div>
 
-        <div style={{ maxHeight: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}>
+        <div style={{ height: "320px", overflowY: "auto", display: "flex", flexDirection: "column", gap: "2px" }}>
           {candidates === null ? (
             <div style={{ display: "flex", justifyContent: "center", padding: "16px" }}>
               <Spinner size="sm" />
