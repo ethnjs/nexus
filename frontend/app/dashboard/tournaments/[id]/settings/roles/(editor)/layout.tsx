@@ -65,7 +65,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
       <PageHeader heading="Roles" subheading="Tournament Settings" />
 
       <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
-        <Card radius="lg" style={{ width: "190px", flexShrink: 0, padding: "8px" }}>
+        <Card radius="lg" style={{ width: "260px", flexShrink: 0, padding: "8px" }}>
           <DndContext {...reorder.dndProps}>
             <RoleDropDivider state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)} />
             {reorder.groups.map((group, gi) => (
@@ -148,7 +148,7 @@ function RoleNavRow({ role, active, lockReason, dropIndicator, onClick }: RoleNa
 
   return (
     <div
-      style={{ position: "relative", marginLeft: "-22px", paddingLeft: "22px", boxSizing: "border-box" }}
+      style={{ position: "relative", marginLeft: "-31px", paddingLeft: "31px", boxSizing: "border-box" }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -159,15 +159,16 @@ function RoleNavRow({ role, active, lockReason, dropIndicator, onClick }: RoleNa
           style={{
             position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
             display: "flex", alignItems: "center", justifyContent: "center",
-            width: "18px", height: "18px",
-            color: "var(--color-text-tertiary)",
+            width: "25px", height: "25px",
+            border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
+            background: "var(--color-surface)", color: "var(--color-text-tertiary)",
             cursor: "grab",
             opacity: hovered ? 1 : 0,
             pointerEvents: hovered ? "auto" : "none",
             transition: "opacity 120ms ease",
           }}
         >
-          <IconGripVertical size={13} />
+          <IconGripVertical size={16} />
         </span>
       )}
 

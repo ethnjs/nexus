@@ -26,7 +26,10 @@ export function SettingsRow({ label, helper, children, last = false, contentStyl
           </div>
         )}
       </div>
-      <div style={{ flex: 1, maxWidth: "360px", ...contentStyle }}>
+      {/* Relative, not a fixed px cap — scales with whatever layout wraps this
+          row (tournament settings today, a narrower global account settings
+          layout later) instead of being tuned to one specific container width. */}
+      <div style={{ flex: 1, maxWidth: "60%", ...contentStyle }}>
         {children}
       </div>
     </div>
