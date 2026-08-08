@@ -377,6 +377,7 @@ export interface Tournament {
   division:               TournamentDivision[]
   is_public:              boolean
   is_verified:            boolean
+  is_archived:            boolean
   registration_opens_at:  string | null
   owner_id:               number
   roles:                  Role[]
@@ -423,6 +424,8 @@ export const tournamentsApi = {
   delete: (id: number)                             => api.delete<void>(`/tournaments/${id}/`),
   transferOwnership: (id: number, newOwnerId: number) =>
     api.post<Tournament>(`/tournaments/${id}/transfer-ownership/`, { new_owner_id: newOwnerId }),
+  archive:   (id: number) => api.post<Tournament>(`/tournaments/${id}/archive/`, {}),
+  unarchive: (id: number) => api.post<Tournament>(`/tournaments/${id}/unarchive/`, {}),
 }
 
 // -------------------------------------------------------------------------

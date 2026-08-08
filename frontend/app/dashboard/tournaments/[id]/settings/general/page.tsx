@@ -22,6 +22,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
 import { TransferOwnershipModal } from "@/components/tournament/settings/TransferOwnershipModal";
 import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
+import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
@@ -72,6 +73,7 @@ export default function GeneralSettingsPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
 
   useEffect(() => {
     if (selectedTournament) setDraft(toDraft(selectedTournament));
@@ -82,6 +84,11 @@ export default function GeneralSettingsPage() {
   }, []);
 
   const canEdit = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
+
+  const isAdmin = currentUser?.role === "admin";
+  const isOwnerOrAdmin = !!membership?.is_owner || isAdmin;
+  const hasEnded = !!selectedTournament && selectedTournament.end_date < new Date().toISOString().slice(0, 10);
+  const unarchiveNeedsAdmin = !!selectedTournament?.is_archived && hasEnded && !isAdmin;
 
   const isDirty = useMemo(() => {
     if (!selectedTournament || !draft) return false;
@@ -265,29 +272,56 @@ export default function GeneralSettingsPage() {
       )}
 
       <SettingsSection title="Danger Zone" variant="danger">
-        {membership?.is_owner ? (
-          <>
-            <SettingsRow
-              label="Transfer ownership"
-              helper="Give another member full ownership of this tournament."
-              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+        {isOwnerOrAdmin && (
+          <SettingsRow
+            label={selectedTournament.is_archived ? "Unarchive tournament" : "Archive tournament"}
+            helper={
+              selectedTournament.is_archived
+                ? unarchiveNeedsAdmin
+                  ? "This tournament has ended — only an admin can unarchive it."
+                  : "Restore full editing access."
+                : "Lock this tournament as read-only history."
+            }
+            contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+          >
+            <Button
+              type="button"
+              variant="danger"
+              size="md"
+              disabled={unarchiveNeedsAdmin}
+              onClick={() => setShowArchiveModal(true)}
             >
-              <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
-                Transfer
-              </Button>
-            </SettingsRow>
-            <SettingsRow
-              label="Delete tournament"
-              helper="Permanently delete this tournament and everything in it."
-              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
-              last
-            >
-              <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
-                Delete
-              </Button>
-            </SettingsRow>
-          </>
-        ) : (
+              {selectedTournament.is_archived ? "Unarchive" : "Archive"}
+            </Button>
+          </SettingsRow>
+        )}
+
+        {membership?.is_owner && (
+          <SettingsRow
+            label="Transfer ownership"
+            helper="Give another member full ownership of this tournament."
+            contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+          >
+            <Button type="button" variant="danger" size="md" onClick={() => setShowTransferModal(true)}>
+              Transfer
+            </Button>
+          </SettingsRow>
+        )}
+
+        {isOwnerOrAdmin && (
+          <SettingsRow
+            label="Delete tournament"
+            helper="Permanently delete this tournament and everything in it."
+            contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+            last={!membership || membership.is_owner}
+          >
+            <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+              Delete
+            </Button>
+          </SettingsRow>
+        )}
+
+        {membership && !membership.is_owner && (
           <SettingsRow
             label="Leave tournament"
             helper="Remove yourself from this tournament."
@@ -329,6 +363,16 @@ export default function GeneralSettingsPage() {
           tournamentName={selectedTournament.name}
           onClose={() => setShowLeaveModal(false)}
           onLeft={() => router.push("/dashboard")}
+        />
+      )}
+
+      {showArchiveModal && selectedTournament && (
+        <ArchiveTournamentModal
+          tournamentId={tournamentId}
+          tournamentName={selectedTournament.name}
+          mode={selectedTournament.is_archived ? "unarchive" : "archive"}
+          onClose={() => setShowArchiveModal(false)}
+          onDone={(updated) => { setSelectedTournament(updated); setShowArchiveModal(false); }}
         />
       )}
     </div>
