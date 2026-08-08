@@ -1,62 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { membershipsApi, ALL_PERMISSIONS, PERMISSION_INFO, Permission, MembershipSlim } from "@/lib/api";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { useRoleList, useRoleDrafts } from "./RoleEditorContext";
+import { useState } from "react";
+import { ALL_PERMISSIONS, PERMISSION_INFO, Permission, Role } from "@/lib/api";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
 import { Button } from "@/components/ui/Button";
-import { Spinner } from "@/components/ui/Spinner";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
 
-export default function RoleDetailPage() {
-  const params = useParams();
-  const router = useRouter();
-  const tournamentId = Number(params.id);
-  const roleId = Number(params.roleId);
-  const { roles, refreshRoles, lockReason } = useRoleList();
-  // Draft lives in the layout, so it survives switching to another role.
-  const { draftFor, setDraft } = useRoleDrafts();
-  const { guard } = useUnsavedChanges();
+export interface RoleDraft {
+  label:       string;
+  permissions: Permission[];
+}
 
-  const role = roles.find((r) => r.id === roleId);
-  const locked = role ? lockReason(role) !== null : false;
-  const draft = role ? draftFor(role) : null;
+interface RoleEditorFormProps {
+  tournamentId: number;
+  role:         Role;
+  draft:        RoleDraft;
+  setDraft:     (roleId: number, patch: Partial<RoleDraft>) => void;
+  locked:       boolean;
+  memberCount:  number;
+  onDeleted:    () => void;
+}
 
-  const [memberCount, setMemberCount] = useState(0);
+export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, memberCount, onDeleted }: RoleEditorFormProps) {
   const [showDelete, setShowDelete] = useState(false);
 
-  useEffect(() => {
-    membershipsApi.list(tournamentId).then((members: MembershipSlim[]) => {
-      setMemberCount(members.filter((m) => m.roles.some((r) => r.id === roleId)).length);
-    }).catch(() => {});
-  }, [tournamentId, roleId]);
-
   function togglePermission(p: Permission) {
-    if (!draft) return;
-    setDraft(roleId, {
+    setDraft(role.id, {
       permissions: draft.permissions.includes(p)
         ? draft.permissions.filter((x) => x !== p)
         : [...draft.permissions, p],
     });
   }
 
-  if (!role || !draft) {
-    return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-        <Spinner size="lg" />
-      </div>
-    );
-  }
-
   return (
     <div>
       <SettingsSection title="Details">
         <SettingsRow label="Name" last>
-          <Input fullWidth charset="alpha" locked={locked} value={draft.label} onChange={(e) => setDraft(roleId, { label: e.target.value })} />
+          <Input fullWidth charset="alpha" locked={locked} value={draft.label} onChange={(e) => setDraft(role.id, { label: e.target.value })} />
         </SettingsRow>
       </SettingsSection>
 
@@ -96,12 +78,7 @@ export default function RoleDetailPage() {
           roleLabel={role.label}
           membersAffected={memberCount}
           onClose={() => setShowDelete(false)}
-          onDeleted={async () => {
-            await refreshRoles();
-            // Deleting drops this role's draft, but other roles may still be
-            // dirty — leaving the editor still has to warn.
-            guard(() => router.push(`/dashboard/tournaments/${tournamentId}/settings/roles`));
-          }}
+          onDeleted={onDeleted}
         />
       )}
     </div>

@@ -6,7 +6,7 @@ import { DndContext } from "@dnd-kit/core";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { rolesApi, membershipsApi, Role, MembershipSlim, ApiError } from "@/lib/api";
-import { groupByRank } from "@/lib/roleReorder";
+import { defaultNewRoleLabel, groupByRank, nextBottomRank } from "@/lib/roleReorder";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -99,12 +99,18 @@ export default function RolesSettingsPage() {
   const [creatingRole, setCreatingRole] = useState(false);
 
   // No separate "new role" form — create a placeholder immediately and drop
-  // the user straight into editing it, same as the nav rail's "+" does.
+  // the user straight into editing it, same as the nav rail's "+" does. Rank
+  // and label are computed from the current list so creating several roles
+  // in a row without editing the previous one never collides.
   async function handleCreateRole() {
     setCreatingRole(true);
     try {
-      const role = await rolesApi.create(tournamentId, { label: "New Role", permissions: [], rank: 999999 });
-      router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`);
+      const role = await rolesApi.create(tournamentId, {
+        label: defaultNewRoleLabel(roles?.map((r) => r.label) ?? []),
+        permissions: [],
+        rank: nextBottomRank(roles ?? []),
+      });
+      router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/edit?role=${role.id}`);
     } finally {
       setCreatingRole(false);
     }
@@ -296,7 +302,7 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
     : {};
 
   function goToRole() {
-    router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/${role.id}`);
+    router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/edit?role=${role.id}`);
   }
 
   return (
