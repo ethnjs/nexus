@@ -1,22 +1,22 @@
 "use client";
 
-import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import {
-  DndContext, DragEndEvent, DragMoveEvent, PointerSensor,
-  closestCenter, useDraggable, useDroppable, useSensor, useSensors,
-} from "@dnd-kit/core";
-import { CSS } from "@dnd-kit/utilities";
+import { DndContext } from "@dnd-kit/core";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { rolesApi, membershipsApi, Role, MembershipSlim, RoleReorderPayload, ApiError } from "@/lib/api";
+import { rolesApi, membershipsApi, Role, MembershipSlim, ApiError } from "@/lib/api";
+import { groupByRank } from "@/lib/roleReorder";
+import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Tooltip } from "@/components/ui/Tooltip";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteRoleModal } from "@/components/tournament/settings/DeleteRoleModal";
+import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import {
   IconPlus, IconSearch, IconLock, IconEye, IconEdit, IconTrash, IconGripVertical, IconUser, IconUserShield,
 } from "@/components/ui/Icons";
@@ -49,17 +49,15 @@ export default function RolesSettingsPage() {
   }, [membership]);
 
   // Returns why a role can't be edited, or null if it's editable.
-  function lockReason(role: Role): string | null {
+  const lockReason = useCallback((role: Role): string | null => {
     if (!canManageRoles) return "You don't have permission to manage roles.";
     if (isAdmin || isOwner) return null;
     if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
     if (role.rank <= ownRank) return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
     return null;
-  }
+  }, [canManageRoles, isAdmin, isOwner, ownRank]);
 
-  function isLocked(role: Role): boolean {
-    return lockReason(role) !== null;
-  }
+  const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
   // Bumped per request so a slow earlier resync can't clobber a newer one.
   const loadSeq = useRef(0);
@@ -98,72 +96,11 @@ export default function RolesSettingsPage() {
     }
   }
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // Dragging only mutates this hook's local draft — nothing hits the network
+  // until Save, so no GET round-trip can flash a stale order mid-reorder.
+  const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
 
-  // Which row is currently a drop target, and what dropping now would do —
-  // computed live in onDragOver so the row can render the right indicator
-  // (join/above/below, or a muted "no-op") before the drop actually happens.
-  const [dropZone, setDropZone] = useState<{ id: number; zone: DropZoneKind; noop: boolean } | null>(null);
-
-  // Wired to onDragMove as well as onDragOver: dnd-kit only fires onDragOver
-  // when over.id *changes*, which sampled the zone once per row crossing —
-  // so "above" on the first row and "below" on the last row (and "join"
-  // anywhere) were unreachable, since nothing is ever crossed into there.
-  function handleDragOver(event: DragMoveEvent) {
-    const { active, over } = event;
-    if (!roles || !over || active.id === over.id) { setDropZone(null); return; }
-
-    const draggedRole = roles.find((r) => r.id === active.id);
-    const targetRole = roles.find((r) => r.id === over.id);
-    if (!draggedRole || !targetRole || isLocked(draggedRole) || isLocked(targetRole)) { setDropZone(null); return; }
-
-    const activeRect = active.rect.current.translated;
-    if (!activeRect) { setDropZone(null); return; }
-
-    const activeCenterY = activeRect.top + activeRect.height / 2;
-    const relative = (activeCenterY - over.rect.top) / over.rect.height;
-    const zone: DropZoneKind = relative < 0.3 ? "above" : relative > 0.7 ? "below" : "join";
-
-    const action = computeReorderAction(roles, draggedRole, targetRole, zone);
-    // Now runs every pointer move — keep the state object identity stable when
-    // nothing changed so the memoized rows/dividers don't re-render.
-    setDropZone((prev) =>
-      prev && prev.id === targetRole.id && prev.zone === zone && prev.noop === action.noop
-        ? prev
-        : { id: targetRole.id, zone, noop: action.noop },
-    );
-  }
-
-  // A drop applied against ranks from before the previous drop's resync would
-  // compute its neighbors from stale data, so drops are serialized.
-  const reordering = useRef(false);
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active } = event;
-    const zone = dropZone;
-    setDropZone(null);
-    if (!roles || !zone || reordering.current) return;
-
-    const draggedRole = roles.find((r) => r.id === active.id);
-    // Target comes from the previewed zone, not the drop event's `over`, so
-    // what gets applied is always what the indicator was showing.
-    const targetRole = roles.find((r) => r.id === zone.id);
-    if (!draggedRole || !targetRole || draggedRole.id === targetRole.id) return;
-
-    const action = computeReorderAction(roles, draggedRole, targetRole, zone.zone);
-    if (action.noop) return;
-
-    reordering.current = true;
-    try {
-      await rolesApi.reorder(tournamentId, draggedRole.id, action.payload);
-    } finally {
-      // A rebalance may have shifted other ranks — always resync from the server.
-      await loadRoles();
-      reordering.current = false;
-    }
-  }
-
-  const filteredRoles = (roles ?? []).filter((r) => r.label.toLowerCase().includes(search.toLowerCase()));
+  const filteredRoles = reorder.draft.filter((r) => r.label.toLowerCase().includes(search.toLowerCase()));
 
   if (membershipLoading || roles === null) {
     return (
@@ -187,6 +124,8 @@ export default function RolesSettingsPage() {
       </div>
     );
   }
+
+  const groups = groupByRank(filteredRoles);
 
   return (
     <div>
@@ -264,71 +203,47 @@ export default function RolesSettingsPage() {
               <span />
             </div>
 
-            <DndContext
-              sensors={sensors}
-              collisionDetection={closestCenter}
-              onDragMove={handleDragOver}
-              onDragOver={handleDragOver}
-              onDragEnd={handleDragEnd}
-              onDragCancel={() => setDropZone(null)}
-            >
-              {(() => {
-                const groups = groupByRank(filteredRoles);
-                // A divider between `prev` and `next` lights up if the current
-                // drop zone points at either side of that same boundary —
-                // hovering the bottom of `prev` and the top of `next` mean
-                // the same insertion point.
-                function dividerState(prev: Role | null, next: Role | null): "success" | "noop" | null {
-                  if (!dropZone) return null;
-                  // Never light the divider between two roles already tied
-                  // to each other — that boundary is internal to the group.
-                  if (prev && next && prev.rank === next.rank) return null;
-                  const matches =
-                    (prev && dropZone.id === prev.id && dropZone.zone === "below") ||
-                    (next && dropZone.id === next.id && dropZone.zone === "above");
-                  if (!matches) return null;
-                  return dropZone.noop ? "noop" : "success";
-                }
-
-                return (
-                  <>
-                    <Divider state={dividerState(null, groups[0]?.[0] ?? null)} />
-                    {groups.map((group, gi) => (
-                      <Fragment key={group[0].id}>
-                        <div style={{
-                          display: "flex", flexDirection: "column",
-                          padding: "4px",
-                          border: group.length > 1 ? "1px dashed var(--color-border-strong)" : "1px solid transparent",
-                          borderRadius: "var(--radius-md)",
-                        }}>
-                          {group.map((role, ri) => (
-                            <Fragment key={role.id}>
-                              <RoleRow
-                                role={role}
-                                tournamentId={tournamentId}
-                                lockReason={lockReason(role)}
-                                memberCount={memberCounts[role.id] ?? 0}
-                                dropIndicator={
-                                  dropZone?.id === role.id && dropZone.zone === "join"
-                                    ? { noop: dropZone.noop }
-                                    : null
-                                }
-                                onDelete={setDeleteTarget}
-                              />
-                              {ri < group.length - 1 && <Divider state={dividerState(role, group[ri + 1])} />}
-                            </Fragment>
-                          ))}
-                        </div>
-                        <Divider state={dividerState(group[group.length - 1], groups[gi + 1]?.[0] ?? null)} />
+            <DndContext {...reorder.dndProps}>
+              <RoleDropDivider state={reorder.dividerStateFor(null, groups[0]?.[0] ?? null)} />
+              {groups.map((group, gi) => (
+                <Fragment key={group[0].id}>
+                  <div style={{
+                    display: "flex", flexDirection: "column",
+                    padding: "4px",
+                    border: group.length > 1 ? "1px dashed var(--color-border-strong)" : "1px solid transparent",
+                    borderRadius: "var(--radius-md)",
+                  }}>
+                    {group.map((role, ri) => (
+                      <Fragment key={role.id}>
+                        <RoleRow
+                          role={role}
+                          tournamentId={tournamentId}
+                          lockReason={lockReason(role)}
+                          memberCount={memberCounts[role.id] ?? 0}
+                          dropIndicator={reorder.dropIndicatorFor(role)}
+                          onDelete={setDeleteTarget}
+                        />
+                        {ri < group.length - 1 && (
+                          <RoleDropDivider state={reorder.dividerStateFor(role, group[ri + 1])} />
+                        )}
                       </Fragment>
                     ))}
-                  </>
-                );
-              })()}
+                  </div>
+                  <RoleDropDivider state={reorder.dividerStateFor(group[group.length - 1], groups[gi + 1]?.[0] ?? null)} />
+                </Fragment>
+              ))}
             </DndContext>
           </Card>
         </>
       )}
+
+      <FloatingSaveBar
+        visible={reorder.isDirty}
+        saving={reorder.saving}
+        error={reorder.error}
+        onSave={reorder.save}
+        onCancel={reorder.cancel}
+      />
 
       {deleteTarget && (
         <DeleteRoleModal
@@ -344,81 +259,13 @@ export default function RolesSettingsPage() {
   );
 }
 
-// Consecutive roles sharing a rank are peers — neither can edit the other
-// (see validate_rank_bound's `rank <= actor_rank`) — so they're rendered as
-// one visually clustered group instead of a flat list.
-function groupByRank(roles: Role[]): Role[][] {
-  const groups: Role[][] = [];
-  for (const role of roles) {
-    const last = groups[groups.length - 1];
-    if (last && last[0].rank === role.rank) last.push(role);
-    else groups.push([role]);
-  }
-  return groups;
-}
-
-// Always rendered (never removed) so it reserves its space whether active or
-// not — the "insert here" indicator this way never shifts surrounding rows,
-// unlike a border on the row itself which can flicker between two rows near
-// their shared edge.
-const Divider = memo(function Divider({ state }: { state: "success" | "noop" | null }) {
-  return (
-    <div style={{ height: "8px", display: "flex", alignItems: "center", padding: "0 4px" }}>
-      <div style={{
-        height: "2px", width: "100%", borderRadius: "1px",
-        background: state === "success" ? "var(--color-success)" : state === "noop" ? "var(--color-border-strong)" : "transparent",
-        transition: "background 100ms ease",
-      }} />
-    </div>
-  );
-});
-
-type DropZoneKind = "above" | "below" | "join";
-
-// Decides what dropping `draggedRole` onto `targetRole` at `zone` would do.
-// Shared between onDragOver (to preview the indicator) and onDragEnd (to
-// actually submit it), so the two never disagree about what a drop means.
-function computeReorderAction(
-  roles: Role[], draggedRole: Role, targetRole: Role, zone: DropZoneKind,
-): { noop: true } | { noop: false; payload: RoleReorderPayload } {
-  if (zone === "join") {
-    if (targetRole.rank === draggedRole.rank) return { noop: true }; // already peers
-    return { noop: false, payload: { drop_type: "join_group", target_group_rank: targetRole.rank } };
-  }
-
-  const others = roles.filter((r) => r.id !== draggedRole.id);
-  const idx = others.findIndex((r) => r.id === targetRole.id);
-  const rankAbove = zone === "above" ? others[idx - 1]?.rank : targetRole.rank;
-  const rankBelow = zone === "above" ? targetRole.rank : others[idx + 1]?.rank;
-
-  // No integer room between two roles already tied at the same rank — the
-  // only meaningful outcome is joining that tier, or a no-op if the dragged
-  // role is already part of it. (Sending new_rank_between here is what used
-  // to 500 — its midpoint degenerates when both neighbors are identical.)
-  if (rankAbove !== undefined && rankBelow !== undefined && rankAbove === rankBelow) {
-    if (draggedRole.rank === rankAbove) return { noop: true };
-    return { noop: false, payload: { drop_type: "join_group", target_group_rank: rankAbove } };
-  }
-
-  if (rankAbove === undefined && rankBelow !== undefined) {
-    return { noop: false, payload: { drop_type: "new_rank_at_top", rank_below: rankBelow } };
-  }
-  if (rankBelow === undefined && rankAbove !== undefined) {
-    return { noop: false, payload: { drop_type: "new_rank_at_bottom", rank_above: rankAbove } };
-  }
-  if (rankAbove !== undefined && rankBelow !== undefined) {
-    return { noop: false, payload: { drop_type: "new_rank_between", rank_above: rankAbove, rank_below: rankBelow } };
-  }
-  return { noop: true }; // only one role in the list
-}
-
 interface RoleRowProps {
   role:          Role;
   tournamentId:  number;
   lockReason:    string | null;
   memberCount:   number;
   // Only ever set for a "join this tie group" hover — above/below insertion
-  // points are shown by the Dividers between rows instead.
+  // points are shown by the dividers between rows instead.
   dropIndicator: { noop: boolean } | null;
   onDelete:      (role: Role) => void;
 }
@@ -426,18 +273,8 @@ interface RoleRowProps {
 const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCount, dropIndicator, onDelete }: RoleRowProps) {
   const router = useRouter();
   const locked = lockReason !== null;
-  const { attributes, listeners, setNodeRef: setDragRef, transform, isDragging } = useDraggable({
-    id: role.id,
-    disabled: locked,
-  });
-  const { setNodeRef: setDropRef } = useDroppable({ id: role.id, disabled: locked });
+  const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
   const [hovered, setHovered] = useState(false);
-
-  // Only the dragged row itself moves (translates to follow the cursor) —
-  // siblings never shift to preview a reorder the way a sortable list would.
-  const dragStyle: React.CSSProperties = isDragging
-    ? { transform: CSS.Translate.toString(transform), opacity: 0.5, position: "relative", zIndex: 1 }
-    : {};
 
   const indicatorStyle: React.CSSProperties = dropIndicator
     ? { background: dropIndicator.noop ? "var(--color-accent-subtle)" : "var(--color-success-subtle)" }
@@ -459,9 +296,8 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
     >
       {!locked && (
         <span
-          ref={setDragRef}
-          {...attributes}
-          {...listeners}
+          ref={setGripRef}
+          {...gripProps}
           style={{
             position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
             display: "flex", alignItems: "center", justifyContent: "center",
