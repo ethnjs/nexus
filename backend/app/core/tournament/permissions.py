@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.auth import get_current_user
+from app.core.tournament.memberships import has_any_membership
 
 if TYPE_CHECKING:
     from app.models.models import User
@@ -240,27 +241,6 @@ def get_highest_rank(
         .filter(TournamentRole.id.in_(role_ids))
         .scalar()
     )
-
-
-def has_any_membership(
-    user: "User",
-    tournament_id: int,
-    db: Session,
-) -> bool:
-    """Return True if the user has any membership in `tournament_id`."""
-    from app.models.models import TournamentMembership
-
-    if user.role == "admin":
-        return True
-
-    return (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.user_id == user.id,
-            TournamentMembership.tournament_id == tournament_id,
-        )
-        .first()
-    ) is not None
 
 
 # ---------------------------------------------------------------------------

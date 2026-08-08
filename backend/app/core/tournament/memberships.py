@@ -1,6 +1,12 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 from sqlalchemy.orm import Session
 
 from app.models.models import TournamentMembership
+
+if TYPE_CHECKING:
+    from app.models.models import User
 
 def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
     """
@@ -17,6 +23,13 @@ def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *optio
     if options:
         query = query.options(*options)
     return query.first()
+
+def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
+    """Return True if the user has any membership in `tournament_id`."""
+    if user.role == "admin":
+        return True
+    return get_membership_by_user(db, tournament_id, user.id) is not None
+
 
 def mark_confirmed(db: Session, membership_id: int) -> TournamentMembership:
     """

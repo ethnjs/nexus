@@ -6,11 +6,11 @@ from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
+from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
     require_permission,
-    has_any_membership,
 )
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, User
@@ -175,8 +175,6 @@ def delete_tournament(
 
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/archive/ — owner or admin only
-# Deliberately does NOT call require_not_archived() — that would make an
-# already-archived tournament permanently stuck (see unarchive below).
 # ---------------------------------------------------------------------------
 @router.post("/{tournament_id}/archive/", response_model=TournamentRead)
 def archive_tournament(
