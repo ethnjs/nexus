@@ -53,7 +53,7 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
   }
 
   return (
-    <Modal title="Transfer ownership" onClose={onClose} type="danger">
+    <Modal title="Transfer ownership" onClose={onClose} variant="danger">
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           The new owner gets full permissions over this tournament. You keep whatever roles you

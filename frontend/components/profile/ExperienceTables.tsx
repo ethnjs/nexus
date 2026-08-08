@@ -353,22 +353,18 @@ export function CompetitionExperienceSpreadsheet({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                iconOnly
                 onClick={() => addAnotherForSchoolBulk(i)}
                 disabled={addAnotherDisabled}
                 title="Add another event for this school"
-                style={{
-                  flexShrink: 0,
-                  width: "32px", height: "32px", borderRadius: "5px",
-                  border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: addAnotherDisabled ? "not-allowed" : "pointer",
-                  color: addAnotherDisabled ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
-                }}
+                style={{ flexShrink: 0 }}
               >
                 <IconPlus size={13} />
-              </button>
+              </Button>
             </div>
           ) : (
             <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
@@ -445,19 +441,17 @@ export function CompetitionExperienceSpreadsheet({
         </td>
         {editModeFull && (
           <td style={{ padding: "8px 2px", textAlign: "center", verticalAlign: "middle", borderBottom: isLastRow ? "none" : "1px solid var(--color-border)" }}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
               onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
               title="Remove"
-              style={{
-                width: "32px", height: "32px", borderRadius: "5px",
-                border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "var(--color-danger)",
-              }}
+              style={{ color: "var(--color-danger)" }}
             >
               <IconTrash size={13} />
-            </button>
+            </Button>
           </td>
         )}
       </tr>
@@ -867,20 +861,17 @@ export function VolunteerExperienceSpreadsheet({
         </td>
         {editModeFull && (
           <td style={{ padding: "8px 2px", textAlign: "center", verticalAlign: "middle", borderBottom: isLastRow ? "none" : "1px solid var(--color-border)" }}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
               onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
               title="Remove"
-              style={{
-                width: "22px", height: "22px", borderRadius: "5px",
-                border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "var(--color-danger)",
-                margin: "0 auto",
-              }}
+              style={{ color: "var(--color-danger)", margin: "0 auto" }}
             >
-              <IconTrash size={11} />
-            </button>
+              <IconTrash size={13} />
+            </Button>
           </td>
         )}
       </tr>

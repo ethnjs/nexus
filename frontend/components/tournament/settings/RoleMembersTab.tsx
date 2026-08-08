@@ -64,7 +64,8 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
             placeholder="Search members"
             icon={<IconSearch size={14} />}
             font="sans"
-            size="sm"
+            variant="secondary"
+            size="md"
             fullWidth
           />
         </div>

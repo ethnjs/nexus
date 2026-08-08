@@ -1,18 +1,18 @@
 'use client'
 
 interface ToggleProps {
-  checked:   boolean
-  onChange:  (checked: boolean) => void
-  disabled?: boolean
+  checked:  boolean
+  onChange: (checked: boolean) => void
+  locked?:  boolean
 }
 
-export function Toggle({ checked, onChange, disabled = false }: ToggleProps) {
+export function Toggle({ checked, onChange, locked = false }: ToggleProps) {
   return (
     <button
       type="button"
       role="switch"
       aria-checked={checked}
-      disabled={disabled}
+      disabled={locked}
       onClick={() => onChange(!checked)}
       style={{
         position:     'relative',
@@ -21,8 +21,8 @@ export function Toggle({ checked, onChange, disabled = false }: ToggleProps) {
         borderRadius: '999px',
         border:       'none',
         padding:      0,
-        cursor:       disabled ? 'not-allowed' : 'pointer',
-        opacity:      disabled ? 0.5 : 1,
+        cursor:       locked ? 'not-allowed' : 'pointer',
+        opacity:      locked ? 0.5 : 1,
         background:   checked ? 'var(--color-accent)' : 'var(--color-border-strong)',
         transition:   'background 120ms ease',
         flexShrink:   0,

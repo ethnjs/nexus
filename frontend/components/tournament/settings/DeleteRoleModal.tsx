@@ -31,7 +31,7 @@ export function DeleteRoleModal({ tournamentId, roleId, roleLabel, membersAffect
   }
 
   return (
-    <Modal title="Delete role" onClose={onClose} type="danger">
+    <Modal title="Delete role" onClose={onClose} variant="danger">
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           Delete <strong>{roleLabel}</strong>?

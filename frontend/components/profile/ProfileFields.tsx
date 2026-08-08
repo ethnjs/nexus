@@ -51,7 +51,7 @@ export function StudentStatusField({ value, onChange }: StudentStatusFieldProps)
         { value: "Graduate", label: "Graduate" },
         { value: "Non-Student", label: "Non-Student" },
       ]}
-      type="primary"
+      variant="primary"
       fullWidth
     />
   )
@@ -125,7 +125,7 @@ export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) 
         { value: "5", label: "5th+ Year" },
       ]}
       error={error}
-      type="primary"
+      variant="primary"
       fullWidth
     />
   )

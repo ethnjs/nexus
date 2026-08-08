@@ -241,14 +241,13 @@ export default function RoleEditorPage() {
                 type="button"
                 variant="secondary"
                 size="sm"
+                iconOnly
                 loading={creatingRole}
                 onClick={handleCreateRole}
                 title="New role"
-                style={{ width: "22px", height: "22px", padding: 0, gap: 0 }}
+                style={{ width: "22px", height: "22px" }}
               >
-                {/* Button always renders its own spinner when loading — hide
-                    the icon instead of showing both in a 22px square. */}
-                {!creatingRole && <IconPlus size={12} />}
+                <IconPlus size={12} />
               </Button>
             )}
           </div>

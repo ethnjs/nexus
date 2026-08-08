@@ -94,7 +94,7 @@ function DeleteMembershipsModal({
   };
 
   return (
-    <Modal title="Delete config + memberships?" onClose={onCancel} width={480} type="danger">
+    <Modal title="Delete config + memberships?" onClose={onCancel} width={480} variant="danger">
       <div style={{ background: "var(--color-danger-subtle)", border: "1px solid var(--color-danger)", borderRadius: "var(--radius-md)", padding: "14px", marginBottom: "20px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-danger)", display: "flex", alignItems: "center", gap: "6px" }}>
           <IconWarning size={14} style={{ flexShrink: 0 }} />

@@ -3,9 +3,9 @@
 import { forwardRef, InputHTMLAttributes, ChangeEvent, ReactNode, useId } from 'react'
 
 type InputFont  = 'sans' | 'mono' | 'serif'
-type InputSize  = 'xs' | 'sm' | 'md'
+type InputSize  = 'xs' | 'sm' | 'md' | 'lg'
 // primary -- light gray; secondary -- white
-type InputStyleType = 'primary' | 'secondary'
+type InputVariant = 'primary' | 'secondary'
 export type InputCharset = 'numeric' | 'alpha' | 'alphanumeric'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
@@ -15,7 +15,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   fullWidth?: boolean
   font?:      InputFont
   size?:      InputSize
-  styleType?: InputStyleType
+  variant?: InputVariant
   locked?:    boolean
   charset?:   InputCharset
   /** Leading icon (e.g. a search glyph) rendered inside the field's left edge. */
@@ -28,13 +28,16 @@ const FONT_MAP: Record<InputFont, string> = {
   serif: 'var(--font-serif)',
 }
 
+// Heights match Button's scale (more call sites app-wide) so the same size
+// name means the same height on every form control.
 const SIZE_MAP: Record<InputSize, { height: string; paddingX: string; fontSize: string }> = {
   xs: { height: '26px', paddingX: '8px', fontSize: '12px' },
-  sm: { height: '32px', paddingX: '10px', fontSize: '13px' },
-  md: { height: '44px', paddingX: '16px', fontSize: '14px' },
+  sm: { height: '28px', paddingX: '10px', fontSize: '13px' },
+  md: { height: '36px', paddingX: '16px', fontSize: '14px' },
+  lg: { height: '48px', paddingX: '20px', fontSize: '15px' },
 }
 
-const BACKGROUND_MAP: Record<InputStyleType, string> = {
+const BACKGROUND_MAP: Record<InputVariant, string> = {
   primary:   'var(--color-bg)',
   secondary: 'var(--color-surface)',
 }
@@ -48,7 +51,7 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', styleType = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -101,7 +104,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               paddingRight: sizing.paddingX,
               fontFamily: FONT_MAP[font],
               fontSize: sizing.fontSize,
-              background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[styleType],
+              background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
               color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
               border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
               borderRadius: 'var(--radius-md)',

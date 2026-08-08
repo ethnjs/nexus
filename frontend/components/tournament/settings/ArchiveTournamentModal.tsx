@@ -40,7 +40,7 @@ export function ArchiveTournamentModal({ tournamentId, tournamentName, mode, onC
   }
 
   return (
-    <Modal title={mode === "archive" ? "Archive tournament" : "Unarchive tournament"} onClose={onClose} type="danger">
+    <Modal title={mode === "archive" ? "Archive tournament" : "Unarchive tournament"} onClose={onClose} variant="danger">
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           {mode === "archive" ? (

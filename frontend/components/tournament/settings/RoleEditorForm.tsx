@@ -51,7 +51,7 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
             last={i === ALL_PERMISSIONS.length - 1}
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Toggle checked={draft.permissions.includes(p)} onChange={() => togglePermission(p)} disabled={locked} />
+            <Toggle checked={draft.permissions.includes(p)} onChange={() => togglePermission(p)} locked={locked} />
           </SettingsRow>
         ))}
       </SettingsSection>

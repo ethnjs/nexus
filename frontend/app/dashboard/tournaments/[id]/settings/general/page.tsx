@@ -195,7 +195,7 @@ export default function GeneralSettingsPage() {
                 value={draft.location}
                 onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
                 placeholder="e.g. USC"
-                disabled={isArchived}
+                locked={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Dates">
@@ -227,7 +227,7 @@ export default function GeneralSettingsPage() {
                 allowFreeText={false}
                 value={draft.state}
                 onChange={(_, matched) => setDraft((d) => d && { ...d, state: matched ?? "" })}
-                disabled={isArchived}
+                locked={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Level">
@@ -238,7 +238,7 @@ export default function GeneralSettingsPage() {
                 allowFreeText={false}
                 value={LEVEL_OPTIONS.find((o) => o.value === draft.level)?.label ?? ""}
                 onChange={(_, matched) => setDraft((d) => d && { ...d, level: matched?.value ?? "" })}
-                disabled={isArchived}
+                locked={isArchived}
               />
             </SettingsRow>
             <SettingsRow label="Division" last>

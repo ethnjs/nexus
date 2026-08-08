@@ -610,10 +610,10 @@ const RuleRow = memo(function RuleRow({
             onChange({ condition: condition as ParseRuleCondition, ...(condition === "always" ? { match: undefined } : {}) });
           }}
           options={validConditions.map((c) => ({ value: c, label: CONDITION_LABELS[c] ?? c }))}
-          disabled={isRemoved}
+          locked={isRemoved}
           size="sm"
           minWidth={120}
-          type="primary"
+          variant="primary"
         />
 
         {showMatch && (
@@ -645,9 +645,9 @@ const RuleRow = memo(function RuleRow({
             onChange({ action: action as ParseRuleAction, ...(VALUELESS_ACTIONS.has(action as ParseRuleAction) ? { value: undefined } : {}) });
           }}
           options={validActions.map((a) => ({ value: a, label: ACTION_LABELS[a] ?? a }))}
-          disabled={isRemoved}
+          locked={isRemoved}
           size="sm"
-          type="primary"
+          variant="primary"
         />
 
         {showValue && (
@@ -1019,9 +1019,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
             value={row.field}
             onChange={handleFieldChange}
             options={knownFields.map((f) => ({ value: f, label: KNOWN_FIELDS_LABELS[f] ?? f }))}
-            disabled={isRemoved}
+            locked={isRemoved}
             size="sm"
-            type="primary"
+            variant="primary"
             fullWidth
           />
         )}
@@ -1036,9 +1036,9 @@ const MappingRowComponent = memo(function MappingRowComponent({
             value={row.type}
             onChange={handleTypeChange}
             options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
-            disabled={isRemoved || isIgnored}
+            locked={isRemoved || isIgnored}
             size="sm"
-            type="primary"
+            variant="primary"
             fullWidth
           />
         )}

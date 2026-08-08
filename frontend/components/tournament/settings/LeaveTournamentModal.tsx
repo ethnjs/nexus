@@ -36,7 +36,7 @@ export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, on
   }
 
   return (
-    <Modal title="Leave tournament" onClose={onClose} type="danger">
+    <Modal title="Leave tournament" onClose={onClose} variant="danger">
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           You&rsquo;ll lose your roles and access to <strong>{tournamentName}</strong>. You can

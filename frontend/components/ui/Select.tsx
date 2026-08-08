@@ -44,13 +44,13 @@ interface SelectProps {
   label?:       string
   placeholder?: string
   error?:       string
-  disabled?:    boolean
+  locked?:      boolean
   fullWidth?:   boolean
   size?:        'sm' | 'md'
   /** Minimum width of the trigger in px. Useful for sm selects that need a fixed floor. */
   minWidth?:    number
   // primary -- var(--color-bg); secondary (default) -- var(--color-surface).
-  type?:        'primary' | 'secondary'
+  variant?:     'primary' | 'secondary'
   id?:          string
 }
 
@@ -59,9 +59,10 @@ interface SelectProps {
 const PANEL_MAX_HEIGHT = 260
 const PANEL_GAP        = 4   // px between trigger edge and panel
 
+// Heights match Button/Input's scale — same size name, same height everywhere.
 const SIZE_MAP: Record<'sm' | 'md', { height: number; triggerFontSize: string; optionPadding: string; optionFontSize: string }> = {
-  sm: { height: 30, triggerFontSize: '11px', optionPadding: '5px 8px',  optionFontSize: '11px' },
-  md: { height: 44, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '13px' },
+  sm: { height: 28, triggerFontSize: '11px', optionPadding: '5px 8px',  optionFontSize: '11px' },
+  md: { height: 36, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '13px' },
 }
 
 const BACKGROUND_MAP: Record<'primary' | 'secondary', string> = {
@@ -84,11 +85,11 @@ export function Select({
   label,
   placeholder = 'Select...',
   error,
-  disabled = false,
+  locked = false,
   fullWidth = false,
   size = 'md',
   minWidth,
-  type = 'secondary',
+  variant = 'secondary',
   id,
 }: SelectProps) {
   const generatedId               = useId()
@@ -102,7 +103,7 @@ export function Select({
   const listRef                   = useRef<HTMLDivElement>(null)
 
   const sizing    = SIZE_MAP[size]
-  const triggerBg = BACKGROUND_MAP[type]
+  const triggerBg = BACKGROUND_MAP[variant]
 
   const flat         = flatOptions(options)
   const selected     = flat.find((o) => o.value === value)
@@ -172,7 +173,7 @@ export function Select({
   // ── Keyboard handling ─────────────────────────────────────────────────────
 
   function handleKeyDown(e: KeyboardEvent<HTMLButtonElement>) {
-    if (disabled) return
+    if (locked) return
     switch (e.key) {
       case 'Enter':
       case ' ':
@@ -236,11 +237,11 @@ export function Select({
           ref={triggerRef}
           id={triggerId}
           type="button"
-          disabled={disabled}
+          disabled={locked}
           aria-haspopup="listbox"
           aria-expanded={open}
           data-select-trigger="true"
-          onClick={(e) => { e.stopPropagation(); if (!disabled) setOpen((v) => !v) }}
+          onClick={(e) => { e.stopPropagation(); if (!locked) setOpen((v) => !v) }}
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
@@ -259,8 +260,8 @@ export function Select({
             background:     triggerBg,
             border:         `1px solid ${borderColor}`,
             borderRadius:   'var(--radius-sm)',
-            cursor:         disabled ? 'not-allowed' : 'pointer',
-            opacity:        disabled ? 0.6 : 1,
+            cursor:         locked ? 'not-allowed' : 'pointer',
+            opacity:        locked ? 0.6 : 1,
             outline:        'none',
             textAlign:      'left',
             transition:     'border-color 150ms ease',

@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Input } from "@/components/ui/Input"
 
 type ComboboxSize = 'sm' | 'md'
-type ComboboxStyleType = 'primary' | 'secondary'
+type ComboboxVariant = 'primary' | 'secondary'
 
 interface ComboboxProps<T> {
   options:  T[]
@@ -22,8 +22,8 @@ interface ComboboxProps<T> {
   maxResults?:    number
   error?: string
   size?: ComboboxSize
-  styleType?: ComboboxStyleType
-  disabled?: boolean
+  variant?: ComboboxVariant
+  locked?: boolean
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -42,8 +42,8 @@ export function Combobox<T>({
   maxResults = 8,
   error,
   size = 'md',
-  styleType = 'primary',
-  disabled = false,
+  variant = 'primary',
+  locked = false,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
 
@@ -57,7 +57,7 @@ export function Combobox<T>({
   const dropdownOpen = open && (matches.length > 0 || showCustomRow)
 
   function handleTextChange(text: string) {
-    if (disabled) return
+    if (locked) return
     const t = text.trim().toLowerCase()
     const match = t ? options.find(o => getLabel(o).toLowerCase() === t) ?? null : null
     onChange(text, match)
@@ -85,15 +85,15 @@ export function Combobox<T>({
         value={value}
         placeholder={placeholder ?? "Type to search..."}
         onChange={e => handleTextChange(e.target.value)}
-        onFocus={() => !disabled && setOpen(true)}
+        onFocus={() => !locked && setOpen(true)}
         onBlur={() => setTimeout(() => setOpen(false), 150)}
         error={displayedError}
         size={size}
-        styleType={styleType}
-        locked={disabled}
+        variant={variant}
+        locked={locked}
         fullWidth
       />
-      {dropdownOpen && !disabled && (
+      {dropdownOpen && !locked && (
         <div style={{
           position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
           background: 'var(--color-surface)',

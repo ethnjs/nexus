@@ -3,7 +3,7 @@
 import { ReactNode, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
-type ModalType = 'normal' | 'danger'
+type ModalVariant = 'normal' | 'danger'
 
 interface ModalProps {
   title?: string
@@ -11,11 +11,11 @@ interface ModalProps {
   children: ReactNode
   width?: number
   closeOnOverlayClick?: boolean
-  type?: ModalType
+  variant?: ModalVariant
   contentStyle?: React.CSSProperties
 }
 
-export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, type = 'normal', contentStyle }: ModalProps) {
+export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, variant = 'normal', contentStyle }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -50,8 +50,8 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
     >
       <div
         style={{
-          background: type === 'danger' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
-          border: type === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
+          background: variant === 'danger' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
+          border: variant === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
           borderRadius: 'var(--radius-lg)',
           padding: '28px',
           width,
@@ -65,7 +65,7 @@ export function Modal({ title, onClose, children, width = 440, closeOnOverlayCli
           <h2 style={{
             fontFamily: 'var(--font-serif)',
             fontSize: '22px',
-            color: type === 'danger' ? 'var(--color-danger)' : 'var(--color-text-primary)',
+            color: variant === 'danger' ? 'var(--color-danger)' : 'var(--color-text-primary)',
             marginBottom: '20px',
             flexShrink: 0,
           }}>

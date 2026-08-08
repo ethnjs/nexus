@@ -38,7 +38,7 @@ export function DeleteTournamentModal({ tournamentId, tournamentName, onClose, o
   }
 
   return (
-    <Modal title="Delete tournament" onClose={onClose} type="danger">
+    <Modal title="Delete tournament" onClose={onClose} variant="danger">
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           This permanently deletes <strong>{tournamentName}</strong> — every membership, role, sheet

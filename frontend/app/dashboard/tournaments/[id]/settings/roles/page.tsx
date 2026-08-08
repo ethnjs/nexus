@@ -182,7 +182,8 @@ export default function RolesSettingsPage() {
                 placeholder="Search roles"
                 icon={<IconSearch size={14} />}
                 font="sans"
-                size="sm"
+                variant="secondary"
+                size="md"
                 fullWidth
               />
             </div>
@@ -375,12 +376,12 @@ const RoleRow = memo(function RoleRow({ role, tournamentId, lockReason, memberCo
         </span>
 
         <div style={{ display: "flex", gap: "6px", justifySelf: "end" }}>
-          <Button type="button" variant="secondary" size="sm" onClick={goToRole} style={{ padding: "0 10px" }}>
+          <Button type="button" variant="secondary" size="sm" iconOnly onClick={goToRole}>
             {locked ? <IconEye size={13} /> : <IconEdit size={13} />}
           </Button>
           <Button
-            type="button" variant="secondary" size="sm" disabled={locked} onClick={() => onDelete(role)}
-            style={{ padding: "0 10px", color: "var(--color-danger)" }}
+            type="button" variant="secondary" size="sm" iconOnly disabled={locked} onClick={() => onDelete(role)}
+            style={{ color: "var(--color-danger)" }}
           >
             <IconTrash size={13} />
           </Button>
