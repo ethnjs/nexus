@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { rolesApi, membershipsApi, ApiError, ALL_PERMISSIONS, PERMISSION_INFO, Permission, MembershipSlim } from "@/lib/api";
 import { useRoleList, useRegisterRoleFieldSave } from "../RoleFieldSaveContext";
@@ -16,7 +16,7 @@ export default function RoleDetailPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const roleId = Number(params.roleId);
-  const { roles, refreshRoles, lockReason } = useRoleList();
+  const { roles, refreshRoles, lockReason, previewLabel } = useRoleList();
 
   const role = roles.find((r) => r.id === roleId);
   const locked = role ? lockReason(role) !== null : false;
@@ -33,6 +33,19 @@ export default function RoleDetailPage() {
   useEffect(() => {
     if (role) { setLabel(role.label); setPermissions(role.permissions as Permission[]); }
   }, [role]);
+
+  // Debounced so the nav rail updates once typing pauses, not on every
+  // keystroke. Cleared on unmount so a stale preview doesn't linger.
+  const previewTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function handleLabelChange(value: string) {
+    setLabel(value);
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewTimer.current = setTimeout(() => previewLabel(roleId, value), 400);
+  }
+  useEffect(() => () => {
+    if (previewTimer.current) clearTimeout(previewTimer.current);
+    previewLabel(roleId, null);
+  }, [roleId, previewLabel]);
 
   useEffect(() => {
     membershipsApi.list(tournamentId).then((members: MembershipSlim[]) => {
@@ -57,6 +70,8 @@ export default function RoleDetailPage() {
         try {
           await rolesApi.update(tournamentId, roleId, { label: label.trim(), permissions });
           await refreshRoles();
+          if (previewTimer.current) clearTimeout(previewTimer.current);
+          previewLabel(roleId, null);
         } catch (err: unknown) {
           setError(err instanceof ApiError ? err.message : "Failed to save role.");
         } finally {
@@ -66,9 +81,11 @@ export default function RoleDetailPage() {
       cancel: () => {
         if (role) { setLabel(role.label); setPermissions(role.permissions as Permission[]); }
         setError(undefined);
+        if (previewTimer.current) clearTimeout(previewTimer.current);
+        previewLabel(roleId, null);
       },
     }
-  ), [locked, isDirty, saving, error, tournamentId, roleId, label, permissions, refreshRoles, role]);
+  ), [locked, isDirty, saving, error, tournamentId, roleId, label, permissions, refreshRoles, role, previewLabel]);
 
   useRegisterRoleFieldSave(fieldSave);
 
@@ -84,7 +101,7 @@ export default function RoleDetailPage() {
     <div>
       <SettingsSection title="Details">
         <SettingsRow label="Name" last>
-          <Input fullWidth charset="alpha" locked={locked} value={label} onChange={(e) => setLabel(e.target.value)} />
+          <Input fullWidth charset="alpha" locked={locked} value={label} onChange={(e) => handleLabelChange(e.target.value)} />
         </SettingsRow>
       </SettingsSection>
 

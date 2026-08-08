@@ -31,6 +31,13 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
   const [creatingRole, setCreatingRole] = useState(false);
   const [createError, setCreateError] = useState<string | undefined>(undefined);
 
+  // Debounced label preview from the detail page's Name input — id null means
+  // no override active.
+  const [labelPreview, setLabelPreview] = useState<{ id: number; label: string } | null>(null);
+  const previewLabel = useCallback((roleId: number, label: string | null) => {
+    setLabelPreview(label === null ? null : { id: roleId, label });
+  }, []);
+
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
   const canManageRoles = isAdmin || isOwner || hasPermission("manage_roles");
@@ -183,6 +190,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
                     <Fragment key={role.id}>
                       <RoleNavRow
                         role={role}
+                        displayLabel={labelPreview?.id === role.id ? labelPreview.label : role.label}
                         active={role.id === activeRoleId}
                         lockReason={lockReason(role)}
                         dropIndicator={reorder.dropIndicatorFor(role)}
@@ -201,7 +209,7 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
         </Card>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <RoleListProvider value={{ roles, refreshRoles, lockReason }}>
+          <RoleListProvider value={{ roles, refreshRoles, lockReason, previewLabel }}>
             <RoleFieldSaveProvider value={setFieldSave}>
               {children}
             </RoleFieldSaveProvider>
@@ -222,13 +230,14 @@ export default function RoleEditorLayout({ children }: { children: ReactNode }) 
 
 interface RoleNavRowProps {
   role:          Role;
+  displayLabel:  string;
   active:        boolean;
   lockReason:    string | null;
   dropIndicator: { noop: boolean } | null;
   onClick:       () => void;
 }
 
-function RoleNavRow({ role, active, lockReason, dropIndicator, onClick }: RoleNavRowProps) {
+function RoleNavRow({ role, displayLabel, active, lockReason, dropIndicator, onClick }: RoleNavRowProps) {
   const locked = lockReason !== null;
   const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
 
@@ -266,7 +275,7 @@ function RoleNavRow({ role, active, lockReason, dropIndicator, onClick }: RoleNa
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: active ? 600 : 500,
         color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left",
       }}>
-        {role.label}
+        {displayLabel}
       </span>
 
       {locked && (

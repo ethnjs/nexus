@@ -28,18 +28,21 @@ export function useRegisterRoleFieldSave(state: RoleFieldSave | null) {
   }, [register, state]);
 }
 
-// Shares the layout's role list (and lock logic) with /new and /[roleId] —
-// /new picks a default rank from it, /[roleId] looks up its own role and
-// re-reads it after save; both call refreshRoles() after create/delete so the
-// nav rail updates without the layout remounting.
+// Shares the layout's role list (and lock logic) with /[roleId] — it looks up
+// its own role here, re-reads it after save, and calls refreshRoles() after
+// create/delete so the nav rail updates without the layout remounting.
 export interface RoleListValue {
-  roles:        Role[];
-  refreshRoles: () => Promise<void>;
-  lockReason:   (role: Role) => string | null;
+  roles:         Role[];
+  refreshRoles:  () => Promise<void>;
+  lockReason:    (role: Role) => string | null;
+  // Debounced label preview for the nav row — lets the detail page's Name
+  // input reflect in the nav without a re-render on every keystroke. Pass
+  // null to clear (e.g. once the real save lands via refreshRoles).
+  previewLabel:  (roleId: number, label: string | null) => void;
 }
 
 const RoleListContext = createContext<RoleListValue>({
-  roles: [], refreshRoles: async () => {}, lockReason: () => null,
+  roles: [], refreshRoles: async () => {}, lockReason: () => null, previewLabel: () => {},
 });
 export const RoleListProvider = RoleListContext.Provider;
 
