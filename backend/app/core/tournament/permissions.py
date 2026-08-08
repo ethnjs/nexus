@@ -38,6 +38,7 @@ MANAGE_TOURNAMENT  = "manage_tournament"   # full access — superset of all bel
 MANAGE_ROLES       = "manage_roles"        # role *definitions* only — create/edit/delete a role, reorder rank
 MANAGE_MEMBERS     = "manage_members"      # membership data — roster + assign member roles
 MANAGE_EVENTS      = "manage_events"       # read + write events page
+MANAGE_INVITES     = "manage_invites"      # join codes + staff invites
 
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
@@ -45,6 +46,7 @@ ALL_PERMISSIONS: list[str] = [
     MANAGE_ROLES,
     MANAGE_MEMBERS,
     MANAGE_EVENTS,
+    MANAGE_INVITES,
 ]
 
 
@@ -71,17 +73,17 @@ DEFAULT_ROLES: list[dict] = [
     {
         "label":       "Tournament Director",
         "rank":        10,
-        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS],
+        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_INVITES],
     },
     {
         "label":       "Volunteer Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS],
+        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS, MANAGE_INVITES],
     },
     {
         "label":       "Test Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES],
+        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES],
     },
     {
         "label":       "Materials Coordinator",

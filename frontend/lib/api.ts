@@ -587,6 +587,7 @@ export type Permission =
   | 'manage_roles'
   | 'manage_members'
   | 'manage_events'
+  | 'manage_invites'
 
 export interface RoleDefinition {
   label:       string

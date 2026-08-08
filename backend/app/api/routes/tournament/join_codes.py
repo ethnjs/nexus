@@ -10,7 +10,7 @@ from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
+from app.core.tournament.permissions import MANAGE_INVITES, require_permission
 from app.db.session import get_db
 from app.models.models import JoinCode, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
@@ -20,13 +20,13 @@ router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/join-codes/ — manage_tournament
+# GET /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
 @router.get("/{tournament_id}/join-codes/", response_model=list[JoinCodeResponse])
 def list_join_codes(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     return (
         db.query(JoinCode)
@@ -37,7 +37,7 @@ def list_join_codes(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/join-codes/ — manage_tournament
+# POST /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
 @router.post(
     "/{tournament_id}/join-codes/",
@@ -48,7 +48,7 @@ def create_join_code(
     tournament_id: int,
     payload: JoinCodeCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
@@ -85,7 +85,7 @@ def create_join_code(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
+# PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # Label and/or extend expiry — see deactivate_join_code() for deactivation.
 # ---------------------------------------------------------------------------
 @router.patch("/{tournament_id}/join-codes/{code_id}/", response_model=JoinCodeResponse)
@@ -94,7 +94,7 @@ def update_join_code(
     code_id: int,
     payload: JoinCodeUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
@@ -128,7 +128,7 @@ def update_join_code(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
+# DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # Deactivates the join code (one-way) — does not remove the row, so
 # use_count/history stay visible via GET.
 # ---------------------------------------------------------------------------
@@ -137,7 +137,7 @@ def deactivate_tournament_join_code(
     tournament_id: int,
     code_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
@@ -155,7 +155,7 @@ def deactivate_tournament_join_code(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — manage_tournament
+# POST /tournaments/{tournament_id}/staff-invites/ — manage_invites
 # Sends one personalized invite email per address via send_staff_invite_emails
 # (parallel, per-recipient — not BCC). join_code_id must already exist; if the
 # TD chose "create new code" in the invite modal, the frontend calls
@@ -171,7 +171,7 @@ async def send_staff_invites(
     tournament_id: int,
     payload: StaffInviteCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)

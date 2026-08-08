@@ -27,7 +27,7 @@ def make_join_code(db, tournament_id, created_by, **kwargs):
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/join-codes/ — manage_tournament
+# GET /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
 
 def test_list_join_codes_td_can_access(client, td_user, td_tournament, db):
@@ -50,7 +50,7 @@ def test_list_join_codes_non_member_gets_404(client, td_user, other_tournament):
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/join-codes/ — manage_tournament
+# POST /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
 
 def test_create_join_code_creates_record(client, td_user, td_tournament, db):
@@ -86,7 +86,7 @@ def test_create_join_code_volunteer_forbidden(client, td_user, other_tournament,
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
+# PATCH /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # ---------------------------------------------------------------------------
 
 def test_update_join_code_label_only(client, td_user, td_tournament, db):
@@ -133,7 +133,7 @@ def test_update_join_code_not_found(client, td_user, td_tournament):
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_tournament
+# DELETE /tournaments/{tournament_id}/join-codes/{code_id}/ — manage_invites
 # ---------------------------------------------------------------------------
 
 def test_deactivate_join_code_marks_inactive(client, td_user, td_tournament, db):
@@ -159,7 +159,7 @@ def test_deactivate_join_code_not_found(client, td_user, td_tournament):
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/staff-invites/ — manage_tournament
+# POST /tournaments/{tournament_id}/staff-invites/ — manage_invites
 # mock_send_email is autouse (patches email_service._send), so every test
 # here already has it — request it directly to assert on/configure it.
 # ---------------------------------------------------------------------------
