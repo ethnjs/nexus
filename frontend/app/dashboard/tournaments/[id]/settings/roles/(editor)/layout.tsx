@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
-import { IconArrowLeft, IconLock, IconGripVertical, IconPlus, IconUserShield } from "@/components/ui/Icons";
+import { IconArrowLeft, IconLock, IconPlus, IconUserShield } from "@/components/ui/Icons";
 import { RoleFieldSave, RoleFieldSaveProvider, RoleListProvider } from "./RoleFieldSaveContext";
 
 export default function RoleEditorLayout({ children }: { children: ReactNode }) {
@@ -231,75 +231,51 @@ interface RoleNavRowProps {
 function RoleNavRow({ role, active, lockReason, dropIndicator, onClick }: RoleNavRowProps) {
   const locked = lockReason !== null;
   const { setGripRef, gripProps, setDropRef, dragStyle } = useRoleRowDrag(role.id, locked);
-  const [hovered, setHovered] = useState(false);
 
   const indicatorStyle: React.CSSProperties = dropIndicator
     ? { background: dropIndicator.noop ? "var(--color-accent-subtle)" : "var(--color-success-subtle)" }
     : {};
 
+  // No separate grip handle — the whole row is the drag handle, so both
+  // useDraggable's and useDroppable's refs/props land on this one button.
   return (
-    <div
-      style={{ position: "relative", marginLeft: "-31px", paddingLeft: "31px", boxSizing: "border-box" }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+    <button
+      ref={(node) => { setGripRef(node); setDropRef(node); }}
+      {...(locked ? {} : gripProps)}
+      type="button"
+      onClick={onClick}
+      style={{
+        ...dragStyle,
+        display: "flex", alignItems: "center", gap: "8px", width: "100%",
+        padding: "7px 8px", border: "none", cursor: locked ? "pointer" : "grab",
+        borderRadius: "var(--radius-md)",
+        background: active ? "var(--color-accent-subtle)" : "transparent",
+        ...indicatorStyle,
+      }}
     >
-      {!locked && (
-        <span
-          ref={setGripRef}
-          {...gripProps}
-          style={{
-            position: "absolute", left: "0", top: "50%", transform: "translateY(-50%)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "25px", height: "25px",
-            border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
-            background: "var(--color-surface)", color: "var(--color-text-tertiary)",
-            cursor: "grab",
-            opacity: hovered ? 1 : 0,
-            pointerEvents: hovered ? "auto" : "none",
-            transition: "opacity 120ms ease",
-          }}
-        >
-          <IconGripVertical size={16} />
-        </span>
+      <span style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        width: "20px", height: "20px", borderRadius: "50%",
+        background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
+        flexShrink: 0,
+      }}>
+        <IconUserShield size={10} />
+      </span>
+
+      <span style={{
+        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: active ? 600 : 500,
+        color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left",
+      }}>
+        {role.label}
+      </span>
+
+      {locked && (
+        <Tooltip variant="info" message={lockReason} showIcon={false}>
+          <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+            <IconLock size={12} />
+          </span>
+        </Tooltip>
       )}
-
-      <button
-        ref={setDropRef}
-        type="button"
-        onClick={onClick}
-        style={{
-          ...dragStyle,
-          display: "flex", alignItems: "center", gap: "8px", width: "100%",
-          padding: "7px 8px", border: "none", cursor: "pointer",
-          borderRadius: "var(--radius-md)",
-          background: active ? "var(--color-accent-subtle)" : "transparent",
-          ...indicatorStyle,
-        }}
-      >
-        <span style={{
-          display: "flex", alignItems: "center", justifyContent: "center",
-          width: "20px", height: "20px", borderRadius: "50%",
-          background: "var(--color-accent-subtle)", color: "var(--color-text-secondary)",
-          flexShrink: 0,
-        }}>
-          <IconUserShield size={10} />
-        </span>
-
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: active ? 600 : 500,
-          color: "var(--color-text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left",
-        }}>
-          {role.label}
-        </span>
-
-        {locked && (
-          <Tooltip variant="info" message={lockReason} showIcon={false}>
-            <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
-              <IconLock size={12} />
-            </span>
-          </Tooltip>
-        )}
-      </button>
-    </div>
+    </button>
   );
 }
