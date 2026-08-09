@@ -14,11 +14,55 @@ from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
 from app.core.auth import get_current_user
 from app.db.session import get_db
-from app.models.models import JoinCode, User
+from app.models.models import JoinCode, TournamentMembership, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
+from app.schemas.tournament.membership import MembershipSlimResponse
+from app.schemas.user import UserSlimResponse
 from app.services.email_service import send_staff_invite_emails
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
+
+
+# ---------------------------------------------------------------------------
+# JoinCode.creator is a User relationship, but the response prefers the
+# creator's TournamentMembership (falls back to the bare user when they have
+# none — e.g. a site admin acting without ever joining). Resolved separately
+# rather than via from_attributes so the union picks membership over user
+# whenever one exists, not just whichever validates first.
+# ---------------------------------------------------------------------------
+def _resolve_creators(
+    db: Session, tournament_id: int, join_codes: list[JoinCode],
+) -> dict[int, MembershipSlimResponse | UserSlimResponse]:
+    creator_ids = {jc.created_by for jc in join_codes}
+    memberships = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.tournament_id == tournament_id,
+            TournamentMembership.user_id.in_(creator_ids),
+        )
+        .all()
+    )
+    resolved: dict[int, MembershipSlimResponse | UserSlimResponse] = {
+        m.user_id: MembershipSlimResponse.model_validate(m) for m in memberships
+    }
+    missing_ids = creator_ids - resolved.keys()
+    if missing_ids:
+        users = db.query(User).filter(User.id.in_(missing_ids)).all()
+        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
+    return resolved
+
+
+def _to_response(join_code: JoinCode, creators: dict[int, MembershipSlimResponse | UserSlimResponse]) -> JoinCodeResponse:
+    return JoinCodeResponse(
+        id=join_code.id,
+        code=join_code.code,
+        label=join_code.label,
+        expires_at=join_code.expires_at,
+        is_active=join_code.is_active,
+        created_at=join_code.created_at,
+        use_count=join_code.use_count,
+        creator=creators[join_code.created_by],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -30,12 +74,14 @@ def list_join_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
-    return (
+    join_codes = (
         db.query(JoinCode)
         .filter(JoinCode.tournament_id == tournament_id)
         .order_by(JoinCode.created_at.desc())
         .all()
     )
+    creators = _resolve_creators(db, tournament_id, join_codes)
+    return [_to_response(jc, creators) for jc in join_codes]
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +129,8 @@ def create_join_code(
 
     db.commit()
     db.refresh(join_code)
-    return join_code
+    creators = _resolve_creators(db, tournament_id, [join_code])
+    return _to_response(join_code, creators)
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +173,8 @@ def update_join_code(
 
     db.commit()
     db.refresh(join_code)
-    return join_code
+    creators = _resolve_creators(db, tournament_id, [join_code])
+    return _to_response(join_code, creators)
 
 
 # ---------------------------------------------------------------------------
@@ -207,4 +255,5 @@ async def send_staff_invites(
     )
 
     db.commit()
-    return StaffInviteResponse(join_code=join_code, sent=sent, failed=failed)
+    creators = _resolve_creators(db, tournament_id, [join_code])
+    return StaffInviteResponse(join_code=_to_response(join_code, creators), sent=sent, failed=failed)
