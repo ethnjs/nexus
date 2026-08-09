@@ -7,7 +7,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { ApiError, Role, rolesApi } from "@/lib/api";
-import { DropZoneKind, applyDrop, groupByRank, rankChanges } from "@/lib/roleReorder";
+import { DropZoneKind, applyDrop, groupByRank, rankChanges } from "@/lib/roles/roleReorder";
 
 export type DividerState = "success" | "noop" | null;
 

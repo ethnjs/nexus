@@ -1,13 +1,12 @@
 "use client";
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { useAuth } from "@/lib/useAuth";
-import { useMyMembership } from "@/lib/useMyMembership";
 import { rolesApi, membershipsApi, Role, MembershipSlim, ApiError } from "@/lib/api";
-import { defaultNewRoleLabel, groupByRank, nextBottomRank } from "@/lib/roleReorder";
-import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
+import { defaultNewRoleLabel, groupByRank, nextBottomRank } from "@/lib/roles/roleReorder";
+import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -30,8 +29,7 @@ export default function RolesSettingsPage() {
   const params = useParams();
   const router = useRouter();
   const tournamentId = Number(params.id);
-  const { user: currentUser } = useAuth();
-  const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
+  const { canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked } = useRoleLock();
 
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [memberCounts, setMemberCounts] = useState<Record<number, number>>({});
@@ -39,26 +37,6 @@ export default function RolesSettingsPage() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [applying, setApplying] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
-
-  const isAdmin = currentUser?.role === "admin";
-  const isOwner = !!membership?.is_owner;
-  const canManageRoles = isAdmin || isOwner || hasPermission("manage_roles");
-
-  const ownRank = useMemo(() => {
-    if (!membership || membership.roles.length === 0) return null;
-    return Math.min(...membership.roles.map((r) => r.rank));
-  }, [membership]);
-
-  // Returns why a role can't be edited, or null if it's editable.
-  const lockReason = useCallback((role: Role): string | null => {
-    if (!canManageRoles) return "You don't have permission to manage roles.";
-    if (isAdmin || isOwner) return null;
-    if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
-    if (role.rank <= ownRank) return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
-    return null;
-  }, [canManageRoles, isAdmin, isOwner, ownRank]);
-
-  const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
   // Bumped per request so a slow earlier resync can't clobber a newer one.
   const loadSeq = useRef(0);
@@ -187,7 +165,7 @@ export default function RolesSettingsPage() {
                 fullWidth
               />
             </div>
-            {canManageRoles && (
+            {canCreateRoles && (
               <Button
                 type="button" variant="primary" size="md"
                 loading={creatingRole}

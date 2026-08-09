@@ -3,12 +3,11 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { useAuth } from "@/lib/useAuth";
-import { useMyMembership } from "@/lib/useMyMembership";
 import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { rolesApi, membershipsApi, ApiError, MembershipSlim, Permission, Role } from "@/lib/api";
-import { useRoleReorder, useRoleRowDrag } from "@/lib/useRoleReorder";
-import { defaultNewRoleLabel, nextBottomRank } from "@/lib/roleReorder";
+import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
+import { defaultNewRoleLabel, nextBottomRank } from "@/lib/roles/roleReorder";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -32,8 +31,7 @@ export default function RoleEditorPage() {
   const tournamentId = Number(params.id);
   const editorPath = `/dashboard/tournaments/${tournamentId}/settings/roles/edit`;
 
-  const { user: currentUser } = useAuth();
-  const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
+  const { canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked } = useRoleLock();
 
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [memberships, setMemberships] = useState<MembershipSlim[]>([]);
@@ -48,25 +46,6 @@ export default function RoleEditorPage() {
     return Number.isFinite(fromQuery) && fromQuery > 0 ? fromQuery : null;
   });
   const [activeTab, setActiveTab] = useState<"details" | "members">("details");
-
-  const isAdmin = currentUser?.role === "admin";
-  const isOwner = !!membership?.is_owner;
-  const canManageRoles = isAdmin || isOwner || hasPermission("manage_roles");
-
-  const ownRank = useMemo(() => {
-    if (!membership || membership.roles.length === 0) return null;
-    return Math.min(...membership.roles.map((r) => r.rank));
-  }, [membership]);
-
-  const lockReason = useCallback((role: Role): string | null => {
-    if (!canManageRoles) return "You don't have permission to manage roles.";
-    if (isAdmin || isOwner) return null;
-    if (ownRank === null) return "You don't hold any role here, so you can't manage roles.";
-    if (role.rank <= ownRank) return "This role is at or above your own rank — you can't edit roles that outrank or tie your highest role.";
-    return null;
-  }, [canManageRoles, isAdmin, isOwner, ownRank]);
-
-  const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
   const refreshRoles = useCallback(async () => {
     const next = await rolesApi.list(tournamentId).catch(() => []);
@@ -236,7 +215,7 @@ export default function RoleEditorPage() {
               <IconArrowLeft size={12} /> Back
             </Button>
 
-            {canManageRoles && (
+            {canCreateRoles && (
               <Button
                 type="button"
                 variant="secondary"

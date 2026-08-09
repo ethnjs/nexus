@@ -14,6 +14,7 @@ interface TournamentContextValue {
   tournaments: Tournament[];
   selectedTournament: Tournament | null;
   setSelectedTournament: (t: Tournament | null) => void;
+  isArchived: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -73,6 +74,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         tournaments,
         selectedTournament,
         setSelectedTournament,
+        isArchived: !!selectedTournament?.is_archived,
         loading,
         refresh,
       }}

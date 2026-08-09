@@ -62,7 +62,7 @@ export default function GeneralSettingsPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const { user: currentUser } = useAuth();
-  const { selectedTournament, setSelectedTournament } = useTournament();
+  const { selectedTournament, setSelectedTournament, isArchived, refresh } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
@@ -159,8 +159,6 @@ export default function GeneralSettingsPage() {
     );
   }
 
-  const isArchived = selectedTournament.is_archived;
-
   return (
     <div>
       <PageHeader heading="General" subheading="Tournament Settings"/>
@@ -253,7 +251,7 @@ export default function GeneralSettingsPage() {
           </SettingsSection>
 
           <SettingsSection title="Visibility">
-            <SettingsRow label="Visibility" helper="Public tournaments are discoverable and joinable without a join code.">
+            <SettingsRow label="Visibility" helper="Public tournaments are discoverable and joinable without an invite.">
               <ButtonGroup
                 options={[{ value: "public", label: "Public" }, { value: "private", label: "Private" }]}
                 value={draft.is_public ? "public" : "private"}
@@ -379,7 +377,7 @@ export default function GeneralSettingsPage() {
           tournamentName={selectedTournament.name}
           mode={selectedTournament.is_archived ? "unarchive" : "archive"}
           onClose={() => setShowArchiveModal(false)}
-          onDone={(updated) => { setSelectedTournament(updated); setShowArchiveModal(false); }}
+          onDone={() => { refresh(); setShowArchiveModal(false); }}
         />
       )}
     </div>

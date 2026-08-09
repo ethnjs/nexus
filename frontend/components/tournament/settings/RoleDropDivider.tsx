@@ -1,7 +1,7 @@
 "use client";
 
 import { memo } from "react";
-import { DividerState } from "@/lib/useRoleReorder";
+import { DividerState } from "@/lib/roles/useRoleReorder";
 
 // Always rendered (never removed) so it reserves its space whether active or
 // not — the "insert here" indicator this way never shifts surrounding rows,
