@@ -7,10 +7,12 @@ import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { IconLock } from "@/components/ui/Icons";
+import { IconLock, IconPlus } from "@/components/ui/Icons";
+import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 
 // Label / Code / Creator / Expiry / Uses
 const INVITE_ROW_COLUMNS = "1.2fr 110px 1.3fr 120px 70px";
@@ -120,6 +122,7 @@ export default function InvitesSettingsPage() {
   const [invites, setInvites] = useState<Invite[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!canManageInvites) return;
@@ -172,7 +175,15 @@ export default function InvitesSettingsPage() {
 
   return (
     <div>
-      <PageHeader heading="Invites" subheading="Tournament Settings" />
+      <PageHeader
+        heading="Invites"
+        subheading="Tournament Settings"
+        action={
+          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+            <IconPlus size={14} /> Add invite
+          </Button>
+        }
+      />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -182,13 +193,29 @@ export default function InvitesSettingsPage() {
 
       {invites.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState title="No invites yet" description="Create an invite to let staff join this tournament." />
+          <EmptyState
+            title="No invites yet"
+            description="Create an invite to let members or staff join this tournament."
+            action={
+              <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
+                <IconPlus size={14} /> Add invite
+              </Button>
+            }
+          />
         </Card>
       ) : (
         <>
           <InviteSection title="Active" invites={active} now={now} />
           <InviteSection title="Inactive" invites={inactive} now={now} />
         </>
+      )}
+
+      {creating && (
+        <CreateInviteModal
+          tournamentId={tournamentId}
+          onClose={() => setCreating(false)}
+          onCreated={(invite) => setInvites((prev) => (prev ? [invite, ...prev] : [invite]))}
+        />
       )}
     </div>
   );
