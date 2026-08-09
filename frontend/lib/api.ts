@@ -665,6 +665,7 @@ export interface Invite {
   is_active:  boolean
   created_at: string
   use_count:  number
+  creator:    MembershipSlim | UserSlim
 }
 
 export interface InviteCreate {
