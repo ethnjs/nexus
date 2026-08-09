@@ -27,7 +27,7 @@ const NAV_ITEMS = [
 const SETTINGS_SUBITEMS = [
   { segment: "general",    label: "General" },
   { segment: "roles",      label: "Roles" },
-  { segment: "join-codes", label: "Invites" },
+  { segment: "invites",    label: "Invites" },
   { segment: "audit-log",  label: "Audit Log" },
 ];
 
@@ -47,7 +47,10 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const { user: currentUser } = useAuth();
   const { membership, hasPermission } = useMyMembership();
   const canManageRoles = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_roles");
-  const settingsSubitems = SETTINGS_SUBITEMS.filter(({ segment }) => segment !== "roles" || canManageRoles);
+  const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
+  const settingsSubitems = SETTINGS_SUBITEMS.filter(
+    ({ segment }) => (segment !== "roles" || canManageRoles) && (segment !== "invites" || canManageInvites)
+  );
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.
   const expanded = hovered || onSettingsRoute;

@@ -654,9 +654,10 @@ export const rolesApi = {
 }
 
 // -------------------------------------------------------------------------
-// Tournament Join Codes — nested under /tournaments/{id}/join-codes/
+// Invites — nested under /tournaments/{id}/join-codes/ (backend route name
+// unchanged; "invite" is the frontend-facing term)
 // -------------------------------------------------------------------------
-export interface JoinCode {
+export interface Invite {
   id:         number
   code:       string
   label:      string | null
@@ -666,24 +667,24 @@ export interface JoinCode {
   use_count:  number
 }
 
-export interface JoinCodeCreate {
+export interface InviteCreate {
   label?:            string | null
   expires_in_hours?: number | null
 }
 
-export interface JoinCodeUpdate {
+export interface InviteUpdate {
   label?:     string | null
   add_hours?: number | null
 }
 
-export const tournamentJoinCodesApi = {
+export const invitesApi = {
   list: (tournamentId: number) =>
-    api.get<JoinCode[]>(`/tournaments/${tournamentId}/join-codes/`),
-  create: (tournamentId: number, body: JoinCodeCreate) =>
-    api.post<JoinCode>(`/tournaments/${tournamentId}/join-codes/`, body),
-  update: (tournamentId: number, id: number, body: JoinCodeUpdate) =>
-    api.patch<JoinCode>(`/tournaments/${tournamentId}/join-codes/${id}/`, body),
-  // Deactivates the code (one-way) — does not delete the row, history stays visible via GET.
+    api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
+  create: (tournamentId: number, body: InviteCreate) =>
+    api.post<Invite>(`/tournaments/${tournamentId}/join-codes/`, body),
+  update: (tournamentId: number, id: number, body: InviteUpdate) =>
+    api.patch<Invite>(`/tournaments/${tournamentId}/join-codes/${id}/`, body),
+  // Deactivates the invite (one-way) — does not delete the row, history stays visible via GET.
   deactivate: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/join-codes/${id}/`),
 }

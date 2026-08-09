@@ -40,7 +40,7 @@ export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, on
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
           You&rsquo;ll lose your roles and access to <strong>{tournamentName}</strong>. You can
-          rejoin later with an invite or join code.
+          rejoin later with an invite.
         </p>
 
         <Input
