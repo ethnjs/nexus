@@ -8,14 +8,16 @@ import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { IconLock, IconPlus } from "@/components/ui/Icons";
+import { IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
+import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
 
-// Label / Code / Creator / Expiry / Uses
-const INVITE_ROW_COLUMNS = "1.2fr 110px 1.3fr 120px 70px";
+// Label / Code / Creator / Expiry / Uses / Actions
+const INVITE_ROW_COLUMNS = "1.2fr 120px 1.3fr 170px 60px 72px";
 
 function creatorUser(creator: Invite["creator"]) {
   return "user" in creator ? creator.user : creator;
@@ -26,8 +28,8 @@ function creatorName(creator: Invite["creator"]) {
   return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
 }
 
-// "2d 4h" / "3h 12m" / "5m 30s" / "12s" — collapses to the two biggest
-// non-zero units so the column doesn't jitter in width as it ticks down.
+// Always ticks down to the second — "2d 4h 13m 45s" — never collapses away
+// smaller units once a larger one is showing.
 function formatCountdown(msRemaining: number): string {
   if (msRemaining <= 0) return "Expired";
   const totalSeconds = Math.floor(msRemaining / 1000);
@@ -36,17 +38,39 @@ function formatCountdown(msRemaining: number): string {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
 
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
-  return `${seconds}s`;
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (days > 0 || hours > 0) parts.push(`${hours}h`);
+  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
 }
 
-function InviteRow({ invite, now, isLast }: { invite: Invite; now: number; isLast: boolean }) {
+function InviteRow({
+  tournamentId, invite, now, isLast, onUpdated, onDeactivated,
+}: {
+  tournamentId: number;
+  invite: Invite;
+  now: number;
+  isLast: boolean;
+  onUpdated: (invite: Invite) => void;
+  onDeactivated: (id: number) => void;
+}) {
+  const [deactivating, setDeactivating] = useState(false);
   const user = creatorUser(invite.creator);
   const expiry = invite.expires_at === null
     ? "∞"
     : formatCountdown(new Date(invite.expires_at).getTime() - now);
+
+  async function handleDeactivate() {
+    setDeactivating(true);
+    try {
+      await invitesApi.deactivate(tournamentId, invite.id);
+      onDeactivated(invite.id);
+    } catch {
+      setDeactivating(false);
+    }
+  }
 
   return (
     <div style={{
@@ -60,11 +84,9 @@ function InviteRow({ invite, now, isLast }: { invite: Invite; now: number; isLas
       }}>
         {invite.label ?? "—"}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {invite.code}
-      </span>
+      <Badge variant="default" className="font-mono">{invite.code}</Badge>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-        <AvatarCircle user={user} size={22} />
+        <AvatarCircle user={user} size="xs" />
         <span style={{
           fontFamily: "var(--font-sans)", fontSize: "13px",
           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
@@ -78,11 +100,29 @@ function InviteRow({ invite, now, isLast }: { invite: Invite; now: number; isLas
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "right" }}>
         {invite.use_count}
       </span>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+        <AddTimePopover tournamentId={tournamentId} invite={invite} onUpdated={onUpdated} />
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Deactivate"
+          loading={deactivating}
+          onClick={handleDeactivate}
+          style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
+        >
+          <IconTrash size={14} />
+        </Button>
+      </div>
     </div>
   );
 }
 
-function InviteSection({ title, invites, now }: { title: string; invites: Invite[]; now: number }) {
+function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
+  invites: Invite[];
+  tournamentId: number;
+  now: number;
+  onUpdated: (invite: Invite) => void;
+  onDeactivated: (id: number) => void;
+}) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div style={{
@@ -91,22 +131,25 @@ function InviteSection({ title, invites, now }: { title: string; invites: Invite
         fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
         color: "var(--color-text-tertiary)",
       }}>
-        <span>{title} — {invites.length}</span>
+        <span>Invites — {invites.length}</span>
         <span>Code</span>
         <span>Creator</span>
         <span>Expiry</span>
         <span style={{ textAlign: "right" }}>Uses</span>
+        <span />
       </div>
 
-      {invites.length === 0 ? (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", padding: "4px 12px 12px" }}>
-          None.
-        </p>
-      ) : (
-        invites.map((invite, i) => (
-          <InviteRow key={invite.id} invite={invite} now={now} isLast={i === invites.length - 1} />
-        ))
-      )}
+      {invites.map((invite, i) => (
+        <InviteRow
+          key={invite.id}
+          tournamentId={tournamentId}
+          invite={invite}
+          now={now}
+          isLast={i === invites.length - 1}
+          onUpdated={onUpdated}
+          onDeactivated={onDeactivated}
+        />
+      ))}
     </Card>
   );
 }
@@ -171,7 +214,14 @@ export default function InvitesSettingsPage() {
   }
 
   const active = invites.filter((i) => i.is_active);
-  const inactive = invites.filter((i) => !i.is_active);
+
+  function handleUpdated(updated: Invite) {
+    setInvites((prev) => prev && prev.map((i) => (i.id === updated.id ? updated : i)));
+  }
+
+  function handleDeactivated(id: number) {
+    setInvites((prev) => prev && prev.filter((i) => i.id !== id));
+  }
 
   return (
     <div>
@@ -191,7 +241,7 @@ export default function InvitesSettingsPage() {
         </p>
       )}
 
-      {invites.length === 0 ? (
+      {active.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             title="No invites yet"
@@ -204,10 +254,13 @@ export default function InvitesSettingsPage() {
           />
         </Card>
       ) : (
-        <>
-          <InviteSection title="Active" invites={active} now={now} />
-          <InviteSection title="Inactive" invites={inactive} now={now} />
-        </>
+        <InviteTable
+          invites={active}
+          tournamentId={tournamentId}
+          now={now}
+          onUpdated={handleUpdated}
+          onDeactivated={handleDeactivated}
+        />
       )}
 
       {creating && (

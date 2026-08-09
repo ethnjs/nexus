@@ -6,22 +6,17 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { invitesApi, Invite, ApiError } from "@/lib/api";
+import { HOUR_PRESETS } from "@/lib/invitePresets";
 
 const EXPIRY_PRESETS = [
-  { value: "1h",       label: "1 hour" },
-  { value: "4h",       label: "4 hours" },
-  { value: "8h",       label: "8 hours" },
-  { value: "12h",      label: "12 hours" },
-  { value: "1d",       label: "1 day" },
-  { value: "1w",       label: "1 week" },
-  { value: "30d",      label: "30 days" },
-  { value: "forever",  label: "Forever" },
+  ...HOUR_PRESETS.map(({ value, label }) => ({ value, label })),
+  { value: "forever", label: "Forever" },
 ];
 
 // Hours for each fixed preset — "forever" is handled separately (null expiry).
-const PRESET_HOURS: Record<string, number> = {
-  "1h": 1, "4h": 4, "8h": 8, "12h": 12, "1d": 24, "1w": 24 * 7, "30d": 24 * 30,
-};
+const PRESET_HOURS: Record<string, number> = Object.fromEntries(
+  HOUR_PRESETS.map(({ value, hours }) => [value, hours])
+);
 
 interface CreateInviteModalProps {
   tournamentId: number;
