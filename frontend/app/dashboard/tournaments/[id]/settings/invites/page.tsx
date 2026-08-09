@@ -57,6 +57,7 @@ function InviteRow({
   onDeactivated: (id: number) => void;
 }) {
   const [deactivating, setDeactivating] = useState(false);
+  const [hovered, setHovered] = useState(false);
   const user = creatorUser(invite.creator);
   const expiry = invite.expires_at === null
     ? "∞"
@@ -73,19 +74,25 @@ function InviteRow({
   }
 
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS, alignItems: "center",
-      gap: "8px", padding: "10px 12px",
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS, alignItems: "center",
+        gap: "8px", padding: "10px 12px",
+        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        transition: "background 100ms ease",
+      }}
+    >
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
       }}>
         {invite.label ?? "—"}
       </span>
-      <Badge variant="default" className="font-mono">{invite.code}</Badge>
-      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+      <Badge variant="default" className="font-mono" style={{ justifySelf: "center" }}>{invite.code}</Badge>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="xs" />
         <span style={{
           fontFamily: "var(--font-sans)", fontSize: "13px",
@@ -94,13 +101,13 @@ function InviteRow({
           {creatorName(invite.creator)}
         </span>
       </div>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {expiry}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "right" }}>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {invite.use_count}
       </span>
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
         <AddTimePopover tournamentId={tournamentId} invite={invite} onUpdated={onUpdated} />
         <Button
           type="button" variant="secondary" size="sm" iconOnly
@@ -132,10 +139,10 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
         color: "var(--color-text-tertiary)",
       }}>
         <span>Invites — {invites.length}</span>
-        <span>Code</span>
-        <span>Creator</span>
-        <span>Expiry</span>
-        <span style={{ textAlign: "right" }}>Uses</span>
+        <span style={{ textAlign: "center" }}>Code</span>
+        <span style={{ textAlign: "center" }}>Creator</span>
+        <span style={{ textAlign: "center" }}>Expiry</span>
+        <span style={{ textAlign: "center" }}>Uses</span>
         <span />
       </div>
 
