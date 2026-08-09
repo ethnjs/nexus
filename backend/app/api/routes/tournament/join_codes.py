@@ -76,7 +76,7 @@ def list_join_codes(
 ):
     join_codes = (
         db.query(JoinCode)
-        .filter(JoinCode.tournament_id == tournament_id)
+        .filter(JoinCode.tournament_id == tournament_id, JoinCode.is_active == True)
         .order_by(JoinCode.created_at.desc())
         .all()
     )

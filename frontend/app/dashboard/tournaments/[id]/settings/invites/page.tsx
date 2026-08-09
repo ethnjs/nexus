@@ -133,7 +133,7 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div style={{
-        display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS,
+        display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS, gap: "8px",
         padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
         fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
         color: "var(--color-text-tertiary)",
