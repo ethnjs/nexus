@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
+import { HoverCard } from "@/components/ui/HoverCard";
 import { IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
@@ -26,6 +27,12 @@ function creatorUser(creator: Invite["creator"]) {
 function creatorName(creator: Invite["creator"]) {
   const user = creatorUser(creator);
   return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
+}
+
+// Roles are only present when creator is a MembershipSlim (they hold a
+// membership in this tournament) — null for the bare-UserSlim fallback.
+function creatorRoles(creator: Invite["creator"]) {
+  return "roles" in creator ? creator.roles : null;
 }
 
 // Always ticks down to the second — "2d 4h 13m 45s" — never collapses away
@@ -91,16 +98,63 @@ function InviteRow({
       }}>
         {invite.label ?? "—"}
       </span>
-      <Badge variant="default" className="font-mono" style={{ justifySelf: "center" }}>{invite.code}</Badge>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minWidth: 0 }}>
-        <AvatarCircle user={user} size="xs" />
-        <span style={{
-          fontFamily: "var(--font-sans)", fontSize: "13px",
-          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        }}>
-          {creatorName(invite.creator)}
-        </span>
-      </div>
+      <Badge
+        variant="default" className="font-mono"
+        copyValue={`${typeof window !== "undefined" ? window.location.origin : ""}/join?code=${invite.code}`}
+        title="Copy join link"
+        style={{ justifySelf: "center" }}
+      >
+        {invite.code}
+      </Badge>
+      <HoverCard
+        style={{ justifyContent: "center", justifySelf: "center", width: "100%" }}
+        content={
+          <>
+            <p style={{
+              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            }}>
+              {creatorName(invite.creator)}
+            </p>
+            <p style={{
+              fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px",
+            }}>
+              {user.email}
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}>
+              {(() => {
+                const roles = creatorRoles(invite.creator);
+                if (roles === null) {
+                  return (
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                      No membership in this tournament
+                    </span>
+                  );
+                }
+                if (roles.length === 0) {
+                  return (
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                      No roles
+                    </span>
+                  );
+                }
+                return roles.map((role) => <Badge key={role.id} variant="default">{role.label}</Badge>);
+              })()}
+            </div>
+          </>
+        }
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minWidth: 0, cursor: "default" }}>
+          <AvatarCircle user={user} size="xs" />
+          <span style={{
+            fontFamily: "var(--font-sans)", fontSize: "13px",
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
+            {creatorName(invite.creator)}
+          </span>
+        </div>
+      </HoverCard>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {expiry}
       </span>
