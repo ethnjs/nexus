@@ -18,24 +18,10 @@ import { HoverCard } from "@/components/ui/HoverCard";
 import { IconArchive, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
+import { personUser, personName, personRoles } from "@/lib/personDisplay";
 
 // Label / Code / Creator / Expiry / Uses / Actions
 const INVITE_ROW_COLUMNS = "1.2fr 120px 1.3fr 170px 60px 72px";
-
-function creatorUser(creator: Invite["creator"]) {
-  return "user" in creator ? creator.user : creator;
-}
-
-function creatorName(creator: Invite["creator"]) {
-  const user = creatorUser(creator);
-  return `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || user.email;
-}
-
-// Roles are only present when creator is a MembershipSlim (they hold a
-// membership in this tournament) — null for the bare-UserSlim fallback.
-function creatorRoles(creator: Invite["creator"]) {
-  return "roles" in creator ? creator.roles : null;
-}
 
 // Always ticks down to the second — "2d 4h 13m 45s" — never collapses away
 // smaller units once a larger one is showing.
@@ -141,7 +127,7 @@ function InviteRow({
 }) {
   const [deactivating, setDeactivating] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const user = creatorUser(invite.creator);
+  const user = personUser(invite.creator);
   const expiry = invite.expires_at === null
     ? "∞"
     : formatCountdown(new Date(invite.expires_at).getTime() - now);
@@ -185,7 +171,7 @@ function InviteRow({
               fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)",
               overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
             }}>
-              {creatorName(invite.creator)}
+              {personName(invite.creator)}
             </p>
             <p style={{
               fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
@@ -195,7 +181,7 @@ function InviteRow({
             </p>
             <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}>
               {(() => {
-                const roles = creatorRoles(invite.creator);
+                const roles = personRoles(invite.creator);
                 if (roles === null) {
                   return (
                     <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
@@ -222,7 +208,7 @@ function InviteRow({
             fontFamily: "var(--font-sans)", fontSize: "13px",
             overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
           }}>
-            {creatorName(invite.creator)}
+            {personName(invite.creator)}
           </span>
         </div>
       </HoverCard>
