@@ -3,20 +3,9 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { invitesApi, Invite, ApiError } from "@/lib/api";
-import { HOUR_PRESETS } from "@/lib/invitePresets";
-
-const EXPIRY_PRESETS = [
-  ...HOUR_PRESETS.map(({ value, label }) => ({ value, label })),
-  { value: "forever", label: "Forever" },
-];
-
-// Hours for each fixed preset — "forever" is handled separately (null expiry).
-const PRESET_HOURS: Record<string, number> = Object.fromEntries(
-  HOUR_PRESETS.map(({ value, hours }) => [value, hours])
-);
+import { PRESET_HOURS } from "@/lib/invitePresets";
+import { InviteFields } from "@/components/tournament/settings/InviteFields";
 
 interface CreateInviteModalProps {
   tournamentId: number;
@@ -52,22 +41,7 @@ export function CreateInviteModal({ tournamentId, onClose, onCreated }: CreateIn
   return (
     <Modal title="Create invite" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        <Input
-          label="Label"
-          placeholder="e.g. Volunteer sign-up"
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          font="sans"
-          fullWidth
-        />
-
-        <Dropdown
-          label="Expires in"
-          value={preset}
-          onChange={setPreset}
-          options={EXPIRY_PRESETS}
-          fullWidth
-        />
+        <InviteFields label={label} onLabelChange={setLabel} preset={preset} onPresetChange={setPreset} />
 
         {error && (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>

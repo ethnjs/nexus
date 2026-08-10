@@ -10,3 +10,16 @@ export const HOUR_PRESETS: { value: string; label: string; hours: number }[] = [
   { value: "1w", label: "1 week", hours: 24 * 7 },
   { value: "30d", label: "30 days", hours: 24 * 30 },
 ];
+
+// Dropdown options for a new invite's expiry — HOUR_PRESETS plus "forever",
+// which only makes sense at creation (add_hours has no "make it forever").
+export const EXPIRY_PRESETS = [
+  ...HOUR_PRESETS.map(({ value, label }) => ({ value, label })),
+  { value: "forever", label: "Forever" },
+];
+
+// preset value -> hours, for every fixed preset. "forever" is handled
+// separately by the caller (null expires_in_hours).
+export const PRESET_HOURS: Record<string, number> = Object.fromEntries(
+  HOUR_PRESETS.map(({ value, hours }) => [value, hours])
+);
