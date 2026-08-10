@@ -1,10 +1,16 @@
 from __future__ import annotations
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
 from app.models.models import TournamentMembership, User
-from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.user import UserSlimResponse
+
+if TYPE_CHECKING:
+    # Deferred to a lazy import inside resolve_memberships_or_users() below —
+    # schemas/tournament/membership.py -> schemas/tournament/role.py ->
+    # core/tournament/permissions.py -> back to this module at import time.
+    from app.schemas.tournament.membership import MembershipSlimResponse
+    from app.schemas.user import UserSlimResponse
 
 def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
     """
@@ -31,6 +37,9 @@ def resolve_memberships_or_users(
     (e.g. a site admin acting without ever joining). Shared by any response
     that surfaces "who did this" — join-code creators, audit log actors.
     """
+    from app.schemas.tournament.membership import MembershipSlimResponse
+    from app.schemas.user import UserSlimResponse
+
     memberships = (
         db.query(TournamentMembership)
         .filter(
