@@ -261,11 +261,11 @@ export function IconChevronDown({ size = 14, ...props }: IconProps) {
   );
 }
 
-export function IconChevronRight({ size = 14, expanded = false, ...props }: IconProps & { expanded?: boolean }) {
+export function IconChevronRight({ size = 14, ...props }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 14 14" fill="none"
-      style={{ flexShrink: 0, transition: "transform 0.2s ease", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", ...props.style }}
+      style={{ flexShrink: 0, transition: "transform 0.2s ease", ...props.style }}
       className={props.className}
     >
       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
