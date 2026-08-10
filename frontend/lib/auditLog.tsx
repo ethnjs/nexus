@@ -50,6 +50,10 @@ function CodeBadge({ code }: { code: string }) {
   return <Badge variant="default" className="font-mono">{code}</Badge>;
 }
 
+function RoleBadge({ label }: { label: string }) {
+  return <Badge variant="default">{label}</Badge>;
+}
+
 // One renderer per action, working off the extra_data shapes confirmed
 // against every log_action() call site (see audit-log-conventions.md).
 // extra_data is untyped JSON from the backend — cast per-field rather than
@@ -58,12 +62,12 @@ function CodeBadge({ code }: { code: string }) {
 //
 // Rank numbers are internal spacing (10/20/30, rebalanced on every reorder)
 // — never surfaced to the user, here or anywhere else in these renderers.
-const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDescription> = {
-  role_created: (e) => ({
-    summary: <>Created role &quot;{e.label as string}&quot;</>,
+const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLogEntry) => AuditLogDescription> = {
+  role_created: (e, entry) => ({
+    summary: <>Created role <RoleBadge label={entry.role?.label ?? (e.label as string)} /></>,
   }),
 
-  role_updated: (e) => {
+  role_updated: (e, entry) => {
     if (Array.isArray(e.bulk_reorder)) {
       const rows = e.bulk_reorder as { role_id: number; label: string; old: number; new: number }[];
       // The affected-row count is a rebalance side effect, not the size of
@@ -77,19 +81,26 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDes
     }
     const changes = (e.changes as { field: string; old?: unknown; new?: unknown; added?: string[]; removed?: string[] }[]) ?? [];
     return {
-      summary: "Updated a role",
+      // entry.role is the current row — always present for a single-role
+      // update (only null for the bulk-reorder variant handled above).
+      summary: entry.role
+        ? <>Updated role <RoleBadge label={entry.role.label} /></>
+        : "Updated a role",
       details: changes.map((c) => {
         if (c.field === "permissions") return `Permissions: +${c.added?.join(", ") || "none"} / -${c.removed?.join(", ") || "none"}`;
         if (c.field === "rank") return "Rank changed";
+        if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;
         return `${c.field}: ${c.old} → ${c.new}`;
       }),
     };
   },
 
   role_deleted: (e) => ({
+    // entry.role is always null here — the row is gone by the time this
+    // logs, so extra_data's snapshot is the only source for its label.
     summary: (
       <>
-        Deleted role &quot;{e.label as string}&quot;
+        Deleted role <RoleBadge label={e.label as string} />
         {(e.members_affected as number) > 0 ? ` — ${e.members_affected} member${e.members_affected === 1 ? "" : "s"} affected` : ""}
       </>
     ),
@@ -163,5 +174,5 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDes
 export function describeAuditLogEntry(entry: AuditLogEntry): AuditLogDescription {
   const describe = DESCRIBERS[entry.action];
   if (!describe) return { summary: entry.action };
-  return describe(entry.extra_data ?? {});
+  return describe(entry.extra_data ?? {}, entry);
 }

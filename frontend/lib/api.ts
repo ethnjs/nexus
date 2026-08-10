@@ -727,6 +727,10 @@ export interface AuditLogEntry {
   // The actor's membership in this tournament — falls back to the bare user
   // when they have none (e.g. a site admin acting without ever joining).
   actor:         MembershipSlim | UserSlim
+  // Current role state — populated only when target_type === "role" and the
+  // role still exists (null for role_deleted, and for role_updated's
+  // bulk-reorder variant, which has no single target_id).
+  role:          Role | null
 }
 
 export interface AuditLogPage {

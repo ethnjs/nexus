@@ -16,14 +16,21 @@ import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { IconLock } from "@/components/ui/Icons";
 
 function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean }) {
+  const [hovered, setHovered] = useState(false);
   const user = personUser(entry.actor);
   const { summary } = describeAuditLogEntry(entry);
 
   return (
-    <div style={{
-      display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px 12px",
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px 12px",
+        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        transition: "background 100ms ease",
+      }}
+    >
       <AvatarCircle user={user} size="sm" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{

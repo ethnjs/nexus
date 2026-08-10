@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
-from app.models.models import AuditLogEntry, User
+from app.models.models import AuditLogEntry, TournamentRole, User
 from app.schemas.tournament.audit import AuditLogEntryRead, AuditLogPage
+from app.schemas.tournament.role import RoleRead
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/audit-log", tags=["tournaments"])
 
@@ -57,6 +58,13 @@ def list_audit_log(
     next_before_id = items[-1].id if len(items) == limit else None
 
     actors = resolve_memberships_or_users(db, tournament_id, {entry.actor_id for entry in items})
+
+    role_ids = {entry.target_id for entry in items if entry.target_type == "role" and entry.target_id is not None}
+    roles_by_id = {
+        role.id: RoleRead.model_validate(role)
+        for role in db.query(TournamentRole).filter(TournamentRole.id.in_(role_ids)).all()
+    } if role_ids else {}
+
     entries = [
         AuditLogEntryRead(
             id=entry.id,
@@ -67,6 +75,7 @@ def list_audit_log(
             extra_data=entry.extra_data,
             created_at=entry.created_at,
             actor=actors[entry.actor_id],
+            role=roles_by_id.get(entry.target_id) if entry.target_type == "role" else None,
         )
         for entry in items
     ]
