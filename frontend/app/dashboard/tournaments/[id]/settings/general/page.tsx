@@ -257,11 +257,11 @@ export default function GeneralSettingsPage() {
         <SettingsSection title="Invites">
           <SettingsRow
             label="Invite staff"
-            helper="Send a join link by email."
+            helper={isArchived ? "Unarchive first to invite staff." : "Send a join link by email."}
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
             last
           >
-            <Button type="button" variant="secondary" size="md" onClick={() => setShowInviteModal(true)}>
+            <Button type="button" variant="secondary" size="md" disabled={isArchived} onClick={() => setShowInviteModal(true)}>
               Invite staff
             </Button>
           </SettingsRow>
