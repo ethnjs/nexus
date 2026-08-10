@@ -712,6 +712,55 @@ export const staffInvitesApi = {
 }
 
 // -------------------------------------------------------------------------
+// Audit log — /tournaments/{id}/audit-log/. Keyset-paginated (before_id/
+// limit, not page=) — pass the response's next_before_id back for the next
+// page; null means no more results.
+// -------------------------------------------------------------------------
+export interface AuditLogEntry {
+  id:            number
+  tournament_id: number
+  action:        string
+  target_type:   string | null
+  target_id:     number | null
+  extra_data:    Record<string, unknown> | null
+  created_at:    string
+  // The actor's membership in this tournament — falls back to the bare user
+  // when they have none (e.g. a site admin acting without ever joining).
+  actor:         MembershipSlim | UserSlim
+}
+
+export interface AuditLogPage {
+  items:          AuditLogEntry[]
+  next_before_id: number | null
+}
+
+export interface AuditLogParams {
+  limit?:       number
+  before_id?:   number
+  action?:      string
+  target_type?: string
+  target_id?:   number
+  actor_id?:    number
+  since?:       string
+  until?:       string
+}
+
+export const auditLogApi = {
+  list: (tournamentId: number, params: AuditLogParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit))
+    if (params.before_id !== undefined) qs.set('before_id', String(params.before_id))
+    if (params.action) qs.set('action', params.action)
+    if (params.target_type) qs.set('target_type', params.target_type)
+    if (params.target_id !== undefined) qs.set('target_id', String(params.target_id))
+    if (params.actor_id !== undefined) qs.set('actor_id', String(params.actor_id))
+    if (params.since) qs.set('since', params.since)
+    if (params.until) qs.set('until', params.until)
+    return api.get<AuditLogPage>(`/tournaments/${tournamentId}/audit-log/?${qs.toString()}`)
+  },
+}
+
+// -------------------------------------------------------------------------
 // Setup checklist — /tournaments/{id}/setup-checklist/
 // -------------------------------------------------------------------------
 export interface SetupChecklistItem {
