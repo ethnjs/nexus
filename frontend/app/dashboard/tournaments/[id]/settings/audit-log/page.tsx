@@ -44,7 +44,12 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
           color: "var(--color-text-tertiary)", cursor: hasDetails ? "pointer" : "default",
         }}
       >
-        {hasDetails && <IconChevronRight size={12} expanded={expanded} />}
+        {hasDetails && (
+          <IconChevronRight
+            size={12}
+            style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
+          />
+        )}
       </button>
       <AvatarCircle user={user} size="sm" />
       <div style={{ flex: 1, minWidth: 0 }}>
