@@ -58,7 +58,6 @@ def _to_response(join_code: JoinCode, creators: dict[int, MembershipSlimResponse
         code=join_code.code,
         label=join_code.label,
         expires_at=join_code.expires_at,
-        is_active=join_code.is_active,
         created_at=join_code.created_at,
         use_count=join_code.use_count,
         creator=creators[join_code.created_by],

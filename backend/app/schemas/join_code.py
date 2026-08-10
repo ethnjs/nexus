@@ -12,7 +12,6 @@ class JoinCodeResponse(BaseModel):
     code: str
     label: str | None = None
     expires_at: datetime | None = None
-    is_active: bool
     created_at: datetime
     use_count: int = 0
     # The creator's membership row in this tournament — falls back to the
