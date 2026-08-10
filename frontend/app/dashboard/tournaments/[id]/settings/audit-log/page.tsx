@@ -13,12 +13,14 @@ import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { IconLock } from "@/components/ui/Icons";
+import { IconChevronRight, IconLock } from "@/components/ui/Icons";
 
 function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean }) {
   const [hovered, setHovered] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const user = personUser(entry.actor);
-  const { summary } = describeAuditLogEntry(entry);
+  const { summary, details } = describeAuditLogEntry(entry);
+  const hasDetails = !!details && details.length > 0;
 
   return (
     <div
@@ -31,6 +33,19 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
         transition: "background 100ms ease",
       }}
     >
+      <button
+        type="button"
+        onClick={() => hasDetails && setExpanded((v) => !v)}
+        disabled={!hasDetails}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "center",
+          width: "16px", height: "22px", flexShrink: 0,
+          border: "none", background: "transparent", padding: 0,
+          color: "var(--color-text-tertiary)", cursor: hasDetails ? "pointer" : "default",
+        }}
+      >
+        {hasDetails && <IconChevronRight size={12} expanded={expanded} />}
+      </button>
       <AvatarCircle user={user} size="sm" />
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{
@@ -45,6 +60,16 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
         }}>
           {ACTION_LABELS[entry.action] ?? entry.action}
         </span>
+
+        {expanded && hasDetails && (
+          <ol style={{ margin: "8px 0 0", paddingLeft: "18px", display: "flex", flexDirection: "column", gap: "4px" }}>
+            {details.map((d, i) => (
+              <li key={i} style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+                {d}
+              </li>
+            ))}
+          </ol>
+        )}
       </div>
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
