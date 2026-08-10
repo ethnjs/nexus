@@ -1,4 +1,6 @@
+import { ReactNode } from "react";
 import { AuditLogEntry } from "@/lib/api";
+import { Badge } from "@/components/ui/Badge";
 
 // Mirrors backend/app/core/tournament/audit.py's ALL_ACTIONS — kept in sync
 // by hand since there's no shared codegen between the two.
@@ -35,9 +37,9 @@ export const ACTION_LABELS: Record<string, string> = {
 };
 
 export interface AuditLogDescription {
-  summary: string;
+  summary: ReactNode;
   /** Present only for multi-field/list entries — UI shows a chevron to expand into these lines. */
-  details?: string[];
+  details?: ReactNode[];
 }
 
 function fmtHours(hours: number | null): string {
@@ -46,39 +48,53 @@ function fmtHours(hours: number | null): string {
   return `expires in ${hours}h`;
 }
 
+function CodeBadge({ code }: { code: string }) {
+  return <Badge variant="default" className="font-mono">{code}</Badge>;
+}
+
 // One renderer per action, working off the extra_data shapes confirmed
 // against every log_action() call site (see audit-log-conventions.md).
 // extra_data is untyped JSON from the backend — cast per-field rather than
 // validating strictly, same pragmatic trust already given elsewhere in
 // this codebase to backend-shaped response data.
+//
+// Rank numbers are internal spacing (10/20/30, rebalanced on every reorder)
+// — never surfaced to the user, here or anywhere else in these renderers.
 const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDescription> = {
   role_created: (e) => ({
-    summary: `Created role "${e.label}" (rank ${e.rank})`,
+    summary: <>Created role &quot;{e.label as string}&quot;</>,
   }),
 
   role_updated: (e) => {
     if (Array.isArray(e.bulk_reorder)) {
       const rows = e.bulk_reorder as { role_id: number; label: string; old: number; new: number }[];
+      // The affected-row count is a rebalance side effect, not the size of
+      // what the TD actually did (moving one role into a tie group can
+      // renumber a dozen siblings) — so the summary doesn't claim a count,
+      // just names which roles moved; specifics live in the detail list.
       return {
-        summary: `Reordered ${rows.length} role${rows.length === 1 ? "" : "s"}`,
-        details: rows.map((r) => `${r.label}: rank ${r.old} → ${r.new}`),
+        summary: "Reordered roles",
+        details: rows.map((r) => r.label),
       };
     }
     const changes = (e.changes as { field: string; old?: unknown; new?: unknown; added?: string[]; removed?: string[] }[]) ?? [];
     return {
       summary: "Updated a role",
-      details: changes.map((c) =>
-        c.field === "permissions"
-          ? `Permissions: +${c.added?.join(", ") || "none"} / -${c.removed?.join(", ") || "none"}`
-          : `${c.field}: ${c.old} → ${c.new}`
-      ),
+      details: changes.map((c) => {
+        if (c.field === "permissions") return `Permissions: +${c.added?.join(", ") || "none"} / -${c.removed?.join(", ") || "none"}`;
+        if (c.field === "rank") return "Rank changed";
+        return `${c.field}: ${c.old} → ${c.new}`;
+      }),
     };
   },
 
   role_deleted: (e) => ({
-    summary: `Deleted role "${e.label}" (rank ${e.rank})${
-      (e.members_affected as number) > 0 ? ` — ${e.members_affected} member${e.members_affected === 1 ? "" : "s"} affected` : ""
-    }`,
+    summary: (
+      <>
+        Deleted role &quot;{e.label as string}&quot;
+        {(e.members_affected as number) > 0 ? ` — ${e.members_affected} member${e.members_affected === 1 ? "" : "s"} affected` : ""}
+      </>
+    ),
   }),
 
   membership_roles_updated: (e) => {
@@ -90,9 +106,11 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDes
     };
   },
 
-  join_code_created: (e) => ({
-    summary: `Created invite "${e.label ?? e.code}" (${fmtHours(e.expires_in_hours as number | null)})`,
-  }),
+  join_code_created: (e) => (
+    e.label
+      ? { summary: <>Created invite &quot;{e.label as string}&quot; <CodeBadge code={e.code as string} /> ({fmtHours(e.expires_in_hours as number | null)})</> }
+      : { summary: <>Created invite <CodeBadge code={e.code as string} /> ({fmtHours(e.expires_in_hours as number | null)})</> }
+  ),
 
   join_code_updated: (e) => {
     const details: string[] = [];
@@ -103,16 +121,19 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDes
   },
 
   join_code_deactivated: (e) => ({
-    summary: `Deactivated invite ${e.code}`,
+    summary: <>Deactivated invite <CodeBadge code={e.code as string} /></>,
   }),
 
   staff_invite_sent: (e) => {
     const emails = (e.emails as string[]) ?? [];
     const failed = new Set((e.failed as string[]) ?? []);
     return {
-      summary: `Sent ${emails.length} staff invite${emails.length === 1 ? "" : "s"} via ${e.join_code}${
-        failed.size > 0 ? ` (${failed.size} failed)` : ""
-      }`,
+      summary: (
+        <>
+          Sent {emails.length} staff invite{emails.length === 1 ? "" : "s"} via <CodeBadge code={e.join_code as string} />
+          {failed.size > 0 ? ` (${failed.size} failed)` : ""}
+        </>
+      ),
       details: emails.map((email) => (failed.has(email) ? `✗ ${email} — failed` : email)),
     };
   },
