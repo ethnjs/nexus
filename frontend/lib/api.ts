@@ -690,6 +690,28 @@ export const invitesApi = {
 }
 
 // -------------------------------------------------------------------------
+// Staff invites — /tournaments/{id}/staff-invites/. Sends one email per
+// address pointing at an existing invite's join link. join_code_id must
+// already exist — if the caller wants a brand-new invite, create it via
+// invitesApi.create first and pass the resulting id here.
+// -------------------------------------------------------------------------
+export interface StaffInviteCreate {
+  join_code_id: number
+  emails:       string[]
+}
+
+export interface StaffInviteResponse {
+  join_code: Invite
+  sent:      string[]
+  failed:    string[]
+}
+
+export const staffInvitesApi = {
+  send: (tournamentId: number, body: StaffInviteCreate) =>
+    api.post<StaffInviteResponse>(`/tournaments/${tournamentId}/staff-invites/`, body),
+}
+
+// -------------------------------------------------------------------------
 // Setup checklist — /tournaments/{id}/setup-checklist/
 // -------------------------------------------------------------------------
 export interface SetupChecklistItem {
