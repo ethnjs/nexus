@@ -10,46 +10,17 @@ from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_display_name
-from app.core.tournament.memberships import has_any_membership
+from app.core.tournament.memberships import has_any_membership, resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
 from app.core.auth import get_current_user
 from app.db.session import get_db
-from app.models.models import JoinCode, TournamentMembership, User
+from app.models.models import JoinCode, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
 from app.schemas.tournament.membership import MembershipSlimResponse
 from app.schemas.user import UserSlimResponse
 from app.services.email_service import send_staff_invite_emails
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
-
-
-# ---------------------------------------------------------------------------
-# JoinCode.creator is a User relationship, but the response prefers the
-# creator's TournamentMembership (falls back to the bare user when they have
-# none — e.g. a site admin acting without ever joining). Resolved separately
-# rather than via from_attributes so the union picks membership over user
-# whenever one exists, not just whichever validates first.
-# ---------------------------------------------------------------------------
-def _resolve_creators(
-    db: Session, tournament_id: int, join_codes: list[JoinCode],
-) -> dict[int, MembershipSlimResponse | UserSlimResponse]:
-    creator_ids = {jc.created_by for jc in join_codes}
-    memberships = (
-        db.query(TournamentMembership)
-        .filter(
-            TournamentMembership.tournament_id == tournament_id,
-            TournamentMembership.user_id.in_(creator_ids),
-        )
-        .all()
-    )
-    resolved: dict[int, MembershipSlimResponse | UserSlimResponse] = {
-        m.user_id: MembershipSlimResponse.model_validate(m) for m in memberships
-    }
-    missing_ids = creator_ids - resolved.keys()
-    if missing_ids:
-        users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
-    return resolved
 
 
 def _to_response(join_code: JoinCode, creators: dict[int, MembershipSlimResponse | UserSlimResponse]) -> JoinCodeResponse:
@@ -79,7 +50,7 @@ def list_join_codes(
         .order_by(JoinCode.created_at.desc())
         .all()
     )
-    creators = _resolve_creators(db, tournament_id, join_codes)
+    creators = resolve_memberships_or_users(db, tournament_id, {jc.created_by for jc in join_codes})
     return [_to_response(jc, creators) for jc in join_codes]
 
 
@@ -128,7 +99,7 @@ def create_join_code(
 
     db.commit()
     db.refresh(join_code)
-    creators = _resolve_creators(db, tournament_id, [join_code])
+    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
     return _to_response(join_code, creators)
 
 
@@ -172,7 +143,7 @@ def update_join_code(
 
     db.commit()
     db.refresh(join_code)
-    creators = _resolve_creators(db, tournament_id, [join_code])
+    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
     return _to_response(join_code, creators)
 
 
@@ -254,5 +225,5 @@ async def send_staff_invites(
     )
 
     db.commit()
-    creators = _resolve_creators(db, tournament_id, [join_code])
+    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
     return StaffInviteResponse(join_code=_to_response(join_code, creators), sent=sent, failed=failed)

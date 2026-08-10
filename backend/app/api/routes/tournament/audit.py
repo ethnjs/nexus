@@ -3,10 +3,11 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import AuditLogEntry, User
-from app.schemas.tournament.audit import AuditLogPage
+from app.schemas.tournament.audit import AuditLogEntryRead, AuditLogPage
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/audit-log", tags=["tournaments"])
 
@@ -55,4 +56,19 @@ def list_audit_log(
     items = query.order_by(AuditLogEntry.id.desc()).limit(limit).all()
     next_before_id = items[-1].id if len(items) == limit else None
 
-    return {"items": items, "next_before_id": next_before_id}
+    actors = resolve_memberships_or_users(db, tournament_id, {entry.actor_id for entry in items})
+    entries = [
+        AuditLogEntryRead(
+            id=entry.id,
+            tournament_id=entry.tournament_id,
+            action=entry.action,
+            target_type=entry.target_type,
+            target_id=entry.target_id,
+            extra_data=entry.extra_data,
+            created_at=entry.created_at,
+            actor=actors[entry.actor_id],
+        )
+        for entry in items
+    ]
+
+    return {"items": entries, "next_before_id": next_before_id}
