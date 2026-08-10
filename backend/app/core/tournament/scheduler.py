@@ -10,6 +10,7 @@ from datetime import date
 
 from sqlalchemy.orm import Session
 
+from app.core.join_codes import deactivate_tournament_join_codes
 from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
 from app.models.models import Tournament
 
@@ -29,6 +30,7 @@ def archive_ended_tournaments(db: Session) -> int:
 
     for tournament in tournaments:
         tournament.is_archived = True
+        deactivate_tournament_join_codes(db, tournament.id)
         log_action(
             db, tournament.id, tournament.owner_id, TOURNAMENT_ARCHIVED,
             target_type="tournament", target_id=tournament.id,

@@ -10,6 +10,7 @@ from app.core.tournament.audit import (
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
+from app.core.join_codes import deactivate_tournament_join_codes
 from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
@@ -199,6 +200,7 @@ def archive_tournament(
 
     tournament.is_archived = True
     tournament.archive_override_at = None
+    deactivate_tournament_join_codes(db, tournament_id)
 
     log_action(
         db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,

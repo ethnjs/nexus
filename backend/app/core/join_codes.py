@@ -77,3 +77,13 @@ def deactivate_join_code(join_code: JoinCodeLike) -> None:
             detail="Join code is already deactivated",
         )
     join_code.is_active = False
+
+
+def deactivate_tournament_join_codes(db: Session, tournament_id: int) -> None:
+    """Bulk-deactivate every active join code for a tournament. Used when a
+    tournament is archived (manually or by the auto-archive job) — an
+    archived tournament shouldn't still be joinable. Does not flush/commit."""
+    db.query(JoinCode).filter(
+        JoinCode.tournament_id == tournament_id,
+        JoinCode.is_active == True,
+    ).update({"is_active": False}, synchronize_session=False)
