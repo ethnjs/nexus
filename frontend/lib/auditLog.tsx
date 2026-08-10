@@ -42,10 +42,8 @@ export interface AuditLogDescription {
   details?: ReactNode[];
 }
 
-function fmtHours(hours: number | null): string {
-  if (hours === null) return "never expires";
-  if (hours % 24 === 0) return `expires in ${hours / 24}d`;
-  return `expires in ${hours}h`;
+function fmtDuration(hours: number): string {
+  return hours % 24 === 0 ? `${hours / 24}d` : `${hours}h`;
 }
 
 function CodeBadge({ code }: { code: string }) {
@@ -100,17 +98,22 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>) => AuditLogDes
   membership_roles_updated: (e) => {
     const added = (e.added as string[]) ?? [];
     const removed = (e.removed as string[]) ?? [];
-    return {
-      summary: `Updated member roles (+${added.length} / -${removed.length})`,
-      details: [...added.map((l) => `+ ${l}`), ...removed.map((l) => `- ${l}`)],
-    };
+    const details: string[] = [];
+    if (added.length > 0) details.push(`Added: ${added.join(", ")}`);
+    if (removed.length > 0) details.push(`Removed: ${removed.join(", ")}`);
+    return { summary: "Updated member roles", details };
   },
 
-  join_code_created: (e) => (
-    e.label
-      ? { summary: <>Created invite &quot;{e.label as string}&quot; <CodeBadge code={e.code as string} /> ({fmtHours(e.expires_in_hours as number | null)})</> }
-      : { summary: <>Created invite <CodeBadge code={e.code as string} /> ({fmtHours(e.expires_in_hours as number | null)})</> }
-  ),
+  join_code_created: (e) => {
+    const details: string[] = [];
+    if (e.label) details.push(`Label: ${e.label as string}`);
+    const hours = e.expires_in_hours as number | null;
+    details.push(hours === null ? "Never expires" : `Expires in ${fmtDuration(hours)}`);
+    return {
+      summary: <>Created invite <CodeBadge code={e.code as string} /></>,
+      details,
+    };
+  },
 
   join_code_updated: (e) => {
     const details: string[] = [];
