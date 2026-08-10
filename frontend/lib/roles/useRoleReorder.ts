@@ -61,9 +61,12 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
         expectResetRef.current = false;
         return source;
       }
-      const sourceIds = new Set(source.map((r) => r.id));
+      const byId = new Map(source.map((r) => [r.id, r]));
       const draftIds = new Set(prevDraft.map((r) => r.id));
-      const kept = prevDraft.filter((r) => sourceIds.has(r.id));
+      // Keep prevDraft's order (preserves in-progress drag state) but refresh
+      // each role's fields from the latest source — otherwise edits made
+      // elsewhere (e.g. renaming a role) never show up here.
+      const kept = prevDraft.filter((r) => byId.has(r.id)).map((r) => byId.get(r.id)!);
       const added = source.filter((r) => !draftIds.has(r.id));
       return [...kept, ...added];
     });
