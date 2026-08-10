@@ -274,8 +274,6 @@ export default function InvitesSettingsPage() {
     );
   }
 
-  const active = invites.filter((i) => i.is_active);
-
   function handleUpdated(updated: Invite) {
     setInvites((prev) => prev && prev.map((i) => (i.id === updated.id ? updated : i)));
   }
@@ -302,7 +300,7 @@ export default function InvitesSettingsPage() {
         </p>
       )}
 
-      {active.length === 0 ? (
+      {invites.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             title="No invites yet"
@@ -316,7 +314,7 @@ export default function InvitesSettingsPage() {
         </Card>
       ) : (
         <InviteTable
-          invites={active}
+          invites={invites}
           tournamentId={tournamentId}
           now={now}
           onUpdated={handleUpdated}

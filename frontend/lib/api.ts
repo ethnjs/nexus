@@ -662,7 +662,6 @@ export interface Invite {
   code:       string
   label:      string | null
   expires_at: string | null
-  is_active:  boolean
   created_at: string
   use_count:  number
   creator:    MembershipSlim | UserSlim
