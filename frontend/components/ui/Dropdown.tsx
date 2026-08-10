@@ -292,7 +292,11 @@ export function Dropdown({
       {label && (
         <label
           htmlFor={triggerId}
-          style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 400, color: 'var(--color-text-secondary)' }}
+          onClick={(e) => e.preventDefault()}
+          style={{
+            fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+            textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
+          }}
         >
           {label}
         </label>

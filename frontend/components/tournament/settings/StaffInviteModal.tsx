@@ -5,7 +5,9 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { Spinner } from "@/components/ui/Spinner";
 import { ChipInput, ChipStatus } from "@/components/ui/ChipInput";
+import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
 import { invitesApi, membershipsApi, staffInvitesApi, Invite, StaffInviteResponse, ApiError } from "@/lib/api";
 import { PRESET_HOURS } from "@/lib/invitePresets";
 import { InviteFields } from "@/components/tournament/settings/InviteFields";
@@ -97,36 +99,71 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
   }
 
   if (result) {
+    const allSucceeded = result.failed.length === 0;
     return (
-      <Modal title="Invites sent" onClose={onClose}>
-        <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {result.sent.length > 0 && (
-            <div>
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-success)", marginBottom: "4px" }}>
-                Sent ({result.sent.length})
-              </p>
-              {result.sent.map((email) => (
-                <p key={email} style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                  {email}
-                </p>
-              ))}
+      <Modal title="Invite staff" onClose={onClose}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", padding: "4px 0" }}>
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: "48px", height: "48px", borderRadius: "50%",
+              background: allSucceeded ? "var(--color-success-subtle)" : "var(--color-warning-subtle)",
+              color: allSucceeded ? "var(--color-success)" : "var(--color-warning)",
+              marginBottom: "12px",
+            }}>
+              {allSucceeded ? <IconCheckCircle size={26} /> : <IconXCircle size={26} />}
             </div>
-          )}
-          {result.failed.length > 0 && (
-            <div>
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600, color: "var(--color-danger)", marginBottom: "4px" }}>
-                Failed ({result.failed.length})
+            <p style={{ fontFamily: "var(--font-serif)", fontSize: "19px", color: "var(--color-text-primary)" }}>
+              {result.sent.length} invite{result.sent.length === 1 ? "" : "s"} sent
+            </p>
+            {!allSucceeded && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", marginTop: "4px" }}>
+                {result.failed.length} failed to send
               </p>
-              {result.failed.map((email) => (
-                <p key={email} style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                  {email}
-                </p>
+            )}
+          </div>
+
+          <div style={{
+            border: "1px solid var(--color-border)", borderRadius: "var(--radius-lg)",
+            overflow: "hidden",
+          }}>
+            {[...result.sent.map((email) => ({ email, ok: true })), ...result.failed.map((email) => ({ email, ok: false }))]
+              .map(({ email, ok }, i, arr) => (
+                <div
+                  key={email}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "8px", padding: "9px 12px",
+                    borderBottom: i === arr.length - 1 ? "none" : "1px solid var(--color-border)",
+                  }}
+                >
+                  {ok ? (
+                    <IconCheckCircle size={15} style={{ color: "var(--color-success)" }} />
+                  ) : (
+                    <IconXCircle size={15} style={{ color: "var(--color-danger)" }} />
+                  )}
+                  <span style={{
+                    fontFamily: "var(--font-mono)", fontSize: "13px",
+                    color: ok ? "var(--color-text-primary)" : "var(--color-danger)",
+                  }}>
+                    {email}
+                  </span>
+                </div>
               ))}
-            </div>
-          )}
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "6px" }}>
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <Button type="button" variant="primary" onClick={onClose}>Done</Button>
           </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  if (invites === null) {
+    return (
+      <Modal title="Invite staff" onClose={onClose}>
+        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+          <Spinner size="lg" />
         </div>
       </Modal>
     );
@@ -135,7 +172,7 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
   return (
     <Modal title="Invite staff" onClose={onClose}>
       <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-        {invites !== null && invites.length > 0 && (
+        {invites.length > 0 && (
           <ButtonGroup
             options={[
               { value: "existing", label: "Use existing invite" },
@@ -152,7 +189,7 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
             label="Invite"
             value={selectedInviteId}
             onChange={setSelectedInviteId}
-            options={(invites ?? []).map((i) => ({
+            options={invites.map((i) => ({
               value: String(i.id),
               label: i.label ? `${i.label} — ${i.code}` : i.code,
             }))}
