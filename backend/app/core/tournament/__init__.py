@@ -31,6 +31,13 @@ def get_tournament(tournament_id: int, db: Session = Depends(get_db)) -> Tournam
     return tournament
 
 
+def tournament_display_name(tournament: Tournament) -> str:
+    """"{year} {short_name or name}" — e.g. "2026 SoCal States" or "2026 Southern California
+    State Tournament" when no short_name is set. Year comes from
+    start_date (name itself excludes it, see TournamentCreate.name)."""
+    return f"{tournament.start_date.year} {tournament.short_name or tournament.name}"
+
+
 def require_not_archived(tournament: Tournament) -> None:
     """
     Call explicitly in every POST/PATCH/DELETE route, right after fetching

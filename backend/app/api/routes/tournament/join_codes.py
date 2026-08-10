@@ -9,7 +9,7 @@ from app.core.join_codes import apply_join_code_update, deactivate_join_code, ge
 from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_display_name
 from app.core.tournament.memberships import has_any_membership
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
 from app.core.auth import get_current_user
@@ -240,7 +240,7 @@ async def send_staff_invites(
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
     join_url = f"{get_settings().frontend_url.rstrip('/')}/tournaments/join?code={join_code.code}"
-    failed = await send_staff_invite_emails(payload.emails, tournament.name, join_url)
+    failed = await send_staff_invite_emails(payload.emails, tournament_display_name(tournament), join_url)
     sent = [e for e in payload.emails if e not in failed]
 
     extra_data = {"emails": payload.emails, "join_code": join_code.code}
