@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { invitesApi, Invite, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
+import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -14,7 +15,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { HoverCard } from "@/components/ui/HoverCard";
-import { IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
+import { IconArchive, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
 
@@ -290,6 +291,7 @@ export default function InvitesSettingsPage() {
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
+  const { isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
 
@@ -358,7 +360,7 @@ export default function InvitesSettingsPage() {
         heading="Invites"
         subheading="Tournament Settings"
         action={
-          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+          <Button type="button" variant="primary" size="md" disabled={isArchived} onClick={() => setCreating(true)}>
             <IconPlus size={14} /> Add invite
           </Button>
         }
@@ -370,7 +372,15 @@ export default function InvitesSettingsPage() {
         </p>
       )}
 
-      {invites.length === 0 ? (
+      {isArchived ? (
+        <Card radius="lg" style={{ padding: "8px" }}>
+          <EmptyState
+            icon={<IconArchive size={28} />}
+            title="Tournament archived"
+            description="Archiving deactivated every invite. Unarchive the tournament to create new ones."
+          />
+        </Card>
+      ) : invites.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             title="No invites yet"
