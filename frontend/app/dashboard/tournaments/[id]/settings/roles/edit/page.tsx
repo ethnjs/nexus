@@ -174,8 +174,16 @@ export default function RoleEditorPage() {
     }).then((role) => { landed.set(t.id, role.id); return role; }));
 
     try {
+      // Creates are awaited *before* the reorder rather than racing it in one
+      // Promise.all: reorder-bulk logs a before/after snapshot of the whole
+      // role list, so if it lands first that snapshot is taken in a world
+      // where the new role doesn't exist yet — every other role shifts down by
+      // one step, which reads as "nothing moved relative to anything" and
+      // renders as an audit entry showing no change at all. Creating first
+      // means the snapshot contains the new role and the entry shows what it
+      // displaced.
+      await Promise.all(creates);
       await Promise.all([
-        ...creates,
         // Skipped entirely when nothing else moved — otherwise a new role
         // slotted into an existing gap would log a pointless reorder.
         changes.length > 0 ? rolesApi.reorderBulk(tournamentId, changes) : Promise.resolve(),

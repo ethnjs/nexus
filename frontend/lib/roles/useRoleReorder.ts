@@ -53,13 +53,6 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  // True on mount and right after this hook's own save — a clean reset onto
-  // the new `roles` is correct there. Any other `roles` change (e.g. another
-  // part of the page creating a role) means someone else's action shouldn't
-  // silently discard an in-progress unsaved drag — merge instead: keep the
-  // draft's pending order for roles still present, append anything new.
-  const expectResetRef = useRef(true);
-
   // Synced during render, not in an effect — an effect runs after React
   // commits and paints, so a stale `draft` from the *previous* `roles` would
   // otherwise be visible for one frame (isDirty flashes true, flashing the
@@ -67,12 +60,24 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   // the last-seen `roles` reference lets this catch up synchronously, before
   // the render with the new `roles` is ever painted. See "adjusting state
   // when a prop changes": react.dev/learn/you-might-not-need-an-effect
-  const [syncedRoles, setSyncedRoles] = useState(roles);
-  if (roles !== syncedRoles) {
-    setSyncedRoles(roles);
+  //
+  // `reset` is true on mount and right after a save — a clean reset onto the
+  // new `roles` is correct there. Any other `roles` change (e.g. another part
+  // of the page creating a role) means someone else's action shouldn't
+  // silently discard an in-progress unsaved drag — merge instead: keep the
+  // draft's pending order for roles still present, append anything new.
+  //
+  // It lives in state rather than a ref precisely because this runs during
+  // render: React may call a component body more than once for a single
+  // update (StrictMode double-invokes it in dev to surface exactly this), and
+  // a ref flipped here would be consumed by the first call, leaving the second
+  // to take the merge branch and win. State is the same value in both calls,
+  // so the branch taken is stable.
+  const [synced, setSynced] = useState<{ roles: Role[] | null; reset: boolean }>({ roles, reset: true });
+  if (roles !== synced.roles) {
+    setSynced({ roles, reset: false });
     const source = roles ?? [];
-    if (expectResetRef.current) {
-      expectResetRef.current = false;
+    if (synced.reset) {
       setDraft(source);
     } else {
       const byId = new Map(source.map((r) => [r.id, r]));
@@ -176,7 +181,7 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     try {
       const updated = await rolesApi.reorderBulk(tournamentId, changes);
       // Adopt the server's ranks as the new baseline instead of re-GETting.
-      expectResetRef.current = true;
+      setSynced((cur) => ({ ...cur, reset: true }));
       const ranks = new Map(updated.map((r) => [r.id, r.rank]));
       onSaved?.(draftRef.current.map((r) => {
         const rank = ranks.get(r.id);
@@ -195,7 +200,12 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     setError(undefined);
   }, [roles]);
 
-  const resetOnNextRoles = useCallback(() => { expectResetRef.current = true; }, []);
+  // Arms the reset for whenever `roles` next changes. Safe to call before the
+  // new list exists (the caller usually refetches right after) — the flag only
+  // gets read on the render where `roles` actually changed identity.
+  const resetOnNextRoles = useCallback(() => {
+    setSynced((cur) => (cur.reset ? cur : { ...cur, reset: true }));
+  }, []);
 
   return { draft, groups, isDirty, saving, error, save, cancel, resetOnNextRoles, dndProps, dropIndicatorFor, dividerStateFor };
 }
