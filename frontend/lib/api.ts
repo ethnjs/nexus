@@ -584,11 +584,15 @@ export const membershipsApi = {
     api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
   // role_id narrows to members holding that role; exclude_role_id drops
   // members who already hold it — independent filters, combinable with q.
-  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number }) => {
+  // max_rank drops members whose highest-authority role ties or outranks
+  // that rank (lower rank number = more authority) — callers pass their own
+  // rank so a search never surfaces someone they couldn't actually assign.
+  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number; max_rank?: number }) => {
     const qs = new URLSearchParams();
     if (params.q) qs.set('q', params.q)
     if (params.role_id !== undefined) qs.set('role_id', String(params.role_id))
     if (params.exclude_role_id !== undefined) qs.set('exclude_role_id', String(params.exclude_role_id))
+    if (params.max_rank !== undefined) qs.set('max_rank', String(params.max_rank))
     return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/search/?${qs.toString()}`)
   },
 }

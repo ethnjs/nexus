@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
@@ -11,6 +12,7 @@ from app.db.session import get_db
 from app.models.models import (
     TournamentMembership,
     TournamentMembershipRole,
+    TournamentRole,
     User,
 )
 from app.schemas.tournament.membership import (
@@ -48,12 +50,16 @@ def list_memberships(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=
+# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=&max_rank=
 # manage_members. Member-data search: searches all tournament members by
 # name/email; role_id narrows to members holding that role (powers the roles
 # editor's "Manage Members" tab); exclude_role_id drops members who already
-# hold that role (powers its "Add Members" picker). role_id and
-# exclude_role_id are independent filters and can be combined.
+# hold that role (powers its "Add Members" picker). max_rank drops members
+# whose highest-authority role ties or outranks that rank (lower rank number
+# = more authority) — the frontend passes the caller's own rank so the "Add
+# Members" picker never surfaces someone validate_role_action would reject
+# anyway. role_id, exclude_role_id, and max_rank are independent filters and
+# can be combined.
 # Registered before "/{membership_id}/" so the literal path always wins.
 # Tournaments are small enough (rarely 150+ members) to return the full
 # filtered list rather than paginating.
@@ -64,6 +70,7 @@ def search_memberships(
     q: str | None = Query(default=None),
     role_id: int | None = Query(default=None),
     exclude_role_id: int | None = Query(default=None),
+    max_rank: int | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -89,6 +96,17 @@ def search_memberships(
             .filter(TournamentMembershipRole.role_id == exclude_role_id)
         )
         query = query.filter(TournamentMembership.id.notin_(held_by_role))
+    if max_rank is not None:
+        # Members with no roles have no authority and always pass. Members
+        # with roles are kept only if their highest-authority (lowest rank
+        # number) role is strictly less authoritative than max_rank.
+        outranks_or_ties = (
+            db.query(TournamentMembershipRole.membership_id)
+            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
+            .group_by(TournamentMembershipRole.membership_id)
+            .having(func.min(TournamentRole.rank) <= max_rank)
+        )
+        query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))
 
     memberships = (
         query

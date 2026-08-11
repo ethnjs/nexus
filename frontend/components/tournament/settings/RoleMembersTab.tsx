@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ApiError, MembershipSlim, Role, membershipsApi } from "@/lib/api";
+import { useAuth } from "@/lib/useAuth";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
@@ -25,6 +27,18 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [loadKey, setLoadKey] = useState(0);
+
+  const { user: currentUser } = useAuth();
+  const { ownRank, bypassRankBound } = useRoleLock();
+
+  // Same rank-authority check the backend enforces (validate_role_action) —
+  // a member whose highest-held role ties or outranks the actor's own would
+  // just 403 on remove, so the X is locked instead of letting that happen.
+  function outranksActor(m: MembershipSlim): boolean {
+    if (bypassRankBound || m.user.id === currentUser?.id || ownRank === null) return false;
+    if (m.roles.length === 0) return false;
+    return Math.min(...m.roles.map((r) => r.rank)) < ownRank;
+  }
 
   // Debounced so search doesn't hit the server on every keystroke.
   useEffect(() => {
@@ -97,6 +111,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
         ) : (
           members.map((m, i) => {
             const name = `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
+            const memberLocked = outranksActor(m);
             return (
               <div
                 key={m.id}
@@ -118,8 +133,9 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
                   <Button
                     type="button" variant="secondary" size="sm"
                     loading={removingId === m.id}
+                    disabled={memberLocked}
                     onClick={() => handleRemove(m.id)}
-                    title="Remove from role"
+                    title={memberLocked ? "This member outranks you — you can't remove them from this role." : "Remove from role"}
                     style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
                   >
                     <IconX size={12} />

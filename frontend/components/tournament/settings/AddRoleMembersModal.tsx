@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ApiError, MembershipSlim, membershipsApi } from "@/lib/api";
+import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -25,16 +26,24 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
+  const { ownRank, bypassRankBound } = useRoleLock();
+
   // Debounced so typing doesn't hit the server on every keystroke — only
-  // members who don't already hold this role are ever returned.
+  // members who don't already hold this role are ever returned. Also drops
+  // anyone who ties or outranks the current user — assigning them a role
+  // would just 403 on save, so they shouldn't show up as pickable here.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.search(tournamentId, { exclude_role_id: roleId, q: search.trim() || undefined })
+      membershipsApi.search(tournamentId, {
+        exclude_role_id: roleId,
+        q: search.trim() || undefined,
+        max_rank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
+      })
         .then(setCandidates)
         .catch(() => setError("Failed to load members."));
     }, 300);
     return () => clearTimeout(timer);
-  }, [tournamentId, roleId, search]);
+  }, [tournamentId, roleId, search, ownRank, bypassRankBound]);
 
   function toggle(membershipId: number) {
     setSelected((cur) => {

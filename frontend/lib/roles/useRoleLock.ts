@@ -14,6 +14,10 @@ export interface RoleLock {
   /** Why a role can't be edited, or null if it's editable. */
   lockReason: (role: Role) => string | null;
   isLocked: (role: Role) => boolean;
+  /** Lowest (= highest-authority) rank among the current user's own roles, or null if they hold none. */
+  ownRank: number | null;
+  /** Owner and platform admins bypass rank-bound checks entirely — same rationale as the backend's validate_rank_bound/validate_role_action. */
+  bypassRankBound: boolean;
 }
 
 export function useRoleLock(): RoleLock {
@@ -42,5 +46,8 @@ export function useRoleLock(): RoleLock {
 
   const isLocked = useCallback((role: Role) => lockReason(role) !== null, [lockReason]);
 
-  return { canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked };
+  return {
+    canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked,
+    ownRank, bypassRankBound: isAdmin || isOwner,
+  };
 }
