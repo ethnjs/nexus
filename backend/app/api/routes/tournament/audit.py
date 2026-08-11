@@ -1,16 +1,42 @@
 from __future__ import annotations
 from datetime import datetime
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import AuditLogEntry, TournamentRole, User
-from app.schemas.tournament.audit import AuditLogEntryRead, AuditLogPage
+from app.schemas.tournament.audit import AuditLogActor, AuditLogEntryRead, AuditLogPage
 from app.schemas.tournament.role import RoleRead
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/audit-log", tags=["tournaments"])
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/audit-log/actors/ — distinct actors who
+# have logged entries in this tournament, most-active first. Feeds the
+# "Filter by User" dropdown. manage_tournament only — deliberately not
+# folded into memberships/search/ (gated manage_members, a different
+# permission, and "who's in the log" isn't "who's a member" anyway).
+# ---------------------------------------------------------------------------
+@router.get("/actors/", response_model=list[AuditLogActor])
+def list_audit_log_actors(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+):
+    rows = (
+        db.query(AuditLogEntry.actor_id, func.count(AuditLogEntry.id).label("count"))
+        .filter(AuditLogEntry.tournament_id == tournament_id)
+        .group_by(AuditLogEntry.actor_id)
+        .order_by(func.count(AuditLogEntry.id).desc())
+        .all()
+    )
+
+    actors = resolve_memberships_or_users(db, tournament_id, {actor_id for actor_id, _ in rows})
+    return [AuditLogActor(actor=actors[actor_id], count=count) for actor_id, count in rows]
 
 
 # ---------------------------------------------------------------------------

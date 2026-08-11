@@ -32,3 +32,10 @@ class AuditLogPage(BaseModel):
     items: list[AuditLogEntryRead]
     # Pass back as ?before_id= to fetch the next page. None means no more results.
     next_before_id: int | None = None
+
+
+class AuditLogActor(BaseModel):
+    actor: MembershipSlimResponse | UserSlimResponse
+    # Total entries this actor has in this tournament's log — lets the
+    # "Filter by User" dropdown sort most-active first.
+    count: int
