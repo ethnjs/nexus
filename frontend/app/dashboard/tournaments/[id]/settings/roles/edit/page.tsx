@@ -6,7 +6,7 @@ import { DndContext } from "@dnd-kit/core";
 import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { rolesApi, membershipsApi, ApiError, MembershipSlim, Permission, Role } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
-import { defaultNewRoleLabel, nextBottomRank } from "@/lib/roles/roleReorder";
+import { defaultNewRoleLabel, isTempRole, isTempRoleId, nextBottomRank, rankChanges } from "@/lib/roles/roleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -33,10 +33,10 @@ export default function RoleEditorPage() {
 
   const { canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked } = useRoleLock();
 
+  // Holds real (server) roles plus any unsaved temp-id drafts, in one list, so
+  // the nav rail and the reorder hook need no notion of "not created yet".
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [memberships, setMemberships] = useState<MembershipSlim[]>([]);
-  const [creatingRole, setCreatingRole] = useState(false);
-  const [createError, setCreateError] = useState<string | undefined>(undefined);
 
   // Which role is open — local state, not a route param, so switching roles
   // never remounts anything and can't lose a draft. Seeded once from ?role=
@@ -47,9 +47,19 @@ export default function RoleEditorPage() {
   });
   const [activeTab, setActiveTab] = useState<"details" | "members">("details");
 
-  const refreshRoles = useCallback(async () => {
+  // ?role=new means "open with a fresh unsaved role". Deferred until the list
+  // has loaded, since the default label and rank are derived from it.
+  const pendingNewRoleRef = useRef(searchParams.get("role") === "new");
+
+  // The server list is authoritative for real roles, but unsaved temp drafts
+  // have to survive a refetch — except the ones whose create just landed, which
+  // the caller identifies by temp id.
+  const refreshRoles = useCallback(async (createdTempIds?: Set<number>) => {
     const next = await rolesApi.list(tournamentId).catch(() => []);
-    setRoles(next);
+    setRoles((cur) => {
+      const temps = (cur ?? []).filter((r) => isTempRole(r) && !createdTempIds?.has(r.id));
+      return temps.length > 0 ? [...next, ...temps] : next;
+    });
   }, [tournamentId]);
 
   const refreshMemberships = useCallback(async () => {
@@ -91,11 +101,23 @@ export default function RoleEditorPage() {
   const rolesRef = useRef<Role[] | null>(roles);
   rolesRef.current = roles;
 
+  // Decrements per unsaved role created this session, so temp ids stay unique
+  // among themselves and can never collide with a real (positive) id.
+  const nextTempIdRef = useRef(-1);
+
+  // A temp role has no server baseline to diff against — the whole thing is
+  // unsaved — so its fields live in `roles` itself rather than in `drafts`.
   const draftFor = useCallback((role: Role): RoleDraft => (
-    drafts[role.id] ?? { label: role.label, permissions: role.permissions as Permission[] }
+    isTempRole(role)
+      ? { label: role.label, permissions: role.permissions as Permission[] }
+      : drafts[role.id] ?? { label: role.label, permissions: role.permissions as Permission[] }
   ), [drafts]);
 
   const setDraft = useCallback((roleId: number, patch: Partial<RoleDraft>) => {
+    if (isTempRoleId(roleId)) {
+      setRoles((cur) => cur?.map((r) => (r.id === roleId ? { ...r, ...patch } : r)) ?? cur);
+      return;
+    }
     setDrafts((cur) => {
       const role = rolesRef.current?.find((r) => r.id === roleId);
       if (!role) return cur;
@@ -119,39 +141,84 @@ export default function RoleEditorPage() {
     [roles, drafts],
   );
 
-  const isDirty = reorder.isDirty || pendingEdits.length > 0;
+  const tempRoles = useMemo(() => (roles ?? []).filter(isTempRole), [roles]);
+
+  const isDirty = reorder.isDirty || pendingEdits.length > 0 || tempRoles.length > 0;
   const saving = reorder.saving || fieldSaving;
   const error = reorder.error ?? fieldError;
 
-  // Reorder plus every pending field edit commit together — the save bar is
-  // shared, so Save means "save everything I've changed anywhere in here".
+  // Reorder, new roles, and every pending field edit commit together — the save
+  // bar is shared, so Save means "save everything I've changed anywhere in here".
+  // None of the three depends on another, so they go out in one batch.
   async function handleSaveAll() {
     setFieldError(undefined);
     const edits = pendingEdits;
-    if (edits.length > 0) setFieldSaving(true);
+    const temps = tempRoles;
+    setFieldSaving(true);
+    let saved = false;
+
+    // The drag computation runs over the whole list, temp ids included, so a new
+    // role dropped mid-list already has its final rank here. The backend has
+    // never heard of that id though, so it's dropped from the reorder payload
+    // and passed to create() instead; the real roles it displaced still go
+    // through reorder-bulk, and are logged, as the genuine changes they are.
+    const draftRanks = new Map(reorder.draft.map((r) => [r.id, r.rank]));
+    const changes = rankChanges(roles ?? [], reorder.draft).filter((c) => !isTempRoleId(c.role_id));
+
+    // Temp id -> real id, filled as each create resolves rather than from the
+    // batch's result, so a partial failure still knows exactly which landed.
+    const landed = new Map<number, number>();
+    const creates = temps.map((t) => rolesApi.create(tournamentId, {
+      label: t.label.trim(),
+      permissions: t.permissions as Permission[],
+      rank: draftRanks.get(t.id) ?? t.rank,
+    }).then((role) => { landed.set(t.id, role.id); return role; }));
+
     try {
       await Promise.all([
-        reorder.isDirty ? reorder.save() : Promise.resolve(),
+        ...creates,
+        // Skipped entirely when nothing else moved — otherwise a new role
+        // slotted into an existing gap would log a pointless reorder.
+        changes.length > 0 ? rolesApi.reorderBulk(tournamentId, changes) : Promise.resolve(),
         ...edits.map((r) => rolesApi.update(tournamentId, r.id, {
           label: drafts[r.id].label.trim(),
           permissions: drafts[r.id].permissions,
         })),
       ]);
       setDrafts({});
+      saved = true;
     } catch (err: unknown) {
       setFieldError(err instanceof ApiError ? err.message : "Failed to save role.");
     } finally {
-      // Refetch either way — on a partial failure this drops the drafts that
-      // did land and keeps the ones that didn't.
-      if (edits.length > 0) await refreshRoles();
+      // Promise.all rejects on the first failure, so wait for the rest before
+      // reconciling — otherwise a still-in-flight create lands after the
+      // refetch and its temp role sticks around as a phantom duplicate.
+      await Promise.allSettled(creates);
+      // Refetch either way: a partial failure drops what did land and keeps
+      // what didn't. Only a clean save may discard the reorder draft — after a
+      // failure it's still the user's unsaved work and has to survive.
+      if (saved) reorder.resetOnNextRoles();
+      await refreshRoles(new Set(landed.keys()));
+      // Swap the open role's temp id for the id the backend just assigned, so
+      // no negative id survives into the next render or request.
+      setActiveRoleId((cur) => (cur !== null ? landed.get(cur) ?? cur : cur));
       setFieldSaving(false);
     }
   }
 
   function handleCancelAll() {
-    reorder.cancel();
     setDrafts({});
     setFieldError(undefined);
+    if (tempRoles.length === 0) {
+      reorder.cancel();
+      return;
+    }
+    // Dropping temp roles changes `roles`, which the reorder hook would
+    // normally merge into its draft — tell it to reset instead, so a drag that
+    // only moved things to make room for the discarded role is undone too.
+    reorder.resetOnNextRoles();
+    setRoles((cur) => (cur ?? []).filter((r) => !isTempRole(r)));
+    setActiveRoleId((cur) => (cur !== null && isTempRoleId(cur) ? null : cur));
   }
 
   // Switching roles inside the editor is free (local state); leaving the
@@ -159,27 +226,38 @@ export default function RoleEditorPage() {
   const { guard } = useUnsavedChanges();
   useBlockNavigation(isDirty, editorPath);
 
-  // Skips a separate "new role" form — creates a placeholder immediately and
-  // selects it, same as every other role. Rank and label are computed from
-  // the current list so clicking this repeatedly without editing the
-  // previous role never collides (same rank would tie them, same label 409s).
-  async function handleCreateRole() {
-    setCreatingRole(true);
-    setCreateError(undefined);
-    try {
-      const role = await rolesApi.create(tournamentId, {
-        label: defaultNewRoleLabel(roles?.map((r) => r.label) ?? []),
+  // Skips a separate "new role" form: adds an unsaved role to the list and
+  // selects it, same as every other role. Nothing is POSTed until Save, so a
+  // role produces exactly one audit entry with its final field values. Rank and
+  // label are computed from the current list so clicking this repeatedly
+  // without editing the previous role never collides (same rank would tie them,
+  // same label 409s on save).
+  const createDraftRole = useCallback(() => {
+    const id = nextTempIdRef.current--;
+    setRoles((cur) => {
+      const list = cur ?? [];
+      return [...list, {
+        id,
+        tournament_id: tournamentId,
+        label: defaultNewRoleLabel(list.map((r) => r.label)),
         permissions: [],
-        rank: nextBottomRank(roles ?? []),
-      });
-      await refreshRoles();
-      setActiveRoleId(role.id);
-    } catch (err: unknown) {
-      setCreateError(err instanceof ApiError ? err.message : "Failed to create role.");
-    } finally {
-      setCreatingRole(false);
-    }
-  }
+        rank: nextBottomRank(list),
+        member_count: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }];
+    });
+    setActiveRoleId(id);
+    setActiveTab("details");
+  }, [tournamentId]);
+
+  // ?role=new — deferred to here rather than the activeRoleId initializer since
+  // the default label and rank need the loaded list.
+  useEffect(() => {
+    if (roles === null || membershipLoading || !pendingNewRoleRef.current) return;
+    pendingNewRoleRef.current = false;
+    if (canCreateRoles) createDraftRole();
+  }, [roles, membershipLoading, canCreateRoles, createDraftRole]);
 
   if (membershipLoading || roles === null || !canManageRoles) {
     return (
@@ -190,6 +268,10 @@ export default function RoleEditorPage() {
   }
 
   const activeRole = roles.find((r) => r.id === activeRoleId) ?? null;
+  // An unsaved role has no backend row, so there's nothing for the members tab
+  // to read or assign against — only Details is meaningful until it's saved.
+  const activeIsTemp = activeRole !== null && isTempRole(activeRole);
+  const tabs: ("details" | "members")[] = activeIsTemp ? ["details"] : ["details", "members"];
 
   return (
     <div>
@@ -221,8 +303,7 @@ export default function RoleEditorPage() {
                 variant="secondary"
                 size="sm"
                 iconOnly
-                loading={creatingRole}
-                onClick={handleCreateRole}
+                onClick={createDraftRole}
                 title="New role"
                 style={{ width: "22px", height: "22px" }}
               >
@@ -230,15 +311,6 @@ export default function RoleEditorPage() {
               </Button>
             )}
           </div>
-
-          {createError && (
-            <p style={{
-              fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)",
-              padding: "0 4px 8px",
-            }}>
-              {createError}
-            </p>
-          )}
 
           <DndContext {...reorder.dndProps}>
             <RoleDropDivider state={reorder.dividerStateFor(null, reorder.groups[0]?.[0] ?? null)} />
@@ -276,7 +348,7 @@ export default function RoleEditorPage() {
           {activeRole ? (
             <>
               <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--color-border)", marginBottom: "16px" }}>
-                {(["details", "members"] as const).map((tab) => (
+                {tabs.map((tab) => (
                   <button
                     key={tab}
                     type="button"
@@ -294,7 +366,7 @@ export default function RoleEditorPage() {
                 ))}
               </div>
 
-              {activeTab === "details" ? (
+              {activeTab === "details" || activeIsTemp ? (
                 <RoleEditorForm
                   tournamentId={tournamentId}
                   role={activeRole}
@@ -306,6 +378,12 @@ export default function RoleEditorPage() {
                     await refreshRoles();
                     setActiveRoleId(null);
                   }}
+                  // Never persisted, so discarding is just dropping it locally.
+                  onDiscard={activeIsTemp ? () => {
+                    const id = activeRole.id;
+                    setRoles((cur) => (cur ?? []).filter((r) => r.id !== id));
+                    setActiveRoleId(null);
+                  } : undefined}
                 />
               ) : (
                 <RoleMembersTab

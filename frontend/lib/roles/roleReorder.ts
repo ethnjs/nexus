@@ -4,6 +4,17 @@ export type DropZoneKind = "above" | "below" | "join";
 
 export const RANK_STEP = 10;
 
+// A role the user has added in the editor but hasn't saved yet lives in the
+// same list as real roles so drag/reorder/nav-rail code needs no special case —
+// it's told apart only by a negative synthetic id, which no backend row can have.
+export function isTempRoleId(id: number): boolean {
+  return id < 0;
+}
+
+export function isTempRole(role: Role): boolean {
+  return isTempRoleId(role.id);
+}
+
 // Slots a brand-new role in cleanly below every existing role, fitting the
 // normal 10/20/30... scheme instead of an arbitrary placeholder that would
 // tie every un-renumbered new role together at the same rank.

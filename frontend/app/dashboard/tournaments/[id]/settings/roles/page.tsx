@@ -4,7 +4,7 @@ import { Fragment, memo, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
 import { rolesApi, membershipsApi, Role, MembershipSlim, ApiError } from "@/lib/api";
-import { defaultNewRoleLabel, groupByRank, nextBottomRank } from "@/lib/roles/roleReorder";
+import { groupByRank } from "@/lib/roles/roleReorder";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -75,24 +75,11 @@ export default function RolesSettingsPage() {
     }
   }
 
-  const [creatingRole, setCreatingRole] = useState(false);
-
-  // No separate "new role" form — create a placeholder immediately and drop
-  // the user straight into editing it, same as the nav rail's "+" does. Rank
-  // and label are computed from the current list so creating several roles
-  // in a row without editing the previous one never collides.
-  async function handleCreateRole() {
-    setCreatingRole(true);
-    try {
-      const role = await rolesApi.create(tournamentId, {
-        label: defaultNewRoleLabel(roles?.map((r) => r.label) ?? []),
-        permissions: [],
-        rank: nextBottomRank(roles ?? []),
-      });
-      router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/edit?role=${role.id}`);
-    } finally {
-      setCreatingRole(false);
-    }
+  // Nothing is POSTed here. The editor owns role creation end to end so the
+  // new role only hits the backend once, with its final label/permissions/rank
+  // — otherwise every new role logged a throwaway create plus an update.
+  function handleCreateRole() {
+    router.push(`/dashboard/tournaments/${tournamentId}/settings/roles/edit?role=new`);
   }
 
   // Dragging only mutates this hook's local draft — nothing hits the network
@@ -142,7 +129,7 @@ export default function RolesSettingsPage() {
                   <Button type="button" variant="primary" size="sm" loading={applying} onClick={handleApplyTemplate}>
                     Apply default template
                   </Button>
-                  <Button type="button" variant="secondary" size="sm" loading={creatingRole} onClick={handleCreateRole}>
+                  <Button type="button" variant="secondary" size="sm" onClick={handleCreateRole}>
                     Create role
                   </Button>
                 </div>
@@ -168,7 +155,6 @@ export default function RolesSettingsPage() {
             {canCreateRoles && (
               <Button
                 type="button" variant="primary" size="md"
-                loading={creatingRole}
                 onClick={handleCreateRole}
               >
                 <IconPlus size={14} /> Create Role

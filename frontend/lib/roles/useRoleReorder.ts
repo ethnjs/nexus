@@ -35,6 +35,12 @@ export interface RoleReorder {
   error?: string;
   save: () => Promise<void>;
   cancel: () => void;
+  /**
+   * Declare the next `roles` change authoritative: replace the draft outright
+   * instead of merging into it. For callers that persist the reorder themselves
+   * (the editor page batches it with role creates/updates) and then refetch.
+   */
+  resetOnNextRoles: () => void;
   dndProps: DndProps;
   /** Set only while hovering a role to join its tie group; above/below show on dividers. */
   dropIndicatorFor: (role: Role) => { noop: boolean } | null;
@@ -181,7 +187,9 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
     setError(undefined);
   }, [roles]);
 
-  return { draft, groups, isDirty, saving, error, save, cancel, dndProps, dropIndicatorFor, dividerStateFor };
+  const resetOnNextRoles = useCallback(() => { expectResetRef.current = true; }, []);
+
+  return { draft, groups, isDirty, saving, error, save, cancel, resetOnNextRoles, dndProps, dropIndicatorFor, dividerStateFor };
 }
 
 // Per-row drag/drop wiring. Kept separate because useDraggable/useDroppable

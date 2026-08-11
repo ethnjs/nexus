@@ -21,9 +21,11 @@ interface RoleEditorFormProps {
   locked:       boolean;
   memberCount:  number;
   onDeleted:    () => void;
+  /** Set for a role that hasn't been created yet — removing it is local, so no modal and no DELETE. */
+  onDiscard?:   () => void;
 }
 
-export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, memberCount, onDeleted }: RoleEditorFormProps) {
+export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, memberCount, onDeleted, onDiscard }: RoleEditorFormProps) {
   const [showDelete, setShowDelete] = useState(false);
 
   function togglePermission(p: Permission) {
@@ -59,13 +61,23 @@ export function RoleEditorForm({ tournamentId, role, draft, setDraft, locked, me
       {!locked && (
         <SettingsSection title="Danger Zone" variant="danger">
           <SettingsRow
-            label="Delete role"
-            helper={memberCount > 0 ? `${memberCount} member${memberCount === 1 ? "" : "s"} will lose this role.` : "No members currently hold this role."}
+            label={onDiscard ? "Discard role" : "Delete role"}
+            helper={
+              onDiscard
+                ? "This role hasn't been created yet — discarding removes it right away."
+                : memberCount > 0
+                  ? `${memberCount} member${memberCount === 1 ? "" : "s"} will lose this role.`
+                  : "No members currently hold this role."
+            }
             last
             contentStyle={{ display: "flex", justifyContent: "flex-end" }}
           >
-            <Button type="button" variant="secondary" size="md" onClick={() => setShowDelete(true)} style={{ color: "var(--color-danger)" }}>
-              Delete
+            <Button
+              type="button" variant="secondary" size="md"
+              onClick={() => (onDiscard ? onDiscard() : setShowDelete(true))}
+              style={{ color: "var(--color-danger)" }}
+            >
+              {onDiscard ? "Discard" : "Delete"}
             </Button>
           </SettingsRow>
         </SettingsSection>
