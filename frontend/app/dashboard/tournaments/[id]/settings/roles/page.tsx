@@ -1,9 +1,9 @@
 "use client";
 
-import { Fragment, memo, useEffect, useRef, useState } from "react";
+import { Fragment, memo, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { rolesApi, membershipsApi, Role, MembershipSlim, ApiError } from "@/lib/api";
+import { rolesApi, Role, RoleWithMemberCount, ApiError } from "@/lib/api";
 import { groupByRank } from "@/lib/roles/roleReorder";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
@@ -31,8 +31,7 @@ export default function RolesSettingsPage() {
   const tournamentId = Number(params.id);
   const { canManageRoles, canCreateRoles, membershipLoading, lockReason, isLocked } = useRoleLock();
 
-  const [roles, setRoles] = useState<Role[] | null>(null);
-  const [memberCounts, setMemberCounts] = useState<Record<number, number>>({});
+  const [roles, setRoles] = useState<RoleWithMemberCount[] | null>(null);
   const [search, setSearch] = useState("");
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [applying, setApplying] = useState(false);
@@ -53,14 +52,15 @@ export default function RolesSettingsPage() {
 
   useEffect(() => {
     loadRoles();
-    membershipsApi.list(tournamentId).then((members: MembershipSlim[]) => {
-      const counts: Record<number, number> = {};
-      for (const m of members) {
-        for (const r of m.roles) counts[r.id] = (counts[r.id] ?? 0) + 1;
-      }
-      setMemberCounts(counts);
-    }).catch(() => {});
   }, [tournamentId]);
+
+  // Sourced from the roles list itself (member_count is computed server-side)
+  // rather than a separate memberships fetch — one GET instead of two.
+  const memberCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const r of roles ?? []) counts[r.id] = r.member_count;
+    return counts;
+  }, [roles]);
 
   async function handleApplyTemplate() {
     setApplying(true);
@@ -84,7 +84,13 @@ export default function RolesSettingsPage() {
 
   // Dragging only mutates this hook's local draft — nothing hits the network
   // until Save, so no GET round-trip can flash a stale order mid-reorder.
-  const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
+  // The hook's onSaved is typed generically as Role[], but it only ever
+  // spreads the RoleWithMemberCount objects we passed in, so member_count
+  // survives at runtime — the cast just corrects the narrowed type.
+  const reorder = useRoleReorder({
+    tournamentId, roles, isLocked,
+    onSaved: (updated) => setRoles(updated as RoleWithMemberCount[]),
+  });
 
   const filteredRoles = reorder.draft.filter((r) => r.label.toLowerCase().includes(search.toLowerCase()));
 

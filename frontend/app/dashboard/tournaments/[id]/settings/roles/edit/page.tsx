@@ -4,7 +4,7 @@ import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
 import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { rolesApi, membershipsApi, ApiError, MembershipSlim, Permission, Role } from "@/lib/api";
+import { rolesApi, ApiError, Permission, Role, RoleWithMemberCount } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { defaultNewRoleLabel, isTempRole, isTempRoleId, nextBottomRank, rankChanges } from "@/lib/roles/roleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
@@ -35,8 +35,7 @@ export default function RoleEditorPage() {
 
   // Holds real (server) roles plus any unsaved temp-id drafts, in one list, so
   // the nav rail and the reorder hook need no notion of "not created yet".
-  const [roles, setRoles] = useState<Role[] | null>(null);
-  const [memberships, setMemberships] = useState<MembershipSlim[]>([]);
+  const [roles, setRoles] = useState<RoleWithMemberCount[] | null>(null);
 
   // Which role is open — local state, not a route param, so switching roles
   // never remounts anything and can't lose a draft. Seeded once from ?role=
@@ -62,24 +61,18 @@ export default function RoleEditorPage() {
     });
   }, [tournamentId]);
 
-  const refreshMemberships = useCallback(async () => {
-    const next = await membershipsApi.list(tournamentId).catch(() => []);
-    setMemberships(next);
-  }, [tournamentId]);
-
   // Fetched once — switching the active role never re-triggers this.
   useEffect(() => {
     refreshRoles();
-    refreshMemberships();
-  }, [tournamentId, refreshRoles, refreshMemberships]);
+  }, [tournamentId, refreshRoles]);
 
+  // Sourced from the roles list itself (member_count is computed server-side)
+  // rather than a separate memberships fetch — one GET instead of two.
   const memberCounts = useMemo(() => {
     const counts: Record<number, number> = {};
-    for (const m of memberships) {
-      for (const r of m.roles) counts[r.id] = (counts[r.id] ?? 0) + 1;
-    }
+    for (const r of roles ?? []) counts[r.id] = r.member_count;
     return counts;
-  }, [memberships]);
+  }, [roles]);
 
   // The index page already shows a locked "No access" state for this — send
   // anyone without manage_roles back there instead of letting them sit here.
@@ -89,7 +82,13 @@ export default function RoleEditorPage() {
     }
   }, [membershipLoading, canManageRoles, router, tournamentId]);
 
-  const reorder = useRoleReorder({ tournamentId, roles, isLocked, onSaved: setRoles });
+  // The hook's onSaved is typed generically as Role[], but it only ever
+  // spreads the RoleWithMemberCount objects we passed in, so member_count
+  // survives at runtime — the cast just corrects the narrowed type.
+  const reorder = useRoleReorder({
+    tournamentId, roles, isLocked,
+    onSaved: (updated) => setRoles(updated as RoleWithMemberCount[]),
+  });
 
   // Field drafts for every role touched, not just the open one — switching
   // roles is local state now, so this would survive either way, but it's
@@ -390,7 +389,7 @@ export default function RoleEditorPage() {
                   tournamentId={tournamentId}
                   role={activeRole}
                   locked={lockReason(activeRole) !== null}
-                  onChanged={refreshMemberships}
+                  onChanged={() => refreshRoles()}
                 />
               )}
             </>
