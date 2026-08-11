@@ -17,6 +17,26 @@ if TYPE_CHECKING:
     from app.models.models import Tournament, TournamentMembership, TournamentRole, User
 
 
+def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["TournamentRole"]:
+    """
+    Attaches member_count as a transient attribute on each role — RoleRead
+    reads it via from_attributes. One grouped count query regardless of how
+    many roles are passed in, so callers stay off the N+1 path.
+    """
+    from app.models.models import TournamentMembershipRole
+
+    role_ids = [r.id for r in roles]
+    counts = dict(
+        db.query(TournamentMembershipRole.role_id, func.count(TournamentMembershipRole.id))
+        .filter(TournamentMembershipRole.role_id.in_(role_ids))
+        .group_by(TournamentMembershipRole.role_id)
+        .all()
+    ) if role_ids else {}
+    for role in roles:
+        role.member_count = counts.get(role.id, 0)
+    return roles
+
+
 def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: Session) -> None:
     """
     A MANAGE_ROLES holder can never create or edit a role that outranks (or

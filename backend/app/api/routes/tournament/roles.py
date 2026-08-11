@@ -16,7 +16,7 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.roles import validate_rank_bound, validate_role_action
+from app.core.tournament.roles import validate_rank_bound, validate_role_action, with_member_counts
 from app.db.session import get_db
 from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, User
 from app.schemas.tournament.role import (
@@ -70,7 +70,7 @@ def apply_default_role_template(
     db.commit()
     for role in roles:
         db.refresh(role)
-    return roles
+    return with_member_counts(db, roles)
 
 
 # ---------------------------------------------------------------------------
@@ -128,7 +128,8 @@ def reorder_roles_bulk(
     db.commit()
     for role in roles_by_id.values():
         db.refresh(role)
-    return [roles_by_id[item.role_id] for item in payload.roles]
+    ordered = [roles_by_id[item.role_id] for item in payload.roles]
+    return with_member_counts(db, ordered)
 
 
 # ---------------------------------------------------------------------------
@@ -146,7 +147,7 @@ def list_roles(
         .order_by(TournamentRole.rank, TournamentRole.label)
         .all()
     )
-    return roles
+    return with_member_counts(db, roles)
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +188,7 @@ def create_role(
 
     db.commit()
     db.refresh(role)
+    role.member_count = 0  # brand new — no memberships can hold it yet
     return role
 
 
@@ -249,7 +251,7 @@ def update_role(
 
     db.commit()
     db.refresh(role)
-    return role
+    return with_member_counts(db, [role])[0]
 
 
 # ---------------------------------------------------------------------------

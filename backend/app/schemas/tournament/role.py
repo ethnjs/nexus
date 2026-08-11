@@ -62,6 +62,7 @@ class RoleRead(BaseModel):
     label: str
     permissions: list[str]
     rank: int
+    member_count: int
     created_at: datetime
     updated_at: datetime
 

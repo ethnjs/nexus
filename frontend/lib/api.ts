@@ -499,6 +499,7 @@ export interface Role {
   label:          string
   permissions:    string[]
   rank:           number
+  member_count:   number
   created_at:     string
   updated_at:     string
 }
