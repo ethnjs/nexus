@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.tournament.audit import (
-    MEMBERSHIP_ROLES_UPDATED,
     ROLE_CREATED,
     ROLE_DELETED,
     ROLE_UPDATED,
@@ -347,16 +346,6 @@ def update_membership_roles(
             TournamentMembershipRole.membership_id == m.id,
             TournamentMembershipRole.role_id.in_(to_remove),
         ).delete(synchronize_session=False)
-
-    if to_add or to_remove:
-        log_action(
-            db, tournament_id, current_user.id, MEMBERSHIP_ROLES_UPDATED,
-            target_type="membership", target_id=m.id,
-            extra_data={
-                "added": [roles_by_id[rid].label for rid in to_add],
-                "removed": [roles_by_id[rid].label for rid in to_remove],
-            },
-        )
 
     db.commit()
     db.refresh(m)

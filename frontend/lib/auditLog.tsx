@@ -8,7 +8,6 @@ export const ALL_AUDIT_ACTIONS = [
   "role_created",
   "role_updated",
   "role_deleted",
-  "membership_roles_updated",
   "join_code_created",
   "join_code_updated",
   "join_code_deactivated",
@@ -25,7 +24,6 @@ export const ACTION_LABELS: Record<string, string> = {
   role_created: "Role created",
   role_updated: "Role updated",
   role_deleted: "Role deleted",
-  membership_roles_updated: "Member roles updated",
   join_code_created: "Invite created",
   join_code_updated: "Invite updated",
   join_code_deactivated: "Invite deactivated",
@@ -105,15 +103,6 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
       </>
     ),
   }),
-
-  membership_roles_updated: (e) => {
-    const added = (e.added as string[]) ?? [];
-    const removed = (e.removed as string[]) ?? [];
-    const details: string[] = [];
-    if (added.length > 0) details.push(`Added: ${added.join(", ")}`);
-    if (removed.length > 0) details.push(`Removed: ${removed.join(", ")}`);
-    return { summary: "Updated member roles", details };
-  },
 
   join_code_created: (e) => {
     const details: string[] = [];

@@ -9,7 +9,7 @@ call site — ground truth, not aspirational.
   `join_code_deactivated`, `staff_invite_sent`). Always a named constant in
   `audit.py`, never an inline string literal at the call site.
 - `target_type`: singular snake_case noun matching the primary model the
-  action affects — `"role"`, `"membership"`, `"join_code"`, `"tournament"`.
+  action affects — `"role"`, `"join_code"`, `"tournament"`.
 
 ## `target_id`
 
@@ -37,7 +37,6 @@ call site — ground truth, not aspirational.
 | `role_updated` (single-role `PATCH`) | `{"changes": [{"field": str, "old": any, "new": any}, ...]}` — a **list**. `permissions` changes are special-cased to `{"field": "permissions", "added": [str], "removed": [str]}` instead of raw old/new arrays. |
 | `role_updated` (bulk reorder, `PATCH .../reorder-bulk/`) | `{"bulk_reorder": [{"role_id": int, "label": str, "old": int, "new": int}, ...]}` — **a different shape under the same action name.** Rank-only, one entry per role whose rank actually changed. No `target_id` on this variant. |
 | `role_deleted` | `{"label": str, "rank": int, "members_affected": int}` |
-| `membership_roles_updated` | `{"added": [str], "removed": [str]}` — flat lists of role labels, not objects with id/key. |
 | `join_code_created` | `{"code": str, "label": str \| null, "expires_in_hours": int \| null, "expires_at": str \| null}` |
 | `join_code_updated` | `{"changes": {"label": {"old","new"}}, "add_hours": int, "expires_at": {"old","new"}}` — present only for whichever fields changed. |
 | `join_code_deactivated` | `{"code": str}` |
