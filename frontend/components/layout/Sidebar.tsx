@@ -48,8 +48,12 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const { membership, hasPermission } = useMyMembership();
   const canManageRoles = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_roles");
   const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
+  const canManageTournament = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
   const settingsSubitems = SETTINGS_SUBITEMS.filter(
-    ({ segment }) => (segment !== "roles" || canManageRoles) && (segment !== "invites" || canManageInvites)
+    ({ segment }) =>
+      (segment !== "roles" || canManageRoles) &&
+      (segment !== "invites" || canManageInvites) &&
+      (segment !== "audit-log" || canManageTournament)
   );
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.
