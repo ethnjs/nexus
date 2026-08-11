@@ -1,6 +1,6 @@
 "use client";
 
-import { ComponentProps, CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ComponentProps, CSSProperties, useCallback, useMemo, useRef, useState } from "react";
 import {
   DndContext, DragEndEvent, DragMoveEvent, PointerSensor,
   closestCenter, useDraggable, useDroppable, useSensor, useSensors,
@@ -60,24 +60,32 @@ export function useRoleReorder({ tournamentId, roles, isLocked, onSaved }: UseRo
   // draft's pending order for roles still present, append anything new.
   const expectResetRef = useRef(true);
 
-  useEffect(() => {
+  // Synced during render, not in an effect — an effect runs after React
+  // commits and paints, so a stale `draft` from the *previous* `roles` would
+  // otherwise be visible for one frame (isDirty flashes true, flashing the
+  // save bar) every time `roles` changes, mount included. Comparing against
+  // the last-seen `roles` reference lets this catch up synchronously, before
+  // the render with the new `roles` is ever painted. See "adjusting state
+  // when a prop changes": react.dev/learn/you-might-not-need-an-effect
+  const [syncedRoles, setSyncedRoles] = useState(roles);
+  if (roles !== syncedRoles) {
+    setSyncedRoles(roles);
     const source = roles ?? [];
-    setDraft((prevDraft) => {
-      if (expectResetRef.current) {
-        expectResetRef.current = false;
-        return source;
-      }
+    if (expectResetRef.current) {
+      expectResetRef.current = false;
+      setDraft(source);
+    } else {
       const byId = new Map(source.map((r) => [r.id, r]));
-      const draftIds = new Set(prevDraft.map((r) => r.id));
-      // Keep prevDraft's order (preserves in-progress drag state) but refresh
+      const draftIds = new Set(draft.map((r) => r.id));
+      // Keep draft's order (preserves in-progress drag state) but refresh
       // each role's fields from the latest source — otherwise edits made
       // elsewhere (e.g. renaming a role) never show up here.
-      const kept = prevDraft.filter((r) => byId.has(r.id)).map((r) => byId.get(r.id)!);
+      const kept = draft.filter((r) => byId.has(r.id)).map((r) => byId.get(r.id)!);
       const added = source.filter((r) => !draftIds.has(r.id));
-      return [...kept, ...added];
-    });
+      setDraft([...kept, ...added]);
+    }
     setError(undefined);
-  }, [roles]);
+  }
 
   // Drag handlers read live values through refs so their identity stays stable
   // across the many re-renders a single drag causes.
