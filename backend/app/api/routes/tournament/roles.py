@@ -94,20 +94,35 @@ def reorder_roles_bulk(
         for item in payload.roles
     }
 
-    changes = []
+    # Snapshot every role, not just the moved ones: a role can be dragged to
+    # sit under an untouched role without changing that role's rank, so a
+    # delta-only log gives the reader no fixed anchor to read the move against.
+    def snapshot() -> list[dict]:
+        roles = (
+            db.query(TournamentRole)
+            .filter(TournamentRole.tournament_id == tournament_id)
+            .order_by(TournamentRole.rank, TournamentRole.label)
+            .all()
+        )
+        return [{"role_id": r.id, "label": r.label, "rank": r.rank} for r in roles]
+
+    before = snapshot()
+
+    changed = False
     for item in payload.roles:
         role = roles_by_id[item.role_id]
         # Both the current and destination rank must be within the actor's authority.
         validate_rank_bound(current_user, tournament, role.rank, db)
         validate_rank_bound(current_user, tournament, item.rank, db)
         if role.rank != item.rank:
-            changes.append({"role_id": role.id, "label": role.label, "old": role.rank, "new": item.rank})
+            changed = True
             role.rank = item.rank
 
-    if changes:
+    if changed:
+        db.flush()  # so the post-update snapshot query sees the new ranks
         log_action(
             db, tournament_id, current_user.id, ROLE_UPDATED,
-            target_type="role", extra_data={"bulk_reorder": changes},
+            target_type="role", extra_data={"bulk_reorder": {"before": before, "after": snapshot()}},
         )
 
     db.commit()

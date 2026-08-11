@@ -35,7 +35,7 @@ call site — ground truth, not aspirational.
 |---|---|
 | `role_created` | `{"label": str, "rank": int, "permissions": [str]}` |
 | `role_updated` (single-role `PATCH`) | `{"changes": [{"field": str, "old": any, "new": any}, ...]}` — a **list**. `permissions` changes are special-cased to `{"field": "permissions", "added": [str], "removed": [str]}` instead of raw old/new arrays. |
-| `role_updated` (bulk reorder, `PATCH .../reorder-bulk/`) | `{"bulk_reorder": [{"role_id": int, "label": str, "old": int, "new": int}, ...]}` — **a different shape under the same action name.** Rank-only, one entry per role whose rank actually changed. No `target_id` on this variant. |
+| `role_updated` (bulk reorder, `PATCH .../reorder-bulk/`) | `{"bulk_reorder": {"before": [{"role_id": int, "label": str, "rank": int}, ...], "after": [...same...]}}` — **a different shape under the same action name.** Full snapshot of *every* role in the tournament (rank-ordered) on both sides, not just the moved ones, so unmoved roles act as anchors in the rendered diff. Logged only when at least one rank actually changed. No `target_id` on this variant. Entries written before this change use the legacy delta shape: `bulk_reorder` as a **list** of `{"role_id", "label", "old", "new"}` for changed roles only. |
 | `role_deleted` | `{"label": str, "rank": int, "members_affected": int}` |
 | `join_code_created` | `{"code": str, "label": str \| null, "expires_in_hours": int \| null, "expires_at": str \| null}` |
 | `join_code_updated` | `{"changes": {"label": {"old","new"}}, "add_hours": int, "expires_at": {"old","new"}}` — present only for whichever fields changed. |

@@ -316,7 +316,22 @@ def test_reorder_bulk_logs_role_updated(client, td_user, td_tournament, db):
         .order_by(AuditLogEntry.id.desc())
         .first()
     )
-    assert entry.extra_data == {"bulk_reorder": [{"role_id": role_id, "label": "Volunteer", "old": 50, "new": 20}]}
+    # Full before/after snapshot of every role, not just the moved one.
+    snap = entry.extra_data["bulk_reorder"]
+    all_role_ids = {r.id for r in db.query(TournamentRole).filter(TournamentRole.tournament_id == td_tournament.id)}
+    assert {r["role_id"] for r in snap["before"]} == all_role_ids
+    assert {r["role_id"] for r in snap["after"]} == all_role_ids
+    assert next(r for r in snap["before"] if r["role_id"] == role_id) == {
+        "role_id": role_id, "label": "Volunteer", "rank": 50,
+    }
+    assert next(r for r in snap["after"] if r["role_id"] == role_id) == {
+        "role_id": role_id, "label": "Volunteer", "rank": 20,
+    }
+    # Untouched roles are present and unchanged on both sides.
+    others_before = {r["role_id"]: r["rank"] for r in snap["before"] if r["role_id"] != role_id}
+    others_after = {r["role_id"]: r["rank"] for r in snap["after"] if r["role_id"] != role_id}
+    assert others_before == others_after
+    assert others_before  # fixture has more than one role, so this is a real assertion
 
 
 def test_reorder_bulk_unchanged_ranks_dont_log(client, td_user, td_tournament, db):
