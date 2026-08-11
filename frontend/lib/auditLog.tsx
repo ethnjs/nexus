@@ -235,9 +235,20 @@ function findMovers(before: RoleSnapshot[], after: RoleSnapshot[]): Set<number> 
 // Rank numbers are internal spacing (10/20/30, rebalanced on every reorder)
 // — never surfaced to the user, here or anywhere else in these renderers.
 const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLogEntry) => AuditLogDescription> = {
-  role_created: (e, entry) => ({
-    summary: <>Created role <RoleBadge label={entry.role?.label ?? (e.label as string)} /></>,
-  }),
+  role_created: (e, entry) => {
+    const permissions = entry.role?.permissions ?? (e.permissions as string[] | undefined) ?? [];
+    return {
+      summary: <>Created role <RoleBadge label={entry.role?.label ?? (e.label as string)} /></>,
+      details: [
+        permissions.length === 0
+          ? "No permissions"
+          : <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "6px", alignItems: "center" }}>
+              Permissions
+              {permissions.map((p) => <Badge key={p} variant="default">{p}</Badge>)}
+            </span>,
+      ],
+    };
+  },
 
   role_updated: (e, entry) => {
     if (e.bulk_reorder) {
