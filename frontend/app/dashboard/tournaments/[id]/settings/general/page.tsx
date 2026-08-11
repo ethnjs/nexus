@@ -87,7 +87,6 @@ export default function GeneralSettingsPage() {
   }, []);
 
   const canEdit = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
-  const canInviteStaff = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
 
   const isAdmin = currentUser?.role === "admin";
   const isOwnerOrAdmin = !!membership?.is_owner || isAdmin;
@@ -253,7 +252,7 @@ export default function GeneralSettingsPage() {
         </SettingsSection>
       )}
 
-      {canInviteStaff && (
+      {isOwnerOrAdmin && (
         <SettingsSection title="Invites">
           <SettingsRow
             label="Invite staff"
