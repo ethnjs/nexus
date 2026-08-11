@@ -20,7 +20,7 @@ from app.core.tournament.roles import validate_rank_bound, validate_role_action,
 from app.db.session import get_db
 from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, User
 from app.schemas.tournament.role import (
-    RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleRead, RoleUpdate,
+    RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
 )
 from app.schemas.tournament.membership import MembershipSlimResponse
 
@@ -40,7 +40,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/roles", tags=["tournamen
 # roles_template_applied audit action.
 # Registered before "/{role_id}/" so the literal path always wins.
 # ---------------------------------------------------------------------------
-@router.post("/apply-template/", response_model=list[RoleRead], status_code=status.HTTP_201_CREATED)
+@router.post("/apply-template/", response_model=list[RoleWithMemberCount], status_code=status.HTTP_201_CREATED)
 def apply_default_role_template(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -79,7 +79,7 @@ def apply_default_role_template(
 # validates rank-bound authority and applies them atomically.
 # Registered before "/{role_id}/" so the literal path always wins.
 # ---------------------------------------------------------------------------
-@router.patch("/reorder-bulk/", response_model=list[RoleRead])
+@router.patch("/reorder-bulk/", response_model=list[RoleWithMemberCount])
 def reorder_roles_bulk(
     tournament_id: int,
     payload: RoleBulkReorder,
@@ -135,7 +135,7 @@ def reorder_roles_bulk(
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/roles/ — any member can read
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[RoleRead])
+@router.get("/", response_model=list[RoleWithMemberCount])
 def list_roles(
     tournament_id: int,
     db: Session = Depends(get_db),
@@ -153,7 +153,7 @@ def list_roles(
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/roles/ — manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
-@router.post("/", response_model=RoleRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=RoleWithMemberCount, status_code=status.HTTP_201_CREATED)
 def create_role(
     tournament_id: int,
     payload: RoleDefinition,
@@ -195,7 +195,7 @@ def create_role(
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/roles/{role_id}/ — manage_roles (rank-bound)
 # ---------------------------------------------------------------------------
-@router.patch("/{role_id}/", response_model=RoleRead)
+@router.patch("/{role_id}/", response_model=RoleWithMemberCount)
 def update_role(
     tournament_id: int,
     role_id: int,

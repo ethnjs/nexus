@@ -62,11 +62,20 @@ class RoleRead(BaseModel):
     label: str
     permissions: list[str]
     rank: int
-    member_count: int
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class RoleWithMemberCount(RoleRead):
+    """
+    RoleRead plus the per-role member count — only the role list/CRUD
+    endpoints in api/routes/tournament/roles.py compute this (via
+    with_member_counts). Roles nested inside membership responses stay plain
+    RoleRead, since that count isn't attached there.
+    """
+    member_count: int
 
 
 class RoleBulkReorderItem(BaseModel):

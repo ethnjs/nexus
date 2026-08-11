@@ -499,9 +499,14 @@ export interface Role {
   label:          string
   permissions:    string[]
   rank:           number
-  member_count:   number
   created_at:     string
   updated_at:     string
+}
+
+// Matches RoleWithMemberCount — only the role list/CRUD endpoints compute
+// this count; roles nested inside membership responses stay plain Role.
+export interface RoleWithMemberCount extends Role {
+  member_count: number
 }
 
 // Matches MembershipSlimResponse — members-page roster row. No onboarding/
@@ -641,17 +646,17 @@ export interface RoleRankAssignment {
 
 export const rolesApi = {
   list: (tournamentId: number) =>
-    api.get<Role[]>(`/tournaments/${tournamentId}/roles/`),
+    api.get<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/`),
   create: (tournamentId: number, body: RoleDefinition) =>
-    api.post<Role>(`/tournaments/${tournamentId}/roles/`, body),
+    api.post<RoleWithMemberCount>(`/tournaments/${tournamentId}/roles/`, body),
   update: (tournamentId: number, id: number, body: Partial<RoleDefinition>) =>
-    api.patch<Role>(`/tournaments/${tournamentId}/roles/${id}/`, body),
+    api.patch<RoleWithMemberCount>(`/tournaments/${tournamentId}/roles/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/roles/${id}/`),
   applyTemplate: (tournamentId: number) =>
-    api.post<Role[]>(`/tournaments/${tournamentId}/roles/apply-template/`, {}),
+    api.post<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/apply-template/`, {}),
   reorderBulk: (tournamentId: number, roles: RoleRankAssignment[]) =>
-    api.patch<Role[]>(`/tournaments/${tournamentId}/roles/reorder-bulk/`, { roles }),
+    api.patch<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/reorder-bulk/`, { roles }),
 }
 
 // -------------------------------------------------------------------------
