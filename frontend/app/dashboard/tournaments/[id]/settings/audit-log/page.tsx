@@ -19,29 +19,27 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const user = personUser(entry.actor);
-  const { summary, details } = describeAuditLogEntry(entry);
+  const { summary, details, hideActor } = describeAuditLogEntry(entry);
   const hasDetails = !!details && details.length > 0;
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={() => hasDetails && setExpanded((v) => !v)}
       style={{
         display: "flex", alignItems: "flex-start", gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
+        cursor: hasDetails ? "pointer" : "default",
       }}
     >
-      <button
-        type="button"
-        onClick={() => hasDetails && setExpanded((v) => !v)}
-        disabled={!hasDetails}
+      <div
         style={{
           display: "flex", alignItems: "center", justifyContent: "center",
           width: "16px", height: "22px", flexShrink: 0,
-          border: "none", background: "transparent", padding: 0,
-          color: "var(--color-text-tertiary)", cursor: hasDetails ? "pointer" : "default",
+          color: "var(--color-text-tertiary)",
         }}
       >
         {hasDetails && (
@@ -50,14 +48,18 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
             style={{ transform: expanded ? "rotate(90deg)" : "rotate(0deg)" }}
           />
         )}
-      </button>
-      <AvatarCircle user={user} size="sm" />
+      </div>
+      {hideActor ? (
+        <div style={{ width: "28px", flexShrink: 0 }} />
+      ) : (
+        <AvatarCircle user={user} size="sm" />
+      )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{
           fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
           overflow: "hidden", textOverflow: "ellipsis",
         }}>
-          <strong>{personName(entry.actor)}</strong> — {summary}
+          {hideActor ? summary : <><strong>{personName(entry.actor)}</strong> — {summary}</>}
         </p>
         <span style={{
           fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,

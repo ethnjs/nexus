@@ -33,6 +33,9 @@ export function Badge({ variant = 'default', className = '', children, copyValue
   const [copied, setCopied] = useState(false)
 
   async function handleClick(e: MouseEvent<HTMLSpanElement>) {
+    // Copying is a self-contained action — don't let it also trigger
+    // whatever a clickable ancestor (e.g. an expandable row) does.
+    e.stopPropagation()
     onClick?.(e)
     if (!copyValue) return
     await navigator.clipboard.writeText(copyValue)

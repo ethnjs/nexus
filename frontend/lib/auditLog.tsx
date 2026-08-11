@@ -38,6 +38,8 @@ export interface AuditLogDescription {
   summary: ReactNode;
   /** Present only for multi-field/list entries — UI shows a chevron to expand into these lines. */
   details?: ReactNode[];
+  /** True for system-triggered entries (e.g. the daily auto-archive job) — the logged actor_id isn't who actually did this, so the row shouldn't attribute it to them. */
+  hideActor?: boolean;
 }
 
 function fmtDuration(hours: number): string {
@@ -50,6 +52,25 @@ function CodeBadge({ code }: { code: string }) {
 
 function RoleBadge({ label }: { label: string }) {
   return <Badge variant="default">{label}</Badge>;
+}
+
+// Git-diff style: "+2 / -1" counts on one line, the actual added (green)/
+// removed (red) permission badges on the line below.
+function PermissionDiff({ added, removed }: { added: string[]; removed: string[] }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        Updated permissions
+        <Badge variant="confirmed">+{added.length}</Badge>
+        /
+        <Badge variant="declined">-{removed.length}</Badge>
+      </div>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", alignItems: "center" }}>
+        {added.map((p) => <Badge key={`+${p}`} variant="confirmed">+ {p}</Badge>)}
+        {removed.map((p) => <Badge key={`-${p}`} variant="declined">- {p}</Badge>)}
+      </div>
+    </div>
+  );
 }
 
 // One renderer per action, working off the extra_data shapes confirmed
@@ -85,7 +106,9 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
         ? <>Updated role <RoleBadge label={entry.role.label} /></>
         : "Updated a role",
       details: changes.map((c) => {
-        if (c.field === "permissions") return `Permissions: +${c.added?.join(", ") || "none"} / -${c.removed?.join(", ") || "none"}`;
+        if (c.field === "permissions") {
+          return <PermissionDiff added={c.added ?? []} removed={c.removed ?? []} />;
+        }
         if (c.field === "rank") return "Rank changed";
         if (c.field === "label") return `Renamed: ${c.old} → ${c.new}`;
         return `${c.field}: ${c.old} → ${c.new}`;
@@ -145,9 +168,13 @@ const DESCRIBERS: Record<string, (extra: Record<string, unknown>, entry: AuditLo
     summary: e.is_verified ? "Marked tournament verified" : "Marked tournament unverified",
   }),
 
-  tournament_archived: (e) => ({
-    summary: e?.auto_archived ? "Tournament auto-archived" : "Archived tournament",
-  }),
+  tournament_archived: (e) => (
+    // The auto-archive job logs under the owner's actor_id (a real user row
+    // is required), but they didn't take this action — don't attribute it.
+    e?.auto_archived
+      ? { summary: "Tournament was automatically archived after it ended", hideActor: true }
+      : { summary: "Archived tournament" }
+  ),
 
   tournament_unarchived: () => ({
     summary: "Unarchived tournament",
