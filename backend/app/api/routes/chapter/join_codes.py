@@ -20,7 +20,7 @@ def _get_join_code_or_404(code_id: int, chapter_id: int, db: Session) -> JoinCod
 
 
 # ---------------------------------------------------------------------------
-# GET /chapters/{chapter_id}/join-codes/ — list every join code for a chapter. Chapter lead only.
+# GET /chapters/{chapter_id}/join-codes/ — list active join codes for a chapter. Chapter lead only.
 # ---------------------------------------------------------------------------
 @router.get("/chapters/{chapter_id}/join-codes/", response_model=list[JoinCodeResponse])
 def get_chapter_join_codes(
@@ -28,8 +28,13 @@ def get_chapter_join_codes(
     db: Session = Depends(get_db),
     _: User = Depends(require_lead),
 ):
-    """List every join code for a chapter, including expired and deactivated ones. Chapter lead only."""
-    return db.query(JoinCode).with_parent(chapter, AlumniChapter.join_codes).all()
+    """List active join codes for a chapter. Chapter lead only."""
+    return (
+        db.query(JoinCode)
+        .with_parent(chapter, AlumniChapter.join_codes)
+        .filter(JoinCode.is_active == True)  # noqa: E712
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------

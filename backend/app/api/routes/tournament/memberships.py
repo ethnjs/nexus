@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.memberships import get_membership_by_user
+from app.core.tournament.memberships import get_membership_by_user, resolve_memberships_or_users
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
@@ -19,6 +19,23 @@ from app.schemas.tournament.membership import (
     MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
     MembershipMeUpdate, MembershipSlimResponse,
 )
+
+
+def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
+    """Overwrites each response's .join_code.creator with a properly
+    resolved MembershipSlimResponse|UserSlimResponse. Automatic
+    from_attributes validation would otherwise read JoinCode.creator (a
+    plain User relationship) and silently fall back to the bare-user branch
+    of the union every time, never surfacing the creator's actual
+    membership — same fix already applied to JoinCodeResponse.creator and
+    AuditLogEntry.actor."""
+    creator_ids = {m.join_code.created_by for m in memberships if m.join_code is not None}
+    if not creator_ids:
+        return
+    creators = resolve_memberships_or_users(db, tournament_id, creator_ids)
+    for m, resp in zip(memberships, responses):
+        if m.join_code is not None:
+            resp.join_code.creator = creators[m.join_code.created_by]
 
 # Routes nested: /tournaments/{tournament_id}/memberships/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
@@ -41,12 +58,15 @@ def list_memberships(
         .options(
             joinedload(TournamentMembership.user),
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentMembership.join_code),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
         .order_by(TournamentMembership.id)
         .all()
     )
-    return [MembershipSlimResponse.model_validate(m) for m in memberships]
+    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    return responses
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +133,14 @@ def search_memberships(
         .options(
             joinedload(TournamentMembership.user),
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentMembership.join_code),
         )
         .order_by(TournamentMembership.id)
         .all()
     )
-    return [MembershipSlimResponse.model_validate(m) for m in memberships]
+    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    return responses
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +186,9 @@ def get_membership(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
-    return MembershipFullResponse.model_validate(m)
+    resp = MembershipFullResponse.model_validate(m)
+    _resolve_join_code_creators(db, tournament_id, [m], [resp])
+    return resp
 
 
 # ---------------------------------------------------------------------------

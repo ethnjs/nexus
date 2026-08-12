@@ -40,6 +40,24 @@ class MembershipCoordinatorUpdate(BaseModel):
     notes: Optional[str] = None
 
 
+class MembershipJoinCodeInfo(BaseModel):
+    """Minimal join-code info embedded on a membership response — code/label
+    plus who created it ("invited by"). Not the full JoinCodeResponse:
+    app.schemas.join_code imports MembershipSlimResponse from this module, so
+    importing back would be circular — this duplicates just what's needed.
+    Codes are never hard-deleted (deactivation only flips is_active), so this
+    is populated for every membership with source == "join_code"."""
+    id: int
+    code: str
+    label: str | None = None
+    # The creator's membership in this tournament — falls back to the bare
+    # user when they have none. Resolved server-side, same pattern as
+    # JoinCodeResponse.creator / AuditLogEntry.actor.
+    creator: "MembershipSlimResponse | UserSlimResponse"
+
+    model_config = {"from_attributes": True}
+
+
 class _MembershipRolesMixin(BaseModel):
     """Shared roles handling for response schemas.
 
@@ -63,7 +81,9 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     """List view — members page roster. No onboarding/logistics fields."""
     id: int
     source: str
-    join_code_id: int | None = None
+    # Resolved server-side — see MembershipJoinCodeInfo. None when source
+    # isn't "join_code". Supersedes the bare join_code_id FK.
+    join_code: MembershipJoinCodeInfo | None = None
     user: UserSlimResponse
 
 
@@ -89,7 +109,7 @@ class MembershipFullResponse(_MembershipRolesMixin):
     notes: Optional[str] = None
     extra_data: dict | None = None
     source: str
-    join_code_id: int | None = None
+    join_code: MembershipJoinCodeInfo | None = None
 
     is_over_18: Optional[bool] = None
     is_over_21: Optional[bool] = None

@@ -161,6 +161,8 @@ export interface UserSlim {
   email:      string
   phone:      string | null
   pronouns:   string | null
+  created_at: string
+  updated_at: string
 }
 
 // Matches AdminUserSlimResponse — slim + account-management fields. Used by
@@ -169,9 +171,6 @@ export interface AdminUserSlim extends UserSlim {
   email_verified: boolean
   role:           ROLE
   status:         USER_STATUS
-
-  created_at:     string
-  updated_at:     string
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
@@ -509,14 +508,24 @@ export interface RoleWithMemberCount extends Role {
   member_count: number
 }
 
+// Matches MembershipJoinCodeInfo — resolved join-code info embedded on a
+// membership response (code/label + who created it). Only present when
+// source === "join_code". Codes are never hard-deleted, so this is always
+// populated for a join_code-sourced membership.
+export interface MembershipJoinCodeInfo {
+  code:    string
+  label:   string | null
+  creator: MembershipSlim | UserSlim
+}
+
 // Matches MembershipSlimResponse — members-page roster row. No onboarding/
 // logistics fields; those live behind the per-member expand panel (MembershipFull).
 export interface MembershipSlim {
-  id:            number
-  source:        MembershipSource
-  join_code_id:  number | null
-  roles:         Role[]
-  user:          UserSlim
+  id:        number
+  source:    MembershipSource
+  join_code: MembershipJoinCodeInfo | null
+  roles:     Role[]
+  user:      UserSlim
 }
 
 // Matches MembershipFullResponse — the expanded side panel for a single member.
@@ -533,7 +542,7 @@ export interface MembershipFull {
   notes:             string | null
   extra_data:        Record<string, unknown> | null
   source:            MembershipSource
-  join_code_id:      number | null
+  join_code:         MembershipJoinCodeInfo | null
   is_over_18:        boolean | null
   is_over_21:        boolean | null
   created_at:        string

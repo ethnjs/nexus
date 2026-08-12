@@ -56,7 +56,6 @@ def test_create_join_code_creates_record(client, db):
     assert res.status_code == 201
     data = res.json()
     assert data["label"] == "Spring 2026"
-    assert data["is_active"] is True
     assert data["code"]
     assert data["use_count"] == 0
 
@@ -90,7 +89,6 @@ def test_update_join_code_can_change_label_without_deactivating(client, db):
     assert res.status_code == 200
     data = res.json()
     assert data["label"] == "Updated Label"
-    assert data["is_active"] is True
 
 
 def test_deactivate_join_code_marks_inactive(client, db):
@@ -153,7 +151,6 @@ def test_reactivate_join_code_ignored_by_patch(client, db):
 
     res = client.patch(f"/chapters/{chapter.id}/join-codes/{join_code.id}/", json={"is_active": True})
     assert res.status_code == 200
-    assert res.json()["is_active"] is False
 
     refreshed = db.query(JoinCode).filter_by(id=join_code.id).first()
     assert refreshed.is_active is False

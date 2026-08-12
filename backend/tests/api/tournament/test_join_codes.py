@@ -62,7 +62,6 @@ def test_create_join_code_creates_record(client, td_user, td_tournament, db):
     assert response.status_code == 201
     data = response.json()
     assert data["label"] == "Volunteer sign-up"
-    assert data["is_active"] is True
     assert data["code"]
     assert data["use_count"] == 0
     assert data["expires_at"] is not None
