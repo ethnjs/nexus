@@ -8,13 +8,10 @@ import { formatPhone } from "@/lib/auth";
 import { formatDuration } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { useToast } from "@/lib/useToast";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ChipInput } from "@/components/ui/ChipInput";
-import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
@@ -22,10 +19,13 @@ import { HoverCard } from "@/components/ui/HoverCard";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { IconLock, IconPlus, IconSearch, IconArrowDown } from "@/components/ui/Icons";
+import { RolesCell } from "@/components/tournament/RolesCell";
+import { MemberPanel } from "@/components/tournament/MemberPanel";
+import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
+import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash } from "@/components/ui/Icons";
 
-// Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles
-const MEMBER_ROW_COLUMNS = "1fr 1.2fr 0.8fr 90px 90px 110px 90px 2.2fr";
+// Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
+const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
 
 const SOURCE_LABELS: Record<string, string> = {
   join_code: "Invite",
@@ -120,80 +120,16 @@ function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
   );
 }
 
-function RolesCell({
-  tournamentId, membership, allRoles, canAssignRole, onUpdated,
-}: {
-  tournamentId: number;
-  membership: MembershipSlim;
-  allRoles: Role[];
-  canAssignRole: (role: Role) => boolean;
-  onUpdated: (updated: MembershipSlim) => void;
-}) {
-  const { show } = useToast();
-  const memberName = personName(membership.user);
-
-  const heldIds = new Set(membership.roles.map((r) => r.id));
-  const pickableRoles = allRoles.filter((r) => canAssignRole(r));
-
-  async function handleRemove(role: Role) {
-    try {
-      const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
-      onUpdated(updated);
-      show(`Removed ${role.label} from ${memberName}`);
-    } catch (err: unknown) {
-      show(err instanceof ApiError ? err.message : "Failed to remove role.", "error");
-    }
-  }
-
-  async function handleAdd(role: Role) {
-    const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
-    onUpdated(updated);
-    show(`Added ${role.label} to ${memberName}`);
-  }
-
-  return (
-    <ChipInput
-      value={membership.roles.map((r) => r.label)}
-      onChange={(labels) => {
-        const removed = membership.roles.find((r) => !labels.includes(r.label));
-        if (removed) handleRemove(removed);
-      }}
-      variant="transparent"
-      size="sm"
-      disableInput
-      fullWidth
-      addButton={
-        <Popover
-          trigger={
-            <Button
-              type="button" variant="secondary" size="sm" iconOnly
-              title="Edit roles"
-              style={{ padding: 0, flexShrink: 0 }}
-            >
-              <IconPlus size={14} />
-            </Button>
-          }
-          items={pickableRoles}
-          getKey={(role) => role.id}
-          renderLabel={(role) => role.label}
-          checklist
-          isSelected={(role) => heldIds.has(role.id)}
-          onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
-          emptyMessage="No assignable roles"
-        />
-      }
-    />
-  );
-}
-
 function MemberRow({
-  tournamentId, membership, allRoles, canAssignRole, onUpdated, isLast,
+  tournamentId, membership, allRoles, canAssignRole, onUpdated, onExpand, onRemove, isLast,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
   allRoles: Role[];
   canAssignRole: (role: Role) => boolean;
   onUpdated: (updated: MembershipSlim) => void;
+  onExpand: (membershipId: number) => void;
+  onRemove: (membership: MembershipSlim) => void;
   isLast: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -243,6 +179,22 @@ function MemberRow({
         canAssignRole={canAssignRole}
         onUpdated={onUpdated}
       />
+      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Remove member"
+          onClick={() => onRemove(membership)}
+        >
+          <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+        </Button>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Expand"
+          onClick={() => onExpand(membership.id)}
+        >
+          <IconExpand size={13} />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -266,6 +218,9 @@ export default function MembersPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
 
   useEffect(() => {
     if (!canManageMembers) return;
@@ -429,6 +384,7 @@ export default function MembersPage() {
               <span style={{ textAlign: "center" }}>Method</span>
               <span style={{ textAlign: "center" }}>Status</span>
               <span>Roles</span>
+              <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
             {visibleMembers.length === 0 ? (
@@ -442,12 +398,38 @@ export default function MembersPage() {
                   allRoles={allRoles}
                   canAssignRole={canAssignRole}
                   onUpdated={handleMemberUpdated}
+                  onExpand={setExpandedId}
+                  onRemove={setRemoveTarget}
                   isLast={i === visibleMembers.length - 1}
                 />
               ))
             )}
           </Card>
         </>
+      )}
+
+      {expandedId !== null && (
+        <MemberPanel
+          tournamentId={tournamentId}
+          membershipId={expandedId}
+          allRoles={allRoles}
+          canAssignRole={canAssignRole}
+          onClose={() => setExpandedId(null)}
+          onUpdated={handleMemberUpdated}
+        />
+      )}
+
+      {removeTarget && (
+        <RemoveMemberModal
+          tournamentId={tournamentId}
+          membershipId={removeTarget.id}
+          memberName={memberName(removeTarget)}
+          onClose={() => setRemoveTarget(null)}
+          onRemoved={() => {
+            setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            setRemoveTarget(null);
+          }}
+        />
       )}
     </div>
   );
