@@ -1,22 +1,26 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { membershipsApi, MembershipSlim, ApiError } from "@/lib/api";
+import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useToast } from "@/lib/useToast";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { HoverCard } from "@/components/ui/HoverCard";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconLock } from "@/components/ui/Icons";
+import { IconLock, IconPlus } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles
 const MEMBER_ROW_COLUMNS = "1fr 1.2fr 0.8fr 90px 90px 110px 90px 2.2fr";
@@ -85,7 +89,80 @@ function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
   );
 }
 
-function MemberRow({ membership, isLast }: { membership: MembershipSlim; isLast: boolean }) {
+function RolesCell({
+  tournamentId, membership, allRoles, canAssignRole, onUpdated,
+}: {
+  tournamentId: number;
+  membership: MembershipSlim;
+  allRoles: Role[];
+  canAssignRole: (role: Role) => boolean;
+  onUpdated: (updated: MembershipSlim) => void;
+}) {
+  const { show } = useToast();
+  const memberName = personName(membership.user);
+
+  const heldIds = new Set(membership.roles.map((r) => r.id));
+  const addableRoles = allRoles.filter((r) => !heldIds.has(r.id) && canAssignRole(r));
+
+  async function handleRemove(role: Role) {
+    try {
+      const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
+      onUpdated(updated);
+      show(`Removed ${role.label} from ${memberName}`);
+    } catch (err: unknown) {
+      show(err instanceof ApiError ? err.message : "Failed to remove role.", "error");
+    }
+  }
+
+  async function handleAdd(role: Role) {
+    const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
+    onUpdated(updated);
+    show(`Added ${role.label} to ${memberName}`);
+  }
+
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <ChipInput
+          value={membership.roles.map((r) => r.label)}
+          onChange={(labels) => {
+            const removed = membership.roles.find((r) => !labels.includes(r.label));
+            if (removed) handleRemove(removed);
+          }}
+          disableInput
+          fullWidth
+        />
+      </div>
+      <Popover
+        trigger={
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly
+            title="Add role"
+            style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0 }}
+          >
+            <IconPlus size={14} />
+          </Button>
+        }
+        items={addableRoles}
+        getKey={(role) => role.id}
+        renderLabel={(role) => role.label}
+        onSelect={handleAdd}
+        emptyMessage="No assignable roles"
+      />
+    </div>
+  );
+}
+
+function MemberRow({
+  tournamentId, membership, allRoles, canAssignRole, onUpdated, isLast,
+}: {
+  tournamentId: number;
+  membership: MembershipSlim;
+  allRoles: Role[];
+  canAssignRole: (role: Role) => boolean;
+  onUpdated: (updated: MembershipSlim) => void;
+  isLast: boolean;
+}) {
   const [hovered, setHovered] = useState(false);
   const { user } = membership;
   const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "—";
@@ -126,13 +203,13 @@ function MemberRow({ membership, isLast }: { membership: MembershipSlim; isLast:
       <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
         {membership.status}
       </Badge>
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-        {membership.roles.length === 0 ? (
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>
-        ) : (
-          membership.roles.map((role) => <Badge key={role.id} variant="default">{role.label}</Badge>)
-        )}
-      </div>
+      <RolesCell
+        tournamentId={tournamentId}
+        membership={membership}
+        allRoles={allRoles}
+        canAssignRole={canAssignRole}
+        onUpdated={onUpdated}
+      />
     </div>
   );
 }
@@ -144,8 +221,11 @@ export default function MembersPage() {
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
+  const isAdmin = currentUser?.role === "admin";
+  const isOwner = !!membership?.is_owner;
 
   const [members, setMembers] = useState<MembershipSlim[] | null>(null);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -153,7 +233,27 @@ export default function MembersPage() {
     membershipsApi.list(tournamentId)
       .then(setMembers)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
+    rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
   }, [tournamentId, canManageMembers]);
+
+  // Lower rank number = more authority. A non-admin/owner can only assign
+  // roles strictly below their own highest-authority role — same rule the
+  // backend enforces (validate_role_action), so this just keeps the "+"
+  // picker from ever offering something that would 403.
+  const ownRank = useMemo(() => {
+    if (!membership || membership.roles.length === 0) return null;
+    return Math.min(...membership.roles.map((r) => r.rank));
+  }, [membership]);
+
+  function canAssignRole(role: Role): boolean {
+    if (isAdmin || isOwner) return true;
+    if (ownRank === null) return false;
+    return role.rank > ownRank;
+  }
+
+  function handleMemberUpdated(updated: MembershipSlim) {
+    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
+  }
 
   if (membershipLoading) {
     return (
@@ -222,7 +322,15 @@ export default function MembersPage() {
           </div>
 
           {members.map((m, i) => (
-            <MemberRow key={m.id} membership={m} isLast={i === members.length - 1} />
+            <MemberRow
+              key={m.id}
+              tournamentId={tournamentId}
+              membership={m}
+              allRoles={allRoles}
+              canAssignRole={canAssignRole}
+              onUpdated={handleMemberUpdated}
+              isLast={i === members.length - 1}
+            />
           ))}
         </Card>
       )}
