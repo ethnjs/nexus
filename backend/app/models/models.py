@@ -351,14 +351,14 @@ class TournamentMembership(Base):
         if self.user.date_of_birth is None:
             return None
         
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 18)
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 18)
     
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
         if self.user.date_of_birth is None:
             return None
         
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date.date(), 21)
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 21)
     
     # TODO: add .expression variants for server-side age filtering once needed.
 
