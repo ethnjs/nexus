@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardEvent, KeyboardEvent, useState } from "react";
+import { ClipboardEvent, KeyboardEvent, ReactNode, useState } from "react";
 import { IconX } from "@/components/ui/Icons";
 
 export type ChipStatus = "default" | "warning" | "error";
@@ -20,6 +20,8 @@ interface ChipInputProps {
   disableInput?: boolean;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
+  /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
+  addButton?: ReactNode;
 }
 
 const STATUS_STYLES: Record<ChipStatus, { background: string; color: string; border: string }> = {
@@ -53,7 +55,7 @@ const SPLIT_PATTERN = /[,\n]+/;
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput,
-  variant = "primary", size = "md",
+  variant = "primary", size = "md", addButton,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
@@ -109,7 +111,9 @@ export function ChipInput({
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px",
         padding: `4px ${sizing.paddingX}`, minHeight: sizing.minHeight, boxSizing: "border-box",
         background: VARIANT_BACKGROUND[variant],
-        border: `1px solid ${error ? "var(--color-danger)" : "var(--color-border)"}`,
+        border: error
+          ? "1px solid var(--color-danger)"
+          : variant === "transparent" ? "none" : "1px solid var(--color-border)",
         borderRadius: "var(--radius-md)", width: fullWidth ? "100%" : undefined,
       }}>
         {value.map((chip) => {
@@ -157,6 +161,7 @@ export function ChipInput({
             }}
           />
         )}
+        {addButton}
       </div>
 
       {error && (

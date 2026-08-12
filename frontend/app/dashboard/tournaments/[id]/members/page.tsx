@@ -102,7 +102,7 @@ function RolesCell({
   const memberName = personName(membership.user);
 
   const heldIds = new Set(membership.roles.map((r) => r.id));
-  const addableRoles = allRoles.filter((r) => !heldIds.has(r.id) && canAssignRole(r));
+  const pickableRoles = allRoles.filter((r) => canAssignRole(r));
 
   async function handleRemove(role: Role) {
     try {
@@ -121,35 +121,37 @@ function RolesCell({
   }
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: "6px" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <ChipInput
-          value={membership.roles.map((r) => r.label)}
-          onChange={(labels) => {
-            const removed = membership.roles.find((r) => !labels.includes(r.label));
-            if (removed) handleRemove(removed);
-          }}
-          disableInput
-          fullWidth
+    <ChipInput
+      value={membership.roles.map((r) => r.label)}
+      onChange={(labels) => {
+        const removed = membership.roles.find((r) => !labels.includes(r.label));
+        if (removed) handleRemove(removed);
+      }}
+      variant="transparent"
+      size="sm"
+      disableInput
+      fullWidth
+      addButton={
+        <Popover
+          trigger={
+            <Button
+              type="button" variant="secondary" size="sm" iconOnly
+              title="Edit roles"
+              style={{ padding: 0, flexShrink: 0 }}
+            >
+              <IconPlus size={14} />
+            </Button>
+          }
+          items={pickableRoles}
+          getKey={(role) => role.id}
+          renderLabel={(role) => role.label}
+          checklist
+          isSelected={(role) => heldIds.has(role.id)}
+          onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
+          emptyMessage="No assignable roles"
         />
-      </div>
-      <Popover
-        trigger={
-          <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            title="Add role"
-            style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0 }}
-          >
-            <IconPlus size={14} />
-          </Button>
-        }
-        items={addableRoles}
-        getKey={(role) => role.id}
-        renderLabel={(role) => role.label}
-        onSelect={handleAdd}
-        emptyMessage="No assignable roles"
-      />
-    </div>
+      }
+    />
   );
 }
 

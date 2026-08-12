@@ -51,6 +51,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
           position: "fixed", bottom: "20px", right: "20px", zIndex: 1000,
           display: "flex", flexDirection: "column", gap: "8px",
         }}>
+          <style>{`
+            @keyframes toastIn {
+              from { opacity: 0; transform: translateY(8px) scale(0.98); }
+              to   { opacity: 1; transform: translateY(0) scale(1); }
+            }
+          `}</style>
           {toasts.map((t) => {
             const styles = VARIANT_STYLES[t.variant];
             return (
@@ -62,6 +68,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                   background: styles.background, color: styles.color,
                   borderRadius: "var(--radius-md)", boxShadow: "var(--shadow-lg)",
                   fontFamily: "var(--font-sans)", fontSize: "13px",
+                  animation: "toastIn 200ms ease-out",
                 }}
               >
                 {styles.icon}
