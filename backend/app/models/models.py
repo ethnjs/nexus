@@ -597,7 +597,7 @@ class Form(Base):
 
     tournament = relationship("Tournament", back_populates="forms")
     chapter = relationship("AlumniChapter", back_populates="forms")
-    creator = relationship("User", back_populates="forms")
+    creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
 
     __table_args__ = (
