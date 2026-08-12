@@ -7,8 +7,7 @@ import { personName } from "@/lib/personDisplay";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration, formatDate } from "@/lib/timeFormat";
 import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
-import { useAuth } from "@/lib/useAuth";
-import { useMyMembership } from "@/lib/useMyMembership";
+import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -107,12 +106,16 @@ function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
 }
 
 function MemberRow({
-  tournamentId, membership, allRoles, canAssignRole, onUpdated, onExpand, onRemove, isLast,
+  tournamentId, membership, allRoles, canTouchRole, locked, isArchived, onUpdated, onExpand, onRemove, isLast,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
   allRoles: Role[];
-  canAssignRole: (role: Role) => boolean;
+  canTouchRole: (role: Role) => boolean;
+  /** Role-editing gate — archived, or this member's own roles outrank the actor. */
+  locked: boolean;
+  /** Delete-membership gate — the backend's only guard on removal is "not archived" (no rank bound), so removal shouldn't be blocked by rank the way role editing is. */
+  isArchived: boolean;
   onUpdated: (updated: MembershipSlim) => void;
   onExpand: (membershipId: number) => void;
   onRemove: (membership: MembershipSlim) => void;
@@ -162,16 +165,18 @@ function MemberRow({
         tournamentId={tournamentId}
         membership={membership}
         allRoles={allRoles}
-        canAssignRole={canAssignRole}
+        canTouchRole={canTouchRole}
+        locked={locked}
         onUpdated={onUpdated}
       />
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Remove member"
+          disabled={isArchived}
           onClick={() => onRemove(membership)}
         >
-          <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+          <IconTrash size={13} style={{ color: isArchived ? undefined : "var(--color-danger)" }} />
         </Button>
         <Button
           type="button" variant="secondary" size="sm" iconOnly
@@ -189,11 +194,7 @@ export default function MembersPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
 
-  const { user: currentUser } = useAuth();
-  const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
-  const isAdmin = currentUser?.role === "admin";
-  const isOwner = !!membership?.is_owner;
+  const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
 
   const [members, setMembers] = useState<MembershipSlim[] | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
@@ -233,21 +234,6 @@ export default function MembersPage() {
     });
     return sorted;
   }, [members, search, roleFilter, statusFilter, sortField, sortDir]);
-
-  // Lower rank number = more authority. A non-admin/owner can only assign
-  // roles strictly below their own highest-authority role — same rule the
-  // backend enforces (validate_role_action), so this just keeps the "+"
-  // picker from ever offering something that would 403.
-  const ownRank = useMemo(() => {
-    if (!membership || membership.roles.length === 0) return null;
-    return Math.min(...membership.roles.map((r) => r.rank));
-  }, [membership]);
-
-  function canAssignRole(role: Role): boolean {
-    if (isAdmin || isOwner) return true;
-    if (ownRank === null) return false;
-    return role.rank > ownRank;
-  }
 
   function handleMemberUpdated(updated: MembershipSlim) {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -382,7 +368,9 @@ export default function MembersPage() {
                   tournamentId={tournamentId}
                   membership={m}
                   allRoles={allRoles}
-                  canAssignRole={canAssignRole}
+                  canTouchRole={canTouchRole}
+                  locked={!canEditMember(m)}
+                  isArchived={isArchived}
                   onUpdated={handleMemberUpdated}
                   onExpand={setExpandedId}
                   onRemove={setRemoveTarget}
@@ -399,7 +387,8 @@ export default function MembersPage() {
           tournamentId={tournamentId}
           membershipId={expandedId}
           allRoles={allRoles}
-          canAssignRole={canAssignRole}
+          canTouchRole={canTouchRole}
+          canEditMember={canEditMember}
           onClose={() => setExpandedId(null)}
           onUpdated={handleMemberUpdated}
         />

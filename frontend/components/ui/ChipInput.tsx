@@ -18,6 +18,8 @@ interface ChipInputProps {
   getChipStatus?: (chip: string) => ChipStatus;
   /** Hides the free-text field — chips are still removable via their "x", but new ones can only arrive through onChange from outside (e.g. a picker). For values with no free-text meaning, like role names. */
   disableInput?: boolean;
+  /** Read-only — hides every chip's "x", so nothing can be removed. Typing/pasting are unaffected by this alone; pair with disableInput for a fully static display. */
+  locked?: boolean;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
@@ -54,7 +56,7 @@ const SPLIT_PATTERN = /[,\n]+/;
 // list, chips removable via an "x". Content-agnostic: format validation and
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
-  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput,
+  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked,
   variant = "primary", size = "md", addButton,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
@@ -131,17 +133,19 @@ export function ChipInput({
               }}
             >
               {chip}
-              <button
-                type="button"
-                onClick={() => removeChip(chip)}
-                style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  border: "none", background: "transparent", padding: "2px",
-                  color: "inherit", cursor: "pointer", opacity: 0.7,
-                }}
-              >
-                <IconX size={10} />
-              </button>
+              {!locked && (
+                <button
+                  type="button"
+                  onClick={() => removeChip(chip)}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    border: "none", background: "transparent", padding: "2px",
+                    color: "inherit", cursor: "pointer", opacity: 0.7,
+                  }}
+                >
+                  <IconX size={10} />
+                </button>
+              )}
             </span>
           );
         })}

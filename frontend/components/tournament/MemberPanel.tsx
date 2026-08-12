@@ -23,7 +23,8 @@ interface MemberPanelProps {
   tournamentId: number;
   membershipId: number;
   allRoles: Role[];
-  canAssignRole: (role: Role) => boolean;
+  canTouchRole: (role: Role) => boolean;
+  canEditMember: (target: MembershipSlim) => boolean;
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipSlim) => void;
@@ -35,7 +36,7 @@ interface MemberPanelProps {
 // (status, join method, roles). Meant to be dropped into any tournament
 // page that lists members (roster, event rosters, etc.) behind an
 // "expand" action.
-export function MemberPanel({ tournamentId, membershipId, allRoles, canAssignRole, onClose, onUpdated }: MemberPanelProps) {
+export function MemberPanel({ tournamentId, membershipId, allRoles, canTouchRole, canEditMember, onClose, onUpdated }: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -129,7 +130,8 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canAssignRol
                   tournamentId={tournamentId}
                   membership={full}
                   allRoles={allRoles}
-                  canAssignRole={canAssignRole}
+                  canTouchRole={canTouchRole}
+                  locked={!canEditMember(full)}
                   onUpdated={handleRolesUpdated}
                 />
               </div>

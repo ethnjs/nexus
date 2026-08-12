@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { IconLock } from "@/components/ui/Icons";
 
 interface PopoverProps<T> {
   /** The element that toggles the panel — an icon button, a chip, whatever. */
@@ -18,6 +19,8 @@ interface PopoverProps<T> {
   /** Checklist mode: rows render as a checkbox + label (like a picker list), stay open across selections instead of closing after each one. Requires isSelected. */
   checklist?: boolean;
   isSelected?: (item: T) => boolean;
+  /** Checklist mode only: rows for which this returns true show a lock icon instead of a checkbox and can't be toggled (e.g. a role the actor isn't allowed to touch), but stay visible rather than being filtered out. */
+  isDisabled?: (item: T) => boolean;
 }
 
 type PanelPos = { top: number; left: number };
@@ -38,7 +41,7 @@ const PANEL_GAP = 6;
 // side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
   trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
-  checklist = false, isSelected,
+  checklist = false, isSelected, isDisabled,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
@@ -110,18 +113,24 @@ export function Popover<T>({
             items.map((item) => {
               const key = getKey(item);
               const checked = isSelected?.(item) ?? false;
+              const disabled = isDisabled?.(item) ?? false;
               return (
                 <label
                   key={key}
+                  title={disabled ? "You can't touch a role that outranks you" : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: "8px",
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
-                    cursor: busy ? "not-allowed" : "pointer",
+                    cursor: disabled || busy ? "not-allowed" : "pointer",
                     background: checked ? "var(--color-accent-subtle)" : "transparent",
-                    opacity: busy && pendingKey !== key ? 0.5 : 1,
+                    opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                   }}
                 >
-                  <Checkbox checked={checked} locked={busy} onChange={() => handleSelect(item)} />
+                  {disabled ? (
+                    <IconLock size={13} style={{ flexShrink: 0, color: "var(--color-text-tertiary)" }} />
+                  ) : (
+                    <Checkbox checked={checked} locked={busy} onChange={() => handleSelect(item)} />
+                  )}
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
                     {renderLabel(item)}
                   </span>

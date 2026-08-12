@@ -12,19 +12,21 @@ interface RolesCellProps {
   tournamentId: number;
   membership: MembershipSlim;
   allRoles: Role[];
-  canAssignRole: (role: Role) => boolean;
+  /** Role-level rank gate — whether `role` can be added or removed at all (independent of which member holds it). */
+  canTouchRole: (role: Role) => boolean;
+  /** Member-level gate — false hides the add control and every chip's remove "x", e.g. tournament archived or this member's own roles outrank the actor. */
+  locked: boolean;
   onUpdated: (updated: MembershipSlim) => void;
 }
 
 // Inline role editor — chips for held roles (removable), a checklist
 // popover to add/remove more. Shared between the roster table and the
 // member detail panel.
-export function RolesCell({ tournamentId, membership, allRoles, canAssignRole, onUpdated }: RolesCellProps) {
+export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, onUpdated }: RolesCellProps) {
   const { show } = useToast();
   const memberName = personName(membership.user);
 
   const heldIds = new Set(membership.roles.map((r) => r.id));
-  const pickableRoles = allRoles.filter((r) => canAssignRole(r));
 
   async function handleRemove(role: Role) {
     try {
@@ -52,26 +54,30 @@ export function RolesCell({ tournamentId, membership, allRoles, canAssignRole, o
       variant="transparent"
       size="sm"
       disableInput
+      locked={locked}
       fullWidth
       addButton={
-        <Popover
-          trigger={
-            <Button
-              type="button" variant="secondary" size="sm" iconOnly
-              title="Edit roles"
-              style={{ padding: 0, flexShrink: 0 }}
-            >
-              <IconPlus size={14} />
-            </Button>
-          }
-          items={pickableRoles}
-          getKey={(role) => role.id}
-          renderLabel={(role) => role.label}
-          checklist
-          isSelected={(role) => heldIds.has(role.id)}
-          onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
-          emptyMessage="No assignable roles"
-        />
+        !locked && (
+          <Popover
+            trigger={
+              <Button
+                type="button" variant="secondary" size="sm" iconOnly
+                title="Edit roles"
+                style={{ padding: 0, flexShrink: 0 }}
+              >
+                <IconPlus size={14} />
+              </Button>
+            }
+            items={allRoles}
+            getKey={(role) => role.id}
+            renderLabel={(role) => role.label}
+            checklist
+            isSelected={(role) => heldIds.has(role.id)}
+            isDisabled={(role) => !canTouchRole(role)}
+            onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
+            emptyMessage="No roles yet"
+          />
+        )
       }
     />
   );
