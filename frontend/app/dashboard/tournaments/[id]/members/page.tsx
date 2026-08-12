@@ -15,6 +15,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { HoverCard } from "@/components/ui/HoverCard";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { IconLock } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles
@@ -37,11 +38,17 @@ function fmtDate(iso: string): string {
 
 function DurationCell({ iso }: { iso: string }) {
   return (
-    <span
-      title={fmtDate(iso)}
-      style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", cursor: "default" }}
-    >
-      {formatDuration(iso)}
+    <span style={{ justifySelf: "center" }}>
+      <Tooltip variant="info" message={fmtDate(iso)} showIcon={false}>
+        <span
+          style={{
+            fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
+            cursor: "default",
+          }}
+        >
+          {formatDuration(iso)}
+        </span>
+      </Tooltip>
     </span>
   );
 }
@@ -49,7 +56,7 @@ function DurationCell({ iso }: { iso: string }) {
 function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
   if (membership.source !== "join_code" || !membership.join_code) {
     return (
-      <Badge variant="default" style={{ justifySelf: "start" }}>
+      <Badge variant="default" style={{ justifySelf: "center" }}>
         {SOURCE_LABELS[membership.source] ?? membership.source}
       </Badge>
     );
@@ -58,7 +65,7 @@ function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
   const jc = membership.join_code;
   return (
     <HoverCard
-      style={{ justifySelf: "start" }}
+      style={{ justifySelf: "center" }}
       content={
         <>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
@@ -116,7 +123,7 @@ function MemberRow({ membership, isLast }: { membership: MembershipSlim; isLast:
       <DurationCell iso={user.created_at} />
       <DurationCell iso={membership.created_at} />
       <JoinMethodCell membership={membership} />
-      <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "start" }}>
+      <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
         {membership.status}
       </Badge>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
@@ -207,10 +214,10 @@ export default function MembersPage() {
             <span>Members — {members.length}</span>
             <span>Email</span>
             <span>Phone</span>
-            <span>Account Age</span>
-            <span>Joined</span>
-            <span>Method</span>
-            <span>Status</span>
+            <span style={{ textAlign: "center" }}>Account Age</span>
+            <span style={{ textAlign: "center" }}>Joined</span>
+            <span style={{ textAlign: "center" }}>Method</span>
+            <span style={{ textAlign: "center" }}>Status</span>
             <span>Roles</span>
           </div>
 
