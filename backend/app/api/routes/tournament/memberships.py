@@ -8,6 +8,7 @@ from app.core.tournament.memberships import get_membership_by_user, resolve_memb
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
+from app.core.tournament.roles import validate_member_target
 from app.db.session import get_db
 from app.models.models import (
     TournamentMembership,
@@ -223,7 +224,7 @@ def update_my_membership(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
+# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
 # Staff override — day-of logistics only (schedule, notes). Not onboarding
 # data; that's self-service via PATCH .../me/.
 # ---------------------------------------------------------------------------
@@ -239,6 +240,7 @@ def update_membership(
     require_not_archived(tournament)
 
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+    validate_member_target(current_user, tournament, m, db)
 
     update_data = payload.model_dump(exclude_none=True)
     if "schedule" in update_data and payload.schedule:
@@ -281,8 +283,11 @@ def leave_tournament(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
-# Removes a user from the tournament.
+# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
+# Removes a user from the tournament. Unlike leave_tournament (DELETE .../me/),
+# the actor here isn't necessarily removing themselves, so validate_member_target
+# both blocks the owner as a target outright and enforces the same rank
+# comparison validate_role_action uses for its target check.
 # ---------------------------------------------------------------------------
 @router.delete("/{membership_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_membership(
@@ -295,5 +300,7 @@ def delete_membership(
     require_not_archived(tournament)
 
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+    validate_member_target(current_user, tournament, m, db)
+
     db.delete(m)
     db.commit()

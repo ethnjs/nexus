@@ -1,7 +1,8 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
 import pytest
 from fastapi.testclient import TestClient
-from app.models.models import TournamentMembership, TournamentRole
+from app.core.tournament.permissions import MANAGE_MEMBERS
+from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole
 from tests.conftest import grant_role, login
 
 
@@ -501,5 +502,128 @@ def test_delete_membership_requires_manage_members(client, td_user, other_tourna
     login(client, "td@test.com", "tdpass")
     response = client.delete(
         f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+    )
+    assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Rank-bound target protection (validate_member_target) — regression coverage
+# for a low-rank MANAGE_MEMBERS holder being able to remove/edit the
+# tournament owner or a strictly-senior member. See validate_member_target
+# in app/core/tournament/roles.py.
+# ---------------------------------------------------------------------------
+
+def _make_low_rank_role(db, tournament, label="Weak Staff", rank=90):
+    """A MANAGE_MEMBERS-holding role ranked well below the fixture's default
+    tiers (rank <= 40) — the actor here is authorized to touch member data
+    but should still never be allowed to reach the owner or someone senior."""
+    role = TournamentRole(tournament_id=tournament.id, label=label, rank=rank, permissions=[MANAGE_MEMBERS])
+    db.add(role)
+    db.commit()
+    db.refresh(role)
+    return role
+
+
+def _owner_membership(db, tournament) -> TournamentMembership:
+    return (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.tournament_id == tournament.id,
+            TournamentMembership.user_id == tournament.owner_id,
+        )
+        .first()
+    )
+
+
+def test_delete_membership_owner_target_forbidden(client, td_user, other_tournament, db):
+    """The bug this guards against: other_tournament's owner already holds
+    the Tournament Director role (top rank) via the fixture, so a weak
+    MANAGE_MEMBERS holder trying to delete them fails the ordinary rank
+    comparison too — but this confirms it's actually blocked end to end."""
+    owner_membership = _owner_membership(db, other_tournament)
+    _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
+    grant_role(db, other_tournament, td_user, "Weak Staff")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.delete(
+        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/"
+    )
+    assert response.status_code == 403
+
+
+def test_delete_membership_owner_target_forbidden_even_when_owner_has_no_role(client, td_user, other_tournament, db):
+    """Rank is opt-in — an owner who holds no TournamentRole has no
+    get_highest_rank result at all, so the plain rank comparison alone
+    (`target_rank is not None and target_rank < actor_rank`) would silently
+    pass and let them be deleted. validate_member_target's explicit
+    owner check is what actually stops this."""
+    owner_membership = _owner_membership(db, other_tournament)
+    db.query(TournamentMembershipRole).filter(
+        TournamentMembershipRole.membership_id == owner_membership.id
+    ).delete()
+    db.commit()
+
+    _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
+    grant_role(db, other_tournament, td_user, "Weak Staff")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.delete(
+        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/"
+    )
+    assert response.status_code == 403
+    assert db.query(TournamentMembership).filter(TournamentMembership.id == owner_membership.id).first() is not None
+
+
+def test_delete_membership_target_outranks_actor_forbidden(client, td_user, other_tournament, db):
+    """A non-owner target who's strictly senior to the actor is protected too."""
+    senior_role = _make_low_rank_role(db, other_tournament, "Senior Staff", rank=5)
+    u = _make_user(db)
+    target_membership = _make_membership(db, other_tournament.id, u["id"])
+    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=senior_role.id))
+    db.commit()
+
+    _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
+    grant_role(db, other_tournament, td_user, "Weak Staff")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.delete(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/"
+    )
+    assert response.status_code == 403
+
+
+def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tournament, db):
+    """Peers at the same rank can still act on each other — only strictly
+    senior targets (or the owner) are protected."""
+    peer_role = _make_low_rank_role(db, other_tournament, "Peer Staff", rank=40)
+    u = _make_user(db)
+    target_membership = _make_membership(db, other_tournament.id, u["id"])
+    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=peer_role.id))
+    db.commit()
+
+    grant_role(db, other_tournament, td_user, "Peer Staff")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.delete(
+        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/"
+    )
+    assert response.status_code == 204
+
+
+def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(client, td_user, other_tournament, db):
+    """Same owner protection applies to the day-of-logistics PATCH, not just delete."""
+    owner_membership = _owner_membership(db, other_tournament)
+    db.query(TournamentMembershipRole).filter(
+        TournamentMembershipRole.membership_id == owner_membership.id
+    ).delete()
+    db.commit()
+
+    _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
+    grant_role(db, other_tournament, td_user, "Weak Staff")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/",
+        json={"notes": "should not be allowed"},
     )
     assert response.status_code == 403

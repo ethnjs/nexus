@@ -76,6 +76,51 @@ def validate_rank_bound(user: "User", tournament: "Tournament", rank: int, db: S
         )
 
 
+def validate_member_target(actor: "User", tournament: "Tournament", membership: "TournamentMembership", db: Session) -> None:
+    """
+    Guards actions taken on a member's own row — removing them from the
+    tournament, editing their day-of logistics, or (via validate_role_action)
+    whether their role assignments can be touched at all. This is about who
+    can be a target, not which role is involved. Owner and platform admins
+    bypass entirely.
+
+    The tournament owner's membership can never be a target for anyone else,
+    full stop — even an actor with no rank of their own to compare against.
+    Rank is opt-in (the owner isn't required to hold a TournamentRole), so
+    without this explicit check an unranked owner would be unprotected by
+    the rank comparison below: get_highest_rank would return None for them,
+    and "target_rank is not None and ..." silently passes on None.
+
+    Otherwise strict `<`: a target whose highest-ranked role ties the
+    actor's own is still a fair target (lets peers at the same rank, e.g.
+    two Tournament Directors, act on each other) — only a target who
+    strictly outranks the actor is protected. Exempt when acting on your
+    own membership (you can't outrank yourself).
+    """
+    if actor.id == tournament.owner_id or actor.role == "admin":
+        return
+
+    if membership.user_id == tournament.owner_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot act on the tournament owner's membership",
+        )
+
+    if membership.user_id == actor.id:
+        return
+
+    actor_rank = get_highest_rank(actor, tournament.id, db)
+    if actor_rank is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    target_rank = get_highest_rank(membership.user, tournament.id, db)
+    if target_rank is not None and target_rank < actor_rank:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cannot act on a member who outranks you",
+        )
+
+
 def validate_role_action(
     actor: "User",
     tournament: "Tournament",
@@ -96,14 +141,9 @@ def validate_role_action(
          remove their own top-ranked role either, since it ties their own
          rank. Stepping down from a top role requires the Owner/admin bypass
          (someone else with higher authority does it for them).
-      2. The target member's highest-ranked role overall must not outrank
-         the actor — strict `<`, so ties are fine here. This lets two peers
-         at the same rank (e.g. two Tournament Directors) still manage each
-         other's weaker role assignments; check 1 already stops either of
-         them from touching a role that ties or outranks their own, so this
-         only needs to guard against a target who's strictly more senior.
-         Exempt when acting on your own membership (you can't outrank
-         yourself).
+      2. Whether the target member can be acted on at all — delegated to
+         validate_member_target (owner protection + strict-`<` rank check,
+         self-exempt).
     """
     if actor.id == tournament.owner_id or actor.role == "admin":
         return
@@ -118,11 +158,4 @@ def validate_role_action(
             detail="Cannot assign or remove a role that ties or outranks your own",
         )
 
-    is_self = membership.user_id == actor.id
-    if not is_self:
-        target_rank = get_highest_rank(membership.user, tournament.id, db)
-        if target_rank is not None and target_rank < actor_rank:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cannot modify roles for a member who outranks you",
-            )
+    validate_member_target(actor, tournament, membership, db)
