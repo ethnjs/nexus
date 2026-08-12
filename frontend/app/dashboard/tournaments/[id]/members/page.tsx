@@ -20,7 +20,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { HoverCard } from "@/components/ui/HoverCard";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { IconLock, IconPlus } from "@/components/ui/Icons";
+import { Input } from "@/components/ui/Input";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { IconLock, IconPlus, IconSearch, IconArrowDown } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles
 const MEMBER_ROW_COLUMNS = "1fr 1.2fr 0.8fr 90px 90px 110px 90px 2.2fr";
@@ -35,6 +37,35 @@ const STATUS_VARIANT: Record<string, "interested" | "confirmed"> = {
   interested: "interested",
   confirmed: "confirmed",
 };
+
+type SortField = "first_name" | "last_name" | "joined" | "account_age";
+type SortDir = "asc" | "desc";
+
+const SORT_FIELD_OPTIONS = [
+  { value: "first_name", label: "First name" },
+  { value: "last_name", label: "Last name" },
+  { value: "joined", label: "Joined" },
+  { value: "account_age", label: "Account age" },
+];
+
+const STATUS_FILTER_OPTIONS = [
+  { value: "all", label: "All statuses" },
+  { value: "interested", label: "Interested" },
+  { value: "confirmed", label: "Confirmed" },
+];
+
+function memberName(m: MembershipSlim): string {
+  return `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
+}
+
+function sortValue(m: MembershipSlim, field: SortField): string | number {
+  switch (field) {
+    case "first_name": return (m.user.first_name ?? "").toLowerCase();
+    case "last_name": return (m.user.last_name ?? "").toLowerCase();
+    case "joined": return new Date(m.created_at).getTime();
+    case "account_age": return new Date(m.user.created_at).getTime();
+  }
+}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -230,6 +261,12 @@ export default function MembersPage() {
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sortField, setSortField] = useState<SortField>("joined");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+
   useEffect(() => {
     if (!canManageMembers) return;
     membershipsApi.list(tournamentId)
@@ -237,6 +274,24 @@ export default function MembersPage() {
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
     rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
   }, [tournamentId, canManageMembers]);
+
+  const visibleMembers = useMemo(() => {
+    if (!members) return [];
+    const q = search.trim().toLowerCase();
+    const filtered = members.filter((m) => {
+      if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q)) return false;
+      if (roleFilter !== "all" && !m.roles.some((r) => String(r.id) === roleFilter)) return false;
+      if (statusFilter !== "all" && m.status !== statusFilter) return false;
+      return true;
+    });
+    const sorted = [...filtered].sort((a, b) => {
+      const av = sortValue(a, sortField);
+      const bv = sortValue(b, sortField);
+      const cmp = typeof av === "string" ? av.localeCompare(bv as string) : av - (bv as number);
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [members, search, roleFilter, statusFilter, sortField, sortDir]);
 
   // Lower rank number = more authority. A non-admin/owner can only assign
   // roles strictly below their own highest-authority role — same rule the
@@ -291,6 +346,8 @@ export default function MembersPage() {
     );
   }
 
+  const isFiltered = search.trim() !== "" || roleFilter !== "all" || statusFilter !== "all";
+
   return (
     <div>
       <PageHeader heading="Members" />
@@ -306,35 +363,91 @@ export default function MembersPage() {
           <EmptyState title="No members yet" description="Members who join this tournament will show up here." />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px" }}>
-          <div style={{
-            display: "grid", gridTemplateColumns: MEMBER_ROW_COLUMNS, gap: "10px",
-            padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-            fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-            color: "var(--color-text-tertiary)",
-          }}>
-            <span>Members — {members.length}</span>
-            <span>Email</span>
-            <span>Phone</span>
-            <span style={{ textAlign: "center" }}>Account Age</span>
-            <span style={{ textAlign: "center" }}>Joined</span>
-            <span style={{ textAlign: "center" }}>Method</span>
-            <span style={{ textAlign: "center" }}>Status</span>
-            <span>Roles</span>
+        <>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+            <div style={{ width: "350px" }}>
+              <Input
+                label="Search"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search name or email"
+                icon={<IconSearch size={14} />}
+                font="sans"
+                size="md"
+                variant="secondary"
+                fullWidth
+              />
+            </div>
+            <Dropdown
+              label="Role"
+              value={roleFilter}
+              onChange={setRoleFilter}
+              options={[{ value: "all", label: "All roles" }, ...allRoles.map((r) => ({ value: String(r.id), label: r.label }))]}
+              size="md"
+              variant="secondary"
+              width={170}
+            />
+            <Dropdown
+              label="Status"
+              value={statusFilter}
+              onChange={setStatusFilter}
+              options={STATUS_FILTER_OPTIONS}
+              size="md"
+              variant="secondary"
+              width={150}
+            />
+            <Dropdown
+              label="Sort by"
+              value={sortField}
+              onChange={(v) => setSortField(v as SortField)}
+              options={SORT_FIELD_OPTIONS}
+              size="md"
+              variant="secondary"
+              width={150}
+            />
+            <Button
+              type="button" variant="secondary" size="md" iconOnly
+              title={sortDir === "asc" ? "Ascending" : "Descending"}
+              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+            >
+              <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
+            </Button>
           </div>
 
-          {members.map((m, i) => (
-            <MemberRow
-              key={m.id}
-              tournamentId={tournamentId}
-              membership={m}
-              allRoles={allRoles}
-              canAssignRole={canAssignRole}
-              onUpdated={handleMemberUpdated}
-              isLast={i === members.length - 1}
-            />
-          ))}
-        </Card>
+          <Card radius="lg" style={{ padding: "8px 12px" }}>
+            <div style={{
+              display: "grid", gridTemplateColumns: MEMBER_ROW_COLUMNS, gap: "10px",
+              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
+              fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+              color: "var(--color-text-tertiary)",
+            }}>
+              <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
+              <span>Email</span>
+              <span>Phone</span>
+              <span style={{ textAlign: "center" }}>Account Age</span>
+              <span style={{ textAlign: "center" }}>Joined</span>
+              <span style={{ textAlign: "center" }}>Method</span>
+              <span style={{ textAlign: "center" }}>Status</span>
+              <span>Roles</span>
+            </div>
+
+            {visibleMembers.length === 0 ? (
+              <EmptyState title="No matching members" description="Try adjusting your search or filters." />
+            ) : (
+              visibleMembers.map((m, i) => (
+                <MemberRow
+                  key={m.id}
+                  tournamentId={tournamentId}
+                  membership={m}
+                  allRoles={allRoles}
+                  canAssignRole={canAssignRole}
+                  onUpdated={handleMemberUpdated}
+                  isLast={i === visibleMembers.length - 1}
+                />
+              ))
+            )}
+          </Card>
+        </>
       )}
     </div>
   );
