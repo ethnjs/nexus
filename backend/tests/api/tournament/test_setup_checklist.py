@@ -1,18 +1,12 @@
 """Tests for GET /tournaments/{tournament_id}/setup-checklist/
 (app/api/routes/tournament/setup_checklist.py). Status is computed live off
 other tables, not stored — see app/core/tournament/setup_checklist.py."""
-from tests.conftest import grant_role, login
+from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, grant_role, login
 
 # start_date/end_date/state/level/division are all required on TournamentCreate
 # now, so the checklist no longer tracks "dates"/"location" — they're
 # unconditionally set on every tournament from creation onward.
-REQUIRED_FIELDS = {
-    "start_date": "2026-05-21",
-    "end_date": "2026-05-23",
-    "state": "Southern California",
-    "level": "invitational",
-    "division": ["B", "C"],
-}
+REQUIRED_FIELDS = TOURNAMENT_REQUIRED_FIELDS
 
 
 def _checklist_by_key(response_json):

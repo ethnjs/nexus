@@ -50,6 +50,25 @@ from app.schemas.sheet_config import (
 TEST_DATABASE_URL = os.environ.get(
     "TEST_DATABASE_URL", "postgresql://nexus:nexus@127.0.0.1:5432/nexus_test"
 )
+
+# TournamentCreate rejects a past start_date, so any hardcoded date literal is a
+# time bomb that takes the whole suite down once it rolls by. Anchor to next
+# year instead — May of year+1 is always ahead of today, whatever today is.
+FUTURE_YEAR = date.today().year + 1
+
+
+def future_date(month: int, day: int) -> str:
+    """ISO date string in FUTURE_YEAR, for tournament create payloads."""
+    return f"{FUTURE_YEAR}-{month:02d}-{day:02d}"
+
+
+TOURNAMENT_REQUIRED_FIELDS = {
+    "start_date": future_date(5, 21),
+    "end_date": future_date(5, 23),
+    "state": "Southern California",
+    "level": "invitational",
+    "division": ["B", "C"],
+}
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
 

@@ -1,6 +1,6 @@
 """Tests for TournamentRole CRUD and membership-role assignment
 (app/api/routes/tournament/roles.py)."""
-from tests.conftest import grant_role, login
+from tests.conftest import future_date, grant_role, login
 from app.core.tournament.audit import ROLE_CREATED, ROLE_UPDATED
 from app.core.tournament.permissions import DEFAULT_ROLES, MANAGE_MEMBERS, MANAGE_ROLES
 from app.models.models import (
@@ -82,8 +82,8 @@ def _make_empty_tournament(client, name="Empty Tournament") -> int:
     response = client.post("/tournaments/", json={
         "name": name,
         "location": "Test Location",
-        "start_date": "2027-05-21",
-        "end_date": "2027-05-23",
+        "start_date": future_date(5, 21),
+        "end_date": future_date(5, 23),
         "state": "Southern California",
         "level": "invitational",
         "division": ["B", "C"],

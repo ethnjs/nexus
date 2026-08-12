@@ -1,16 +1,18 @@
 """Tests for /tournaments/ core CRUD endpoints (app/api/routes/tournament/__init__.py)."""
-from tests.conftest import grant_role, login
-from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, University
+from datetime import date, timedelta
+
+from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, future_date, grant_role, login
+from app.core.tournament.audit import (
+    OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED,
+)
+from app.models.models import (
+    AuditLogEntry, JoinCode, TournamentMembership, TournamentMembershipRole,
+    TournamentRole, University,
+)
 
 # Required fields every TournamentCreate payload needs now (state/level/division
 # + non-null dates). Tests that only care about other fields spread this in.
-REQUIRED_FIELDS = {
-    "start_date": "2025-05-21",
-    "end_date": "2025-05-23",
-    "state": "Southern California",
-    "level": "invitational",
-    "division": ["B", "C"],
-}
+REQUIRED_FIELDS = TOURNAMENT_REQUIRED_FIELDS
 
 
 # ---------------------------------------------------------------------------
@@ -111,14 +113,14 @@ def test_create_tournament_full(client, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post("/tournaments/", json={
         "name": "Nationals",
-        "start_date": "2025-05-21",
-        "end_date": "2025-05-23",
+        "start_date": future_date(5, 21),
+        "end_date": future_date(5, 23),
         "location": "USC",
         "state": "Southern California",
         "level": "nationals",
         "division": ["B", "C"],
         "is_public": True,
-        "registration_opens_at": "2025-01-01T00:00:00",
+        "registration_opens_at": f"{future_date(1, 1)}T00:00:00",
     })
     assert response.status_code == 201
     data = response.json()
@@ -128,12 +130,15 @@ def test_create_tournament_full(client, td_user):
 
 
 def test_create_tournament_invalid_dates(client, td_user):
+    """end_date before start_date. Both dates are in the future so this can only
+    trip the end<start rule — with past dates it would 422 either way and the
+    test would still pass with that validator deleted."""
     login(client, "td@test.com", "tdpass")
     assert client.post("/tournaments/", json={
         **REQUIRED_FIELDS,
         "name": "Bad Dates",
-        "start_date": "2025-11-15",
-        "end_date": "2025-11-14",
+        "start_date": future_date(11, 15),
+        "end_date": future_date(11, 14),
         "location": "Test Location",
     }).status_code == 422
 
@@ -326,3 +331,286 @@ def test_delete_tournament_non_member_gets_404(client, td_user, other_tournament
 def test_delete_tournament_not_found(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.delete("/tournaments/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{id}/archive/ — owner or admin only
+# ---------------------------------------------------------------------------
+
+def _make_join_code(db, tournament_id, created_by, code="ARCHIVE1"):
+    join_code = JoinCode(
+        tournament_id=tournament_id, created_by=created_by,
+        code=code, label="Join code", expires_at=None, is_active=True,
+    )
+    db.add(join_code)
+    db.commit()
+    return join_code
+
+
+def test_archive_tournament_owner_can_archive(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(f"/tournaments/{td_tournament.id}/archive/")
+    assert response.status_code == 200
+    assert response.json()["is_archived"] is True
+
+
+def test_archive_tournament_admin_can_archive(client, admin_user, td_tournament):
+    login(client, "admin@test.com", "adminpass")
+    assert client.post(f"/tournaments/{td_tournament.id}/archive/").status_code == 200
+
+
+def test_archive_tournament_non_owner_member_cannot_archive(client, td_user, other_tournament, db):
+    """Even a Tournament Director (manage_tournament) can't archive — archive is
+    gated on ownership, not permission."""
+    grant_role(db, other_tournament, td_user, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{other_tournament.id}/archive/").status_code == 403
+
+
+def test_archive_tournament_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{other_tournament.id}/archive/").status_code == 404
+
+
+def test_archive_tournament_deactivates_join_codes(client, td_user, td_tournament, db):
+    """An archived tournament shouldn't still be joinable."""
+    join_code = _make_join_code(db, td_tournament.id, td_user.id)
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{td_tournament.id}/archive/").status_code == 200
+
+    db.refresh(join_code)
+    assert join_code.is_active is False
+
+
+def test_archive_tournament_writes_audit_entry(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(
+            AuditLogEntry.tournament_id == td_tournament.id,
+            AuditLogEntry.action == TOURNAMENT_ARCHIVED,
+        )
+        .one()
+    )
+    assert entry.actor_id == td_user.id
+    assert entry.target_type == "tournament"
+    assert entry.target_id == td_tournament.id
+
+
+def test_archived_tournament_rejects_patch(client, td_user, td_tournament):
+    """require_not_archived — archived tournaments stay readable but frozen."""
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+
+    assert client.patch(
+        f"/tournaments/{td_tournament.id}/", json={"name": "Renamed"}
+    ).status_code == 403
+
+
+def test_archived_tournament_still_readable(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+
+    response = client.get(f"/tournaments/{td_tournament.id}/")
+    assert response.status_code == 200
+    assert response.json()["is_archived"] is True
+
+
+def test_archived_tournament_rejects_delete(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+
+    assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{id}/unarchive/ — owner or admin, admin-only once ended
+# ---------------------------------------------------------------------------
+
+def _end_tournament(db, tournament):
+    """Push both dates into the past so the tournament counts as ended.
+    Assigned directly rather than via PATCH — the API rejects past dates."""
+    tournament.start_date = date.today() - timedelta(days=10)
+    tournament.end_date = date.today() - timedelta(days=9)
+    db.commit()
+
+
+def test_unarchive_tournament_owner_can_unarchive_before_end_date(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+
+    response = client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+    assert response.status_code == 200
+    assert response.json()["is_archived"] is False
+
+
+def test_unarchive_tournament_owner_forbidden_once_ended(client, td_user, td_tournament, db):
+    """A tournament past its end_date is a historical record — admin only."""
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+    _end_tournament(db, td_tournament)
+
+    response = client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+    assert response.status_code == 403
+    assert "admin" in response.json()["detail"].lower()
+
+
+def test_unarchive_tournament_admin_can_unarchive_ended(client, admin_user, td_tournament, db):
+    _end_tournament(db, td_tournament)
+    login(client, "admin@test.com", "adminpass")
+    td_tournament.is_archived = True
+    db.commit()
+
+    response = client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+    assert response.status_code == 200
+    assert response.json()["is_archived"] is False
+
+
+def test_unarchive_ended_tournament_sets_archive_override(client, admin_user, td_tournament, db):
+    """archive_override_at stops the auto-archive job from immediately
+    re-archiving a tournament an admin just pulled back out."""
+    _end_tournament(db, td_tournament)
+    td_tournament.is_archived = True
+    db.commit()
+
+    login(client, "admin@test.com", "adminpass")
+    client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+
+    db.refresh(td_tournament)
+    assert td_tournament.archive_override_at is not None
+
+
+def test_unarchive_before_end_date_leaves_override_unset(client, td_user, td_tournament, db):
+    """Only an ended tournament needs the override — a manual archive doesn't."""
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+    client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+
+    db.refresh(td_tournament)
+    assert td_tournament.archive_override_at is None
+
+
+def test_unarchive_tournament_non_owner_member_forbidden(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Tournament Director")
+    other_tournament.is_archived = True
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{other_tournament.id}/unarchive/").status_code == 403
+
+
+def test_unarchive_tournament_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{other_tournament.id}/unarchive/").status_code == 404
+
+
+def test_unarchive_tournament_writes_audit_entry(client, td_user, td_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+    client.post(f"/tournaments/{td_tournament.id}/unarchive/")
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(
+            AuditLogEntry.tournament_id == td_tournament.id,
+            AuditLogEntry.action == TOURNAMENT_UNARCHIVED,
+        )
+        .one()
+    )
+    assert entry.actor_id == td_user.id
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{id}/transfer-ownership/ — owner only
+# ---------------------------------------------------------------------------
+
+def test_transfer_ownership_owner_can_transfer(client, td_user, td_tournament, other_user, db):
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+    assert response.status_code == 200
+    assert response.json()["owner_id"] == other_user.id
+
+
+def test_transfer_ownership_requires_new_owner_membership(client, td_user, td_tournament, other_user):
+    """Can't hand a tournament to someone who isn't in it."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+    assert response.status_code == 400
+
+
+def test_transfer_ownership_non_owner_member_forbidden(client, td_user, other_tournament, db):
+    """manage_tournament isn't enough — transfer is owner-only."""
+    grant_role(db, other_tournament, td_user, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": td_user.id},
+    )
+    assert response.status_code == 403
+
+
+def test_transfer_ownership_non_member_gets_404(client, td_user, other_tournament, other_user):
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+    assert response.status_code == 404
+
+
+def test_transfer_ownership_old_owner_keeps_roles(client, td_user, td_tournament, other_user, db):
+    """Transfer moves owner_id only — no roles are auto-added or auto-removed."""
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+
+    old_owner_membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.tournament_id == td_tournament.id,
+            TournamentMembership.user_id == td_user.id,
+        )
+        .one()
+    )
+    labels = [
+        db.query(TournamentRole).filter(TournamentRole.id == r.role_id).one().label
+        for r in old_owner_membership.roles
+    ]
+    assert labels == ["Tournament Director"]
+
+
+def test_transfer_ownership_logs_both_parties(client, td_user, td_tournament, other_user, db):
+    """extra_data carries old/new names so the log stays readable after a
+    user is renamed or deleted."""
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+
+    entry = (
+        db.query(AuditLogEntry)
+        .filter(
+            AuditLogEntry.tournament_id == td_tournament.id,
+            AuditLogEntry.action == OWNERSHIP_TRANSFERRED,
+        )
+        .one()
+    )
+    assert entry.extra_data["old"]["id"] == td_user.id
+    assert entry.extra_data["new"]["id"] == other_user.id
+    assert entry.extra_data["new"]["name"] == "Other User"

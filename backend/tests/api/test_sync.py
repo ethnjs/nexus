@@ -2,7 +2,7 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
-from tests.conftest import login
+from tests.conftest import FUTURE_YEAR, future_date, login
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
 
@@ -32,8 +32,8 @@ COLUMN_MAPPINGS = {
 def _make_tournament(client):
     return client.post("/tournaments/", json={
         "name": "Nationals",
-        "start_date": "2026-05-21",
-        "end_date": "2026-05-23",
+        "start_date": future_date(5, 21),
+        "end_date": future_date(5, 23),
         "location": "Test Location",
         "state": "Southern California",
         "level": "nationals",
@@ -80,7 +80,7 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     cfg = _make_config(client, t["id"])
 
     mock_sheets_service.get_rows.return_value = [{
-        "Timestamp": "2026-01-01 10:00:00",
+        "Timestamp": f"{FUTURE_YEAR}-01-01 10:00:00",
         "Email Address": "alice@example.com",
         "First Name": "Alice",
         "Last Name": "Smith",
@@ -143,7 +143,7 @@ def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_servic
     assert len(bob) == 1
     avail = bob[0]["availability"]
     assert len(avail) == 1
-    assert avail[0] == {"date": "2026-05-21", "start": "08:00", "end": "12:00"}
+    assert avail[0] == {"date": future_date(5, 21), "start": "08:00", "end": "12:00"}
 
 
 def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):

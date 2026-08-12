@@ -1,4 +1,5 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
+from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from app.core.tournament.permissions import MANAGE_MEMBERS
@@ -171,6 +172,61 @@ def test_search_memberships_no_filters_returns_all(client, td_user, td_tournamen
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/")
     assert response.status_code == 200
     assert len(response.json()) >= 2
+
+
+def test_search_memberships_max_rank_excludes_equal_and_higher_authority(
+    client, td_user, td_tournament, db
+):
+    """max_rank powers the "who can this actor act on" pickers. Rank is
+    authority-ascending-numeric (lower number = more authority), so a member is
+    kept only if their strongest role is strictly *less* authoritative than
+    max_rank — an equal rank ties, and a tie must not be actionable."""
+    from app.models.models import User as UserModel
+
+    td_role = db.query(TournamentRole).filter(
+        TournamentRole.tournament_id == td_tournament.id,
+        TournamentRole.label == "Tournament Director",
+    ).one()
+
+    peer = db.query(UserModel).filter(
+        UserModel.id == _make_user(db, "peer@example.com")["id"]
+    ).first()
+    _make_low_rank_role(db, td_tournament, "Peer Staff", rank=50)
+    grant_role(db, td_tournament, peer, "Peer Staff")
+
+    junior = db.query(UserModel).filter(
+        UserModel.id == _make_user(db, "junior@example.com")["id"]
+    ).first()
+    _make_low_rank_role(db, td_tournament, "Junior Staff", rank=90)
+    grant_role(db, td_tournament, junior, "Junior Staff")
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/search/?max_rank=50"
+    )
+    assert response.status_code == 200
+    emails = [m["user"]["email"] for m in response.json()]
+
+    assert "junior@example.com" in emails       # rank 90, less authority — actionable
+    assert "peer@example.com" not in emails     # rank 50, exact tie — excluded
+    assert "td@test.com" not in emails          # rank 10, outranks — excluded
+    assert td_role.rank < 50
+
+
+def test_search_memberships_max_rank_keeps_roleless_members(
+    client, td_user, td_tournament, db
+):
+    """A member with no roles has no authority at all, so they always pass the
+    max_rank filter — the NOT IN subquery only matches members that hold roles."""
+    roleless = _make_user(db, "roleless@example.com")
+    _make_membership(db, td_tournament.id, roleless["id"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/search/?max_rank=50"
+    )
+    assert response.status_code == 200
+    assert "roleless@example.com" in [m["user"]["email"] for m in response.json()]
 
 
 def test_search_memberships_requires_manage_members(client, td_user, other_tournament, db):
@@ -627,3 +683,137 @@ def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
         json={"notes": "should not be allowed"},
     )
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# is_over_18 / is_over_21 on the membership detail response
+#
+# Hybrid properties computed against the tournament's start_date, not stored
+# columns. They regressed silently once: the property called .date() on
+# start_date (a Date column, so already a datetime.date), and Pydantic's
+# from_attributes swallowed the AttributeError and served the field default —
+# so the age flags read null for everyone instead of erroring. Assert on
+# concrete True/False here, never just "not a 500".
+# ---------------------------------------------------------------------------
+
+def _age_flags(client, db, tournament, user, dob):
+    user.date_of_birth = dob
+    db.commit()
+    membership = grant_role(db, tournament, user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{tournament.id}/memberships/{membership.id}/")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_membership_age_flags_null_without_date_of_birth(client, td_user, td_tournament, other_user, db):
+    data = _age_flags(client, db, td_tournament, other_user, None)
+    assert data["is_over_18"] is None
+    assert data["is_over_21"] is None
+
+
+def test_membership_age_flags_adult_over_21(client, td_user, td_tournament, other_user, db):
+    start = td_tournament.start_date
+    dob = date(start.year - 30, start.month, start.day)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is True
+    assert data["is_over_21"] is True
+
+
+def test_membership_age_flags_minor(client, td_user, td_tournament, other_user, db):
+    start = td_tournament.start_date
+    dob = date(start.year - 15, start.month, start.day)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is False
+    assert data["is_over_21"] is False
+
+
+def test_membership_age_flags_between_18_and_21(client, td_user, td_tournament, other_user, db):
+    """The two gates are independent — a 19-year-old clears one, not the other."""
+    start = td_tournament.start_date
+    dob = date(start.year - 19, start.month, start.day)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is True
+    assert data["is_over_21"] is False
+
+
+def test_membership_age_flags_computed_against_start_date_not_today(
+    client, td_user, td_tournament, other_user, db
+):
+    """Turning 18 the day after the tournament starts means not-18 for that
+    tournament, even though they're 18 by the time anyone reads the roster."""
+    start = td_tournament.start_date
+    dob = date(start.year - 18, start.month, start.day) + timedelta(days=1)
+    data = _age_flags(client, db, td_tournament, other_user, dob)
+    assert data["is_over_18"] is False
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/me/ — leave a tournament
+# ---------------------------------------------------------------------------
+
+def test_leave_tournament_member_can_leave(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+
+    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 204
+    assert (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.tournament_id == other_tournament.id,
+            TournamentMembership.user_id == td_user.id,
+        )
+        .first()
+        is None
+    )
+
+
+def test_leave_tournament_owner_must_transfer_first(client, td_user, td_tournament):
+    """Letting the owner walk would strand the tournament with an owner_id
+    pointing at a non-member."""
+    login(client, "td@test.com", "tdpass")
+    response = client.delete(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 400
+    assert "transfer ownership" in response.json()["detail"].lower()
+
+
+def test_leave_tournament_owner_can_leave_after_transfer(
+    client, td_user, td_tournament, other_user, db
+):
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+
+    assert client.delete(f"/tournaments/{td_tournament.id}/memberships/me/").status_code == 204
+
+
+def test_leave_tournament_non_member_gets_404(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 404
+
+
+def test_leave_tournament_not_found(client, td_user):
+    login(client, "td@test.com", "tdpass")
+    assert client.delete("/tournaments/9999/memberships/me/").status_code == 404
+
+
+def test_leave_tournament_unauthenticated(client, td_tournament):
+    assert client.delete(f"/tournaments/{td_tournament.id}/memberships/me/").status_code == 401
+
+
+def test_leave_tournament_drops_role_assignments(client, td_user, other_tournament, db):
+    """Cascade check — leaving must not orphan TournamentMembershipRole rows."""
+    membership = grant_role(db, other_tournament, td_user, "Volunteer")
+    membership_id = membership.id
+    login(client, "td@test.com", "tdpass")
+
+    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 204
+    assert (
+        db.query(TournamentMembershipRole)
+        .filter(TournamentMembershipRole.membership_id == membership_id)
+        .count()
+        == 0
+    )
