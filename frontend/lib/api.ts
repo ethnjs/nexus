@@ -748,6 +748,13 @@ export interface AuditLogPage {
   next_before_id: number | null
 }
 
+export interface AuditLogActor {
+  actor: MembershipSlim | UserSlim
+  // Total entries this actor has in this tournament's log — sorted
+  // most-active first by the backend, feeds the "Filter by User" dropdown.
+  count: number
+}
+
 export interface AuditLogParams {
   limit?:       number
   before_id?:   number
@@ -772,6 +779,8 @@ export const auditLogApi = {
     if (params.until) qs.set('until', params.until)
     return api.get<AuditLogPage>(`/tournaments/${tournamentId}/audit-log/?${qs.toString()}`)
   },
+  actors: (tournamentId: number) =>
+    api.get<AuditLogActor[]>(`/tournaments/${tournamentId}/audit-log/actors/`),
 }
 
 // -------------------------------------------------------------------------
