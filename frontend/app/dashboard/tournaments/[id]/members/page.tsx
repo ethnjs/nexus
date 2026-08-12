@@ -7,6 +7,8 @@ import { personName } from "@/lib/personDisplay";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration, formatDate } from "@/lib/timeFormat";
 import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
+import { useAuth } from "@/lib/useAuth";
+import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -22,6 +24,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { MemberPanel } from "@/components/tournament/MemberPanel";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
+import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
@@ -106,19 +109,22 @@ function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
 }
 
 function MemberRow({
-  tournamentId, membership, allRoles, canTouchRole, locked, isArchived, onUpdated, onExpand, onRemove, isLast,
+  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onExpand, onRemove, onSelfRemove, isLast,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
-  /** Role-editing gate — archived, or this member's own roles outrank the actor. */
+  /** Shared gate for both role editing and removal — mirrors the backend's validate_member_target: archived, target is the tournament owner, or target outranks the actor. */
   locked: boolean;
-  /** Delete-membership gate — the backend's only guard on removal is "not archived" (no rank bound), so removal shouldn't be blocked by rank the way role editing is. */
+  /** This row is the current user's own membership — removal always redirects to the General Settings leave flow instead of using this gate. */
+  isSelf: boolean;
+  /** Archived tournaments hide the remove control entirely rather than showing it disabled. */
   isArchived: boolean;
   onUpdated: (updated: MembershipSlim) => void;
   onExpand: (membershipId: number) => void;
   onRemove: (membership: MembershipSlim) => void;
+  onSelfRemove: (membership: MembershipSlim) => void;
   isLast: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -170,14 +176,16 @@ function MemberRow({
         onUpdated={onUpdated}
       />
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
-        <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title="Remove member"
-          disabled={isArchived}
-          onClick={() => onRemove(membership)}
-        >
-          <IconTrash size={13} style={{ color: isArchived ? undefined : "var(--color-danger)" }} />
-        </Button>
+        {!isArchived && (
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly
+            title={isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
+            disabled={!isSelf && locked}
+            onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
+          >
+            <IconTrash size={13} style={{ color: !isSelf && locked ? undefined : "var(--color-danger)" }} />
+          </Button>
+        )}
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Expand"
@@ -194,6 +202,8 @@ export default function MembersPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
 
+  const { user: currentUser } = useAuth();
+  const { selectedTournament } = useTournament();
   const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
 
   const [members, setMembers] = useState<MembershipSlim[] | null>(null);
@@ -208,6 +218,7 @@ export default function MembersPage() {
 
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
+  const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
 
   useEffect(() => {
     if (!canManageMembers) return;
@@ -370,10 +381,12 @@ export default function MembersPage() {
                   allRoles={allRoles}
                   canTouchRole={canTouchRole}
                   locked={!canEditMember(m)}
+                  isSelf={currentUser?.id === m.user.id}
                   isArchived={isArchived}
                   onUpdated={handleMemberUpdated}
                   onExpand={setExpandedId}
                   onRemove={setRemoveTarget}
+                  onSelfRemove={setSelfRemoveTarget}
                   isLast={i === visibleMembers.length - 1}
                 />
               ))
@@ -404,6 +417,14 @@ export default function MembersPage() {
             setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
             setRemoveTarget(null);
           }}
+        />
+      )}
+
+      {selfRemoveTarget && (
+        <SelfRemoveRedirectModal
+          tournamentId={tournamentId}
+          isOwner={selectedTournament?.owner_id === selfRemoveTarget.user.id}
+          onClose={() => setSelfRemoveTarget(null)}
         />
       )}
     </div>

@@ -16,13 +16,28 @@ export interface MemberRoleLock {
   bypassRankBound: boolean;
   /** Whether `role` can be added to or removed from any member — mirrors validate_role_action check 1 (a role that ties or outranks the actor's own highest rank can never be touched, not even removing your own top role from yourself). */
   canTouchRole: (role: Role) => boolean;
-  /** Whether the actor can edit `target`'s roles at all right now — archived tournaments are always locked; otherwise mirrors validate_role_action check 2 (the target's highest-ranked role must not outrank the actor — ties are fine, so peers at the same rank can still edit each other), exempt when target is the actor themselves. */
+  /**
+   * Whether the actor can act on `target`'s membership row at all right
+   * now — gates both role editing (RolesCell) and removing them from the
+   * tournament, since the backend uses the same validate_member_target for
+   * both. Archived tournaments are always locked. The tournament owner's
+   * membership can never be a target for anyone but the owner/admin
+   * themselves, even if the owner holds no role (rank is opt-in, so
+   * relying on the rank comparison alone would leave an unranked owner
+   * unprotected). Otherwise mirrors validate_member_target's rank check:
+   * the target's highest-ranked role must not outrank the actor — ties are
+   * fine, so peers at the same rank can still act on each other. Exempt
+   * when target is the actor themselves (self is never blocked here; the
+   * members page still routes a self-removal click to a different flow —
+   * see the redirect modal on the members page — this hook only reports
+   * backend-permission, not UI routing).
+   */
   canEditMember: (target: MembershipSlim) => boolean;
 }
 
 export function useMemberRoleLock(): MemberRoleLock {
   const { user: currentUser } = useAuth();
-  const { isArchived } = useTournament();
+  const { isArchived, selectedTournament } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const isAdmin = currentUser?.role === "admin";
@@ -44,6 +59,7 @@ export function useMemberRoleLock(): MemberRoleLock {
   function canEditMember(target: MembershipSlim): boolean {
     if (isArchived) return false;
     if (bypassRankBound) return true;
+    if (selectedTournament && target.user.id === selectedTournament.owner_id) return false;
     if (ownRank === null) return false;
     if (currentUser && target.user.id === currentUser.id) return true;
     if (target.roles.length === 0) return true;
