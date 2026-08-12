@@ -532,19 +532,19 @@ export default function OnboardingPage() {
               {(competitionLocked || (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
                 <ProfileQuestion
                   question="Add your competition experience."
-                  onSkip={competitionLocked ? undefined : () => {
+                  onSkip={() => {
                     setProfileData((d) => ({ ...d, has_competition_experience: undefined }));
                     setCompetitionRows([]);
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  onNext={competitionLocked ? undefined : () => {
+                  onNext={() => {
                     if (competitionRows.length === 0 || !competitionRows.every(isCompetitionRowValid)) {
                       setErrors((er) => ({ ...er, competition_exp: "Each entry needs a school and a matched event." }));
                       return;
                     }
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  isActive={!competitionLocked && state === STATE.COMPETITION_EXP}
+                  isActive={state === STATE.COMPETITION_EXP}
                 >
                   <CompetitionExperienceSpreadsheet mode="edit" rows={competitionRows} onChange={setCompetitionRows} events={events} />
                   {errors.competition_exp && (
@@ -586,19 +586,19 @@ export default function OnboardingPage() {
               {(volunteerLocked || (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
                 <ProfileQuestion
                   question="Add your volunteer experience."
-                  onSkip={volunteerLocked ? undefined : () => {
+                  onSkip={() => {
                     setProfileData((d) => ({ ...d, has_volunteer_experience: undefined }));
                     setVolunteerRows([]);
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  onNext={volunteerLocked ? undefined : () => {
+                  onNext={() => {
                     if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
                       setErrors((er) => ({ ...er, volunteering_exp: "Each entry needs a tournament name, a 4-digit year, and a role." }));
                       return;
                     }
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  isActive={!volunteerLocked && state === STATE.VOLUNTEERING_EXP}
+                  isActive={state === STATE.VOLUNTEERING_EXP}
                 >
                   <VolunteerExperienceSpreadsheet mode="edit" rows={volunteerRows} onChange={setVolunteerRows} events={events} />
                   {errors.volunteering_exp && (
