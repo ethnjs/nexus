@@ -1,20 +1,32 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ApiError, authApi } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { validateEmail } from '@/lib/auth'
+import { Spinner } from '@/components/ui/Spinner'
+import { validateEmail, safeRedirectPath } from '@/lib/auth'
 
 
 export default function SignInPage() {
+    return (
+        <Suspense fallback={<Spinner size="lg" />}>
+            <SignInContent />
+        </Suspense>
+    )
+}
+
+function SignInContent() {
     const [email, setEmail] = useState('')
     const [password, setPassword] = useState('')
     const [loading, setLoading] = useState(false)
     const [errors, setErrors] = useState<{ email?: string; password?: string; form?: string }>({})
 
     const router = useRouter()
+    const searchParams = useSearchParams()
+    const redirect = safeRedirectPath(searchParams.get('redirect'))
+    const signUpHref = redirect ? `/sign-up?redirect=${encodeURIComponent(redirect)}` : '/sign-up'
 
     async function handleSubmit(e: React.SyntheticEvent) {
         e.preventDefault()
@@ -29,11 +41,11 @@ export default function SignInPage() {
             setLoading(false)
             return
         }
-        
+
         try {
             await authApi.login(email, password)
 
-            window.location.href = '/dashboard'
+            window.location.href = redirect ?? '/dashboard'
         } catch (error: unknown) {
             if (error instanceof ApiError) {
                 setErrors({ form: error.message })
@@ -110,7 +122,7 @@ export default function SignInPage() {
                 <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
                     Don&rsquo;t have an account?{' '}
                 </span>
-                <button onClick={() => router.push('/sign-up')} className="link-subtle" style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600 }}>
+                <button onClick={() => router.push(signUpHref)} className="link-subtle" style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600 }}>
                     Sign up
                 </button>
             </div>
