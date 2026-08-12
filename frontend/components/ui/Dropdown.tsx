@@ -502,7 +502,7 @@ function OptionRow({
         justifyContent: 'space-between',
         padding:        sizing.optionPadding,
         borderRadius:   'var(--radius-sm)',
-        fontFamily:     'var(--font-mono)',
+        fontFamily:     'var(--font-sans)',
         fontSize:       sizing.optionFontSize,
         color:          'var(--color-text-primary)',
         background:     isActive && !opt.disabled ? 'var(--color-bg)' : 'transparent',
