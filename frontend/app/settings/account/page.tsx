@@ -6,7 +6,8 @@ import { useAuth } from "@/lib/useAuth";
 import { usersApi, authApi, UserMeFull, EmailPendingChange, ApiError } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
+import { IconInfo } from "@/components/ui/Icons";
+import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER } from "@/lib/auth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -260,7 +261,19 @@ export default function AccountSettingsPage() {
             error={errors.phone}
           />
         </SettingsRow>
-        <SettingsRow label="Date of birth" last>
+        <SettingsRow
+          label={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              Date of birth
+              <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+                <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+                  <IconInfo size={13} />
+                </span>
+              </Tooltip>
+            </span>
+          }
+          last
+        >
           <Input
             type="date"
             fullWidth

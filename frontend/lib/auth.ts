@@ -78,6 +78,10 @@ export function validatePassword(password: string): string | null {
     return null
 }
 
+export const DATE_OF_BIRTH_DISCLAIMER =
+  "We only use your birthday to check your age, since some tournaments require volunteers to be 18 or older. " +
+  "It's never shown to anyone on NEXUS, including tournament directors — they can only see whether you're 18+, not your actual birthday."
+
 export function validateDateOfBirth(value: string): string | null {
   if (!value) return "Cannot be empty."
 

@@ -8,7 +8,7 @@ import {
   universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
-import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
+import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER } from "@/lib/auth";
 import { todayLocalDateString } from "@/lib/date";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Topbar } from "@/components/layout/Topbar";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { IconInfo } from "@/components/ui/Icons";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
 import {
@@ -343,7 +345,16 @@ export default function OnboardingPage() {
           {state >= STATE.DATE_OF_BIRTH && (
             <ProfileCard>
               <ProfileQuestion
-                question="What is your date of birth?"
+                question={
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    What is your date of birth?
+                    <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+                      <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+                        <IconInfo size={13} />
+                      </span>
+                    </Tooltip>
+                  </span>
+                }
                 required
                 onNext={() => {
                   const err = validateDateOfBirth(profileData.date_of_birth ?? "");

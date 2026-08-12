@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/Button"
 
 interface ProfileQuestionProps {
-  question: string
+  question: React.ReactNode
   required?: boolean
   children: React.ReactNode
   onSkip?: () => void

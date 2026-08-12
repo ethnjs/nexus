@@ -14,12 +14,14 @@ type TooltipProps = {
   message: string
   children: ReactNode
   showIcon?: boolean
+  maxWidth?: number | string
 } | {
   variant?: never
   status: TooltipStatus
   message: Partial<Record<TooltipStatus, string | undefined>>
   children: ReactNode
   showIcon?: boolean
+  maxWidth?: number | string
 }
 
 const variantIcon: Record<TooltipVariant, ReactNode> = {
@@ -29,7 +31,7 @@ const variantIcon: Record<TooltipVariant, ReactNode> = {
   'error': <IconXCircle style={{color: 'var(--color-danger)'}}/>
 }
 
-export function Tooltip({ variant, status, message, children, showIcon = true }: TooltipProps) {
+export function Tooltip({ variant, status, message, children, showIcon = true, maxWidth }: TooltipProps) {
   const [hovered, setHovered] = useState(false)
   const [autoShow, setAutoShow] = useState(false)
 
@@ -50,7 +52,10 @@ export function Tooltip({ variant, status, message, children, showIcon = true }:
     <div className={styles.wrapper} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {children}
       {visible && (
-        <div className={`${styles.bubble} ${styles[resolvedVariant]}`}>
+        <div
+          className={`${styles.bubble} ${styles[resolvedVariant]}`}
+          style={maxWidth ? { maxWidth, width: 'max-content', whiteSpace: 'normal' } : undefined}
+        >
           {showIcon && variantIcon[resolvedVariant]}
           {typeof message === 'string' ? message : message[status!]}
         </div>

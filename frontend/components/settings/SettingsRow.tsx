@@ -2,7 +2,7 @@ import { CSSProperties, ReactNode } from "react";
 import { Card } from "@/components/ui/Card";
 
 interface SettingsRowProps {
-  label:        string;
+  label:        ReactNode;
   helper?:      string;
   children:     ReactNode;
   last?:        boolean;
