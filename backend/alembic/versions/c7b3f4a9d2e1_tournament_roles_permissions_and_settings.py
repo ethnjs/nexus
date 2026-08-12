@@ -92,16 +92,9 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO join_codes
             (tournament_id, chapter_id, created_by, code, label, expires_at, is_active, created_at, use_count)
-        SELECT tournament_id, NULL, created_by, code, label, expires_at, is_active, created_at, use_count
-        FROM tournament_join_codes
-    """)
-    op.execute("""
-        INSERT INTO join_codes
-            (tournament_id, chapter_id, created_by, code, label, expires_at, is_active, created_at, use_count)
         SELECT NULL, chapter_id, created_by, code, label, expires_at, is_active, created_at, use_count
         FROM chapter_join_codes
     """)
-    op.drop_table('tournament_join_codes')
     op.drop_table('chapter_join_codes')
 
     # --- membership source tracking + link back to the join code used ---
@@ -184,21 +177,6 @@ def downgrade() -> None:
     op.drop_column('tournament_memberships', 'join_code_id')
     op.drop_column('tournament_memberships', 'source')
 
-    op.create_table('tournament_join_codes',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('tournament_id', sa.Integer(), nullable=False),
-    sa.Column('created_by', sa.Integer(), nullable=False),
-    sa.Column('code', sa.String(length=8), nullable=False),
-    sa.Column('label', sa.String(length=255), nullable=True),
-    sa.Column('expires_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('is_active', sa.Boolean(), nullable=False),
-    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('use_count', sa.Integer(), nullable=False, server_default='0'),
-    sa.ForeignKeyConstraint(['created_by'], ['users.id'], ),
-    sa.ForeignKeyConstraint(['tournament_id'], ['tournaments.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('code'),
-    )
     op.create_table('chapter_join_codes',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('chapter_id', sa.Integer(), nullable=False),
@@ -214,12 +192,6 @@ def downgrade() -> None:
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('code'),
     )
-    op.execute("""
-        INSERT INTO tournament_join_codes
-            (tournament_id, created_by, code, label, expires_at, is_active, created_at, use_count)
-        SELECT tournament_id, created_by, code, label, expires_at, is_active, created_at, use_count
-        FROM join_codes WHERE tournament_id IS NOT NULL
-    """)
     op.execute("""
         INSERT INTO chapter_join_codes
             (chapter_id, created_by, code, label, expires_at, is_active, created_at, use_count)
