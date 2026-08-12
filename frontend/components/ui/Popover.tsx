@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { IconLock } from "@/components/ui/Icons";
 
 interface PopoverProps<T> {
@@ -21,6 +22,8 @@ interface PopoverProps<T> {
   isSelected?: (item: T) => boolean;
   /** Checklist mode only: rows for which this returns true show a lock icon instead of a checkbox and can't be toggled (e.g. a role the actor isn't allowed to touch), but stay visible rather than being filtered out. */
   isDisabled?: (item: T) => boolean;
+  /** Tooltip text for a disabled row. Only consulted when isDisabled(item) is true; a falsy return skips the tooltip. */
+  disabledReason?: (item: T) => string | undefined;
 }
 
 type PanelPos = { top: number; left: number };
@@ -41,7 +44,7 @@ const PANEL_GAP = 6;
 // side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
   trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
-  checklist = false, isSelected, isDisabled,
+  checklist = false, isSelected, isDisabled, disabledReason,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
@@ -114,10 +117,8 @@ export function Popover<T>({
               const key = getKey(item);
               const checked = isSelected?.(item) ?? false;
               const disabled = isDisabled?.(item) ?? false;
-              return (
+              const row = (
                 <label
-                  key={key}
-                  title={disabled ? "You can't touch a role that outranks you" : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: "8px",
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
@@ -135,6 +136,14 @@ export function Popover<T>({
                     {renderLabel(item)}
                   </span>
                 </label>
+              );
+              const reason = disabled ? disabledReason?.(item) : undefined;
+              return (
+                <div key={key} style={{ width: "100%" }}>
+                  {reason ? (
+                    <Tooltip variant="info" message={reason} showIcon={false} style={{ width: "100%" }}>{row}</Tooltip>
+                  ) : row}
+                </div>
               );
             })
           ) : (

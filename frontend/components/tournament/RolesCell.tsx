@@ -2,6 +2,7 @@
 
 import { ApiError, MembershipSlim, membershipsApi, Role } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
+import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
@@ -14,7 +15,7 @@ interface RolesCellProps {
   allRoles: Role[];
   /** Role-level rank gate — whether `role` can be added or removed at all (independent of which member holds it). */
   canTouchRole: (role: Role) => boolean;
-  /** Member-level gate — false hides the add control and every chip's remove "x", e.g. tournament archived or this member's own roles outrank the actor. */
+  /** Member-level gate — false hides the add control and every chip's remove "x" entirely, e.g. tournament archived or this member's own roles outrank the actor. Independent of canTouchRole: when the member IS editable, individual chips still lock (with a lock icon in place of "x") for roles that tie or outrank the actor's own rank. */
   locked: boolean;
   onUpdated: (updated: MembershipSlim) => void;
 }
@@ -24,9 +25,19 @@ interface RolesCellProps {
 // member detail panel.
 export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, onUpdated }: RolesCellProps) {
   const { show } = useToast();
+  const { user: currentUser } = useAuth();
   const memberName = personName(membership.user);
+  const isSelf = currentUser?.id === membership.user.id;
 
   const heldIds = new Set(membership.roles.map((r) => r.id));
+  const roleByLabel = new Map(membership.roles.map((r) => [r.label, r]));
+
+  function rankLockReason(role: Role): string | undefined {
+    if (canTouchRole(role)) return undefined;
+    return isSelf
+      ? "You can't remove your own highest-ranked role."
+      : "You can't touch a role that ties or outranks your own highest role.";
+  }
 
   async function handleRemove(role: Role) {
     try {
@@ -55,6 +66,10 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
       size="sm"
       disableInput
       locked={locked}
+      chipLockReason={(label: string) => {
+        const role = roleByLabel.get(label);
+        return role ? rankLockReason(role) : undefined;
+      }}
       fullWidth
       addButton={
         !locked && (
@@ -74,6 +89,7 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
             checklist
             isSelected={(role) => heldIds.has(role.id)}
             isDisabled={(role) => !canTouchRole(role)}
+            disabledReason={rankLockReason}
             onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
             emptyMessage="No roles yet"
           />

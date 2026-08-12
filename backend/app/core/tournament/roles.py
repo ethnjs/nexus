@@ -89,16 +89,21 @@ def validate_role_action(
     above: this route is gated on MANAGE_MEMBERS alone, MANAGE_TOURNAMENT is
     not a bypass.
 
-    Two independent checks, both must pass:
-      1. The role being assigned/removed must not outrank the actor's own
-         highest rank. Self-demotion is naturally exempt (a role you're
-         removing from yourself is by definition one of your own roles, so
-         it can never outrank your own highest rank); self-promotion
-         (assigning yourself a role above your own rank) is blocked like
-         any other case.
+    Two independent checks with different strictness, both must pass:
+      1. The role being assigned/removed must not tie or outrank the actor's
+         own highest rank — strict `<=`, same as validate_rank_bound for role
+         definitions. This has no self-demotion exemption: a member can't
+         remove their own top-ranked role either, since it ties their own
+         rank. Stepping down from a top role requires the Owner/admin bypass
+         (someone else with higher authority does it for them).
       2. The target member's highest-ranked role overall must not outrank
-         the actor — except when acting on your own membership, where this
-         is a no-op (you can't outrank yourself).
+         the actor — strict `<`, so ties are fine here. This lets two peers
+         at the same rank (e.g. two Tournament Directors) still manage each
+         other's weaker role assignments; check 1 already stops either of
+         them from touching a role that ties or outranks their own, so this
+         only needs to guard against a target who's strictly more senior.
+         Exempt when acting on your own membership (you can't outrank
+         yourself).
     """
     if actor.id == tournament.owner_id or actor.role == "admin":
         return
@@ -107,10 +112,10 @@ def validate_role_action(
     if actor_rank is None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
 
-    if role.rank < actor_rank:
+    if role.rank <= actor_rank:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Cannot assign or remove a role that outranks your own",
+            detail="Cannot assign or remove a role that ties or outranks your own",
         )
 
     is_self = membership.user_id == actor.id

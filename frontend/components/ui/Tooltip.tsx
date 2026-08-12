@@ -1,4 +1,4 @@
-import { ReactNode, useEffect, useState } from "react"
+import { CSSProperties, ReactNode, useEffect, useState } from "react"
 import styles from './Tooltip.module.css'
 import { IconCheckCircle, IconInfo, IconWarning, IconXCircle } from "./Icons"
 
@@ -15,6 +15,8 @@ type TooltipProps = {
   children: ReactNode
   showIcon?: boolean
   maxWidth?: number | string
+  /** Applied to the wrapper div — e.g. width: '100%' so the hover target matches an untooltipped sibling's footprint (the wrapper is inline-flex by default, so it otherwise shrinks to the children's content width). */
+  style?: CSSProperties
 } | {
   variant?: never
   status: TooltipStatus
@@ -22,6 +24,7 @@ type TooltipProps = {
   children: ReactNode
   showIcon?: boolean
   maxWidth?: number | string
+  style?: CSSProperties
 }
 
 const variantIcon: Record<TooltipVariant, ReactNode> = {
@@ -31,7 +34,7 @@ const variantIcon: Record<TooltipVariant, ReactNode> = {
   'error': <IconXCircle style={{color: 'var(--color-danger)'}}/>
 }
 
-export function Tooltip({ variant, status, message, children, showIcon = true, maxWidth }: TooltipProps) {
+export function Tooltip({ variant, status, message, children, showIcon = true, maxWidth, style }: TooltipProps) {
   const [hovered, setHovered] = useState(false)
   const [autoShow, setAutoShow] = useState(false)
 
@@ -49,7 +52,7 @@ export function Tooltip({ variant, status, message, children, showIcon = true, m
   const resolvedVariant = variant ?? (status !== 'idle' ? status : 'info')
 
   return (
-    <div className={styles.wrapper} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div className={styles.wrapper} style={style} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {children}
       {visible && (
         <div

@@ -1,7 +1,8 @@
 "use client";
 
 import { ClipboardEvent, KeyboardEvent, ReactNode, useState } from "react";
-import { IconX } from "@/components/ui/Icons";
+import { IconLock, IconX } from "@/components/ui/Icons";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 export type ChipStatus = "default" | "warning" | "error";
 export type ChipInputVariant = "primary" | "secondary" | "transparent";
@@ -20,6 +21,8 @@ interface ChipInputProps {
   disableInput?: boolean;
   /** Read-only — hides every chip's "x", so nothing can be removed. Typing/pasting are unaffected by this alone; pair with disableInput for a fully static display. */
   locked?: boolean;
+  /** Per-chip lock, independent of `locked` — chips this returns a reason for show a lock icon (tooltipped with that reason) instead of "x" and can't be removed, while the rest of the chips stay removable. Return undefined for a removable chip. For a reason specific to that chip's value (e.g. a role that ties/outranks the actor), as opposed to `locked`'s blanket "nothing here is editable." */
+  chipLockReason?: (chip: string) => string | undefined;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
@@ -56,7 +59,7 @@ const SPLIT_PATTERN = /[,\n]+/;
 // list, chips removable via an "x". Content-agnostic: format validation and
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
-  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked,
+  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, chipLockReason,
   variant = "primary", size = "md", addButton,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
@@ -121,6 +124,7 @@ export function ChipInput({
         {value.map((chip) => {
           const status = getChipStatus?.(chip) ?? "default";
           const styles = STATUS_STYLES[status];
+          const lockReason = chipLockReason?.(chip);
           return (
             <span
               key={chip}
@@ -133,7 +137,19 @@ export function ChipInput({
               }}
             >
               {chip}
-              {!locked && (
+              {!locked && lockReason && (
+                <Tooltip variant="info" message={lockReason} showIcon={false}>
+                  <span
+                    style={{
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "2px", opacity: 0.7,
+                    }}
+                  >
+                    <IconLock size={10} />
+                  </span>
+                </Tooltip>
+              )}
+              {!locked && !lockReason && (
                 <button
                   type="button"
                   onClick={() => removeChip(chip)}

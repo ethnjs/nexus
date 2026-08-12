@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconSearch, IconX } from "@/components/ui/Icons";
+import { IconLock, IconSearch, IconX } from "@/components/ui/Icons";
 import { AddRoleMembersModal } from "@/components/tournament/settings/AddRoleMembersModal";
 
 interface RoleMembersTabProps {
@@ -31,9 +31,10 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   const { user: currentUser } = useAuth();
   const { ownRank, bypassRankBound } = useRoleLock();
 
-  // Same rank-authority check the backend enforces (validate_role_action) —
-  // a member whose highest-held role ties or outranks the actor's own would
-  // just 403 on remove, so the X is locked instead of letting that happen.
+  // Same rank-authority check the backend enforces (validate_role_action
+  // check 2) — a member who strictly outranks the actor would just 403 on
+  // remove, so the X is locked instead of letting that happen. Ties are
+  // fine here: two peers at the same rank can still edit each other.
   function outranksActor(m: MembershipSlim): boolean {
     if (bypassRankBound || m.user.id === currentUser?.id || ownRank === null) return false;
     if (m.roles.length === 0) return false;
@@ -130,16 +131,28 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
                   </span>
                 </div>
                 {!locked && (
-                  <Button
-                    type="button" variant="secondary" size="sm"
-                    loading={removingId === m.id}
-                    disabled={memberLocked}
-                    onClick={() => handleRemove(m.id)}
-                    title={memberLocked ? "This member outranks you — you can't remove them from this role." : "Remove from role"}
-                    style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
-                  >
-                    <IconX size={12} />
-                  </Button>
+                  memberLocked ? (
+                    <span
+                      title="This member outranks you — you can't remove them from this role."
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        width: "28px", height: "28px", flexShrink: 0,
+                        color: "var(--color-text-tertiary)", opacity: 0.7,
+                      }}
+                    >
+                      <IconLock size={12} />
+                    </span>
+                  ) : (
+                    <Button
+                      type="button" variant="secondary" size="sm"
+                      loading={removingId === m.id}
+                      onClick={() => handleRemove(m.id)}
+                      title="Remove from role"
+                      style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
+                    >
+                      <IconX size={12} />
+                    </Button>
+                  )
                 )}
               </div>
             );

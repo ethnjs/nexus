@@ -486,8 +486,11 @@ def test_assign_roles_remove_not_held_is_noop(client, td_user, td_tournament, ot
     assert "Volunteer" in role_labels
 
 
-def test_assign_roles_self_demotion_allowed(client, td_user, other_tournament, db):
-    """A MANAGE_ROLES holder can remove their own higher role from themselves."""
+def test_assign_roles_self_tied_rank_role_forbidden(client, td_user, other_tournament, db):
+    """Fully strict: a MANAGE_ROLES holder can't even remove their own
+    top-ranked role from themselves, since it ties their own rank — there's
+    no self-demotion exemption on the role check. Stepping down from a top
+    role requires the Owner/admin bypass."""
     make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES, MANAGE_MEMBERS])
     membership = grant_role(db, other_tournament, td_user, "Coordinator")
     role_id = get_role_id(db, other_tournament.id, "Coordinator")
@@ -497,8 +500,7 @@ def test_assign_roles_self_demotion_allowed(client, td_user, other_tournament, d
         f"/tournaments/{other_tournament.id}/memberships/{membership.id}/roles/",
         json={"remove": [role_id]},
     )
-    assert response.status_code == 200
-    assert response.json()["roles"] == []
+    assert response.status_code == 403
 
 
 def test_assign_roles_self_promotion_blocked(client, td_user, other_tournament, db):
@@ -583,10 +585,12 @@ def test_assign_roles_membership_not_found(client, td_user, td_tournament, db):
     assert response.status_code == 404
 
 
-def test_assign_roles_same_rank_as_actor_allowed(client, td_user, other_tournament, db):
-    """Assignment allows ties (role.rank == actor's own rank) — unlike role
-    create/update, which blocks ties via _validate_rank_bound's `<=`. Here
-    the check is strict `<`, so acting at your own rank is fine.
+def test_assign_roles_same_rank_as_actor_forbidden(client, td_user, other_tournament, db):
+    """Assignment blocks ties (role.rank == actor's own rank) on the role
+    itself, same as role create/update's `_validate_rank_bound` — this half
+    of `validate_role_action` is strict `<=`. (The separate target-member
+    check is strict `<` instead — see
+    test_assign_roles_target_with_same_rank_as_actor_allowed.)
 
     Target must be a plain user (not other_user, who is other_tournament's
     owner/TD by fixture and would trip the target-outranks-actor check)."""
@@ -601,13 +605,12 @@ def test_assign_roles_same_rank_as_actor_allowed(client, td_user, other_tourname
         f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
         json={"add": [sibling.id]},
     )
-    assert response.status_code == 200
-    assert "Sibling Coordinator" in [r["label"] for r in response.json()["roles"]]
+    assert response.status_code == 403
 
 
 def test_assign_roles_one_rank_above_actor_forbidden(client, td_user, other_tournament, db):
-    """Boundary right past the tie case above — a role ranked exactly one
-    above the actor's own (numerically lower = higher authority) is blocked."""
+    """A role ranked exactly one above the actor's own (numerically lower =
+    higher authority) is blocked, same as the tie case above."""
     make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES, MANAGE_MEMBERS])
     senior = make_role(db, other_tournament, "Senior Coordinator", rank=1)
     grant_role(db, other_tournament, td_user, "Coordinator")
@@ -623,9 +626,11 @@ def test_assign_roles_one_rank_above_actor_forbidden(client, td_user, other_tour
 
 
 def test_assign_roles_target_with_same_rank_as_actor_allowed(client, td_user, other_tournament, db):
-    """The target-member check is also strict `<` — modifying someone whose
-    highest role ties your own rank is allowed, only strictly-higher-ranked
-    targets are protected."""
+    """The target-member check is strict `<` (unlike the role check's strict
+    `<=`) — modifying someone whose highest role ties your own rank is
+    allowed, as long as the role being touched itself doesn't tie/outrank
+    (checked separately). This lets two peers at the same rank (e.g. two
+    Tournament Directors) still manage each other's weaker roles."""
     make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES, MANAGE_MEMBERS])
     low_role = make_role(db, other_tournament, "Photographer", rank=5)
     grant_role(db, other_tournament, td_user, "Coordinator")
@@ -642,8 +647,8 @@ def test_assign_roles_target_with_same_rank_as_actor_allowed(client, td_user, ot
 
 
 def test_assign_roles_target_one_rank_above_actor_forbidden(client, td_user, other_tournament, db):
-    """Boundary right past the target-tie case above — a target whose highest
-    role is exactly one rank above the actor's own is protected."""
+    """A target whose highest role is exactly one rank above (strictly
+    outranks) the actor's own is protected."""
     make_role(db, other_tournament, "Coordinator", rank=2, permissions=[MANAGE_ROLES, MANAGE_MEMBERS])
     make_role(db, other_tournament, "Senior Coordinator", rank=1)
     low_role = make_role(db, other_tournament, "Photographer", rank=5)
