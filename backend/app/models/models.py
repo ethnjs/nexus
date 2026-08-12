@@ -16,6 +16,7 @@ from typing import Optional
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
+from pydantic import field_validator
 
 
 def utcnow():
@@ -184,6 +185,7 @@ class User(Base):
     university = relationship("University", back_populates="users")
     chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
     join_codes = relationship("JoinCode", back_populates="creator")
+    created_forms = relationship("Form", back_populates="creator")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -277,6 +279,7 @@ class Tournament(Base):
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
+    forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -543,6 +546,7 @@ class AlumniChapter(Base):
     chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
     tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
+    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
 
 
 # ---------------------------------------------------------------------------
@@ -577,3 +581,68 @@ class TournamentChapter(Base):
     # Relationships
     tournament = relationship("Tournament", back_populates="tournament_chapters")
     chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
+
+class Form(Base):
+    __tablename__ = "forms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
+    name = Column(String(255), nullable=False)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="forms")
+    chapter = relationship("AlumniChapter", back_populates="forms")
+    creator = relationship("User", back_populates="forms")
+    fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
+
+    __table_args__ = (
+        CheckConstraint(
+            "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "
+            "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
+            name="ck_form_owner_exclusive",
+        ),
+    )
+
+
+class FormField(Base):
+    __tablename__ = "form_fields"
+
+    id = Column(Integer, primary_key=True, index=True)
+    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    order = Column(Integer, nullable=False)
+    label = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    question_type = Column(String(32), nullable=False)
+    # short_text | paragraph | single_select_radio | single_select_dropdown
+    # | multi_select | ranked_choice | grid | shift_select | page_break
+    
+    field_key = Column(String(64), nullable=False)
+
+    config = Column(JSON, nullable=True)
+    # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
+    #   "archived": false, "next_section_id": null, "allow_other": false}, ...]}
+    # For "grid": {"rows": [{"id","label"}...], "columns": [{"id","label"}...],
+    #   "column_selection": "single"|"multiple"}
+    # For "page_break": unused, null
+
+    required = Column(Boolean, nullable=False, default=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
+
+    form = relationship("Form", back_populates="fields")
+
+    __table_args__ = (
+        UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
+    )
+
+    @field_validator("field_key")
+    @classmethod
+    def validate_field_key(cls, v: str) -> str:
+        if not v.replace("_", "").isalnum():
+            raise ValueError("field_key must be snake_case alphanumeric")
+        return v
