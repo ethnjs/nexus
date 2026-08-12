@@ -2,6 +2,7 @@
 
 import { ReactNode, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { Button } from "@/components/ui/Button";
 import { IconX } from "@/components/ui/Icons";
 
 interface SidePanelProps {
@@ -54,28 +55,24 @@ export function SidePanel({ onClose, children, width = 480 }: SidePanelProps) {
           background: "var(--color-bg)",
           borderLeft: "1px solid var(--color-border)",
           width, maxWidth: "calc(100vw - 32px)",
-          height: "100%", overflowY: "auto",
+          height: "100%",
+          display: "flex", flexDirection: "column",
           boxShadow: "var(--shadow-lg)",
           animation: "sidePanelIn 200ms ease-out",
-          position: "relative",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          type="button"
-          onClick={onClose}
-          title="Close"
-          style={{
-            position: "absolute", top: "16px", right: "16px", zIndex: 1,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            width: "28px", height: "28px", borderRadius: "var(--radius-md)",
-            border: "1px solid var(--color-border)", background: "var(--color-surface)",
-            color: "var(--color-text-secondary)", cursor: "pointer",
-          }}
-        >
-          <IconX size={13} />
-        </button>
-        {children}
+        <div style={{
+          display: "flex", justifyContent: "flex-end", flexShrink: 0,
+          padding: "12px", borderBottom: "1px solid var(--color-border)",
+        }}>
+          <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
+            <IconX size={13} />
+          </Button>
+        </div>
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {children}
+        </div>
       </div>
     </div>,
     document.body

@@ -66,8 +66,8 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canAssignRol
   }
 
   return (
-    <SidePanel onClose={onClose} width={520}>
-      <div style={{ padding: "28px", display: "flex", flexDirection: "column", gap: "20px" }}>
+    <SidePanel onClose={onClose} width={700}>
+      <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: "20px" }}>
         {error ? (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
         ) : !full ? (
