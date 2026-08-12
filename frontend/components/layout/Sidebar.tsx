@@ -8,6 +8,7 @@ import {
   IconAssignments,
   IconEvents,
   IconSheets,
+  IconMembers,
   IconSettings,
   IconChevronDown,
 } from "@/components/ui/Icons";
@@ -22,6 +23,7 @@ const NAV_ITEMS = [
   { segment: "assignments", icon: <IconAssignments />, label: "Assignments" },
   { segment: "events",      icon: <IconEvents />,      label: "Events" },
   { segment: "sheets",      icon: <IconSheets />,      label: "Sheets" },
+  { segment: "members",     icon: <IconMembers />,     label: "Members" },
 ];
 
 const SETTINGS_SUBITEMS = [
@@ -49,12 +51,14 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const canManageRoles = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_roles");
   const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
   const canManageTournament = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
+  const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
   const settingsSubitems = SETTINGS_SUBITEMS.filter(
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
       (segment !== "invites" || canManageInvites) &&
       (segment !== "audit-log" || canManageTournament)
   );
+  const navItems = NAV_ITEMS.filter(({ segment }) => segment !== "members" || canManageMembers);
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.
   const expanded = hovered || onSettingsRoute;
@@ -122,7 +126,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
         flex: 1, padding: "10px 6px",
         alignItems: "stretch",
       }}>
-        {NAV_ITEMS.map(({ segment, icon, label }) => {
+        {navItems.map(({ segment, icon, label }) => {
           const href = `${base}/${segment}`;
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 

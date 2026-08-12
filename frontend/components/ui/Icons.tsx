@@ -68,6 +68,17 @@ export function IconSheets({ size = 18, ...props }: IconProps) {
   );
 }
 
+export function IconMembers({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2 17c0-3 2.2-5 5-5s5 2 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="14.5" cy="7.5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12.5 12.3c2.4 0.2 4.5 2.1 4.5 4.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconSettings({ size = 18, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>

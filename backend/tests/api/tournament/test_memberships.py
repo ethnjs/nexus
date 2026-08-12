@@ -72,7 +72,7 @@ def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
     assert row["user"]["email"] == u["email"]
     assert row["roles"] == []
     assert "notes" not in row
-    assert "status" not in row
+    assert row["status"] == "interested"
 
 
 def test_list_memberships_requires_manage_members(

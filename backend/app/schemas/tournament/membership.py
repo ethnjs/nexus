@@ -81,9 +81,15 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     """List view — members page roster. No onboarding/logistics fields."""
     id: int
     source: str
+    status: str
     # Resolved server-side — see MembershipJoinCodeInfo. None when source
     # isn't "join_code". Supersedes the bare join_code_id FK.
     join_code: MembershipJoinCodeInfo | None = None
+    # When they joined THIS tournament — distinct from user.created_at
+    # (their NEXUS account age).
+    created_at: datetime
+    updated_at: datetime
+
     user: UserSlimResponse
 
 

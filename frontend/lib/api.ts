@@ -521,11 +521,16 @@ export interface MembershipJoinCodeInfo {
 // Matches MembershipSlimResponse — members-page roster row. No onboarding/
 // logistics fields; those live behind the per-member expand panel (MembershipFull).
 export interface MembershipSlim {
-  id:        number
-  source:    MembershipSource
-  join_code: MembershipJoinCodeInfo | null
-  roles:     Role[]
-  user:      UserSlim
+  id:         number
+  source:     MembershipSource
+  status:     MembershipStatus
+  join_code:  MembershipJoinCodeInfo | null
+  // When they joined THIS tournament — distinct from user.created_at
+  // (their NEXUS account age).
+  created_at: string
+  updated_at: string
+  roles:      Role[]
+  user:       UserSlim
 }
 
 // Matches MembershipFullResponse — the expanded side panel for a single member.
