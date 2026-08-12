@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import {
   usersApi, canonicalEventsApi, CanonicalEvent,
   universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
-import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER } from "@/lib/auth";
+import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER, safeRedirectPath } from "@/lib/auth";
 import { todayLocalDateString } from "@/lib/date";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
@@ -67,8 +67,18 @@ interface ProfileDraft {
 }
 
 export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>}>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
   const { user: currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = safeRedirectPath(searchParams.get("redirect"));
 
   const [original, setOriginal] = useState<UserMeFull | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -106,7 +116,7 @@ export default function OnboardingPage() {
     }
 
     if (currentUser.is_onboarding_complete) {
-      router.replace("/dashboard");
+      router.replace(redirect ?? "/dashboard");
       return;
     }
 
@@ -138,7 +148,7 @@ export default function OnboardingPage() {
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
     universitiesApi.list().then(setUniversities).catch(() => {});
-  }, [authLoading, currentUser, router]);
+  }, [authLoading, currentUser, router, redirect]);
 
   function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
     const originalIds = new Set(originalRows.filter(r => r.id !== undefined).map(r => r.id));
@@ -242,7 +252,7 @@ export default function OnboardingPage() {
         ]);
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
       setErrors({ form: error instanceof ApiError ? error.message : "Something went wrong. Try again." });
     } finally {
