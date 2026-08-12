@@ -29,17 +29,14 @@ const PROTECTED_PREFIXES = ['/dashboard']
 // AUTH_ROUTES already redirects an authenticated visit to those server-side.
 // '/sign-up' still needs it: registration logs the user in without
 // navigating away (the verify-email modal), which proxy.ts never sees.
+// '/join' needs to show the invite (with a "finish onboarding first" prompt
+// in place of the join button) rather than bouncing straight to /onboarding
+// before the visitor ever sees it.
 const ONBOARDING_EXEMPT_ROUTES = [
   '/sign-up', '/verify-email', '/forgot-password',
   '/reset-password', '/confirm-email-change', '/account-setup',
-  '/revert-email-change', '/onboarding',
+  '/revert-email-change', '/onboarding', '/join',
 ]
-
-// Same idea as ONBOARDING_EXEMPT_ROUTES, but for dynamic segments an exact
-// list can't match — /join/[code] needs to show the invite (with a
-// "finish onboarding first" prompt in place of the join button) rather than
-// bouncing straight to /onboarding before the visitor ever sees it.
-const ONBOARDING_EXEMPT_PREFIXES = ['/join/']
 
 // -------------------------------------------------------------------------
 // Provider — wrap the dashboard layout with this
@@ -73,7 +70,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (loading || !user || user.is_onboarding_complete) return
     if (ONBOARDING_EXEMPT_ROUTES.includes(pathname)) return
-    if (ONBOARDING_EXEMPT_PREFIXES.some(p => pathname.startsWith(p))) return
     router.replace('/onboarding')
   }, [loading, user, pathname, router])
 
