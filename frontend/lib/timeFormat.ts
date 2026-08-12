@@ -1,3 +1,7 @@
+export function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+}
+
 export function parseUserAgent(ua: string | null): string {
   if (!ua) return "Unknown device"
 

@@ -5,7 +5,8 @@ import { useParams } from "next/navigation";
 import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
 import { formatPhone } from "@/lib/auth";
-import { formatDuration } from "@/lib/timeFormat";
+import { formatDuration, formatDate } from "@/lib/timeFormat";
+import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -26,17 +27,6 @@ import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash } from "@/co
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
-
-const SOURCE_LABELS: Record<string, string> = {
-  join_code: "Invite",
-  public: "Public",
-  manual: "Manual",
-};
-
-const STATUS_VARIANT: Record<string, "interested" | "confirmed"> = {
-  interested: "interested",
-  confirmed: "confirmed",
-};
 
 type SortField = "first_name" | "last_name" | "joined" | "account_age";
 type SortDir = "asc" | "desc";
@@ -67,14 +57,10 @@ function sortValue(m: MembershipSlim, field: SortField): string | number {
   }
 }
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
-
 function DurationCell({ iso }: { iso: string }) {
   return (
     <span style={{ justifySelf: "center" }}>
-      <Tooltip variant="info" message={fmtDate(iso)} showIcon={false}>
+      <Tooltip variant="info" message={formatDate(iso)} showIcon={false}>
         <span
           style={{
             fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",

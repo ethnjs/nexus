@@ -20,12 +20,22 @@ interface PopoverProps<T> {
   isSelected?: (item: T) => boolean;
 }
 
+type PanelPos = { top: number; left: number };
+
+const PANEL_GAP = 6;
+
 // Generic click-to-open panel of selectable items, anchored to a trigger —
 // outside-click closes it. In default "list" mode, selecting an item runs
 // onSelect and closes on success (shows the error and stays open on
 // failure). In "checklist" mode, rows show a checkbox and the panel stays
 // open across selections so multiple items can be toggled in one visit.
 // Content-agnostic: callers supply the items, key, label, and select handler.
+//
+// The panel is position: fixed, computed from the trigger's own bounding
+// rect (same approach as Dropdown) rather than position: absolute anchored
+// to a relative wrapper — a wrapper-relative panel gets clipped by any
+// scrollable/overflow:hidden ancestor between it and the viewport (e.g. a
+// side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
   trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
   checklist = false, isSelected,
@@ -33,7 +43,28 @@ export function Popover<T>({
   const [open, setOpen] = useState(false);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
   const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  function updatePanelPos() {
+    if (!triggerRef.current) return;
+    const r = triggerRef.current.getBoundingClientRect();
+    const left = align === "right" ? r.right - width : r.left;
+    setPanelPos({ top: r.bottom + PANEL_GAP, left });
+  }
+
+  useEffect(() => {
+    if (!open) { setPanelPos(null); return; }
+    updatePanelPos();
+    window.addEventListener("scroll", updatePanelPos, true);
+    window.addEventListener("resize", updatePanelPos);
+    return () => {
+      window.removeEventListener("scroll", updatePanelPos, true);
+      window.removeEventListener("resize", updatePanelPos);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -62,11 +93,11 @@ export function Popover<T>({
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
-      <div onClick={() => setOpen((v) => !v)}>{trigger}</div>
+      <div ref={triggerRef} onClick={() => setOpen((v) => !v)}>{trigger}</div>
 
-      {open && (
+      {open && panelPos && (
         <div style={{
-          position: "absolute", top: "calc(100% + 6px)", [align]: 0, zIndex: 50,
+          position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 300,
           width: `${width}px`, maxHeight: "260px", overflowY: "auto", padding: "6px",
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",

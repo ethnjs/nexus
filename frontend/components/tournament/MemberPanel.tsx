@@ -6,6 +6,8 @@ import {
   canonicalEventsApi, membershipsApi,
 } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
+import { formatDate } from "@/lib/timeFormat";
+import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
@@ -16,21 +18,6 @@ import { CompetitionExperienceSection } from "@/components/profile/sections/Comp
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { RolesCell } from "@/components/tournament/RolesCell";
-
-const SOURCE_LABELS: Record<string, string> = {
-  join_code: "Invite",
-  public: "Public",
-  manual: "Manual",
-};
-
-const STATUS_VARIANT: Record<string, "interested" | "confirmed"> = {
-  interested: "interested",
-  confirmed: "confirmed",
-};
-
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-}
 
 interface MemberPanelProps {
   tournamentId: number;
@@ -106,7 +93,7 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canAssignRol
                     Joined
                   </div>
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
-                    {fmtDate(full.created_at)}
+                    {formatDate(full.created_at)}
                   </span>
                 </div>
                 <div>
