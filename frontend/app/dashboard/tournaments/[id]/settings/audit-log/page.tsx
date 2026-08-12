@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import { auditLogApi, AuditLogActor, AuditLogEntry, ApiError } from "@/lib/api";
 import { describeAuditLogEntry, ACTION_LABELS, ALL_AUDIT_ACTIONS } from "@/lib/auditLog";
 import { personUser, personName } from "@/lib/personDisplay";
-import { formatRelativeTime } from "@/lib/sessionFormat";
+import { formatRelativeTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";

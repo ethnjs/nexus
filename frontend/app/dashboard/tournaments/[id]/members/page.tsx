@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { membershipsApi, MembershipSlim, ApiError } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
-import { formatRelativeTime } from "@/lib/sessionFormat";
+import { formatPhone } from "@/lib/auth";
+import { formatDuration } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -17,7 +18,7 @@ import { HoverCard } from "@/components/ui/HoverCard";
 import { IconLock } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles
-const MEMBER_ROW_COLUMNS = "1.4fr 1.6fr 1fr 100px 110px 130px 100px 1.6fr";
+const MEMBER_ROW_COLUMNS = "1fr 1.2fr 0.8fr 90px 90px 110px 90px 2.2fr";
 
 const SOURCE_LABELS: Record<string, string> = {
   join_code: "Invite",
@@ -34,16 +35,30 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function DurationCell({ iso }: { iso: string }) {
+  return (
+    <span
+      title={fmtDate(iso)}
+      style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", cursor: "default" }}
+    >
+      {formatDuration(iso)}
+    </span>
+  );
+}
+
 function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
   if (membership.source !== "join_code" || !membership.join_code) {
     return (
-      <Badge variant="default">{SOURCE_LABELS[membership.source] ?? membership.source}</Badge>
+      <Badge variant="default" style={{ justifySelf: "start" }}>
+        {SOURCE_LABELS[membership.source] ?? membership.source}
+      </Badge>
     );
   }
 
   const jc = membership.join_code;
   return (
     <HoverCard
+      style={{ justifySelf: "start" }}
       content={
         <>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
@@ -96,16 +111,14 @@ function MemberRow({ membership, isLast }: { membership: MembershipSlim; isLast:
         {user.email}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {user.phone ?? "—"}
+        {user.phone ? formatPhone(user.phone) : "—"}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatRelativeTime(user.created_at)}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {fmtDate(membership.created_at)}
-      </span>
+      <DurationCell iso={user.created_at} />
+      <DurationCell iso={membership.created_at} />
       <JoinMethodCell membership={membership} />
-      <Badge variant={STATUS_VARIANT[membership.status] ?? "default"}>{membership.status}</Badge>
+      <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "start" }}>
+        {membership.status}
+      </Badge>
       <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
         {membership.roles.length === 0 ? (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>

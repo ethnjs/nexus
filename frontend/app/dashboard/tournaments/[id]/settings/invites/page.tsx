@@ -19,27 +19,10 @@ import { IconArchive, IconLock, IconPlus, IconTrash } from "@/components/ui/Icon
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
 import { personUser, personName, personRoles } from "@/lib/personDisplay";
+import { formatCountdown } from "@/lib/timeFormat";
 
 // Label / Code / Creator / Expiry / Uses / Actions
 const INVITE_ROW_COLUMNS = "1.2fr 120px 1.3fr 170px 60px 72px";
-
-// Always ticks down to the second — "2d 4h 13m 45s" — never collapses away
-// smaller units once a larger one is showing.
-function formatCountdown(msRemaining: number): string {
-  if (msRemaining <= 0) return "Expired";
-  const totalSeconds = Math.floor(msRemaining / 1000);
-  const days = Math.floor(totalSeconds / 86400);
-  const hours = Math.floor((totalSeconds % 86400) / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  const parts: string[] = [];
-  if (days > 0) parts.push(`${days}d`);
-  if (days > 0 || hours > 0) parts.push(`${hours}h`);
-  if (days > 0 || hours > 0 || minutes > 0) parts.push(`${minutes}m`);
-  parts.push(`${seconds}s`);
-  return parts.join(" ");
-}
 
 function EditableLabel({ tournamentId, invite, onUpdated }: {
   tournamentId: number;
