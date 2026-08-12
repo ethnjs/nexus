@@ -109,7 +109,7 @@ export function ChipInput({
 
       <div style={{
         display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px",
-        padding: `4px ${sizing.paddingX}`, minHeight: sizing.minHeight, boxSizing: "border-box",
+        padding: variant === "transparent" ? "0" : `4px ${sizing.paddingX}`, minHeight: sizing.minHeight, boxSizing: "border-box",
         background: VARIANT_BACKGROUND[variant],
         border: error
           ? "1px solid var(--color-danger)"
