@@ -826,9 +826,35 @@ export interface JoinRedeemResponse {
   membership_id: number
 }
 
+// GET /join/preview/ — discriminated on `type`, mirrors the backend's
+// JoinPreviewTournament/JoinPreviewChapter split.
+export interface JoinPreviewTournament {
+  type:         'tournament'
+  target_id:    number
+  name:         string
+  short_name:   string | null
+  start_date:   string
+  end_date:     string
+  university:   University | null
+  location:     string | null
+  state:        string
+  level:        string
+  division:     string[]
+  is_verified:  boolean
+}
+
+export interface JoinPreviewChapter {
+  type:      'chapter'
+  target_id: number
+}
+
+export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter
+
 export const joinApi = {
   redeem: (code: string) =>
     api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {}),
+  preview: (code: string) =>
+    api.get<JoinPreviewResponse>(`/join/preview/?code=${encodeURIComponent(code)}`),
 }
 
 // -------------------------------------------------------------------------
