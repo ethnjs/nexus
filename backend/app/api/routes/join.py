@@ -7,10 +7,64 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.join_codes import is_join_code_expired
 from app.db.session import get_db
-from app.models.models import ChapterMembership, JoinCode, TournamentMembership, User
-from app.schemas.join_code import JoinRedeemResponse
+from app.models.models import ChapterMembership, JoinCode, Tournament, TournamentMembership, User
+from app.schemas.join_code import JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemResponse
+from app.schemas.university import UniversityResponse
 
 router = APIRouter(tags=["join"])
+
+
+# ---------------------------------------------------------------------------
+# GET /join/preview/?code={code} — public, no auth
+#
+# Read-only lookup so an invite link can show what's being joined before the
+# visitor is even signed in. Same dispatch shape and generic error as the
+# redeem route below (see that route's docstring) — kept as a sibling rather
+# than folded together since one mutates and one doesn't.
+# ---------------------------------------------------------------------------
+@router.get("/join/preview/", response_model=JoinPreviewResponse)
+def preview_join_code(
+    code: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Preview a tournament or chapter invite code. No auth required.
+
+    400 if the code is invalid, deactivated, or expired — same generic
+    message as POST /join/, for the same reason (don't let error specificity
+    probe which codes exist).
+    """
+    join_code = db.query(JoinCode).filter(JoinCode.code == code).first()
+    if not join_code or not join_code.is_active or is_join_code_expired(join_code):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
+
+    if join_code.tournament_id is not None:
+        return _preview_tournament_code(join_code, db)
+    return _preview_chapter_code(join_code, db)
+
+
+def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTournament:
+    tournament = db.query(Tournament).filter(Tournament.id == join_code.tournament_id).first()
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
+
+    return JoinPreviewTournament(
+        target_id=tournament.id,
+        name=tournament.name,
+        short_name=tournament.short_name,
+        start_date=tournament.start_date,
+        end_date=tournament.end_date,
+        university=UniversityResponse.model_validate(tournament.university) if tournament.university else None,
+        location=tournament.location,
+        state=tournament.state,
+        level=tournament.level,
+        division=tournament.division,
+        is_verified=tournament.is_verified,
+    )
+
+
+def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapter:
+    # Chapter invites aren't built yet — target_id is all there is to preview.
+    return JoinPreviewChapter(target_id=join_code.chapter_id)
 
 
 # ---------------------------------------------------------------------------
