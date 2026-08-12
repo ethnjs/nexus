@@ -1,8 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState } from "react";
 import { Checkbox } from "@/components/ui/Checkbox";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { IconLock } from "@/components/ui/Icons";
 
 interface PopoverProps<T> {
@@ -27,6 +26,7 @@ interface PopoverProps<T> {
 }
 
 type PanelPos = { top: number; left: number };
+type HoverTip = { text: string; top: number; left: number };
 
 const PANEL_GAP = 6;
 
@@ -50,8 +50,20 @@ export function Popover<T>({
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
+  const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+
+  // Fixed-position, computed from the row's own bounding rect on hover —
+  // a Tooltip anchored via position:absolute to a wrapper nested inside
+  // this panel's own overflow:auto/scrolling list runs into the exact
+  // clipping/stacking problem the panel itself already had to work around
+  // (see the file-level comment on Popover): it renders underneath later
+  // sibling rows instead of floating above them.
+  function showHoverTip(e: ReactMouseEvent<HTMLElement>, text: string) {
+    const r = e.currentTarget.getBoundingClientRect();
+    setHoverTip({ text, top: r.top - 8, left: r.left + r.width / 2 });
+  }
 
   function updatePanelPos() {
     if (!triggerRef.current) return;
@@ -61,7 +73,7 @@ export function Popover<T>({
   }
 
   useEffect(() => {
-    if (!open) { setPanelPos(null); return; }
+    if (!open) { setPanelPos(null); setHoverTip(null); return; }
     updatePanelPos();
     window.addEventListener("scroll", updatePanelPos, true);
     window.addEventListener("resize", updatePanelPos);
@@ -117,8 +129,12 @@ export function Popover<T>({
               const key = getKey(item);
               const checked = isSelected?.(item) ?? false;
               const disabled = isDisabled?.(item) ?? false;
-              const row = (
+              const reason = disabled ? disabledReason?.(item) : undefined;
+              return (
                 <label
+                  key={key}
+                  onMouseEnter={reason ? (e) => showHoverTip(e, reason) : undefined}
+                  onMouseLeave={reason ? () => setHoverTip(null) : undefined}
                   style={{
                     display: "flex", alignItems: "center", gap: "8px",
                     padding: "6px 8px", borderRadius: "var(--radius-sm)",
@@ -136,14 +152,6 @@ export function Popover<T>({
                     {renderLabel(item)}
                   </span>
                 </label>
-              );
-              const reason = disabled ? disabledReason?.(item) : undefined;
-              return (
-                <div key={key} style={{ width: "100%" }}>
-                  {reason ? (
-                    <Tooltip variant="info" message={reason} showIcon={false} style={{ width: "100%" }}>{row}</Tooltip>
-                  ) : row}
-                </div>
               );
             })
           ) : (
@@ -176,6 +184,19 @@ export function Popover<T>({
               {error}
             </p>
           )}
+        </div>
+      )}
+
+      {hoverTip && (
+        <div style={{
+          position: "fixed", top: hoverTip.top, left: hoverTip.left, zIndex: 400,
+          transform: "translate(-50%, -100%)", maxWidth: "220px",
+          padding: "7px 11px", borderRadius: "var(--radius-md)",
+          background: "var(--color-surface)", boxShadow: "var(--shadow-lg)",
+          fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)",
+          pointerEvents: "none",
+        }}>
+          {hoverTip.text}
         </div>
       )}
     </div>
