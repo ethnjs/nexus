@@ -34,7 +34,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   const [matchedLevel, setMatchedLevel] = useState<LevelOption | null>(null)
   const [division, setDivision]   = useState<TournamentDivision[]>([])
   const [loading, setLoading]     = useState(false)
-  const [error, setError]         = useState('')
+  const [errors, setErrors]       = useState<Record<string, string>>({})
 
   useEffect(() => {
     universitiesApi.list().then(setUniversities).catch(() => {})
@@ -46,19 +46,29 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name.trim()) { setError('Name is required'); return }
-    if (/\d/.test(name)) { setError('Name must not contain numbers — the year is added automatically'); return }
-    if (!startDate || !endDate) { setError('Start and end date are required'); return }
-    // YYYY-MM-DD strings compare lexicographically in chronological order
-    const today = new Date().toISOString().slice(0, 10)
-    if (startDate < today) { setError('Start date cannot be in the past'); return }
-    if (endDate < startDate) { setError('End date cannot be before start date'); return }
-    if (!matchedState) { setError('State is required — pick one from the list'); return }
-    if (!matchedLevel) { setError('Level is required — pick one from the list'); return }
-    if (division.length === 0) { setError('Select at least one division'); return }
-    if (!matchedUniversity && !locationText.trim()) { setError('Location is required'); return }
+    const fieldErrors: Record<string, string> = {}
 
-    setLoading(true); setError('')
+    if (!name.trim()) fieldErrors.name = 'Name is required'
+    else if (/\d/.test(name)) fieldErrors.name = 'Name must not contain numbers — the year is added automatically'
+
+    if (!matchedUniversity && !locationText.trim()) fieldErrors.location = 'Location is required'
+
+    if (!startDate) fieldErrors.startDate = 'Start date is required'
+    else {
+      // YYYY-MM-DD strings compare lexicographically in chronological order
+      const today = new Date().toISOString().slice(0, 10)
+      if (startDate < today) fieldErrors.startDate = 'Start date cannot be in the past'
+    }
+    if (!endDate) fieldErrors.endDate = 'End date is required'
+    else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
+
+    if (!matchedState) fieldErrors.state = 'State is required — pick one from the list'
+    if (!matchedLevel) fieldErrors.level = 'Level is required — pick one from the list'
+    if (division.length === 0) fieldErrors.division = 'Select at least one division'
+
+    if (Object.keys(fieldErrors).length > 0) { setErrors(fieldErrors); return }
+
+    setLoading(true); setErrors({})
     try {
       const source = matchedUniversity
         ? { university_id: matchedUniversity.id }
@@ -68,14 +78,14 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         short_name: shortName.trim() || null,
         start_date: startDate,
         end_date: endDate,
-        state: matchedState,
-        level: matchedLevel.value,
+        state: matchedState!,
+        level: matchedLevel!.value,
         division,
         ...source,
       })
       onCreated(t)
     } catch {
-      setError('Failed to create tournament')
+      setErrors({ form: 'Failed to create tournament' })
     } finally {
       setLoading(false)
     }
@@ -89,7 +99,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           required
           charset="alpha"
           value={name}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => { setName(e.target.value); setErrors(({ name, ...rest }) => rest) }}
+          error={errors.name}
           placeholder="e.g. USC Invitational"
           fullWidth
           autoFocus
@@ -110,7 +121,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           getLabel={(u) => u.name}
           getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
           value={locationText}
-          onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched) }}
+          onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
+          error={errors.location}
           placeholder="e.g. USC, Los Angeles CA"
         />
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
@@ -119,7 +131,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
             required
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => { setStartDate(e.target.value); setErrors(({ startDate, ...rest }) => rest) }}
+            error={errors.startDate}
             min={new Date().toISOString().slice(0, 10)}
             fullWidth
           />
@@ -128,7 +141,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
             required
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
+            error={errors.endDate}
             fullWidth
           />
         </div>
@@ -140,7 +154,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           getLabel={(s) => s}
           allowFreeText={false}
           value={stateText}
-          onChange={(text, matched) => { setStateText(text); setMatchedState(matched) }}
+          onChange={(text, matched) => { setStateText(text); setMatchedState(matched); setErrors(({ state, ...rest }) => rest) }}
+          error={errors.state}
           placeholder="e.g. Southern California"
         />
         <Combobox
@@ -151,7 +166,8 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           getLabel={(o) => o.label}
           allowFreeText={false}
           value={levelText}
-          onChange={(text, matched) => { setLevelText(text); setMatchedLevel(matched) }}
+          onChange={(text, matched) => { setLevelText(text); setMatchedLevel(matched); setErrors(({ level, ...rest }) => rest) }}
+          error={errors.level}
           placeholder="e.g. Invitational"
         />
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -168,16 +184,21 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 type="button"
                 variant={division.includes(d) ? 'primary' : 'secondary'}
                 size="sm"
-                onClick={() => toggleDivision(d)}
+                onClick={() => { toggleDivision(d); setErrors(({ division, ...rest }) => rest) }}
               >
                 {d}
               </Button>
             ))}
           </div>
+          {errors.division && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)' }}>
+              {errors.division}
+            </p>
+          )}
         </div>
-        {error && (
+        {errors.form && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
-            {error}
+            {errors.form}
           </p>
         )}
         <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
