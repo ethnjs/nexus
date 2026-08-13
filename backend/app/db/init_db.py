@@ -25,20 +25,14 @@ def seed_dev_data(db: Session) -> None:
     """
     Seed dev database with:
     - 1 admin account  (role="admin")
-    - 1 regular user account  (role="user", tournament_director membership)
-    - 1 sample tournament owned by the regular user, with DEFAULT_ROLES populated
-    - TD membership for the regular user (holds the tournament_director role)
-    - Volunteer membership for the admin (holds the volunteer role)
-      — demonstrates that admin can also hold a per-tournament membership
+    - 15 regular user accounts  (role="user")
+
+    No tournament is created — tournament setup is handled separately.
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import (
-        Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, University, User,
-    )
+    from app.models.models import User
     from app.core.auth import hash_password
-    from app.core.tournament.permissions import DEFAULT_ROLES
-    from datetime import datetime
 
     # Skip if already seeded
     if db.query(User).filter(User.email == "admin@nexus.dev").first():
@@ -56,72 +50,24 @@ def seed_dev_data(db: Session) -> None:
     )
     db.add(admin)
 
-    # Regular user account — tournament access determined by membership positions.
-    # Previously "td@nexus.dev" with role="td"; now role="user" with a
-    # tournament_director membership on the sample tournament.
-    td = User(
-        email="td@nexus.dev",
-        hashed_password=hash_password("td1234"),
-        first_name="Tournament",
-        last_name="Director",
-        role="user",
-        status="active",
-    )
-    db.add(td)
-    db.flush()  # get IDs before creating tournament + memberships
-
-    # Sample tournament owned by the regular user
-    usc = db.query(University).filter(University.abbreviation == "USC").first()
-    tournament = Tournament(
-        name="National Tournament",
-        start_date=datetime(2026, 5, 21, 8, 0),
-        end_date=datetime(2026, 5, 23, 18, 0),
-        university_id=usc.id,
-        state="Southern California",
-        level="nationals",
-        division=["B", "C"],
-        owner_id=td.id,
-    )
-    db.add(tournament)
-    db.flush()  # get tournament.id before creating roles/memberships
-
-    role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
-    db.add_all(role_rows)
-    db.flush()  # get role ids
-    roles_by_label = {r.label: r for r in role_rows}
-
-    # TD membership for the regular user — holds the tournament_director role
-    td_membership = TournamentMembership(
-        user_id=td.id,
-        tournament_id=tournament.id,
-        status="confirmed",
-        source="manual",
-    )
-    db.add(td_membership)
-    db.flush()
-    db.add(TournamentMembershipRole(
-        membership_id=td_membership.id, role_id=roles_by_label["Tournament Director"].id,
-    ))
-
-    # Volunteer membership for admin — demonstrates cross-role scenario:
-    # admin has site-wide access AND a volunteer-level membership here
-    admin_membership = TournamentMembership(
-        user_id=admin.id,
-        tournament_id=tournament.id,
-        status="confirmed",
-        source="manual",
-    )
-    db.add(admin_membership)
-    db.flush()
-    db.add(TournamentMembershipRole(
-        membership_id=admin_membership.id, role_id=roles_by_label["Volunteer"].id,
-    ))
+    # 15 regular user accounts — user1@nexus.dev .. user15@nexus.dev, all password "user1234"
+    users = [
+        User(
+            email=f"user{i}@nexus.dev",
+            hashed_password=hash_password("user1234"),
+            first_name="User",
+            last_name=str(i),
+            role="user",
+            status="active",
+        )
+        for i in range(1, 16)
+    ]
+    db.add_all(users)
 
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, volunteer in sample tournament)")
-    print("✓ Seeded: td@nexus.dev / td1234  (role=user, tournament_director in sample tournament)")
-    print(f"✓ Seeded tournament: '{tournament.name}'")
+    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin)")
+    print("✓ Seeded: user1@nexus.dev .. user15@nexus.dev / user1234  (role=user)")
 
 
 if __name__ == "__main__":
