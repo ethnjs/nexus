@@ -98,7 +98,7 @@ export default function ProfileEditPage() {
       .then(user => {
         setOriginal(user);
         setDraft(profileToDraft(user));
-        setHasDietary(user.dietary_restriction !== null ? true : null);
+        setHasDietary(user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null);
         setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
         setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
       })
@@ -133,7 +133,7 @@ export default function ProfileEditPage() {
   function handleCancel() {
     if (!original) return;
     setDraft(profileToDraft(original));
-    setHasDietary(original.dietary_restriction !== null ? true : null);
+    setHasDietary(original.dietary_restriction !== null ? original.dietary_restriction !== "None" : null);
     setCompetitionRows(original.competition_experience.map(competitionExperienceToDraft));
     setVolunteerRows(original.volunteer_experience.map(volunteerExperienceToDraft));
     setErrors({});
@@ -205,6 +205,7 @@ export default function ProfileEditPage() {
     for (const key of Object.keys(cleaned)) {
       if (cleaned[key] === "") cleaned[key] = undefined;
     }
+    if (!draft.dietary_restriction) cleaned.dietary_restriction = null;
 
     try {
       await usersApi.updateMe(cleaned);
@@ -419,7 +420,7 @@ export default function ProfileEditPage() {
               value={hasDietary}
               onChange={(val) => {
                 setHasDietary(val);
-                if (!val) setDraft(d => ({ ...d, dietary_restriction: "None" }));
+                setDraft(d => ({ ...d, dietary_restriction: val ? "" : "None" }));
               }}
             />
           </ProfileQuestion>

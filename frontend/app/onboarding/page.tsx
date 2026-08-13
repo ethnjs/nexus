@@ -140,7 +140,7 @@ function OnboardingContent() {
           shirt_size: user.shirt_size ?? undefined,
           dietary_restriction: user.dietary_restriction ?? undefined,
         });
-        setHasDietary(user.dietary_restriction !== null ? true : null);
+        setHasDietary(user.dietary_restriction !== null ? user.dietary_restriction !== "None" : null);
         setCompetitionRows(user.competition_experience.map(competitionExperienceToDraft));
         setVolunteerRows(user.volunteer_experience.map(volunteerExperienceToDraft));
       })
@@ -210,6 +210,7 @@ function OnboardingContent() {
     for (const key of Object.keys(cleaned)) {
       if (cleaned[key] === "") cleaned[key] = undefined;
     }
+    if (!profileData.dietary_restriction) cleaned.dietary_restriction = null;
 
     try {
       await usersApi.updateMe(cleaned);
@@ -661,7 +662,7 @@ function OnboardingContent() {
                     value={hasDietary}
                     onChange={(val) => {
                       setHasDietary(val);
-                      setProfileData((d) => ({ ...d, dietary_restriction: val ? d.dietary_restriction : "None" }));
+                      setProfileData((d) => ({ ...d, dietary_restriction: val ? "" : "None" }));
                       if (state >= STATE.COMPLETE) return;
                       setState(val ? STATE.DIETARY_TEXT : STATE.COMPLETE);
                     }}
