@@ -93,7 +93,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
 
   return (
     <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false}>
-      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <Input
           label="Name"
           required
