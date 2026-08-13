@@ -8,7 +8,7 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column, event,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -470,29 +470,40 @@ class TournamentEvent(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
     
-    name = Column(String(255), nullable=False)
-    division = Column(String(4), nullable=False)           # "B" | "C"
+    # Custom (event_id-less) events only
+    name = Column(String(255), nullable=True)
+    division = Column(String(4), nullable=True)           # "A" | "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
-    category = Column(String(255), nullable=True)
-    
+
+    # Canonical event table link — SET NULL on delete so custom (event_id-less)
+    # events are just the default, not a broken reference.
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+
     building = Column(String(255), nullable=True)
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
-    
+
     volunteers_needed = Column(Integer, nullable=False, default=2)
-    
-    blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
-    
+
+    start_time = Column(DateTime(timezone=True), nullable=False)
+    end_time = Column(DateTime(timezone=True), nullable=False)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
+    event = relationship("Event")
     shifts = relationship(
         "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
     )
 
     __table_args__ = (
-        UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
+        Index(
+            "uq_tournament_event_catalog_division",
+            "tournament_id", "event_id", "division",
+            unique=True,
+            postgresql_where=(event_id.isnot(None)),
+        ),
     )
 
 
