@@ -216,6 +216,9 @@ function OnboardingContent() {
     for (const key of Object.keys(cleaned)) {
       if (cleaned[key] === "") cleaned[key] = null;
     }
+    // GraduationYearField emits `undefined` (not "") when cleared, since it
+    // parses the raw text to a number — normalize separately.
+    if (cleaned.graduation_year === undefined) cleaned.graduation_year = null;
 
     try {
       await usersApi.updateMe(cleaned);
