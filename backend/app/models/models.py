@@ -186,6 +186,7 @@ class User(Base):
     chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
     join_codes = relationship("JoinCode", back_populates="creator")
     created_forms = relationship("Form", back_populates="creator")
+    form_responses = relationship("FormResponse", back_populates="user")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -671,6 +672,7 @@ class Form(Base):
     chapter = relationship("AlumniChapter", back_populates="forms")
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
+    responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -707,6 +709,7 @@ class FormField(Base):
     is_archived = Column(Boolean, nullable=False, default=False)
 
     form = relationship("Form", back_populates="fields")
+    answer = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
         UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
@@ -718,3 +721,38 @@ class FormField(Base):
         if not v.replace("_", "").isalnum():
             raise ValueError("field_key must be snake_case alphanumeric")
         return v
+
+
+class FormResponse(Base):
+    __tablename__ = "form_responses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    submitted_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    form = relationship("Form", back_populates="responses")
+    user = relationship("User", back_populates="form_responses")
+    answers = relationship("FormAnswer", back_populates="response", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),
+    )
+
+
+class FormAnswer(Base):
+    __tablename__ = "form_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(Integer, ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    field_id = Column(Integer, ForeignKey("form_fields.id"), nullable=False)
+    value = Column(JSON, nullable=False)
+
+    response = relationship("FormResponse", back_populates="answers")
+    field = relationship("FormField", back_populates="answer")
+
+    __table_args__ = (
+        UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
+    )
