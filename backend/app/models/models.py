@@ -540,6 +540,28 @@ class TournamentEventShift(Base):
 
 
 # ---------------------------------------------------------------------------
+# SeasonEvent — admin-curated "this canonical event, in this division, is
+# active this year" list. Drives the tournament events bulk-load default
+# list (see TournamentEvent); independent of any single tournament.
+# ---------------------------------------------------------------------------
+class SeasonEvent(Base):
+    __tablename__ = "season_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    year = Column(Integer, nullable=False)
+    division = Column(String(4), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # SheetConfig
 # ---------------------------------------------------------------------------
 class SheetConfig(Base):

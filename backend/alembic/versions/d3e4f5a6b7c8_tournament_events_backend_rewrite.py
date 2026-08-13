@@ -30,6 +30,10 @@ incrementally as the rewrite progresses:
   - tournament_events: drop `uq_tournament_event_division`, add a partial
     unique index on (tournament_id, event_id, division) WHERE event_id IS
     NOT NULL — custom (event_id-less) events have no uniqueness constraint
+
+  - season_events: new table — admin-curated per-year/division active
+    event list, drives the tournament events bulk-load default list. No
+    backfill, starts empty.
 """
 from typing import Sequence, Union
 from alembic import op
@@ -125,8 +129,27 @@ def upgrade() -> None:
         postgresql_where=text("event_id IS NOT NULL"),
     )
 
+    # ------------------------------------------------------------------
+    # season_events — new table
+    # ------------------------------------------------------------------
+    op.create_table(
+        "season_events",
+        sa.Column("id", sa.Integer(), primary_key=True, index=True),
+        sa.Column("event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="CASCADE"), nullable=False),
+        sa.Column("year", sa.Integer(), nullable=False),
+        sa.Column("division", sa.String(length=4), nullable=False),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
+    )
+
 
 def downgrade() -> None:
+    # ------------------------------------------------------------------
+    # season_events — drop new table
+    # ------------------------------------------------------------------
+    op.drop_table("season_events")
+
     # ------------------------------------------------------------------
     # tournament_events — restore blocks/category/old unique constraint,
     # drop event_id/start_time/end_time
