@@ -208,9 +208,8 @@ function OnboardingContent() {
     }
 
     for (const key of Object.keys(cleaned)) {
-      if (cleaned[key] === "") cleaned[key] = undefined;
+      if (cleaned[key] === "") cleaned[key] = null;
     }
-    if (!profileData.dietary_restriction) cleaned.dietary_restriction = null;
 
     try {
       await usersApi.updateMe(cleaned);

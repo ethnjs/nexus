@@ -203,9 +203,8 @@ export default function ProfileEditPage() {
     }
 
     for (const key of Object.keys(cleaned)) {
-      if (cleaned[key] === "") cleaned[key] = undefined;
+      if (cleaned[key] === "") cleaned[key] = null;
     }
-    if (!draft.dietary_restriction) cleaned.dietary_restriction = null;
 
     try {
       await usersApi.updateMe(cleaned);
