@@ -34,7 +34,7 @@ def seed_dev_data(db: Session) -> None:
     Idempotent — skips if admin already exists.
     """
     from app.models.models import (
-        Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, User,
+        Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, University, User,
     )
     from app.core.auth import hash_password
     from app.core.tournament.permissions import DEFAULT_ROLES
@@ -71,11 +71,15 @@ def seed_dev_data(db: Session) -> None:
     db.flush()  # get IDs before creating tournament + memberships
 
     # Sample tournament owned by the regular user
+    usc = db.query(University).filter(University.abbreviation == "USC").first()
     tournament = Tournament(
-        name="2026 National Tournament @ USC",
+        name="National Tournament",
         start_date=datetime(2026, 5, 21, 8, 0),
         end_date=datetime(2026, 5, 23, 18, 0),
-        location="University of Southern California",
+        university_id=usc.id,
+        state="Southern California",
+        level="nationals",
+        division=["B", "C"],
         owner_id=td.id,
     )
     db.add(tournament)
