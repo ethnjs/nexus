@@ -51,7 +51,7 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -96,6 +96,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             disabled={locked || disabled}
             inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
+            // type="date" allows years up to 6 digits by spec, which breaks
+            // any lexicographic YYYY-MM-DD string comparison downstream.
+            max={props.type === 'date' ? (max ?? '9999-12-31') : max}
             onChange={handleChange}
             style={{
               height: sizing.height,
