@@ -275,6 +275,7 @@ class Tournament(Base):
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
+    event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -486,10 +487,45 @@ class TournamentEvent(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
+    shifts = relationship(
+        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
+    )
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
     )
+
+
+# ---------------------------------------------------------------------------
+# TournamentShift — a tournament-scoped time window (e.g. "Shift 1, 8am-12pm")
+# that can be attached to one or more TournamentEvents via the
+# tournament_event_shifts bridge table.
+# ---------------------------------------------------------------------------
+class TournamentShift(Base):
+    __tablename__ = "tournament_shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(255), nullable=False)
+    start = Column(DateTime(timezone=True), nullable=False)
+    end = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="event_shifts")
+    tournament_events = relationship(
+        "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventShift — bridge table: TournamentEvent <-> TournamentShift.
+# ---------------------------------------------------------------------------
+class TournamentEventShift(Base):
+    __tablename__ = "tournament_event_shifts"
+
+    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
+    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True)
 
 
 # ---------------------------------------------------------------------------
