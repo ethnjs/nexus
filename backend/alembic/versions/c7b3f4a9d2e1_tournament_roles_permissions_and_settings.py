@@ -113,13 +113,15 @@ def upgrade() -> None:
     # --- tournament visibility/discovery flags ---
     op.add_column('tournaments', sa.Column('is_public', sa.Boolean(), nullable=False, server_default=sa.text('false')))
     op.add_column('tournaments', sa.Column('is_verified', sa.Boolean(), nullable=False, server_default=sa.text('false')))
-    op.add_column('tournaments', sa.Column('registration_opens_at', sa.DateTime(timezone=True), nullable=True))
 
     # --- tournament identity fields: short_name, state, level, division; require dates ---
     op.add_column('tournaments', sa.Column('short_name', sa.String(length=64), nullable=True))
-    op.add_column('tournaments', sa.Column('state', sa.String(length=32), nullable=False))
-    op.add_column('tournaments', sa.Column('level', sa.String(length=32), nullable=False))
-    op.add_column('tournaments', sa.Column('division', sa.JSON(), nullable=False))
+    op.add_column('tournaments', sa.Column('state', sa.String(length=32), nullable=False, server_default=''))
+    op.add_column('tournaments', sa.Column('level', sa.String(length=32), nullable=False, server_default=''))
+    op.add_column('tournaments', sa.Column('division', sa.JSON(), nullable=False, server_default='[]'))
+    op.alter_column('tournaments', 'state', server_default=None)
+    op.alter_column('tournaments', 'level', server_default=None)
+    op.alter_column('tournaments', 'division', server_default=None)
     op.alter_column('tournaments', 'start_date',
                existing_type=postgresql.TIMESTAMP(timezone=True),
                nullable=False)
@@ -169,7 +171,6 @@ def downgrade() -> None:
     op.drop_column('tournaments', 'state')
     op.drop_column('tournaments', 'short_name')
 
-    op.drop_column('tournaments', 'registration_opens_at')
     op.drop_column('tournaments', 'is_verified')
     op.drop_column('tournaments', 'is_public')
 
@@ -200,8 +201,10 @@ def downgrade() -> None:
     """)
     op.drop_table('join_codes')
 
-    op.add_column('tournaments', sa.Column('blocks', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False))
-    op.add_column('tournaments', sa.Column('volunteer_schema', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False))
+    op.add_column('tournaments', sa.Column('blocks', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False, server_default='[]'))
+    op.add_column('tournaments', sa.Column('volunteer_schema', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=False, server_default='{}'))
+    op.alter_column('tournaments', 'blocks', server_default=None)
+    op.alter_column('tournaments', 'volunteer_schema', server_default=None)
     op.add_column('tournament_memberships', sa.Column('positions', postgresql.JSON(astext_type=sa.Text()), autoincrement=False, nullable=True))
 
     op.drop_table('audit_log_entries')

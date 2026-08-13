@@ -257,8 +257,6 @@ class Tournament(Base):
     # won't re-archive it. Cleared on re-archive.
     archive_override_at = Column(DateTime(timezone=True), nullable=True)
 
-    registration_opens_at = Column(DateTime(timezone=True), nullable=True)  # gates joining, unlike TournamentDeadline
-
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
