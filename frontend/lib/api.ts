@@ -364,54 +364,51 @@ export const TOURNAMENT_STATES = [
 export type TournamentState = typeof TOURNAMENT_STATES[number]
 
 export interface Tournament {
-  id:                     number
-  name:                   string
-  short_name:             string | null
-  start_date:             string
-  end_date:               string
-  university:             University | null
-  location:               string | null
-  state:                  TournamentState
-  level:                  TournamentLevel
-  division:               TournamentDivision[]
-  is_public:              boolean
-  is_verified:            boolean
-  is_archived:            boolean
-  registration_opens_at:  string | null
-  owner_id:               number
-  roles:                  Role[]
-  created_at:             string
-  updated_at:             string
+  id:          number
+  name:        string
+  short_name:  string | null
+  start_date:  string
+  end_date:    string
+  university:  University | null
+  location:    string | null
+  state:       TournamentState
+  level:       TournamentLevel
+  division:    TournamentDivision[]
+  is_public:   boolean
+  is_verified: boolean
+  is_archived: boolean
+  owner_id:    number
+  roles:       Role[]
+  created_at:  string
+  updated_at:  string
 }
 
 // location xor university_id — exactly one required, matches backend TournamentCreate
 export type TournamentCreate = {
-  name:                   string
-  short_name?:            string | null
-  start_date:             string
-  end_date:               string
-  state:                  TournamentState
-  level:                  TournamentLevel
-  division:               TournamentDivision[]
-  is_public?:             boolean
-  registration_opens_at?: string | null
+  name:        string
+  short_name?: string | null
+  start_date:  string
+  end_date:    string
+  state:       TournamentState
+  level:       TournamentLevel
+  division:    TournamentDivision[]
+  is_public?:  boolean
 } & (
   | { location: string; university_id?: never }
   | { university_id: number; location?: never }
 )
 
 export interface TournamentUpdate {
-  name?:                   string
-  short_name?:             string | null
-  start_date?:             string
-  end_date?:               string
-  university_id?:          number | null
-  location?:               string | null
-  state?:                  TournamentState
-  level?:                  TournamentLevel
-  division?:               TournamentDivision[]
-  is_public?:              boolean
-  registration_opens_at?:  string | null
+  name?:          string
+  short_name?:    string | null
+  start_date?:    string
+  end_date?:      string
+  university_id?: number | null
+  location?:      string | null
+  state?:         TournamentState
+  level?:         TournamentLevel
+  division?:      TournamentDivision[]
+  is_public?:     boolean
 }
 
 export const tournamentsApi = {

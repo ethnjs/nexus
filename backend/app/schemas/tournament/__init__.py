@@ -88,7 +88,6 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
     level: str
     division: list[str]
     is_public: bool = False
-    registration_opens_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> TournamentCreate:
@@ -117,7 +116,6 @@ class TournamentUpdate(TournamentFieldValidators, BaseModel):
     level: str | None = None
     division: list[str] | None = None
     is_public: bool | None = None
-    registration_opens_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> TournamentUpdate:
@@ -152,7 +150,6 @@ class TournamentRead(BaseModel):
     is_public: bool
     is_verified: bool
     is_archived: bool
-    registration_opens_at: datetime | None = None
     owner_id: int
     roles: list[RoleRead] = []
     created_at: datetime

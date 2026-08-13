@@ -41,7 +41,6 @@ def _serialize(tournament: Tournament) -> dict:
         "is_public": tournament.is_public,
         "is_verified": tournament.is_verified,
         "is_archived": tournament.is_archived,
-        "registration_opens_at": tournament.registration_opens_at,
         "owner_id": tournament.owner_id,
         "roles": tournament.roles,
         "created_at": tournament.created_at,

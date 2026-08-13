@@ -120,13 +120,11 @@ def test_create_tournament_full(client, td_user):
         "level": "nationals",
         "division": ["B", "C"],
         "is_public": True,
-        "registration_opens_at": f"{future_date(1, 1)}T00:00:00",
     })
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Nationals"
     assert data["is_public"] is True
-    assert data["registration_opens_at"] is not None
 
 
 def test_create_tournament_invalid_dates(client, td_user):
