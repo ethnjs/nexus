@@ -2,6 +2,14 @@ export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
+// Date + time, for a tooltip pinning down the exact moment behind a coarse
+// label like formatDuration's "3d" or "Today".
+export function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+  })
+}
+
 export function parseUserAgent(ua: string | null): string {
   if (!ua) return "Unknown device"
 
@@ -38,13 +46,19 @@ export function formatRelativeTime(iso: string | null): string {
   return `${diffDay}d ago`
 }
 
-// Coarser than formatRelativeTime — days/weeks/months/years, no
-// minute/hour granularity. For durations where "3mo" reads better than a
-// precise-to-the-minute figure (account age, membership tenure), not
-// recent-activity timestamps (use formatRelativeTime for those).
+// Coarser than formatRelativeTime — days/weeks/months/years once at least a
+// day old, minutes/hours within the first day (no bare "Today" — "3h"/"12m"
+// is more useful at a glance). For durations where "3mo" reads better than
+// a precise-to-the-minute figure past the first day (account age,
+// membership tenure).
 export function formatDuration(iso: string): string {
-  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
-  if (days < 1) return "Today"
+  const ms = Date.now() - new Date(iso).getTime()
+  const days = Math.floor(ms / 86400000)
+  if (days < 1) {
+    const hours = Math.floor(ms / 3600000)
+    if (hours < 1) return `${Math.max(1, Math.floor(ms / 60000))}m`
+    return `${hours}h`
+  }
   if (days < 7) return `${days}d`
   if (days < 30) return `${Math.floor(days / 7)}w`
   if (days < 365) return `${Math.floor(days / 30)}mo`

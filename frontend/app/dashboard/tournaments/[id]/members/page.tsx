@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
-import { formatDuration, formatDate } from "@/lib/timeFormat";
+import { formatDuration, formatDateTime } from "@/lib/timeFormat";
 import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
@@ -61,7 +61,7 @@ function sortValue(m: MembershipSlim, field: SortField): string | number {
 function DurationCell({ iso }: { iso: string }) {
   return (
     <span style={{ justifySelf: "center" }}>
-      <Tooltip variant="info" message={formatDate(iso)} showIcon={false}>
+      <Tooltip variant="info" message={formatDateTime(iso)} showIcon={false}>
         <span
           style={{
             fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
