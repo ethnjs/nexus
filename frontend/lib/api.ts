@@ -343,7 +343,7 @@ export const adminUsersApi = {
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
-export const TOURNAMENT_LEVELS = ['regionals', 'state', 'nationals', 'invitational'] as const
+export const TOURNAMENT_LEVELS = ['invitational', 'regionals', 'state', 'nationals'] as const
 export type TournamentLevel = typeof TOURNAMENT_LEVELS[number]
 
 export const TOURNAMENT_DIVISIONS = ['A', 'B', 'C'] as const
