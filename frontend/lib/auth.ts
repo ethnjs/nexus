@@ -1,5 +1,15 @@
 
 
+// A redirect target from a query param is untrusted input — only accept a
+// same-origin relative path (single leading '/', no protocol-relative "//"
+// trick, no embedded scheme) so it can't be used as an open redirect.
+// Returns null if unsafe or absent.
+export function safeRedirectPath(path: string | null | undefined): string | null {
+    if (!path) return null
+    if (!path.startsWith('/') || path.startsWith('//') || path.includes('://')) return null
+    return path
+}
+
 export function validateEmail(email: string): string | null {
     if (!email) return "Cannot be empty."
     if (!email.includes('@')) return "An email address must have an @-sign."
@@ -77,6 +87,10 @@ export function validatePassword(password: string): string | null {
 
     return null
 }
+
+export const DATE_OF_BIRTH_DISCLAIMER =
+  "We only use your birthday to check your age, since some tournaments require volunteers to be 18 or older. " +
+  "It's never shown to anyone on NEXUS, including tournament directors — they can only see whether you're 18+, not your actual birthday."
 
 export function validateDateOfBirth(value: string): string | null {
   if (!value) return "Cannot be empty."

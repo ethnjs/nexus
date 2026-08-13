@@ -4,7 +4,7 @@ import { useRef, useState, useCallback, useEffect, memo } from "react";
 import type { MappingRow } from "@/lib/importMappings";
 import type { ParseRule, ParseRuleCondition, ParseRuleAction, ValidationIssue, FormQuestionOption } from "@/lib/api";
 import { mappingRowsEqual, describeRule } from "@/lib/importMappings";
-import { Select } from "@/components/ui/Select";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { IconSwitch } from "@/components/ui/Icons";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -604,16 +604,16 @@ const RuleRow = memo(function RuleRow({
           {index + 1}
         </span>
 
-        <Select
+        <Dropdown
           value={rule.condition}
           onChange={(condition) => {
             onChange({ condition: condition as ParseRuleCondition, ...(condition === "always" ? { match: undefined } : {}) });
           }}
           options={validConditions.map((c) => ({ value: c, label: CONDITION_LABELS[c] ?? c }))}
-          disabled={isRemoved}
+          locked={isRemoved}
           size="sm"
           minWidth={120}
-          background="var(--color-bg)"
+          variant="primary"
         />
 
         {showMatch && (
@@ -639,15 +639,15 @@ const RuleRow = memo(function RuleRow({
 
         <span style={{ color: "var(--color-text-tertiary)", fontSize: "11px", flexShrink: 0 }}>→</span>
 
-        <Select
+        <Dropdown
           value={rule.action}
           onChange={(action) => {
             onChange({ action: action as ParseRuleAction, ...(VALUELESS_ACTIONS.has(action as ParseRuleAction) ? { value: undefined } : {}) });
           }}
           options={validActions.map((a) => ({ value: a, label: ACTION_LABELS[a] ?? a }))}
-          disabled={isRemoved}
+          locked={isRemoved}
           size="sm"
-          background="var(--color-bg)"
+          variant="primary"
         />
 
         {showValue && (
@@ -1015,13 +1015,13 @@ const MappingRowComponent = memo(function MappingRowComponent({
             {isIgnored ? "—" : (KNOWN_FIELDS_LABELS[row.field] ?? row.field)}
           </span>
         ) : (
-          <Select
+          <Dropdown
             value={row.field}
             onChange={handleFieldChange}
             options={knownFields.map((f) => ({ value: f, label: KNOWN_FIELDS_LABELS[f] ?? f }))}
-            disabled={isRemoved}
+            locked={isRemoved}
             size="sm"
-            background="var(--color-bg)"
+            variant="primary"
             fullWidth
           />
         )}
@@ -1032,13 +1032,13 @@ const MappingRowComponent = memo(function MappingRowComponent({
             {TYPE_LABELS[row.type] ?? row.type}
           </span>
         ) : (
-          <Select
+          <Dropdown
             value={row.type}
             onChange={handleTypeChange}
             options={validTypes.map((t) => ({ value: t, label: TYPE_LABELS[t] ?? t }))}
-            disabled={isRemoved || isIgnored}
+            locked={isRemoved || isIgnored}
             size="sm"
-            background="var(--color-bg)"
+            variant="primary"
             fullWidth
           />
         )}

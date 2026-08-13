@@ -1,18 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import {
   usersApi, canonicalEventsApi, CanonicalEvent,
   universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
-import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
+import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER, safeRedirectPath } from "@/lib/auth";
+import { todayLocalDateString } from "@/lib/date";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
+import { Topbar } from "@/components/layout/Topbar";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Tooltip } from "@/components/ui/Tooltip";
+import { IconInfo } from "@/components/ui/Icons";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
 import {
@@ -62,8 +67,18 @@ interface ProfileDraft {
 }
 
 export default function OnboardingPage() {
+  return (
+    <Suspense fallback={<div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>}>
+      <OnboardingContent />
+    </Suspense>
+  );
+}
+
+function OnboardingContent() {
   const { user: currentUser, loading: authLoading } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirect = safeRedirectPath(searchParams.get("redirect"));
 
   const [original, setOriginal] = useState<UserMeFull | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -101,7 +116,7 @@ export default function OnboardingPage() {
     }
 
     if (currentUser.is_onboarding_complete) {
-      router.replace("/dashboard");
+      router.replace(redirect ?? "/dashboard");
       return;
     }
 
@@ -133,7 +148,7 @@ export default function OnboardingPage() {
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
     universitiesApi.list().then(setUniversities).catch(() => {});
-  }, [authLoading, currentUser, router]);
+  }, [authLoading, currentUser, router, redirect]);
 
   function diffRows<T extends { id?: number }>(originalRows: T[], currentRows: T[]) {
     const originalIds = new Set(originalRows.filter(r => r.id !== undefined).map(r => r.id));
@@ -153,6 +168,23 @@ export default function OnboardingPage() {
   async function handleSubmit(e: React.SyntheticEvent) {
     e.preventDefault();
     if (!original) return;
+
+    const ers: Record<string, string | undefined> = {};
+    if (!name.first.trim()) ers.first_name = "Cannot be empty.";
+    if (!name.last.trim()) ers.last_name = "Cannot be empty.";
+    const phoneErr = validatePhone(phone);
+    if (phoneErr) ers.phone = phoneErr;
+    const dobErr = validateDateOfBirth(profileData.date_of_birth ?? "");
+    if (dobErr) ers.date_of_birth = dobErr;
+
+    if (Object.keys(ers).length > 0) {
+      setErrors((er) => ({ ...er, ...ers }));
+      if (ers.first_name || ers.last_name) setState(STATE.NAME);
+      else if (ers.phone) setState(STATE.PHONE);
+      else setState(STATE.DATE_OF_BIRTH);
+      return;
+    }
+
     setLoading(true);
     setErrors({});
 
@@ -220,7 +252,7 @@ export default function OnboardingPage() {
         ]);
       }
 
-      window.location.href = "/dashboard";
+      window.location.href = redirect ?? "/dashboard";
     } catch (error: unknown) {
       setErrors({ form: error instanceof ApiError ? error.message : "Something went wrong. Try again." });
     } finally {
@@ -246,34 +278,18 @@ export default function OnboardingPage() {
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
+      <Topbar showWordmark showAvatar={false} />
       <div style={{
         maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
         display: "flex", flexDirection: "column", gap: "5px",
       }}>
-        <div style={{
-          background: "var(--color-surface)",
-          border: "1px solid var(--color-border)",
-          borderRadius: "var(--radius-lg)",
-          boxShadow: "var(--shadow-sm)",
-          padding: "32px",
-        }}>
-          <div style={{
-            fontFamily: "Georgia, serif", fontSize: "15px",
-            letterSpacing: "0.18em", textTransform: "uppercase",
-            color: "var(--color-text-primary)", userSelect: "none",
-            marginBottom: "5px",
-          }}>
-            NEXUS
-          </div>
-          <h1 style={{ fontFamily: "var(--font-sans)", fontSize: "28px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-            Complete Your Profile
-          </h1>
-        </div>
+        <PageHeader heading="Complete Your Profile" />
 
         <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           <ProfileCard>
             <ProfileQuestion
               question="What is your name?"
+              required
               onNext={() => {
                 const ers: Record<string, string | undefined> = {};
                 if (!name.first.trim()) ers.first_name = "Cannot be empty.";
@@ -313,6 +329,7 @@ export default function OnboardingPage() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your phone number?"
+                required
                 onNext={() => {
                   const err = validatePhone(phone);
                   if (err) {
@@ -338,7 +355,17 @@ export default function OnboardingPage() {
           {state >= STATE.DATE_OF_BIRTH && (
             <ProfileCard>
               <ProfileQuestion
-                question="What is your date of birth?"
+                question={
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                    What is your date of birth?
+                    <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+                      <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+                        <IconInfo size={13} />
+                      </span>
+                    </Tooltip>
+                  </span>
+                }
+                required
                 onNext={() => {
                   const err = validateDateOfBirth(profileData.date_of_birth ?? "");
                   if (err) {
@@ -352,6 +379,7 @@ export default function OnboardingPage() {
                 <Input
                   type="date"
                   value={profileData.date_of_birth ?? ""}
+                  max={todayLocalDateString()}
                   onChange={(e) => {
                     setProfileData((d) => ({ ...d, date_of_birth: e.target.value }));
                     setErrors((er) => ({ ...er, date_of_birth: undefined }));
@@ -506,14 +534,13 @@ export default function OnboardingPage() {
               >
                 <div>
                   <YesNoField
-                    name="competed"
                     value={effectiveHasCompetitionExp ? true : (profileData.has_competition_experience ?? null)}
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_competition_experience: val }));
                       if (state >= STATE.COMPETED_BEFORE + 2) return;
                       setState(val ? STATE.COMPETITION_EXP : STATE.COMPETED_BEFORE + 2);
                     }}
-                    disabled={competitionLocked}
+                    locked={competitionLocked}
                   />
                   {competitionLocked && (
                     <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -526,19 +553,19 @@ export default function OnboardingPage() {
               {(competitionLocked || (state >= STATE.COMPETITION_EXP && profileData.has_competition_experience)) && (
                 <ProfileQuestion
                   question="Add your competition experience."
-                  onSkip={competitionLocked ? undefined : () => {
+                  onSkip={() => {
                     setProfileData((d) => ({ ...d, has_competition_experience: undefined }));
                     setCompetitionRows([]);
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  onNext={competitionLocked ? undefined : () => {
+                  onNext={() => {
                     if (competitionRows.length === 0 || !competitionRows.every(isCompetitionRowValid)) {
                       setErrors((er) => ({ ...er, competition_exp: "Each entry needs a school and a matched event." }));
                       return;
                     }
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
-                  isActive={!competitionLocked && state === STATE.COMPETITION_EXP}
+                  isActive={state === STATE.COMPETITION_EXP}
                 >
                   <CompetitionExperienceSpreadsheet mode="edit" rows={competitionRows} onChange={setCompetitionRows} events={events} />
                   {errors.competition_exp && (
@@ -561,14 +588,13 @@ export default function OnboardingPage() {
               >
                 <div>
                   <YesNoField
-                    name="volunteered"
                     value={effectiveHasVolunteerExp ? true : (profileData.has_volunteer_experience ?? null)}
                     onChange={(val) => {
                       setProfileData((d) => ({ ...d, has_volunteer_experience: val }));
                       if (state >= STATE.SHIRT_SIZE) return;
                       setState(val ? STATE.VOLUNTEERING_EXP : STATE.SHIRT_SIZE);
                     }}
-                    disabled={volunteerLocked}
+                    locked={volunteerLocked}
                   />
                   {volunteerLocked && (
                     <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -581,19 +607,19 @@ export default function OnboardingPage() {
               {(volunteerLocked || (state >= STATE.VOLUNTEERING_EXP && profileData.has_volunteer_experience)) && (
                 <ProfileQuestion
                   question="Add your volunteer experience."
-                  onSkip={volunteerLocked ? undefined : () => {
+                  onSkip={() => {
                     setProfileData((d) => ({ ...d, has_volunteer_experience: undefined }));
                     setVolunteerRows([]);
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  onNext={volunteerLocked ? undefined : () => {
+                  onNext={() => {
                     if (volunteerRows.length === 0 || !volunteerRows.every(isVolunteerRowValid)) {
                       setErrors((er) => ({ ...er, volunteering_exp: "Each entry needs a tournament name, a 4-digit year, and a role." }));
                       return;
                     }
                     setState(STATE.SHIRT_SIZE);
                   }}
-                  isActive={!volunteerLocked && state === STATE.VOLUNTEERING_EXP}
+                  isActive={state === STATE.VOLUNTEERING_EXP}
                 >
                   <VolunteerExperienceSpreadsheet mode="edit" rows={volunteerRows} onChange={setVolunteerRows} events={events} />
                   {errors.volunteering_exp && (
@@ -632,7 +658,6 @@ export default function OnboardingPage() {
                   isActive={state === STATE.DIETARY_RESTRICTIONS}
                 >
                   <YesNoField
-                    name="dietary"
                     value={hasDietary}
                     onChange={(val) => {
                       setHasDietary(val);

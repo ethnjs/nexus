@@ -1,27 +1,36 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome,
   IconAssignments,
   IconEvents,
-  IconVolunteers,
   IconSheets,
+  IconMembers,
   IconSettings,
+  IconChevronDown,
 } from "@/components/ui/Icons";
+import { useAuth } from "@/lib/useAuth";
+import { useMyMembership } from "@/lib/useMyMembership";
 
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
 const NAV_ITEMS = [
-  { segment: "overview",    icon: <IconHome />,               label: "Overview" },
-  { segment: "assignments", icon: <IconAssignments />,        label: "Assignments" },
-  { segment: "events",      icon: <IconEvents />,             label: "Events" },
-  { segment: "volunteers",  icon: <IconVolunteers />,         label: "Volunteers" },
-  { segment: "sheets",      icon: <IconSheets />,             label: "Sheets" },
-  { segment: "settings",    icon: <IconSettings size={18} />, label: "Settings" },
+  { segment: "overview",    icon: <IconHome />,        label: "Overview" },
+  { segment: "assignments", icon: <IconAssignments />, label: "Assignments" },
+  { segment: "events",      icon: <IconEvents />,      label: "Events" },
+  { segment: "sheets",      icon: <IconSheets />,      label: "Sheets" },
+  { segment: "members",     icon: <IconMembers />,     label: "Members" },
+];
+
+const SETTINGS_SUBITEMS = [
+  { segment: "general",    label: "General" },
+  { segment: "roles",      label: "Roles" },
+  { segment: "invites",    label: "Invites" },
+  { segment: "audit-log",  label: "Audit Log" },
 ];
 
 interface SidebarProps {
@@ -30,19 +39,42 @@ interface SidebarProps {
 }
 
 export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
-  const [expanded, setExpanded] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const pathname = usePathname();
+  const base = `/dashboard/tournaments/${tournamentId}`;
+  const settingsBase = `${base}/settings`;
+  const onSettingsRoute = pathname.startsWith(settingsBase);
+
+  const { user: currentUser } = useAuth();
+  const { membership, hasPermission } = useMyMembership();
+  const canManageRoles = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_roles");
+  const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
+  const canManageTournament = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
+  const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
+  const settingsSubitems = SETTINGS_SUBITEMS.filter(
+    ({ segment }) =>
+      (segment !== "roles" || canManageRoles) &&
+      (segment !== "invites" || canManageInvites) &&
+      (segment !== "audit-log" || canManageTournament)
+  );
+  const navItems = NAV_ITEMS.filter(({ segment }) => segment !== "members" || canManageMembers);
+  // Locked open on settings routes — the sub-nav labels need to stay
+  // readable without requiring the mouse to stay parked on the rail.
+  const expanded = hovered || onSettingsRoute;
   const width = expanded ? EXPANDED_W : COLLAPSED_W;
-  const base = `/dashboard/${tournamentId}`;
+  const showSettingsSub = expanded && (settingsOpen || onSettingsRoute);
+
+  useEffect(() => {
+    onExpandedChange?.(expanded);
+  }, [expanded, onExpandedChange]);
 
   function handleMouseEnter() {
-    setExpanded(true);
-    onExpandedChange?.(true);
+    setHovered(true);
   }
 
   function handleMouseLeave() {
-    setExpanded(false);
-    onExpandedChange?.(false);
+    setHovered(false);
   }
 
   return (
@@ -59,7 +91,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
         borderRight: "1px solid var(--color-border)",
         display: "flex",
         flexDirection: "column",
-        alignItems: expanded ? "stretch" : "center",
+        alignItems: "stretch",
         transition: "width 0.2s ease",
         overflow: "hidden",
         zIndex: 50,
@@ -92,9 +124,9 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
       <nav style={{
         display: "flex", flexDirection: "column", gap: "2px",
         flex: 1, padding: "10px 6px",
-        alignItems: expanded ? "stretch" : "center",
+        alignItems: "stretch",
       }}>
-        {NAV_ITEMS.map(({ segment, icon, label }) => {
+        {navItems.map(({ segment, icon, label }) => {
           const href = `${base}/${segment}`;
           const isActive = pathname === href || pathname.startsWith(`${href}/`);
 
@@ -108,10 +140,10 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
                 borderRadius: "var(--radius-md)",
                 display: "flex", alignItems: "center",
                 gap: "10px",
-                paddingLeft:  expanded ? "10px" : "0",
-                paddingRight: expanded ? "10px" : "0",
-                justifyContent: expanded ? "flex-start" : "center",
-                width: expanded ? "100%" : "38px",
+                paddingLeft:  "10px",
+                paddingRight: "10px",
+                justifyContent: "flex-start",
+                width: "100%",
                 color: isActive ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
                 background: isActive ? "var(--color-accent-subtle)" : "transparent",
                 textDecoration: "none",
@@ -148,6 +180,112 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
             </Link>
           );
         })}
+
+        <button
+          type="button"
+          onClick={() => setSettingsOpen((v) => !v)}
+          title={expanded ? undefined : "Settings"}
+          style={{
+            height: "38px",
+            borderRadius: "var(--radius-md)",
+            display: "flex", alignItems: "center",
+            gap: "10px",
+            paddingLeft: "10px",
+            paddingRight: "10px",
+            justifyContent: "flex-start",
+            width: "100%",
+            color: onSettingsRoute ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+            background: onSettingsRoute ? "var(--color-accent-subtle)" : "transparent",
+            position: "relative",
+            transition: "background var(--transition-fast), color var(--transition-fast)",
+            boxSizing: "border-box",
+            border: "none",
+            font: "inherit",
+            cursor: "pointer",
+          }}
+          onMouseEnter={(e) => {
+            if (!onSettingsRoute) {
+              (e.currentTarget as HTMLElement).style.background = "var(--color-accent-subtle)";
+              (e.currentTarget as HTMLElement).style.color = "var(--color-text-primary)";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!onSettingsRoute) {
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+              (e.currentTarget as HTMLElement).style.color = "var(--color-text-tertiary)";
+            }
+          }}
+        >
+          {onSettingsRoute && (
+            <div style={{
+              position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)",
+              width: "3px", height: "20px",
+              background: "var(--color-accent)", borderRadius: "0 3px 3px 0",
+            }} />
+          )}
+          <IconSettings size={18} />
+          {expanded && (
+            <>
+              <span style={{
+                flex: 1, textAlign: "left",
+                fontFamily: "var(--font-sans)", fontSize: "13px",
+                fontWeight: onSettingsRoute ? 600 : 400, whiteSpace: "nowrap", letterSpacing: "0.01em",
+              }}>
+                Settings
+              </span>
+              <IconChevronDown
+                size={12}
+                style={{ transform: showSettingsSub ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}
+              />
+            </>
+          )}
+        </button>
+
+        {showSettingsSub && (
+          <div style={{ display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "20px" }}>
+            {settingsSubitems.map(({ segment, label }) => {
+              const href = `${settingsBase}/${segment}`;
+              const isActive = pathname === href || pathname.startsWith(`${href}/`);
+
+              return (
+                <Link
+                  key={segment}
+                  href={href}
+                  style={{
+                    height: "32px",
+                    borderRadius: "var(--radius-md)",
+                    display: "flex", alignItems: "center",
+                    paddingLeft: "10px", paddingRight: "10px",
+                    color: isActive ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
+                    background: isActive ? "var(--color-accent-subtle)" : "transparent",
+                    textDecoration: "none",
+                    transition: "background var(--transition-fast), color var(--transition-fast)",
+                    boxSizing: "border-box",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "var(--color-accent-subtle)";
+                      (e.currentTarget as HTMLElement).style.color = "var(--color-text-primary)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isActive) {
+                      (e.currentTarget as HTMLElement).style.background = "transparent";
+                      (e.currentTarget as HTMLElement).style.color = "var(--color-text-tertiary)";
+                    }
+                  }}
+                >
+                  <span style={{
+                    fontFamily: "var(--font-sans)", fontSize: "12px",
+                    fontWeight: isActive ? 600 : 400, whiteSpace: "nowrap",
+                  }}>
+                    {label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </nav>
     </aside>
   );

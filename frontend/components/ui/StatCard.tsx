@@ -1,3 +1,5 @@
+import { Card } from './Card'
+
 interface StatCardProps {
   label: string
   value: number | string
@@ -6,13 +8,7 @@ interface StatCardProps {
 
 export function StatCard({ label, value, color = 'var(--color-text-primary)' }: StatCardProps) {
   return (
-    <div style={{
-      background: 'var(--color-surface)',
-      border: '1px solid var(--color-border)',
-      borderRadius: 'var(--radius-md)',
-      padding: '20px',
-      textAlign: 'center',
-    }}>
+    <Card shadow={false} style={{ padding: '20px', textAlign: 'center' }}>
       <div style={{
         fontFamily: 'Georgia, serif',
         fontSize: '36px',
@@ -32,6 +28,6 @@ export function StatCard({ label, value, color = 'var(--color-text-primary)' }: 
       }}>
         {label}
       </div>
-    </div>
+    </Card>
   )
 }

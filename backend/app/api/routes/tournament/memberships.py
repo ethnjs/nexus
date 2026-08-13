@@ -1,0 +1,306 @@
+from __future__ import annotations
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+from app.core.auth import get_current_user
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.memberships import get_membership_by_user, resolve_memberships_or_users
+from app.core.tournament.permissions import (
+    MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
+)
+from app.core.tournament.roles import validate_member_target
+from app.db.session import get_db
+from app.models.models import (
+    TournamentMembership,
+    TournamentMembershipRole,
+    TournamentRole,
+    User,
+)
+from app.schemas.tournament.membership import (
+    MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
+    MembershipMeUpdate, MembershipSlimResponse,
+)
+
+
+def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
+    """Overwrites each response's .join_code.creator with a properly
+    resolved MembershipSlimResponse|UserSlimResponse. Automatic
+    from_attributes validation would otherwise read JoinCode.creator (a
+    plain User relationship) and silently fall back to the bare-user branch
+    of the union every time, never surfacing the creator's actual
+    membership — same fix already applied to JoinCodeResponse.creator and
+    AuditLogEntry.actor."""
+    creator_ids = {m.join_code.created_by for m in memberships if m.join_code is not None}
+    if not creator_ids:
+        return
+    creators = resolve_memberships_or_users(db, tournament_id, creator_ids)
+    for m, resp in zip(memberships, responses):
+        if m.join_code is not None:
+            resp.join_code.creator = creators[m.join_code.created_by]
+
+# Routes nested: /tournaments/{tournament_id}/memberships/...
+router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/ — manage_members
+# Members-page roster: slim user identity + roles only.
+# ---------------------------------------------------------------------------
+@router.get("/", response_model=list[MembershipSlimResponse])
+def list_memberships(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    get_tournament(tournament_id, db)
+
+    memberships = (
+        db.query(TournamentMembership)
+        .options(
+            joinedload(TournamentMembership.user),
+            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentMembership.join_code),
+        )
+        .filter(TournamentMembership.tournament_id == tournament_id)
+        .order_by(TournamentMembership.id)
+        .all()
+    )
+    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    return responses
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=&max_rank=
+# manage_members. Member-data search: searches all tournament members by
+# name/email; role_id narrows to members holding that role (powers the roles
+# editor's "Manage Members" tab); exclude_role_id drops members who already
+# hold that role (powers its "Add Members" picker). max_rank drops members
+# whose highest-authority role ties or outranks that rank (lower rank number
+# = more authority) — the frontend passes the caller's own rank so the "Add
+# Members" picker never surfaces someone validate_role_action would reject
+# anyway. role_id, exclude_role_id, and max_rank are independent filters and
+# can be combined.
+# Registered before "/{membership_id}/" so the literal path always wins.
+# Tournaments are small enough (rarely 150+ members) to return the full
+# filtered list rather than paginating.
+# ---------------------------------------------------------------------------
+@router.get("/search/", response_model=list[MembershipSlimResponse])
+def search_memberships(
+    tournament_id: int,
+    q: str | None = Query(default=None),
+    role_id: int | None = Query(default=None),
+    exclude_role_id: int | None = Query(default=None),
+    max_rank: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    query = (
+        db.query(TournamentMembership)
+        .join(User, User.id == TournamentMembership.user_id)
+        .filter(TournamentMembership.tournament_id == tournament_id)
+    )
+    if q:
+        like = f"%{q}%"
+        query = query.filter(
+            (User.first_name.ilike(like)) | (User.last_name.ilike(like)) | (User.email.ilike(like))
+        )
+    if role_id is not None:
+        held_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == role_id)
+        )
+        query = query.filter(TournamentMembership.id.in_(held_role))
+    if exclude_role_id is not None:
+        held_by_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == exclude_role_id)
+        )
+        query = query.filter(TournamentMembership.id.notin_(held_by_role))
+    if max_rank is not None:
+        # Members with no roles have no authority and always pass. Members
+        # with roles are kept only if their highest-authority (lowest rank
+        # number) role is strictly less authoritative than max_rank.
+        outranks_or_ties = (
+            db.query(TournamentMembershipRole.membership_id)
+            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
+            .group_by(TournamentMembershipRole.membership_id)
+            .having(func.min(TournamentRole.rank) <= max_rank)
+        )
+        query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))
+
+    memberships = (
+        query
+        .options(
+            joinedload(TournamentMembership.user),
+            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentMembership.join_code),
+        )
+        .order_by(TournamentMembership.id)
+        .all()
+    )
+    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    return responses
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/me/ — any member
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.get("/me/", response_model=MembershipMeResponse)
+def get_my_membership(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_membership()),
+):
+    tournament = get_tournament(tournament_id, db)
+
+    membership = get_membership_by_user(
+        db, tournament_id, current_user.id,
+        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+    )
+    permissions = sorted(get_user_permissions(current_user, tournament_id, db))
+    is_owner = current_user.id == tournament.owner_id
+
+    # No row only for a site admin who never joined — require_membership()
+    # already granted access via its admin bypass.
+    if not membership:
+        return MembershipMeResponse(
+            membership_id=None, is_owner=is_owner, status=None, roles=[], permissions=permissions,
+        )
+
+    return MembershipMeResponse(
+        membership_id=membership.id, is_owner=is_owner, status=membership.status,
+        roles=membership.roles, permissions=permissions,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
+# ---------------------------------------------------------------------------
+@router.get("/{membership_id}/", response_model=MembershipFullResponse)
+def get_membership(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+    resp = MembershipFullResponse.model_validate(m)
+    _resolve_join_code_creators(db, tournament_id, [m], [resp])
+    return resp
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/memberships/me/ — self-service
+# Lets a volunteer update their own onboarding responses. Cannot touch
+# day-of logistics (schedule, notes) — that's manage_members-only.
+# ---------------------------------------------------------------------------
+@router.patch("/me/", response_model=MembershipFullResponse)
+def update_my_membership(
+    tournament_id: int,
+    payload: MembershipMeUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    m = get_membership_by_user(db, tournament_id, current_user.id)
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    update_data = payload.model_dump(exclude_none=True)
+    if "availability" in update_data and payload.availability:
+        update_data["availability"] = [s.model_dump() for s in payload.availability]
+
+    for field, value in update_data.items():
+        setattr(m, field, value)
+
+    db.commit()
+    db.refresh(m)
+    return MembershipFullResponse.model_validate(m)
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
+# Staff override — day-of logistics only (schedule, notes). Not onboarding
+# data; that's self-service via PATCH .../me/.
+# ---------------------------------------------------------------------------
+@router.patch("/{membership_id}/", response_model=MembershipFullResponse)
+def update_membership(
+    tournament_id: int,
+    membership_id: int,
+    payload: MembershipCoordinatorUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+    validate_member_target(current_user, tournament, m, db)
+
+    update_data = payload.model_dump(exclude_none=True)
+    if "schedule" in update_data and payload.schedule:
+        update_data["schedule"] = [s.model_dump() for s in payload.schedule]
+
+    for field, value in update_data.items():
+        setattr(m, field, value)
+
+    db.commit()
+    db.refresh(m)
+    return MembershipFullResponse.model_validate(m)
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/me/ — self-service
+# Lets a non-owner leave a tournament. The owner must transfer ownership
+# first — leaving without doing so would strand the tournament ownerless.
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.delete("/me/", status_code=status.HTTP_204_NO_CONTENT)
+def leave_tournament(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+
+    if tournament.owner_id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Transfer ownership before leaving this tournament.",
+        )
+
+    m = get_membership_by_user(db, tournament_id, current_user.id)
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    db.delete(m)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
+# Removes a user from the tournament. Unlike leave_tournament (DELETE .../me/),
+# the actor here isn't necessarily removing themselves, so validate_member_target
+# both blocks the owner as a target outright and enforces the same rank
+# comparison validate_role_action uses for its target check.
+# ---------------------------------------------------------------------------
+@router.delete("/{membership_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_membership(
+    tournament_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+    validate_member_target(current_user, tournament, m, db)
+
+    db.delete(m)
+    db.commit()

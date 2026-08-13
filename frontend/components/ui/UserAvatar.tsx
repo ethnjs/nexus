@@ -2,12 +2,14 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useAuth } from "@/lib/useAuth";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { IconLogout, IconUser, IconSettings } from "@/components/ui/Icons";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import Link from "next/link";
 
 export function UserAvatar() {
   const { user, logout } = useAuth();
+  const { guard } = useUnsavedChanges();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -88,7 +90,7 @@ export function UserAvatar() {
             Settings
           </Link>
           <button
-            onClick={() => { setOpen(false); logout(); }}
+            onClick={() => guard(() => { setOpen(false); logout(); })}
             style={{
               display: "flex", alignItems: "center", gap: "8px",
               width: "100%", padding: "11px 16px",

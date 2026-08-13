@@ -10,6 +10,9 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg2-binary==2.9.10
 
+# Scheduled jobs (daily auto-archive)
+apscheduler==3.11.3
+
 # SQLite support (for dev/testing)
 aiosqlite==0.20.0
 

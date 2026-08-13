@@ -1,8 +1,8 @@
 'use client'
 
 import { Input } from "@/components/ui/Input"
-import { Select } from "@/components/ui/Select"
-import { RadioGroup } from "@/components/ui/RadioGroup"
+import { Dropdown } from "@/components/ui/Dropdown"
+import { ButtonGroup } from "@/components/ui/ButtonGroup"
 import { Combobox } from "@/components/ui/Combobox"
 import { Textarea } from "@/components/ui/Textarea"
 import { STUDENT_STATUS, SHIRT_SIZE, University } from "@/lib/api"
@@ -43,7 +43,7 @@ interface StudentStatusFieldProps {
 
 export function StudentStatusField({ value, onChange }: StudentStatusFieldProps) {
   return (
-    <Select
+    <Dropdown
       value={value ?? ''}
       onChange={(v) => onChange(v as STUDENT_STATUS)}
       options={[
@@ -51,6 +51,7 @@ export function StudentStatusField({ value, onChange }: StudentStatusFieldProps)
         { value: "Graduate", label: "Graduate" },
         { value: "Non-Student", label: "Non-Student" },
       ]}
+      variant="primary"
       fullWidth
     />
   )
@@ -113,7 +114,7 @@ interface YearLevelFieldProps {
 
 export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) {
   return (
-    <Select
+    <Dropdown
       value={value !== undefined ? String(value) : ''}
       onChange={(v) => onChange(Number(v))}
       options={[
@@ -124,6 +125,7 @@ export function YearLevelField({ value, onChange, error }: YearLevelFieldProps) 
         { value: "5", label: "5th+ Year" },
       ]}
       error={error}
+      variant="primary"
       fullWidth
     />
   )
@@ -140,9 +142,11 @@ export function GraduationYearField({ value, onChange, error, onValidate }: Grad
   return (
     <Input
       type="text"
+      charset="numeric"
+      maxLength={4}
       value={value ?? ''}
       onChange={(e) => {
-        const raw = e.target.value.replace(/\D/g, '').slice(0, 4)
+        const raw = e.target.value
         onValidate?.(raw.length > 0 && raw.length < 4 ? "Must be a valid year." : undefined)
         onChange(raw ? Number(raw) : undefined)
       }}
@@ -169,25 +173,21 @@ export function EmployerField({ value, onChange, error }: EmployerFieldProps) {
 // Yes/No toggle (used for competed-before / volunteered-before / has-dietary)
 // -------------------------------------------------------------------------
 interface YesNoFieldProps {
-  name: string
   value: boolean | null
   onChange: (value: boolean) => void
-  disabled?: boolean
+  locked?: boolean
 }
 
-export function YesNoField({ name, value, onChange, disabled }: YesNoFieldProps) {
+export function YesNoField({ value, onChange, locked }: YesNoFieldProps) {
   return (
-    <RadioGroup
-      name={name}
-      value={value === true ? "yes" : value === false ? "no" : null}
-      onChange={(v) => onChange(v === "yes")}
+    <ButtonGroup
       options={[
         { value: "yes", label: "Yes" },
         { value: "no", label: "No" },
       ]}
-      showCircle={false}
-      solid
-      disabled={disabled}
+      value={value === true ? "yes" : value === false ? "no" : ""}
+      onChange={(v) => onChange(v === "yes")}
+      locked={locked}
     />
   )
 }
@@ -202,13 +202,10 @@ interface ShirtSizeFieldProps {
 
 export function ShirtSizeField({ value, onChange }: ShirtSizeFieldProps) {
   return (
-    <RadioGroup
-      name="shirt"
-      value={value ?? null}
-      onChange={(v) => onChange(v as SHIRT_SIZE)}
+    <ButtonGroup
       options={["XS", "S", "M", "L", "XL", "XXL"].map((size) => ({ value: size, label: size }))}
-      showCircle={false}
-      solid
+      value={value ?? ""}
+      onChange={(v) => onChange(v as SHIRT_SIZE)}
     />
   )
 }

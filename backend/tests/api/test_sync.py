@@ -2,16 +2,9 @@
 import pytest
 from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
-from tests.conftest import login
+from tests.conftest import FUTURE_YEAR, future_date, login
 
 FAKE_URL = "https://docs.google.com/spreadsheets/d/fake123/edit"
-
-NATS_BLOCKS = [
-    {"number": 1,  "label": "Thu Check-in", "date": "2026-05-21", "start": "08:00", "end": "10:00"},
-    {"number": 2,  "label": "Thu Morning",  "date": "2026-05-21", "start": "10:00", "end": "12:00"},
-    {"number": 3,  "label": "Fri Check-in", "date": "2026-05-22", "start": "08:00", "end": "10:00"},
-    {"number": 14, "label": "Sat Block 1",  "date": "2026-05-23", "start": "08:00", "end": "09:00"},
-]
 
 COLUMN_MAPPINGS = {
     "Timestamp":       {"field": "__ignore__",      "type": "ignore"},
@@ -38,12 +31,13 @@ COLUMN_MAPPINGS = {
 
 def _make_tournament(client):
     return client.post("/tournaments/", json={
-        "name": "2026 Nationals",
-        "start_date": "2026-05-21T08:00:00",
-        "end_date": "2026-05-23T18:00:00",
+        "name": "Nationals",
+        "start_date": future_date(5, 21),
+        "end_date": future_date(5, 23),
         "location": "Test Location",
-        "blocks": NATS_BLOCKS,
-        "volunteer_schema": {"custom_fields": []},
+        "state": "Southern California",
+        "level": "nationals",
+        "division": ["B", "C"],
     }).json()
 
 
@@ -65,7 +59,15 @@ def _sync(client, tournament_id, config_id):
 
 
 def _list_memberships(client, tournament_id):
-    return client.get(f"/tournaments/{tournament_id}/memberships/").json()
+    """Full membership details (roster list is slim now — user id/onboarding
+    fields live behind the per-membership detail route)."""
+    slim = client.get(f"/tournaments/{tournament_id}/memberships/").json()
+    full = []
+    for row in slim:
+        detail = client.get(f"/tournaments/{tournament_id}/memberships/{row['id']}/").json()
+        detail["user_id"] = detail["user"]["id"]
+        full.append(detail)
+    return full
 
 
 # ---------------------------------------------------------------------------
@@ -78,7 +80,7 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     cfg = _make_config(client, t["id"])
 
     mock_sheets_service.get_rows.return_value = [{
-        "Timestamp": "2026-01-01 10:00:00",
+        "Timestamp": f"{FUTURE_YEAR}-01-01 10:00:00",
         "Email Address": "alice@example.com",
         "First Name": "Alice",
         "Last Name": "Smith",
@@ -104,13 +106,14 @@ def test_sync_creates_user_and_membership(client, td_user, mock_sheets_service, 
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
     assert user is not None
     assert user.first_name == "Alice"
-    assert user.phone == "(949) 555-1234"
+    assert user.phone == "9495551234"
+
+    assert user.shirt_size == "M"
 
     memberships = _list_memberships(client, t["id"])
     alice = [m for m in memberships if m["user_id"] == user.id]
     assert len(alice) == 1
     m = alice[0]
-    assert m["shirt_size"] == "M"
     assert m["role_preference"] == ["Event Volunteer"]
     assert m["event_preference"] == ["Technology & Engineering (Boomilever)"]
     assert m["extra_data"]["transportation"] == "Driving"
@@ -140,7 +143,7 @@ def test_sync_merges_contiguous_availability(client, td_user, mock_sheets_servic
     assert len(bob) == 1
     avail = bob[0]["availability"]
     assert len(avail) == 1
-    assert avail[0] == {"date": "2026-05-21", "start": "08:00", "end": "12:00"}
+    assert avail[0] == {"date": future_date(5, 21), "start": "08:00", "end": "12:00"}
 
 
 def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):
@@ -158,14 +161,10 @@ def test_sync_updates_existing_user(client, td_user, mock_sheets_service, db):
     assert response.json()["created"] == 0
     assert response.json()["updated"] == 1
 
-    from app.models.models import User as UserModel, Membership as MembershipModel
+    from app.models.models import User as UserModel
     db.expire_all()
     user = db.query(UserModel).filter(UserModel.email == "alice@example.com").first()
-    membership = db.query(MembershipModel).filter(
-        MembershipModel.user_id == user.id,
-        MembershipModel.tournament_id == t["id"],
-    ).first()
-    assert membership.shirt_size == "L"
+    assert user.shirt_size == "L"
 
 
 def test_sync_skips_row_missing_email(client, td_user, mock_sheets_service):

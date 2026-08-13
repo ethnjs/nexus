@@ -161,6 +161,8 @@ export interface UserSlim {
   email:      string
   phone:      string | null
   pronouns:   string | null
+  created_at: string
+  updated_at: string
 }
 
 // Matches AdminUserSlimResponse — slim + account-management fields. Used by
@@ -169,9 +171,6 @@ export interface AdminUserSlim extends UserSlim {
   email_verified: boolean
   role:           ROLE
   status:         USER_STATUS
-
-  created_at:     string
-  updated_at:     string
 }
 
 // GET /users/me/ (default) — matches UserMeSlimResponse. No date_of_birth here.
@@ -344,51 +343,95 @@ export const adminUsersApi = {
 // -------------------------------------------------------------------------
 // Tournaments
 // -------------------------------------------------------------------------
-export interface TournamentBlock {
-  number: number
-  label:  string
-  date:   string   // YYYY-MM-DD
-  start:  string   // HH:MM
-  end:    string   // HH:MM
-}
+export const TOURNAMENT_LEVELS = ['regionals', 'state', 'nationals', 'invitational'] as const
+export type TournamentLevel = typeof TOURNAMENT_LEVELS[number]
 
-export interface CustomField {
-  key:   string
-  label: string
-  type:  string
-}
+export const TOURNAMENT_DIVISIONS = ['A', 'B', 'C'] as const
+export type TournamentDivision = typeof TOURNAMENT_DIVISIONS[number]
 
-export interface PositionDefinition {
-  key:         string
-  label:       string
-  permissions: string[]
-}
-
-export interface VolunteerSchema {
-  custom_fields: CustomField[]
-  positions:     PositionDefinition[]
-}
+export const TOURNAMENT_STATES = [
+  'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'Colorado', 'Connecticut',
+  'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana',
+  'Iowa', 'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland',
+  'Massachusetts', 'Michigan', 'Minnesota', 'Mississippi', 'Missouri',
+  'Montana', 'Nebraska', 'Nevada', 'New Hampshire', 'New Jersey',
+  'New Mexico', 'New York', 'North Carolina', 'North Dakota', 'Ohio',
+  'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 'South Carolina',
+  'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 'Virginia',
+  'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+  'Southern California', 'Northern California',
+] as const
+export type TournamentState = typeof TOURNAMENT_STATES[number]
 
 export interface Tournament {
-  id:               number
-  name:             string
-  start_date:       string | null
-  end_date:         string | null
-  location:         string | null
-  blocks:           TournamentBlock[]
-  volunteer_schema: VolunteerSchema
-  owner_id:         number
-  created_at:       string
-  updated_at:       string
+  id:          number
+  name:        string
+  short_name:  string | null
+  start_date:  string
+  end_date:    string
+  university:  University | null
+  location:    string | null
+  state:       TournamentState
+  level:       TournamentLevel
+  division:    TournamentDivision[]
+  is_public:   boolean
+  is_verified: boolean
+  is_archived: boolean
+  owner_id:    number
+  roles:       Role[]
+  created_at:  string
+  updated_at:  string
+}
+
+// location xor university_id — exactly one required, matches backend TournamentCreate
+export type TournamentCreate = {
+  name:        string
+  short_name?: string | null
+  start_date:  string
+  end_date:    string
+  state:       TournamentState
+  level:       TournamentLevel
+  division:    TournamentDivision[]
+  is_public?:  boolean
+} & (
+  | { location: string; university_id?: never }
+  | { university_id: number; location?: never }
+)
+
+export interface TournamentUpdate {
+  name?:          string
+  short_name?:    string | null
+  start_date?:    string
+  end_date?:      string
+  university_id?: number | null
+  location?:      string | null
+  state?:         TournamentState
+  level?:         TournamentLevel
+  division?:      TournamentDivision[]
+  is_public?:     boolean
 }
 
 export const tournamentsApi = {
-  list:   ()                                      => api.get<Tournament[]>('/tournaments/me/'),
-  listAll: ()                                     => api.get<Tournament[]>('/tournaments/'),
-  get:    (id: number)                            => api.get<Tournament>(`/tournaments/${id}/`),
-  create: (body: Partial<Tournament>)             => api.post<Tournament>('/tournaments/', body),
-  update: (id: number, body: Partial<Tournament>) => api.patch<Tournament>(`/tournaments/${id}/`, body),
-  delete: (id: number)                            => api.delete<void>(`/tournaments/${id}/`),
+  // GET /tournaments/me/ — tournaments the current user has any membership in
+  list:   ()                                       => api.get<Tournament[]>('/tournaments/me/'),
+  get:    (id: number)                             => api.get<Tournament>(`/tournaments/${id}/`),
+  create: (body: TournamentCreate)                 => api.post<Tournament>('/tournaments/', body),
+  update: (id: number, body: TournamentUpdate)     => api.patch<Tournament>(`/tournaments/${id}/`, body),
+  delete: (id: number)                             => api.delete<void>(`/tournaments/${id}/`),
+  transferOwnership: (id: number, newOwnerId: number) =>
+    api.post<Tournament>(`/tournaments/${id}/transfer-ownership/`, { new_owner_id: newOwnerId }),
+  archive:   (id: number) => api.post<Tournament>(`/tournaments/${id}/archive/`, {}),
+  unarchive: (id: number) => api.post<Tournament>(`/tournaments/${id}/unarchive/`, {}),
+}
+
+// -------------------------------------------------------------------------
+// Admin — Tournaments
+// -------------------------------------------------------------------------
+export const adminTournamentsApi = {
+  // GET /admin/tournaments/ — every tournament, regardless of membership
+  list: () => api.get<Tournament[]>('/admin/tournaments/'),
+  setVerified: (id: number, is_verified: boolean) =>
+    api.patch<{ id: number; is_verified: boolean }>(`/admin/tournaments/${id}/verify/`, { is_verified }),
 }
 
 
@@ -412,7 +455,7 @@ export interface TournamentEvent {
 }
 
 export const tournamentEventsApi = {
-  listByTournament: (tournamentId: number) =>
+  list: (tournamentId: number) =>
     api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
   get:    (tournamentId: number, id: number) =>
     api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
@@ -427,7 +470,12 @@ export const tournamentEventsApi = {
 // -------------------------------------------------------------------------
 // Memberships
 // -------------------------------------------------------------------------
-export type MembershipStatus = 'interested' | 'confirmed' | 'declined' | 'assigned' | 'removed'
+export type MembershipStatus = 'interested' | 'confirmed'
+
+// How a membership was created. "manual" covers staff-add, owner-on-create,
+// and sync import — collapsed into one value until manual add-by-staff is
+// actually removed.
+export type MembershipSource = 'join_code' | 'public' | 'manual'
 
 export interface AvailabilitySlot {
   date:  string
@@ -440,12 +488,53 @@ export interface ScheduleSlot {
   duty:  string
 }
 
-export interface Membership {
+// Matches RoleRead
+export interface Role {
+  id:             number
+  tournament_id:  number
+  label:          string
+  permissions:    string[]
+  rank:           number
+  created_at:     string
+  updated_at:     string
+}
+
+// Matches RoleWithMemberCount — only the role list/CRUD endpoints compute
+// this count; roles nested inside membership responses stay plain Role.
+export interface RoleWithMemberCount extends Role {
+  member_count: number
+}
+
+// Matches MembershipJoinCodeInfo — resolved join-code info embedded on a
+// membership response (code/label + who created it). Only present when
+// source === "join_code". Codes are never hard-deleted, so this is always
+// populated for a join_code-sourced membership.
+export interface MembershipJoinCodeInfo {
+  code:    string
+  label:   string | null
+  creator: MembershipSlim | UserSlim
+}
+
+// Matches MembershipSlimResponse — members-page roster row. No onboarding/
+// logistics fields; those live behind the per-member expand panel (MembershipFull).
+export interface MembershipSlim {
+  id:         number
+  source:     MembershipSource
+  status:     MembershipStatus
+  join_code:  MembershipJoinCodeInfo | null
+  // When they joined THIS tournament — distinct from user.created_at
+  // (their NEXUS account age).
+  created_at: string
+  updated_at: string
+  roles:      Role[]
+  user:       UserSlim
+}
+
+// Matches MembershipFullResponse — the expanded side panel for a single member.
+export interface MembershipFull {
   id:                number
-  user_id:           number
   tournament_id:     number
   assigned_event_id: number | null
-  positions:         string[] | null
   schedule:          ScheduleSlot[] | null
   status:            MembershipStatus
   role_preference:   string[] | null
@@ -454,51 +543,315 @@ export interface Membership {
   lunch_order:       Record<string, unknown> | string | null
   notes:             string | null
   extra_data:        Record<string, unknown> | null
+  source:            MembershipSource
+  join_code:         MembershipJoinCodeInfo | null
+  is_over_18:        boolean | null
+  is_over_21:        boolean | null
   created_at:        string
   updated_at:        string
+  roles:             Role[]
+  user:              UserFull
+}
 
-  // TODO(temp): identity fields sourced from User table — when user profile
-  // page is built, these and any additional profile fields should come from User
-  first_name?: string | null
-  last_name?:  string | null
-  email?:      string | null
-  phone?:      string | null
+// PATCH .../memberships/me/ — self-service, onboarding responses only
+export interface MembershipMeUpdate {
+  role_preference?:  string[] | null
+  event_preference?: string[] | null
+  availability?:     AvailabilitySlot[] | null
+  lunch_order?:      Record<string, unknown> | string | null
+}
 
-  // TODO(temp): profile fields synced to membership until user self-management
-  shirt_size?:          string | null
-  dietary_restriction?: string | null
-  university?:          string | null
-  major?:               string | null
-  employer?:            string | null
-  student_status?:      string | null
-  competition_exp?:     string | null
-  volunteering_exp?:    string | null
+// PATCH .../memberships/{id}/ — manage_members override, day-of logistics only
+export interface MembershipCoordinatorUpdate {
+  schedule?: ScheduleSlot[] | null
+  notes?:    string | null
+}
+
+// GET .../memberships/me/ — current user's membership + effective permissions
+export interface MembershipMe {
+  membership_id: number | null
+  is_owner:       boolean
+  status:         MembershipStatus | null
+  roles:          Role[]
+  permissions:    Permission[]
 }
 
 export const membershipsApi = {
-  listByTournament: (tournamentId: number, status?: MembershipStatus) =>
-    api.get<Membership[]>(
-      `/tournaments/${tournamentId}/memberships/${status ? `?status=${status}` : ''}`
-    ),
-  get:    (tournamentId: number, id: number) =>
-    api.get<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  create: (tournamentId: number, body: Partial<Membership>) =>
-    api.post<Membership>(`/tournaments/${tournamentId}/memberships/`, body),
-  update: (tournamentId: number, id: number, body: Partial<Membership>) =>
-    api.patch<Membership>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
+  list: (tournamentId: number) =>
+    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`),
+  get: (tournamentId: number, id: number) =>
+    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
+  getMe: (tournamentId: number) =>
+    api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
+  leaveMe: (tournamentId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/memberships/me/`),
+  updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
+  update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  deleteMembershipsByEmails: async (tournamentId: number, emails: string[]): Promise<{ deleted: number }> => {
-    const emailSet = new Set(emails.map((e) => e.toLowerCase().trim()))
-    const memberships = await api.get<Membership[]>(`/tournaments/${tournamentId}/memberships/`)
-    const toDelete = memberships.filter(
-      (m) => m.email && emailSet.has(m.email.toLowerCase().trim())
-    )
-    await Promise.all(
-      toDelete.map((m) => api.delete<void>(`/tournaments/${tournamentId}/memberships/${m.id}/`))
-    )
-    return { deleted: toDelete.length }
+  updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
+    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
+  // role_id narrows to members holding that role; exclude_role_id drops
+  // members who already hold it — independent filters, combinable with q.
+  // max_rank drops members whose highest-authority role ties or outranks
+  // that rank (lower rank number = more authority) — callers pass their own
+  // rank so a search never surfaces someone they couldn't actually assign.
+  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number; max_rank?: number }) => {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set('q', params.q)
+    if (params.role_id !== undefined) qs.set('role_id', String(params.role_id))
+    if (params.exclude_role_id !== undefined) qs.set('exclude_role_id', String(params.exclude_role_id))
+    if (params.max_rank !== undefined) qs.set('max_rank', String(params.max_rank))
+    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/search/?${qs.toString()}`)
   },
+}
+
+// -------------------------------------------------------------------------
+// Tournament Roles — nested under /tournaments/{id}/roles/
+// -------------------------------------------------------------------------
+// Matches ALL_PERMISSIONS in app/core/tournament/permissions.py
+export type Permission =
+  | 'manage_tournament'
+  | 'manage_roles'
+  | 'manage_members'
+  | 'manage_events'
+  | 'manage_invites'
+
+export const ALL_PERMISSIONS: Permission[] = [
+  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites',
+]
+
+export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
+  manage_tournament: {
+    label: 'Manage Tournament',
+    description: 'Edit tournament settings and view the audit log.',
+  },
+  manage_roles: {
+    label: 'Manage Roles',
+    description: 'Create, edit, and delete role definitions, and reorder rank.',
+  },
+  manage_members: {
+    label: 'Manage Members',
+    description: 'View and manage the member roster, and assign roles to members.',
+  },
+  manage_events: {
+    label: 'Manage Events',
+    description: 'Create and manage events, assign events to buildings, add event shifts, and manage event start and end times.',
+  },
+  manage_invites: {
+    label: 'Manage Invites',
+    description: 'Create invite links to the tournament and manage existing ones.',
+  },
+}
+
+export interface RoleDefinition {
+  label:       string
+  permissions: Permission[]
+  rank:        number
+}
+
+// Matches RoleBulkReorder — final ranks are computed client-side by the
+// drag-and-drop preview, the backend only rank-bound checks and writes them.
+export interface RoleRankAssignment {
+  role_id: number
+  rank:    number
+}
+
+export const rolesApi = {
+  list: (tournamentId: number) =>
+    api.get<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/`),
+  create: (tournamentId: number, body: RoleDefinition) =>
+    api.post<RoleWithMemberCount>(`/tournaments/${tournamentId}/roles/`, body),
+  update: (tournamentId: number, id: number, body: Partial<RoleDefinition>) =>
+    api.patch<RoleWithMemberCount>(`/tournaments/${tournamentId}/roles/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/roles/${id}/`),
+  applyTemplate: (tournamentId: number) =>
+    api.post<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/apply-template/`, {}),
+  reorderBulk: (tournamentId: number, roles: RoleRankAssignment[]) =>
+    api.patch<RoleWithMemberCount[]>(`/tournaments/${tournamentId}/roles/reorder-bulk/`, { roles }),
+}
+
+// -------------------------------------------------------------------------
+// Invites — nested under /tournaments/{id}/join-codes/ (backend route name
+// unchanged; "invite" is the frontend-facing term)
+// -------------------------------------------------------------------------
+export interface Invite {
+  id:         number
+  code:       string
+  label:      string | null
+  expires_at: string | null
+  created_at: string
+  use_count:  number
+  creator:    MembershipSlim | UserSlim
+}
+
+export interface InviteCreate {
+  label?:            string | null
+  expires_in_hours?: number | null
+}
+
+export interface InviteUpdate {
+  label?:     string | null
+  add_hours?: number | null
+}
+
+export const invitesApi = {
+  list: (tournamentId: number) =>
+    api.get<Invite[]>(`/tournaments/${tournamentId}/join-codes/`),
+  create: (tournamentId: number, body: InviteCreate) =>
+    api.post<Invite>(`/tournaments/${tournamentId}/join-codes/`, body),
+  update: (tournamentId: number, id: number, body: InviteUpdate) =>
+    api.patch<Invite>(`/tournaments/${tournamentId}/join-codes/${id}/`, body),
+  // Deactivates the invite (one-way) — does not delete the row, history stays visible via GET.
+  deactivate: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/join-codes/${id}/`),
+}
+
+// -------------------------------------------------------------------------
+// Staff invites — /tournaments/{id}/staff-invites/. Sends one email per
+// address pointing at an existing invite's join link. join_code_id must
+// already exist — if the caller wants a brand-new invite, create it via
+// invitesApi.create first and pass the resulting id here.
+// -------------------------------------------------------------------------
+export interface StaffInviteCreate {
+  join_code_id: number
+  emails:       string[]
+}
+
+export interface StaffInviteResponse {
+  join_code: Invite
+  sent:      string[]
+  failed:    string[]
+}
+
+export const staffInvitesApi = {
+  send: (tournamentId: number, body: StaffInviteCreate) =>
+    api.post<StaffInviteResponse>(`/tournaments/${tournamentId}/staff-invites/`, body),
+}
+
+// -------------------------------------------------------------------------
+// Audit log — /tournaments/{id}/audit-log/. Keyset-paginated (before_id/
+// limit, not page=) — pass the response's next_before_id back for the next
+// page; null means no more results.
+// -------------------------------------------------------------------------
+export interface AuditLogEntry {
+  id:            number
+  tournament_id: number
+  action:        string
+  target_type:   string | null
+  target_id:     number | null
+  extra_data:    Record<string, unknown> | null
+  created_at:    string
+  // The actor's membership in this tournament — falls back to the bare user
+  // when they have none (e.g. a site admin acting without ever joining).
+  actor:         MembershipSlim | UserSlim
+  // Current role state — populated only when target_type === "role" and the
+  // role still exists (null for role_deleted, and for role_updated's
+  // bulk-reorder variant, which has no single target_id).
+  role:          Role | null
+}
+
+export interface AuditLogPage {
+  items:          AuditLogEntry[]
+  next_before_id: number | null
+}
+
+export interface AuditLogActor {
+  actor: MembershipSlim | UserSlim
+  // Total entries this actor has in this tournament's log — sorted
+  // most-active first by the backend, feeds the "Filter by User" dropdown.
+  count: number
+}
+
+export interface AuditLogParams {
+  limit?:       number
+  before_id?:   number
+  action?:      string
+  target_type?: string
+  target_id?:   number
+  actor_id?:    number
+  since?:       string
+  until?:       string
+}
+
+export const auditLogApi = {
+  list: (tournamentId: number, params: AuditLogParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.limit !== undefined) qs.set('limit', String(params.limit))
+    if (params.before_id !== undefined) qs.set('before_id', String(params.before_id))
+    if (params.action) qs.set('action', params.action)
+    if (params.target_type) qs.set('target_type', params.target_type)
+    if (params.target_id !== undefined) qs.set('target_id', String(params.target_id))
+    if (params.actor_id !== undefined) qs.set('actor_id', String(params.actor_id))
+    if (params.since) qs.set('since', params.since)
+    if (params.until) qs.set('until', params.until)
+    return api.get<AuditLogPage>(`/tournaments/${tournamentId}/audit-log/?${qs.toString()}`)
+  },
+  actors: (tournamentId: number) =>
+    api.get<AuditLogActor[]>(`/tournaments/${tournamentId}/audit-log/actors/`),
+}
+
+// -------------------------------------------------------------------------
+// Setup checklist — /tournaments/{id}/setup-checklist/
+// -------------------------------------------------------------------------
+export interface SetupChecklistItem {
+  item_key: string
+  label:    string
+  status:   'not_started' | 'complete'
+}
+
+export interface SetupChecklistResponse {
+  items:           SetupChecklistItem[]
+  completed_count: number
+  total_count:     number
+}
+
+export const setupChecklistApi = {
+  get: (tournamentId: number) =>
+    api.get<SetupChecklistResponse>(`/tournaments/${tournamentId}/setup-checklist/`),
+}
+
+// -------------------------------------------------------------------------
+// Join — single redemption entry point shared by tournament & chapter codes
+// -------------------------------------------------------------------------
+export interface JoinRedeemResponse {
+  type:          'tournament' | 'chapter'
+  target_id:     number
+  membership_id: number
+}
+
+// GET /join/preview/ — discriminated on `type`, mirrors the backend's
+// JoinPreviewTournament/JoinPreviewChapter split.
+export interface JoinPreviewTournament {
+  type:         'tournament'
+  target_id:    number
+  name:         string
+  short_name:   string | null
+  start_date:   string
+  end_date:     string
+  university:   University | null
+  location:     string | null
+  state:        string
+  level:        string
+  division:     string[]
+  is_verified:  boolean
+}
+
+export interface JoinPreviewChapter {
+  type:      'chapter'
+  target_id: number
+}
+
+export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter
+
+export const joinApi = {
+  redeem: (code: string) =>
+    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {}),
+  preview: (code: string) =>
+    api.get<JoinPreviewResponse>(`/join/preview/?code=${encodeURIComponent(code)}`),
 }
 
 // -------------------------------------------------------------------------
@@ -655,11 +1008,7 @@ export const sheetsApi = {
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<{ user?: { email?: string } }[]>(
-      `/tournaments/${tournamentId}/memberships/`
-    )
-    return memberships
-      .map((m) => m.user?.email)
-      .filter((e): e is string => Boolean(e))
+    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
+    return memberships.map((m) => m.user.email)
   },
 }

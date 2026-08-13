@@ -2,6 +2,7 @@
 
 import { ImportSummary, RuleDiff, FieldDiff, describeRule } from '@/lib/importMappings'
 import { Button } from '@/components/ui/Button'
+import { Modal } from '@/components/ui/Modal'
 
 interface ImportSummaryModalProps {
   summary: ImportSummary
@@ -220,61 +221,53 @@ export function ImportSummaryModal({ summary, onClose }: ImportSummaryModalProps
   const { updated, unchanged, notInSheet, notInFile } = summary
 
   return (
-    <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={onClose}
-    >
-      <div
-        style={{ background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-lg)', padding: '28px', width: 720, maxWidth: 'calc(100vw - 32px)', maxHeight: '82vh', display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h2 style={{ fontFamily: 'Georgia, serif', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '4px', flexShrink: 0 }}>
-          Import Summary
-        </h2>
-        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '20px', flexShrink: 0 }}>
-          {updated.length} updated · {unchanged} unchanged · {notInSheet.length} ignored · {notInFile.length} untouched
-        </p>
+    <Modal onClose={onClose} width={720} contentStyle={{ maxHeight: '82vh', display: 'flex', flexDirection: 'column' }}>
+      <h2 style={{ fontFamily: 'Georgia, serif', fontSize: '22px', color: 'var(--color-text-primary)', marginBottom: '4px', flexShrink: 0 }}>
+        Import Summary
+      </h2>
+      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)', marginBottom: '20px', flexShrink: 0 }}>
+        {updated.length} updated · {unchanged} unchanged · {notInSheet.length} ignored · {notInFile.length} untouched
+      </p>
 
-        <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {updated.length > 0 && (
-            <Section title={`Updated (${updated.length})`} color="var(--color-text-primary)">
-              {updated.map((entry) => <UpdatedRowCard key={entry.header} entry={entry} />)}
-            </Section>
-          )}
-          {unchanged > 0 && (
-            <Section title={`Unchanged (${unchanged})`} color="var(--color-text-secondary)">
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                {unchanged} column{unchanged !== 1 ? 's' : ''} matched the import file exactly — no changes applied.
-              </p>
-            </Section>
-          )}
-          {notInFile.length > 0 && (
-            <Section title={`Not in file — untouched (${notInFile.length})`} color="var(--color-text-secondary)">
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
-                These sheet columns weren&apos;t in the import file — their mappings were left as-is.
-              </p>
-              <TagList items={notInFile} />
-            </Section>
-          )}
-          {notInSheet.length > 0 && (
-            <Section title={`Not in sheet — ignored (${notInSheet.length})`} color="var(--color-text-secondary)">
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
-                These headers were in the import file but don&apos;t exist in the current sheet — they were ignored.
-              </p>
-              <TagList items={notInSheet} />
-            </Section>
-          )}
-          {updated.length === 0 && notInSheet.length === 0 && notInFile.length === 0 && (
+      <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
+        {updated.length > 0 && (
+          <Section title={`Updated (${updated.length})`} color="var(--color-text-primary)">
+            {updated.map((entry) => <UpdatedRowCard key={entry.header} entry={entry} />)}
+          </Section>
+        )}
+        {unchanged > 0 && (
+          <Section title={`Unchanged (${unchanged})`} color="var(--color-text-secondary)">
             <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-              All columns matched and no changes were needed.
+              {unchanged} column{unchanged !== 1 ? 's' : ''} matched the import file exactly — no changes applied.
             </p>
-          )}
-        </div>
-
-        <div style={{ paddingTop: '20px', flexShrink: 0 }}>
-          <Button variant="secondary" size="md" onClick={onClose}>Close</Button>
-        </div>
+          </Section>
+        )}
+        {notInFile.length > 0 && (
+          <Section title={`Not in file — untouched (${notInFile.length})`} color="var(--color-text-secondary)">
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+              These sheet columns weren&apos;t in the import file — their mappings were left as-is.
+            </p>
+            <TagList items={notInFile} />
+          </Section>
+        )}
+        {notInSheet.length > 0 && (
+          <Section title={`Not in sheet — ignored (${notInSheet.length})`} color="var(--color-text-secondary)">
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+              These headers were in the import file but don&apos;t exist in the current sheet — they were ignored.
+            </p>
+            <TagList items={notInSheet} />
+          </Section>
+        )}
+        {updated.length === 0 && notInSheet.length === 0 && notInFile.length === 0 && (
+          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+            All columns matched and no changes were needed.
+          </p>
+        )}
       </div>
-    </div>
+
+      <div style={{ paddingTop: '20px', flexShrink: 0 }}>
+        <Button variant="secondary" size="md" onClick={onClose}>Close</Button>
+      </div>
+    </Modal>
   )
 }

@@ -354,10 +354,9 @@ export default function ProfileEditPage() {
           <ProfileQuestion question="Have you competed in Science Olympiad before?">
             <div>
               <YesNoField
-                name="competed"
                 value={effectiveHasCompetitionExp ? true : (draft.has_competition_experience ?? null)}
                 onChange={(val) => setDraft(d => ({ ...d, has_competition_experience: val }))}
-                disabled={competitionLocked}
+                locked={competitionLocked}
               />
               {competitionLocked && (
                 <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -383,10 +382,9 @@ export default function ProfileEditPage() {
           <ProfileQuestion question="Have you volunteered for Science Olympiad before?">
             <div>
               <YesNoField
-                name="volunteered"
                 value={effectiveHasVolunteerExp ? true : (draft.has_volunteer_experience ?? null)}
                 onChange={(val) => setDraft(d => ({ ...d, has_volunteer_experience: val }))}
-                disabled={volunteerLocked}
+                locked={volunteerLocked}
               />
               {volunteerLocked && (
                 <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "6px" }}>
@@ -418,7 +416,6 @@ export default function ProfileEditPage() {
 
           <ProfileQuestion question="Do you have any dietary restrictions?">
             <YesNoField
-              name="dietary"
               value={hasDietary}
               onChange={(val) => {
                 setHasDietary(val);

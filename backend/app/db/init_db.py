@@ -26,16 +26,18 @@ def seed_dev_data(db: Session) -> None:
     Seed dev database with:
     - 1 admin account  (role="admin")
     - 1 regular user account  (role="user", tournament_director membership)
-    - 1 sample tournament owned by the regular user
-    - TD membership for the regular user (positions=["tournament_director"])
-    - Volunteer membership for the admin (positions=["event_supervisor"])
+    - 1 sample tournament owned by the regular user, with DEFAULT_ROLES populated
+    - TD membership for the regular user (holds the tournament_director role)
+    - Volunteer membership for the admin (holds the volunteer role)
       — demonstrates that admin can also hold a per-tournament membership
 
     Idempotent — skips if admin already exists.
     """
-    from app.models.models import TournamentMembership, Tournament, User
+    from app.models.models import (
+        Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole, University, User,
+    )
     from app.core.auth import hash_password
-    from app.core.permissions import DEFAULT_POSITIONS
+    from app.core.tournament.permissions import DEFAULT_ROLES
     from datetime import datetime
 
     # Skip if already seeded
@@ -69,52 +71,55 @@ def seed_dev_data(db: Session) -> None:
     db.flush()  # get IDs before creating tournament + memberships
 
     # Sample tournament owned by the regular user
+    usc = db.query(University).filter(University.abbreviation == "USC").first()
     tournament = Tournament(
-        name="2026 National Tournament @ USC",
+        name="National Tournament",
         start_date=datetime(2026, 5, 21, 8, 0),
         end_date=datetime(2026, 5, 23, 18, 0),
-        location="University of Southern California",
+        university_id=usc.id,
+        state="Southern California",
+        level="nationals",
+        division=["B", "C"],
         owner_id=td.id,
-        blocks=[
-            {"number": 1, "label": "Block 1", "date": "2026-05-23", "start": "08:00", "end": "09:00"},
-            {"number": 2, "label": "Block 2", "date": "2026-05-23", "start": "09:15", "end": "10:15"},
-            {"number": 3, "label": "Block 3", "date": "2026-05-23", "start": "10:30", "end": "11:30"},
-            {"number": 4, "label": "Block 4", "date": "2026-05-23", "start": "12:30", "end": "13:30"},
-            {"number": 5, "label": "Block 5", "date": "2026-05-23", "start": "13:45", "end": "14:45"},
-            {"number": 6, "label": "Block 6", "date": "2026-05-23", "start": "15:00", "end": "16:00"},
-            {"number": 7, "label": "Scoring",  "date": "2026-05-23", "start": "16:15", "end": "17:15"},
-            {"number": 8, "label": "Awards",   "date": "2026-05-23", "start": "17:30", "end": "18:30"},
-        ],
-        volunteer_schema={
-            "custom_fields": [],
-            "positions": DEFAULT_POSITIONS,
-        },
     )
     db.add(tournament)
-    db.flush()  # get tournament.id before creating memberships
+    db.flush()  # get tournament.id before creating roles/memberships
 
-    # TD membership for the regular user — full manage_tournament access
+    role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
+    db.add_all(role_rows)
+    db.flush()  # get role ids
+    roles_by_label = {r.label: r for r in role_rows}
+
+    # TD membership for the regular user — holds the tournament_director role
     td_membership = TournamentMembership(
         user_id=td.id,
         tournament_id=tournament.id,
-        positions=["tournament_director"],
         status="confirmed",
+        source="manual",
     )
     db.add(td_membership)
+    db.flush()
+    db.add(TournamentMembershipRole(
+        membership_id=td_membership.id, role_id=roles_by_label["Tournament Director"].id,
+    ))
 
     # Volunteer membership for admin — demonstrates cross-role scenario:
     # admin has site-wide access AND a volunteer-level membership here
     admin_membership = TournamentMembership(
         user_id=admin.id,
         tournament_id=tournament.id,
-        positions=["event_supervisor"],
         status="confirmed",
+        source="manual",
     )
     db.add(admin_membership)
+    db.flush()
+    db.add(TournamentMembershipRole(
+        membership_id=admin_membership.id, role_id=roles_by_label["Volunteer"].id,
+    ))
 
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, event_supervisor in sample tournament)")
+    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin, volunteer in sample tournament)")
     print("✓ Seeded: td@nexus.dev / td1234  (role=user, tournament_director in sample tournament)")
     print(f"✓ Seeded tournament: '{tournament.name}'")
 

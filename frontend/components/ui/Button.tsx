@@ -10,6 +10,8 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   size?:        Size
   loading?:     boolean
   fullWidth?:   boolean
+  /** Square button sized to its height, for a lone icon with no label. */
+  iconOnly?:    boolean
   /**
    * When true (default), the button applies a subtle hover background shift.
    * Set to false to suppress hover styling — useful when the parent manages
@@ -80,6 +82,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       size = 'md',
       loading,
       fullWidth,
+      iconOnly,
       interactive = true,
       style,
       children,
@@ -103,6 +106,10 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             ? { borderColor: variantHoverBorderColor[variant] }
             : {}),
         }
+      : {}
+
+    const iconOnlyOverrides: React.CSSProperties = iconOnly
+      ? { width: sizeStyles[size].height, padding: 0, gap: 0 }
       : {}
 
     return (
@@ -132,6 +139,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           ...variantStyles[variant],
           ...sizeStyles[size],
           ...hoverOverrides,
+          ...iconOnlyOverrides,
           ...style,
         }}
         {...props}
@@ -147,7 +155,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             animation:      'btn-spin 600ms linear infinite',
           }} />
         )}
-        {children}
+        {(!loading || !iconOnly) && children}
         <style>{`@keyframes btn-spin { to { transform: rotate(360deg); } }`}</style>
       </button>
     )

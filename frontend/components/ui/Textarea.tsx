@@ -28,9 +28,10 @@ const FONT_MAP: Record<InputFont, string> = {
   serif: 'var(--font-serif)',
 }
 
+// sm matches Input/Button's 28px — same size name, same height everywhere.
 const SIZE_MAP: Record<InputSize, { height?: string; padding: string; fontSize: string }> = {
   xs: { height: '26px', padding: '3px 6px', fontSize: '11px' },
-  sm: { height: '32px', padding: '6px 10px', fontSize: '13px' },
+  sm: { height: '28px', padding: '5px 10px', fontSize: '13px' },
   md: { padding: '16px', fontSize: '14px' },
 }
 

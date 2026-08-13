@@ -61,6 +61,9 @@ class UserSlimResponse(BaseModel):
     phone: Optional[str] = None
     pronouns: Optional[str] = None
 
+    created_at: datetime
+    updated_at: datetime
+
     model_config = {"from_attributes": True}
 
 
@@ -68,9 +71,6 @@ class AdminUserSlimResponse(UserSlimResponse):
     email_verified: bool
     role: ROLE
     status: USER_STATUS
-
-    created_at: datetime
-    updated_at: datetime
 
 
 class UserMeSlimResponse(AdminUserSlimResponse):

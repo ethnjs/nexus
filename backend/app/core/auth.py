@@ -6,7 +6,7 @@ Core auth utilities.
 - Verification tokens (signup verify / email change / password reset)
 - FastAPI dependencies: get_current_user, require_admin
 
-Tournament-level permission checking lives in app/core/permissions.py.
+Tournament-level permission checking lives in app/core/tournament/permissions.py.
 """
 
 import hashlib
@@ -388,7 +388,7 @@ def require_admin(current_user: User = Depends(get_current_user)) -> User:
     Used for site-wide admin operations (e.g. GET /users/, POST /auth/register).
 
     For tournament-level permission checks use require_permission() from
-    app.core.permissions instead.
+    app.core.tournament.permissions instead.
     """
     if current_user.role != "admin":
         raise HTTPException(

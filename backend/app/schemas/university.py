@@ -20,3 +20,5 @@ class UniversityResponse(BaseModel):
     name: str
     abbreviation: Optional[str] = None
     location: Optional[str] = None
+
+    model_config = {"from_attributes": True}

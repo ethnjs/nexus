@@ -1,20 +1,34 @@
 'use client'
 
-import { useState } from "react"
+import { Suspense, useState } from "react"
 import { authApi, ApiError } from "@/lib/api"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { IconCheckCircle } from "@/components/ui/Icons"
 import { Button } from "@/components/ui/Button"
 import { Modal } from "@/components/ui/Modal"
+import { Spinner } from "@/components/ui/Spinner"
 import { CredentialsForm } from "@/components/auth/CredentialsForm"
+import { safeRedirectPath } from "@/lib/auth"
 
 export default function SignUpPage() {
+  return (
+    <Suspense fallback={<Spinner size="lg" />}>
+      <SignUpContent />
+    </Suspense>
+  )
+}
+
+function SignUpContent() {
   const [email, setEmail] = useState('')
   const [loading, setLoading] = useState(false)
   const [formError, setFormError] = useState<string | undefined>(undefined)
   const [showVerifyModal, setShowVerifyModal] = useState(false)
 
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const redirect = safeRedirectPath(searchParams.get('redirect'))
+  const signInHref = redirect ? `/sign-in?redirect=${encodeURIComponent(redirect)}` : '/sign-in'
+  const onboardingHref = redirect ? `/onboarding?redirect=${encodeURIComponent(redirect)}` : '/onboarding'
 
   async function handleRegister(password: string) {
     setLoading(true)
@@ -40,7 +54,7 @@ export default function SignUpPage() {
             Your account was created successfully
           </h2>
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', marginBottom: '10px' }}>We sent a verification link to {email}</p>
-          <Button fullWidth onClick={() => { window.location.href = "/onboarding" }}>Got it!</Button>
+          <Button fullWidth onClick={() => { window.location.href = onboardingHref }}>Got it!</Button>
         </div>
       </Modal>
     )
@@ -72,7 +86,7 @@ export default function SignUpPage() {
         <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
           Already have an account?{' '}
         </span>
-        <button onClick={() => router.push('/sign-in')} className="link-subtle" style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600 }}>
+        <button onClick={() => router.push(signInHref)} className="link-subtle" style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 600 }}>
           Sign in
         </button>
       </div>

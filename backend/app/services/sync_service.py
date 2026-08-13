@@ -36,15 +36,18 @@ _USER_IDENTITY_FIELDS = frozenset({
     "first_name", "last_name", "email", "phone",
 })
  
-# TODO(temp): written to Membership until user self-management is implemented
-_MEMBERSHIP_PROFILE_FIELDS = frozenset({
+# Profile fields — also written to User. These columns only exist on User,
+# not TournamentMembership, so (unlike the TODO on the old version of this
+# comment once hoped) there's nowhere else for them to go until a real
+# per-tournament profile-snapshot column set is added to TournamentMembership.
+_PROFILE_FIELDS = frozenset({
     "shirt_size", "dietary_restriction",
     "university", "major", "employer",
     "student_status", "competition_exp", "volunteering_exp",
 })
- 
+
 # Union — all fields that come from VOLUNTEER_KNOWN_FIELDS user-side hints
-_USER_FIELDS = _USER_IDENTITY_FIELDS | _MEMBERSHIP_PROFILE_FIELDS
+_USER_FIELDS = _USER_IDENTITY_FIELDS | _PROFILE_FIELDS
 
 # ---------------------------------------------------------------------------
 # Name splitting
@@ -137,17 +140,10 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     if month is None or day is None:
         return None
 
-    for block in (tournament.blocks or []):
-        block_date_str = block.get("date", "")
-        if not block_date_str:
-            continue
-        try:
-            block_date = datetime.strptime(block_date_str, "%Y-%m-%d").date()
-            if block_date.month == month and block_date.day == day:
-                return block_date_str
-        except ValueError:
-            continue
-
+    # Tournament.blocks (fixed time-block JSON) was removed in the roles/
+    # permissions rebuild's old-system cutover — block-based date matching
+    # goes away with it. Falls back to guessing the year from start_date,
+    # same as it always did when no block matched.
     if tournament.start_date:
         year = tournament.start_date.year
         try:
@@ -569,14 +565,9 @@ def sync_sheet(
                     if extra_key and processed is not None:
                         extra_data[extra_key] = processed
 
-                elif field in _USER_IDENTITY_FIELDS:
+                elif field in _USER_FIELDS:
                     if processed is not None:
                         user_fields[field] = processed
-                
-                # TODO(temp): sync profile fields to membership instead of user
-                elif field in _MEMBERSHIP_PROFILE_FIELDS:
-                    if processed is not None:
-                        membership_fields[field] = processed
 
                 else:
                     if processed is not None:
@@ -636,6 +627,7 @@ def sync_sheet(
                     user_id=user.id,
                     tournament_id=tournament.id,
                     status="interested",
+                    source="manual",
                     availability=merged_availability,
                     extra_data=extra_data or None,
                     **membership_fields,

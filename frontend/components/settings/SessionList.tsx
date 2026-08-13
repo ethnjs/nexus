@@ -5,7 +5,7 @@ import { usersApi, UserSession, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
-import { parseUserAgent, formatRelativeTime } from "@/lib/sessionFormat";
+import { parseUserAgent, formatRelativeTime } from "@/lib/timeFormat";
 
 export function SessionList() {
   const [sessions, setSessions] = useState<UserSession[] | null>(null);

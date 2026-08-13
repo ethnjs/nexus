@@ -25,12 +25,17 @@ const AuthContext = createContext<AuthState>({
 const PROTECTED_PREFIXES = ['/dashboard']
 
 // Routes reachable without a completed onboarding — public/pre-session pages
-// (no session yet, so is_onboarding_complete doesn't apply) plus onboarding
-// itself.
+// plus onboarding itself. '/' and '/sign-in' aren't here — proxy.ts's
+// AUTH_ROUTES already redirects an authenticated visit to those server-side.
+// '/sign-up' still needs it: registration logs the user in without
+// navigating away (the verify-email modal), which proxy.ts never sees.
+// '/join' needs to show the invite (with a "finish onboarding first" prompt
+// in place of the join button) rather than bouncing straight to /onboarding
+// before the visitor ever sees it.
 const ONBOARDING_EXEMPT_ROUTES = [
-  '/', '/sign-in', '/sign-up', '/verify-email', '/forgot-password',
+  '/sign-up', '/verify-email', '/forgot-password',
   '/reset-password', '/confirm-email-change', '/account-setup',
-  '/revert-email-change', '/onboarding',
+  '/revert-email-change', '/onboarding', '/join',
 ]
 
 // -------------------------------------------------------------------------

@@ -8,34 +8,13 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { tournamentsApi } from "./api";
-
-export interface Tournament {
-  id: number;
-  name: string;
-  location: string | null;
-  start_date: string | null;
-  end_date: string | null;
-  blocks: Array<{
-    number: number;
-    label: string;
-    date: string;
-    start: string;
-    end: string;
-  }>;
-  volunteer_schema: {
-    custom_fields: Array<{ key: string; label: string; type: string }>;
-    positions: Array<{ key: string; label: string; permissions: string[] }>;
-  };
-  owner_id: number;
-  created_at: string;
-  updated_at: string;
-}
+import { tournamentsApi, Tournament } from "./api";
 
 interface TournamentContextValue {
   tournaments: Tournament[];
   selectedTournament: Tournament | null;
   setSelectedTournament: (t: Tournament | null) => void;
+  isArchived: boolean;
   loading: boolean;
   refresh: () => Promise<void>;
 }
@@ -95,6 +74,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         tournaments,
         selectedTournament,
         setSelectedTournament,
+        isArchived: !!selectedTournament?.is_archived,
         loading,
         refresh,
       }}

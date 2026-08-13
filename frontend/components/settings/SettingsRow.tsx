@@ -1,20 +1,22 @@
-import { ReactNode } from "react";
+import { CSSProperties, ReactNode } from "react";
+import { Card } from "@/components/ui/Card";
 
 interface SettingsRowProps {
-  label:    string;
-  helper?:  string;
-  children: ReactNode;
-  last?:    boolean;
+  label:        ReactNode;
+  helper?:      string;
+  children:     ReactNode;
+  last?:        boolean;
+  contentStyle?: CSSProperties;
 }
 
-export function SettingsRow({ label, helper, children, last = false }: SettingsRowProps) {
+export function SettingsRow({ label, helper, children, last = false, contentStyle }: SettingsRowProps) {
   return (
     <div style={{
       display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "24px",
       padding: "20px 0",
       borderBottom: last ? "none" : "1px solid var(--color-border)",
     }}>
-      <div style={{ flexShrink: 0, maxWidth: "220px", paddingTop: "10px" }}>
+      <div style={{ flexShrink: 0, maxWidth: "220px"}}>
         <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, color: "var(--color-text-primary)" }}>
           {label}
         </div>
@@ -24,7 +26,10 @@ export function SettingsRow({ label, helper, children, last = false }: SettingsR
           </div>
         )}
       </div>
-      <div style={{ flex: 1, maxWidth: "360px" }}>
+      {/* Relative, not a fixed px cap — scales with whatever layout wraps this
+          row (tournament settings today, a narrower global account settings
+          layout later) instead of being tuned to one specific container width. */}
+      <div style={{ flex: 1, maxWidth: "60%", ...contentStyle }}>
         {children}
       </div>
     </div>
@@ -42,14 +47,7 @@ export function SettingsSection({ title, children, variant = "normal" }: Setting
   const accentColor = variant === "danger" ? "var(--color-danger)" : "var(--color-text-tertiary)";
 
   return (
-    <div style={{
-      marginBottom: "24px",
-      background: variant === "danger" ? "var(--color-danger-subtle)" : "var(--color-surface)",
-      border: `1px solid ${variant === "danger" ? "var(--color-danger)" : "var(--color-border)"}`,
-      borderRadius: "var(--radius-lg)",
-      boxShadow: "var(--shadow-sm)",
-      padding: "8px 28px",
-    }}>
+    <Card radius="lg" variant={variant} style={{ marginBottom: "24px", padding: "8px 28px" }}>
       {title && (
         <div style={{
           fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
@@ -60,6 +58,6 @@ export function SettingsSection({ title, children, variant = "normal" }: Setting
         </div>
       )}
       <div>{children}</div>
-    </div>
+    </Card>
   );
 }

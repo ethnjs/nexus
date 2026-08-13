@@ -68,6 +68,17 @@ export function IconSheets({ size = 18, ...props }: IconProps) {
   );
 }
 
+export function IconMembers({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <circle cx="7" cy="7" r="3" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M2 17c0-3 2.2-5 5-5s5 2 5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="14.5" cy="7.5" r="2.25" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M12.5 12.3c2.4 0.2 4.5 2.1 4.5 4.7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconSettings({ size = 18, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
@@ -84,6 +95,17 @@ export function IconShield({ size = 18, ...props }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
       <path d="M10 2l7 3v5c0 4.5-3 7.5-7 8-4-0.5-7-3.5-7-8V5l7-3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
       <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+export function IconUserShield({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M256 312C322.3 312 376 258.3 376 192C376 125.7 322.3 72 256 72C189.7 72 136 125.7 136 192C136 258.3 189.7 312 256 312zM226.3 368C127.8 368 48 447.8 48 546.3C48 562.7 61.3 576 77.7 576L329.2 576C293 533.4 272 478.5 272 420.4L272 389.3C272 382 273 374.8 274.9 368L226.3 368zM477.3 552.5L464 558.8L464 370.7L560 402.7L560 422.3C560 478.1 527.8 528.8 477.3 552.6zM453.9 323.5L341.9 360.8C328.8 365.2 320 377.4 320 391.2L320 422.3C320 496.7 363 564.4 430.2 596L448.7 604.7C453.5 606.9 458.7 608.1 463.9 608.1C469.1 608.1 474.4 606.9 479.1 604.7L497.6 596C565 564.3 608 496.6 608 422.2L608 391.1C608 377.3 599.2 365.1 586.1 360.7L474.1 323.4C467.5 321.2 460.4 321.2 453.9 323.4z"
+      />
     </svg>
   );
 }
@@ -150,6 +172,17 @@ export function IconEdit({ size = 14, ...props }: IconProps) {
   );
 }
 
+export function IconExpand({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={props.style} className={props.className}>
+      <path
+        d="M384 64C366.3 64 352 78.3 352 96C352 113.7 366.3 128 384 128L466.7 128L265.3 329.4C252.8 341.9 252.8 362.2 265.3 374.7C277.8 387.2 298.1 387.2 310.6 374.7L512 173.3L512 256C512 273.7 526.3 288 544 288C561.7 288 576 273.7 576 256L576 96C576 78.3 561.7 64 544 64L384 64zM144 160C99.8 160 64 195.8 64 240L64 496C64 540.2 99.8 576 144 576L400 576C444.2 576 480 540.2 480 496L480 416C480 398.3 465.7 384 448 384C430.3 384 416 398.3 416 416L416 496C416 504.8 408.8 512 400 512L144 512C135.2 512 128 504.8 128 496L128 240C128 231.2 135.2 224 144 224L224 224C241.7 224 256 209.7 256 192C256 174.3 241.7 160 224 160L144 160z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function IconTrash({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
@@ -170,6 +203,48 @@ export function IconDotsVertical({ size = 16, ...props }: IconProps) {
   );
 }
  
+export function IconLock({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconEye({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={props.style} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M320 96C239.2 96 174.5 132.8 127.4 176.6C80.6 220.1 49.3 272 34.4 307.7C31.1 315.6 31.1 324.4 34.4 332.3C49.3 368 80.6 420 127.4 463.4C174.5 507.1 239.2 544 320 544C400.8 544 465.5 507.2 512.6 463.4C559.4 419.9 590.7 368 605.6 332.3C608.9 324.4 608.9 315.6 605.6 307.7C590.7 272 559.4 220 512.6 176.6C465.5 132.9 400.8 96 320 96zM176 320C176 240.5 240.5 176 320 176C399.5 176 464 240.5 464 320C464 399.5 399.5 464 320 464C240.5 464 176 399.5 176 320zM320 256C320 291.3 291.3 320 256 320C244.5 320 233.7 317 224.3 311.6C223.3 322.5 224.2 333.7 227.2 344.8C240.9 396 293.6 426.4 344.8 412.7C396 399 426.4 346.3 412.7 295.1C400.5 249.4 357.2 220.3 311.6 224.3C316.9 233.6 320 244.4 320 256z"
+      />
+    </svg>
+  );
+}
+
+export function IconSearch({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M13.5 13.5l-2.8-2.8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+export function IconGripVertical({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
+      <circle cx="6" cy="3.5" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="3.5" r="1.1" fill="currentColor" />
+      <circle cx="6" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="8" r="1.1" fill="currentColor" />
+      <circle cx="6" cy="12.5" r="1.1" fill="currentColor" />
+      <circle cx="10" cy="12.5" r="1.1" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function IconExport({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
@@ -208,11 +283,11 @@ export function IconChevronDown({ size = 14, ...props }: IconProps) {
   );
 }
 
-export function IconChevronRight({ size = 14, expanded = false, ...props }: IconProps & { expanded?: boolean }) {
+export function IconChevronRight({ size = 14, ...props }: IconProps) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 14 14" fill="none"
-      style={{ flexShrink: 0, transition: "transform 0.2s ease", transform: expanded ? "rotate(180deg)" : "rotate(0deg)", ...props.style }}
+      style={{ flexShrink: 0, transition: "transform 0.2s ease", ...props.style }}
       className={props.className}
     >
       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -252,6 +327,14 @@ export function IconXCircle({ size = 16, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
       <path d="M320 576C178.6 576 64 461.4 64 320C64 178.6 178.6 64 320 64C461.4 64 576 178.6 576 320C576 461.4 461.4 576 320 576zM435.3 204.7C424.6 194 407.4 194 396.7 204.7L320 281.4L243.3 204.7C232.6 194 215.4 194 204.7 204.7C194 215.4 194 232.6 204.7 243.3L281.4 320L204.7 396.7C194 407.4 194 424.6 204.7 435.3C215.4 446 232.6 446 243.3 435.3L320 358.6L396.7 435.3C407.4 446 424.6 446 435.3 435.3C446 424.6 446 407.4 435.3 396.7L358.6 320L435.3 243.3C446 232.6 446 215.4 435.3 204.7z" />
+    </svg>
+  );
+}
+
+export function IconArchive({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M64 128C64 110.3 78.3 96 96 96L544 96C561.7 96 576 110.3 576 128L576 160C576 177.7 561.7 192 544 192L96 192C78.3 192 64 177.7 64 160L64 128zM96 240L544 240L544 480C544 515.3 515.3 544 480 544L160 544C124.7 544 96 515.3 96 480L96 240zM248 304C234.7 304 224 314.7 224 328C224 341.3 234.7 352 248 352L392 352C405.3 352 416 341.3 416 328C416 314.7 405.3 304 392 304L248 304z" />
     </svg>
   );
 }

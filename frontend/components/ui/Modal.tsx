@@ -1,15 +1,21 @@
 'use client'
 
-import { ReactNode, useEffect } from 'react'
+import { ReactNode, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
+
+type ModalVariant = 'normal' | 'danger'
 
 interface ModalProps {
   title?: string
   onClose: () => void
   children: ReactNode
   width?: number
+  closeOnOverlayClick?: boolean
+  variant?: ModalVariant
+  contentStyle?: React.CSSProperties
 }
 
-export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
+export function Modal({ title, onClose, children, width = 440, closeOnOverlayClick = true, variant = 'normal', contentStyle }: ModalProps) {
   // Close on Escape key
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -19,7 +25,17 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
     return () => document.removeEventListener('keydown', handleKey)
   }, [onClose])
 
-  return (
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => setMounted(true), [])
+
+  // Only close if both mousedown and mouseup landed on the overlay itself —
+  // otherwise dragging a text selection from an input out past the modal
+  // edge fires a click on the overlay and closes it mid-selection.
+  const mouseDownOnOverlay = useRef(false)
+
+  if (!mounted) return null
+
+  return createPortal(
     <div
       style={{
         position: 'fixed', inset: 0,
@@ -27,17 +43,21 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
         zIndex: 200,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}
-      onClick={onClose}
+      onMouseDown={(e) => { mouseDownOnOverlay.current = e.target === e.currentTarget }}
+      onClick={(e) => {
+        if (closeOnOverlayClick && mouseDownOnOverlay.current && e.target === e.currentTarget) onClose()
+      }}
     >
       <div
         style={{
-          background: 'var(--color-surface)',
-          border: '1px solid var(--color-border)',
+          background: variant === 'danger' ? 'var(--color-danger-subtle)' : 'var(--color-surface)',
+          border: variant === 'danger' ? '2px solid var(--color-danger)' : '1px solid var(--color-border)',
           borderRadius: 'var(--radius-lg)',
           padding: '28px',
           width,
           maxWidth: 'calc(100vw - 32px)',
           boxShadow: 'var(--shadow-lg)',
+          ...contentStyle,
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -45,14 +65,16 @@ export function Modal({ title, onClose, children, width = 440 }: ModalProps) {
           <h2 style={{
             fontFamily: 'var(--font-serif)',
             fontSize: '22px',
-            color: 'var(--color-text-primary)',
+            color: variant === 'danger' ? 'var(--color-danger)' : 'var(--color-text-primary)',
             marginBottom: '20px',
+            flexShrink: 0,
           }}>
             {title}
           </h2>
         )}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

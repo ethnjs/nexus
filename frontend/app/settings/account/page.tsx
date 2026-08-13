@@ -6,14 +6,15 @@ import { useAuth } from "@/lib/useAuth";
 import { usersApi, authApi, UserMeFull, EmailPendingChange, ApiError } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
 import { Tooltip } from "@/components/ui/Tooltip";
-import { validatePhone, validateDateOfBirth, formatPhone } from "@/lib/auth";
+import { IconInfo } from "@/components/ui/Icons";
+import { validatePhone, validateDateOfBirth, formatPhone, DATE_OF_BIRTH_DISCLAIMER } from "@/lib/auth";
 import { useFormattedInputChange } from "@/lib/useFormattedInput";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { SettingsRow, SettingsSection } from "@/components/settings/SettingsRow";
-import { SettingsPageHeading } from "@/components/settings/SettingsPageHeading";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { ChangeEmailModal } from "@/components/settings/ChangeEmailModal";
 import { DeactivateAccountModal } from "@/components/settings/DeactivateAccountModal";
 import { DeleteAccountModal } from "@/components/settings/DeleteAccountModal";
@@ -183,7 +184,7 @@ export default function AccountSettingsPage() {
 
   return (
     <div>
-      <SettingsPageHeading title="Account" />
+      <PageHeader heading="Account" />
 
       <SettingsSection>
         <SettingsRow label="First name">
@@ -260,7 +261,19 @@ export default function AccountSettingsPage() {
             error={errors.phone}
           />
         </SettingsRow>
-        <SettingsRow label="Date of birth" last>
+        <SettingsRow
+          label={
+            <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+              Date of birth
+              <Tooltip variant="info" message={DATE_OF_BIRTH_DISCLAIMER} showIcon={false} maxWidth={400}>
+                <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
+                  <IconInfo size={13} />
+                </span>
+              </Tooltip>
+            </span>
+          }
+          last
+        >
           <Input
             type="date"
             fullWidth
@@ -275,19 +288,24 @@ export default function AccountSettingsPage() {
       </SettingsSection>
 
       <SettingsSection title="Danger zone" variant="danger">
-        <SettingsRow label="Deactivate account" helper="Temporarily disable your account. Contact support to reactivate.">
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
-              Deactivate
-            </Button>
-          </div>
+        <SettingsRow
+          label="Deactivate account"
+          helper="Temporarily disable your account. Contact support to reactivate."
+          contentStyle={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}
+        >
+          <Button type="button" variant="danger" size="md" onClick={() => setShowDeactivateModal(true)}>
+            Deactivate
+          </Button>
         </SettingsRow>
-        <SettingsRow label="Delete account" helper="Permanently delete your account and all associated data. This cannot be undone." last>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}>
-            <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
-              Delete
-            </Button>
-          </div>
+        <SettingsRow
+          label="Delete account"
+          helper="Permanently delete your account and all associated data. This cannot be undone."
+          contentStyle={{ display: "flex", justifyContent: "flex-end", marginTop: "10px" }}
+          last
+        >
+          <Button type="button" variant="danger" size="md" onClick={() => setShowDeleteModal(true)}>
+            Delete
+          </Button>
         </SettingsRow>
       </SettingsSection>
 

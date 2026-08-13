@@ -353,22 +353,18 @@ export function CompetitionExperienceSpreadsheet({
               <div style={{ flex: 1, minWidth: 0 }}>
                 <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
               </div>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
+                iconOnly
                 onClick={() => addAnotherForSchoolBulk(i)}
                 disabled={addAnotherDisabled}
                 title="Add another event for this school"
-                style={{
-                  flexShrink: 0,
-                  width: "32px", height: "32px", borderRadius: "5px",
-                  border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: addAnotherDisabled ? "not-allowed" : "pointer",
-                  color: addAnotherDisabled ? "var(--color-text-tertiary)" : "var(--color-text-secondary)",
-                }}
+                style={{ flexShrink: 0 }}
               >
                 <IconPlus size={13} />
-              </button>
+              </Button>
             </div>
           ) : (
             <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
@@ -445,19 +441,17 @@ export function CompetitionExperienceSpreadsheet({
         </td>
         {editModeFull && (
           <td style={{ padding: "8px 2px", textAlign: "center", verticalAlign: "middle", borderBottom: isLastRow ? "none" : "1px solid var(--color-border)" }}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
               onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
               title="Remove"
-              style={{
-                width: "32px", height: "32px", borderRadius: "5px",
-                border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "var(--color-danger)",
-              }}
+              style={{ color: "var(--color-danger)" }}
             >
               <IconTrash size={13} />
-            </button>
+            </Button>
           </td>
         )}
       </tr>
@@ -598,12 +592,14 @@ export function VolunteerExperienceCompactEditor({ value, onChange, events }: Vo
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {value.map((row, i) => (
         <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <Input label="Tournament Name" type="text" value={row.tournament_name} onChange={e => updateRow(i, { tournament_name: e.target.value })} fullWidth />
+          <Input label="Tournament Name" type="text" charset="alpha" value={row.tournament_name} onChange={e => updateRow(i, { tournament_name: e.target.value })} fullWidth />
           <Input
             label="Year"
             type="text"
+            charset="numeric"
+            maxLength={4}
             value={row.year}
-            onChange={e => updateRow(i, { year: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+            onChange={e => updateRow(i, { year: e.target.value })}
             fullWidth
           />
           <Combobox
@@ -791,14 +787,16 @@ export function VolunteerExperienceSpreadsheet({
         <td style={cs}>
           <Input
             type="text"
+            charset="numeric"
+            maxLength={4}
             value={draft.year}
-            onChange={e => patch({ year: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+            onChange={e => patch({ year: e.target.value })}
             size="sm"
             fullWidth
           />
         </td>
         <td style={cs}>
-          <Input type="text" value={draft.tournament_name} onChange={e => patch({ tournament_name: e.target.value })} size="sm" fullWidth />
+          <Input type="text" charset="alpha" value={draft.tournament_name} onChange={e => patch({ tournament_name: e.target.value })} size="sm" fullWidth />
         </td>
         <td style={cs}>
           <Combobox
@@ -863,20 +861,17 @@ export function VolunteerExperienceSpreadsheet({
         </td>
         {editModeFull && (
           <td style={{ padding: "8px 2px", textAlign: "center", verticalAlign: "middle", borderBottom: isLastRow ? "none" : "1px solid var(--color-border)" }}>
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
+              iconOnly
               onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
               title="Remove"
-              style={{
-                width: "22px", height: "22px", borderRadius: "5px",
-                border: "1px solid var(--color-border)", background: "var(--color-surface)",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", color: "var(--color-danger)",
-                margin: "0 auto",
-              }}
+              style={{ color: "var(--color-danger)", margin: "0 auto" }}
             >
-              <IconTrash size={11} />
-            </button>
+              <IconTrash size={13} />
+            </Button>
           </td>
         )}
       </tr>
