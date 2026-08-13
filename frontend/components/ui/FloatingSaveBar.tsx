@@ -1,6 +1,7 @@
 'use client'
 
 import { Button } from "@/components/ui/Button"
+import { useBlockNavigation } from "@/lib/useUnsavedChanges"
 
 interface FloatingSaveBarProps {
   visible: boolean;
@@ -8,9 +9,15 @@ interface FloatingSaveBarProps {
   error?: string;
   onSave: () => void;
   onCancel: () => void;
+  /** Pathname prefix that counts as staying put — links under it navigate freely. */
+  stayWithin?: string;
 }
 
-export function FloatingSaveBar({ visible, saving, error, onSave, onCancel }: FloatingSaveBarProps) {
+export function FloatingSaveBar({ visible, saving, error, onSave, onCancel, stayWithin }: FloatingSaveBarProps) {
+  // Wherever this bar is shown for unsaved changes, leaving the page should
+  // prompt — no page-specific wiring required.
+  useBlockNavigation(visible, stayWithin);
+
   return (
     <div style={{
       position: "fixed", left: "50%", bottom: visible ? "24px" : "-80px",

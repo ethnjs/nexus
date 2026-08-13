@@ -3,7 +3,7 @@
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { DndContext } from "@dnd-kit/core";
-import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { rolesApi, ApiError, Permission, Role, RoleWithMemberCount } from "@/lib/api";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { defaultNewRoleLabel, isTempRole, isTempRoleId, nextBottomRank, rankChanges } from "@/lib/roles/roleReorder";
@@ -229,9 +229,9 @@ export default function RoleEditorPage() {
   }
 
   // Switching roles inside the editor is free (local state); leaving the
-  // editor entirely while dirty prompts.
+  // editor entirely while dirty prompts. FloatingSaveBar registers the guard
+  // itself (passed editorPath as stayWithin below).
   const { guard } = useUnsavedChanges();
-  useBlockNavigation(isDirty, editorPath);
 
   // Skips a separate "new role" form: adds an unsaved role to the list and
   // selects it, same as every other role. Nothing is POSTed until Save, so a
@@ -415,6 +415,7 @@ export default function RoleEditorPage() {
         error={error}
         onSave={handleSaveAll}
         onCancel={handleCancelAll}
+        stayWithin={editorPath}
       />
     </div>
   );
