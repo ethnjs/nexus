@@ -94,7 +94,6 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           <input
             ref={ref}
             id={inputId}
-            required={required}
             disabled={locked || disabled}
             inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
             onChange={handleChange}
