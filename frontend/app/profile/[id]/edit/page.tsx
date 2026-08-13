@@ -188,6 +188,13 @@ export default function ProfileEditPage() {
       return;
     }
 
+    const isStudent = draft.student_status === 'Undergraduate' || draft.student_status === 'Graduate';
+    if (isStudent && draft.university_name?.trim() && !draft.university_id) {
+      setErrors(er => ({ ...er, university: "Select a university from the list." }));
+      setSaving(false);
+      return;
+    }
+
     // Self-heal flags from actual row presence before sending
     const { university_name: _university_name, ...restDraft } = draft;
     const cleaned: Record<string, unknown> = {

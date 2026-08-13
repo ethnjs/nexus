@@ -177,11 +177,17 @@ function OnboardingContent() {
     const dobErr = validateDateOfBirth(profileData.date_of_birth ?? "");
     if (dobErr) ers.date_of_birth = dobErr;
 
+    const isStudent = profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate";
+    if (isStudent && profileData.university_name?.trim() && !profileData.university_id) {
+      ers.university = "Select a university from the list.";
+    }
+
     if (Object.keys(ers).length > 0) {
       setErrors((er) => ({ ...er, ...ers }));
       if (ers.first_name || ers.last_name) setState(STATE.NAME);
       else if (ers.phone) setState(STATE.PHONE);
-      else setState(STATE.DATE_OF_BIRTH);
+      else if (ers.date_of_birth) setState(STATE.DATE_OF_BIRTH);
+      else if (ers.university) setState(STATE.UNIVERSITY);
       return;
     }
 
