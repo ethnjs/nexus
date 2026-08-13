@@ -5,9 +5,8 @@ import {
   ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role,
   canonicalEventsApi, membershipsApi,
 } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
 import { formatDate } from "@/lib/timeFormat";
-import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
+import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
@@ -18,6 +17,7 @@ import { CompetitionExperienceSection } from "@/components/profile/sections/Comp
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { RolesCell } from "@/components/tournament/RolesCell";
+import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 
 interface MemberPanelProps {
   tournamentId: number;
@@ -105,16 +105,7 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canTouchRole
                   }}>
                     Join Method
                   </div>
-                  {full.source === "join_code" && full.join_code ? (
-                    <div>
-                      <Badge variant="default">Invite</Badge>
-                      <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
-                        {full.join_code.label ?? "Invite"} · invited by {personName(full.join_code.creator)}
-                      </p>
-                    </div>
-                  ) : (
-                    <Badge variant="default">{SOURCE_LABELS[full.source] ?? full.source}</Badge>
-                  )}
+                  <JoinMethodCell membership={full} />
                 </div>
               </div>
 

@@ -3,10 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration, formatDate } from "@/lib/timeFormat";
-import { SOURCE_LABELS, STATUS_VARIANT } from "@/lib/membershipDisplay";
+import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -17,11 +16,11 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { HoverCard } from "@/components/ui/HoverCard";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { RolesCell } from "@/components/tournament/RolesCell";
+import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { MemberPanel } from "@/components/tournament/MemberPanel";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
@@ -73,38 +72,6 @@ function DurationCell({ iso }: { iso: string }) {
         </span>
       </Tooltip>
     </span>
-  );
-}
-
-function JoinMethodCell({ membership }: { membership: MembershipSlim }) {
-  if (membership.source !== "join_code" || !membership.join_code) {
-    return (
-      <Badge variant="default" style={{ justifySelf: "center" }}>
-        {SOURCE_LABELS[membership.source] ?? membership.source}
-      </Badge>
-    );
-  }
-
-  const jc = membership.join_code;
-  return (
-    <HoverCard
-      style={{ justifySelf: "center" }}
-      content={
-        <>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-            {jc.label ?? "Invite"}
-          </p>
-          <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", marginTop: "2px" }}>
-            {jc.code}
-          </p>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
-            Invited by {personName(jc.creator)}
-          </p>
-        </>
-      }
-    >
-      <Badge variant="default">Invite</Badge>
-    </HoverCard>
   );
 }
 
@@ -163,7 +130,7 @@ function MemberRow({
       </span>
       <DurationCell iso={user.created_at} />
       <DurationCell iso={membership.created_at} />
-      <JoinMethodCell membership={membership} />
+      <JoinMethodCell membership={membership} style={{ justifySelf: "center" }} />
       <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
         {membership.status}
       </Badge>
