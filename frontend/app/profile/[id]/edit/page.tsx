@@ -169,12 +169,12 @@ export default function ProfileEditPage() {
 
     // Validate rows before saving anything
     if (!competitionRows.every(isCompetitionRowValid)) {
-      setSaveError("Every competition experience row needs a school and a matched event.");
+      setErrors(er => ({ ...er, competition_exp: "Every entry needs a school and a matched event." }));
       setSaving(false);
       return;
     }
     if (!volunteerRows.every(isVolunteerRowValid)) {
-      setSaveError("Every volunteer experience row needs a tournament name, a 4-digit year, and a role.");
+      setErrors(er => ({ ...er, volunteering_exp: "Every entry needs a tournament name, a 4-digit year, and a role." }));
       setSaving(false);
       return;
     }
@@ -384,6 +384,11 @@ export default function ProfileEditPage() {
                 onChange={setCompetitionRows}
                 events={events}
               />
+              {errors.competition_exp && (
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                  {errors.competition_exp}
+                </p>
+              )}
             </ProfileQuestion>
           )}
         </ProfileCard>
@@ -412,6 +417,11 @@ export default function ProfileEditPage() {
                 onChange={setVolunteerRows}
                 events={events}
               />
+              {errors.volunteering_exp && (
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                  {errors.volunteering_exp}
+                </p>
+              )}
             </ProfileQuestion>
           )}
         </ProfileCard>
