@@ -210,7 +210,7 @@ async def send_staff_invites(
 
     join_code = get_scoped_or_404(db, JoinCode, payload.join_code_id, tournament_id, "Join code")
 
-    join_url = f"{get_settings().frontend_url.rstrip('/')}/tournaments/join?code={join_code.code}"
+    join_url = f"{get_settings().frontend_url.rstrip('/')}/join?code={join_code.code}"
     failed = await send_staff_invite_emails(payload.emails, tournament_display_name(tournament), join_url)
     sent = [e for e in payload.emails if e not in failed]
 
