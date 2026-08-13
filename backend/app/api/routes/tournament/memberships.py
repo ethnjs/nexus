@@ -195,7 +195,7 @@ def get_membership(
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/me/ — self-service
 # Lets a volunteer update their own onboarding responses. Cannot touch
-# day-of logistics (schedule, notes) — that's manage_members-only.
+# day-of logistics (notes) — that's manage_members-only.
 # ---------------------------------------------------------------------------
 @router.patch("/me/", response_model=MembershipFullResponse)
 def update_my_membership(
@@ -225,7 +225,7 @@ def update_my_membership(
 
 # ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
-# Staff override — day-of logistics only (schedule, notes). Not onboarding
+# Staff override — day-of logistics only (notes). Not onboarding
 # data; that's self-service via PATCH .../me/.
 # ---------------------------------------------------------------------------
 @router.patch("/{membership_id}/", response_model=MembershipFullResponse)
@@ -243,8 +243,6 @@ def update_membership(
     validate_member_target(current_user, tournament, m, db)
 
     update_data = payload.model_dump(exclude_none=True)
-    if "schedule" in update_data and payload.schedule:
-        update_data["schedule"] = [s.model_dump() for s in payload.schedule]
 
     for field, value in update_data.items():
         setattr(m, field, value)

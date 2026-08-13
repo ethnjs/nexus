@@ -16,12 +16,6 @@ class AvailabilitySlot(BaseModel):
     end: str    # "HH:MM"
 
 
-class ScheduleSlot(BaseModel):
-    """A single day-of block assignment."""
-    block: int   # block number
-    duty: str    # role label or free string, e.g. "Event Supervisor"
-
-
 class MembershipMeUpdate(BaseModel):
     """Self-service update — the fields a volunteer fills out during onboarding.
 
@@ -36,7 +30,6 @@ class MembershipMeUpdate(BaseModel):
 
 class MembershipCoordinatorUpdate(BaseModel):
     """manage_members override — day-of logistics only, not onboarding data."""
-    schedule: list[ScheduleSlot] | None = None
     notes: Optional[str] = None
 
 
@@ -105,8 +98,6 @@ class MembershipFullResponse(_MembershipRolesMixin):
     """Detail view — the expanded side panel for a single member."""
     id: int
     tournament_id: int
-    assigned_event_id: int | None = None
-    schedule: list[ScheduleSlot] | None = None
     status: str
     role_preference: list[str] | None = None
     event_preference: list[str] | None = None

@@ -305,10 +305,6 @@ class TournamentMembership(Base):
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
-    assigned_event_id = Column(
-        Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
-    )
-
     source = Column(String(32), nullable=False)  # "join_code" | "public" | "manual"
 
     # Join code redeemed, if source=="join_code". SET NULL on code delete so
@@ -316,8 +312,6 @@ class TournamentMembership(Base):
     join_code_id = Column(
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
     )
-
-    schedule = Column(JSON, nullable=True)  # [{block, duty}, ...] — day-of assignments
 
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
@@ -340,7 +334,6 @@ class TournamentMembership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("TournamentEvent", back_populates="memberships")
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
     join_code = relationship("JoinCode")
 
@@ -493,7 +486,6 @@ class TournamentEvent(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
-    memberships = relationship("TournamentMembership", back_populates="assigned_event")
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
