@@ -67,6 +67,8 @@ export default function GeneralSettingsPage() {
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
+  const [stateText, setStateText] = useState("");
+  const [levelText, setLevelText] = useState("");
   const [universities, setUniversities] = useState<University[]>([]);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
@@ -79,7 +81,11 @@ export default function GeneralSettingsPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
 
   useEffect(() => {
-    if (selectedTournament) setDraft(toDraft(selectedTournament));
+    if (selectedTournament) {
+      setDraft(toDraft(selectedTournament));
+      setStateText(selectedTournament.state);
+      setLevelText(LEVEL_OPTIONS.find((o) => o.value === selectedTournament.level)?.label ?? "");
+    }
   }, [selectedTournament]);
 
   useEffect(() => {
@@ -106,7 +112,11 @@ export default function GeneralSettingsPage() {
   }
 
   function handleCancel() {
-    if (selectedTournament) setDraft(toDraft(selectedTournament));
+    if (selectedTournament) {
+      setDraft(toDraft(selectedTournament));
+      setStateText(selectedTournament.state);
+      setLevelText(LEVEL_OPTIONS.find((o) => o.value === selectedTournament.level)?.label ?? "");
+    }
     setErrors({});
     setSaveError(undefined);
   }
@@ -225,8 +235,8 @@ export default function GeneralSettingsPage() {
               getId={(s) => s}
               getLabel={(s) => s}
               allowFreeText={false}
-              value={draft.state}
-              onChange={(_, matched) => setDraft((d) => d && { ...d, state: matched ?? "" })}
+              value={stateText}
+              onChange={(text, matched) => { setStateText(text); setDraft((d) => d && { ...d, state: matched ?? "" }); }}
               locked={isArchived}
             />
           </SettingsRow>
@@ -236,8 +246,8 @@ export default function GeneralSettingsPage() {
               getId={(o) => o.value}
               getLabel={(o) => o.label}
               allowFreeText={false}
-              value={LEVEL_OPTIONS.find((o) => o.value === draft.level)?.label ?? ""}
-              onChange={(_, matched) => setDraft((d) => d && { ...d, level: matched?.value ?? "" })}
+              value={levelText}
+              onChange={(text, matched) => { setLevelText(text); setDraft((d) => d && { ...d, level: matched?.value ?? "" }); }}
               locked={isArchived}
             />
           </SettingsRow>
