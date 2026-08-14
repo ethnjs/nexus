@@ -550,7 +550,6 @@ export const tournamentEventsApi = {
 // -------------------------------------------------------------------------
 export interface SeasonEvent {
   id:         number
-  event_id:   number
   year:       number
   division:   TournamentDivision
   is_active:  boolean
@@ -566,10 +565,12 @@ export interface SeasonEventInput {
 }
 
 export const seasonEventsApi = {
-  list: (params: { year?: number; division?: TournamentDivision } = {}) => {
+  list: (params: { year?: number; division?: TournamentDivision | TournamentDivision[] } = {}) => {
     const qs = new URLSearchParams();
     if (params.year !== undefined) qs.set('year', String(params.year))
-    if (params.division) qs.set('division', params.division)
+    if (params.division) {
+      for (const d of Array.isArray(params.division) ? params.division : [params.division]) qs.append('division', d)
+    }
     const query = qs.toString()
     return api.get<SeasonEvent[]>(`/season-events/${query ? `?${query}` : ''}`)
   },

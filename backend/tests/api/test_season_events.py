@@ -23,7 +23,7 @@ def test_create_season_event(client, admin_user, event):
     response = _make_season_event(client, event_id=event.id)
     assert response.status_code == 201
     data = response.json()
-    assert data["event_id"] == event.id
+    assert data["event"]["id"] == event.id
     assert data["year"] == 2026
     assert data["division"] == "C"
     assert data["is_active"] is True
@@ -46,7 +46,22 @@ def test_list_season_events_filter_by_year_division(client, admin_user, event_fa
     response = client.get("/season-events/", params={"year": 2026})
     assert response.status_code == 200
     assert len(response.json()) == 1
-    assert response.json()[0]["event_id"] == e1.id
+    assert response.json()[0]["event"]["id"] == e1.id
+
+
+def test_list_season_events_filter_by_multiple_divisions(client, admin_user, event_factory, event_category):
+    _login_admin(client)
+    e_a = event_factory(event_category, name="Anatomy")
+    e_b = event_factory(event_category, name="Boomilever")
+    e_c = event_factory(event_category, name="Circuit Lab")
+    _make_season_event(client, event_id=e_a.id, year=2026, division="A")
+    _make_season_event(client, event_id=e_b.id, year=2026, division="B")
+    _make_season_event(client, event_id=e_c.id, year=2026, division="C")
+
+    response = client.get("/season-events/", params={"division": ["B", "C"]})
+    assert response.status_code == 200
+    ids = {row["event"]["id"] for row in response.json()}
+    assert ids == {e_b.id, e_c.id}
 
 
 def test_update_season_event_toggle_active(client, admin_user, event):

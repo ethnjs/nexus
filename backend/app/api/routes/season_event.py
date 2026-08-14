@@ -15,19 +15,20 @@ admin_router = APIRouter(prefix="/admin/season-events", tags=["season-events"])
 
 
 # ---------------------------------------------------------------------------
-# GET /season-events/ — filterable by year/division
+# GET /season-events/ — filterable by year, and by one or more divisions
+# (repeat the query param, e.g. ?division=B&division=C)
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[SeasonEventRead])
 def list_season_events(
     year: int | None = Query(None),
-    division: str | None = Query(None),
+    division: list[str] | None = Query(None),
     db: Session = Depends(get_db),
 ):
     query = db.query(SeasonEvent).options(joinedload(SeasonEvent.event))
     if year is not None:
         query = query.filter(SeasonEvent.year == year)
-    if division is not None:
-        query = query.filter(SeasonEvent.division == division)
+    if division:
+        query = query.filter(SeasonEvent.division.in_(division))
     return query.order_by(SeasonEvent.year.desc(), SeasonEvent.division).all()
 
 

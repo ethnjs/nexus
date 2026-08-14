@@ -36,7 +36,6 @@ class SeasonEventUpdate(BaseModel):
 
 class SeasonEventRead(BaseModel):
     id: int
-    event_id: int
     year: int
     division: str
     is_active: bool

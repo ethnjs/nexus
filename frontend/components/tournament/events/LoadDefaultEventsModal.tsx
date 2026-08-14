@@ -27,12 +27,12 @@ export function LoadDefaultEventsModal({ tournamentId, divisions, existingEvents
   useEffect(() => {
     // No year param — matches the backend's own load-defaults query, which
     // pulls every active SeasonEvent for the tournament's divisions regardless
-    // of year. Filtered client-side below so the preview is exactly what the
-    // backend will create.
-    seasonEventsApi.list()
+    // of year. is_active and already-loaded are still filtered client-side
+    // below so the preview is exactly what the backend will create.
+    seasonEventsApi.list({ division: divisions })
       .then(setSeasonEvents)
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Failed to load season events."));
-  }, []);
+  }, [divisions]);
 
   const existingPairs = useMemo(
     () => new Set(existingEvents.filter((e) => e.event_id !== null).map((e) => `${e.event_id}:${e.division}`)),
@@ -42,9 +42,9 @@ export function LoadDefaultEventsModal({ tournamentId, divisions, existingEvents
   const previewRows = useMemo(() => {
     if (!seasonEvents) return [];
     return seasonEvents
-      .filter((se) => se.is_active && divisions.includes(se.division) && !existingPairs.has(`${se.event_id}:${se.division}`))
+      .filter((se) => se.is_active && !existingPairs.has(`${se.event.id}:${se.division}`))
       .sort((a, b) => a.division.localeCompare(b.division) || a.event.name.localeCompare(b.event.name));
-  }, [seasonEvents, divisions, existingPairs]);
+  }, [seasonEvents, existingPairs]);
 
   async function handleConfirm() {
     setConfirming(true);
