@@ -318,12 +318,20 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onC
   onCancelEdit: () => void;
   onDelete: () => void;
 }) {
+  const [hovered, setHovered] = useState(false);
+
   return (
-    <div style={{
-      display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
-      gap: "10px", padding: editing ? "8px 12px" : "10px 12px",
-      borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-    }}>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
+        gap: "10px", padding: editing ? "8px 12px" : "10px 12px",
+        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        transition: "background 100ms ease",
+      }}
+    >
       {editing ? (
         <>
           <Input
