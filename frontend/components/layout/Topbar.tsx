@@ -11,7 +11,6 @@ import { UserAvatar } from "@/components/ui/UserAvatar";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconPlus } from "@/components/ui/Icons";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
-import Link from "next/link";
 
 interface TopbarProps {
   showWordmark?: boolean;
@@ -109,7 +108,7 @@ export function Topbar({
       flexShrink: 0,
     }}>
       {showWordmark && (
-        <Link
+        <a
           href="/dashboard"
           style={{
             fontFamily: "Georgia, serif", fontSize: "15px",
@@ -119,7 +118,7 @@ export function Topbar({
           }}
         >
           NEXUS
-        </Link>
+        </a>
       )}
 
       {showDropdown && <TournamentDropdown tournamentId={tournamentId} />}
