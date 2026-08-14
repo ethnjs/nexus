@@ -27,6 +27,21 @@ def _validate_division(division: str | None, tournament) -> None:
         )
 
 
+def _validate_tournament_bounds(event: TournamentEvent, tournament) -> None:
+    """start_time/end_time are nullable (planning starts before per-event
+    times are known), so only bound whichever ones are set."""
+    if event.start_time is not None and event.start_time.date() < tournament.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Event start_time falls before the tournament's start_date",
+        )
+    if event.end_time is not None and event.end_time.date() > tournament.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Event end_time falls after the tournament's end_date",
+        )
+
+
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/events/ — manage_events
 # ---------------------------------------------------------------------------
@@ -88,6 +103,7 @@ def create_event(
     _validate_division(payload.division, tournament)
 
     event = TournamentEvent(**payload.model_dump())
+    _validate_tournament_bounds(event, tournament)
     db.add(event)
     try:
         db.commit()
@@ -123,6 +139,8 @@ def update_event(
 
     for field, value in update_data.items():
         setattr(event, field, value)
+
+    _validate_tournament_bounds(event, tournament)
 
     if event.name is None and event.event_id is None:
         raise HTTPException(

@@ -31,6 +31,19 @@ def list_shifts(
     )
 
 
+def _validate_tournament_bounds(shift: TournamentShift, tournament) -> None:
+    if shift.start.date() < tournament.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shift start falls before the tournament's start_date",
+        )
+    if shift.end.date() > tournament.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shift end falls after the tournament's end_date",
+        )
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/shifts/ — manage_events
 # ---------------------------------------------------------------------------
@@ -45,6 +58,7 @@ def create_shift(
     require_not_archived(tournament)
 
     shift = TournamentShift(tournament_id=tournament_id, **payload.model_dump())
+    _validate_tournament_bounds(shift, tournament)
     db.add(shift)
     db.commit()
     db.refresh(shift)
@@ -69,6 +83,8 @@ def update_shift(
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(shift, field, value)
+
+    _validate_tournament_bounds(shift, tournament)
 
     db.commit()
     db.refresh(shift)
@@ -111,6 +127,12 @@ event_shifts_router = APIRouter(
 
 
 def _validate_attach(event: TournamentEvent, shift: TournamentShift, db: Session) -> None:
+    if event.start_time is None or event.end_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Event must have both a start_time and end_time before shifts can be attached",
+        )
+
     if shift.start < event.start_time or shift.end > event.end_time:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
