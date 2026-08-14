@@ -11,18 +11,22 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { EventPanel } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
+import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
 
 const EVENT_ROW_COLUMNS = "2fr 80px 90px 1.2fr 130px 130px 70px";
 
 type SortField = "name" | "division" | "start_time";
 type SortDir = "asc" | "desc";
 
-const TYPE_FILTER_OPTIONS = [
-  { value: "all", label: "All types" },
+// Sentinel for the null case of a nullable field (division/category) so it
+// can sit in the same filter Set as real values.
+const UNSET = "__unset__";
+
+const TYPE_OPTIONS = [
   { value: "standard", label: "Standard" },
   { value: "trial", label: "Trial" },
 ];
@@ -35,6 +39,10 @@ const SORT_FIELD_OPTIONS = [
 
 function eventName(e: TournamentEvent): string {
   return e.event?.name ?? e.name ?? "—";
+}
+
+function categoryKey(e: TournamentEvent): string {
+  return e.event?.category.name ?? UNSET;
 }
 
 function sortValue(e: TournamentEvent, field: SortField): string | number {
@@ -63,8 +71,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
 
   const [search, setSearch] = useState("");
-  const [divisionFilter, setDivisionFilter] = useState("all");
-  const [typeFilter, setTypeFilter] = useState("all");
+  const [filters, setFilters] = useState<EventsFilterState>({ division: new Set(), type: new Set(), category: new Set() });
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortField, setSortField] = useState<SortField>("start_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -81,18 +89,25 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     loadEvents();
   }, [tournamentId]);
 
-  const divisionOptions = useMemo(
-    () => (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` })),
-    [selectedTournament]
-  );
+  const divisionOptions = useMemo(() => {
+    const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));
+    return (events ?? []).some((e) => e.division === null) ? [...opts, { value: UNSET, label: "No division" }] : opts;
+  }, [selectedTournament, events]);
+
+  const categoryOptions = useMemo(() => {
+    const names = new Set((events ?? []).filter((e) => e.event).map((e) => e.event!.category.name));
+    const opts = [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+    return (events ?? []).some((e) => !e.event) ? [...opts, { value: UNSET, label: "No category" }] : opts;
+  }, [events]);
 
   const visibleEvents = useMemo(() => {
     if (!events) return [];
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (divisionFilter !== "all" && e.division !== divisionFilter) return false;
-      if (typeFilter !== "all" && e.event_type !== typeFilter) return false;
+      if (filters.division.has(e.division ?? UNSET)) return false;
+      if (filters.type.has(e.event_type)) return false;
+      if (filters.category.has(categoryKey(e))) return false;
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {
@@ -102,7 +117,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [events, search, divisionFilter, typeFilter, sortField, sortDir]);
+  }, [events, search, filters, sortField, sortDir]);
 
   if (events === null) {
     return (
@@ -112,7 +127,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     );
   }
 
-  const isFiltered = search.trim() !== "" || divisionFilter !== "all" || typeFilter !== "all";
+  const isFiltered = search.trim() !== "" || isEventsFilterActive(filters);
 
   return (
     <div>
@@ -172,24 +187,20 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   fullWidth
                 />
               </div>
-              <Dropdown
-                label="Division"
-                value={divisionFilter}
-                onChange={setDivisionFilter}
-                options={[{ value: "all", label: "All divisions" }, ...divisionOptions]}
-                size="md"
-                variant="secondary"
-                width={160}
-              />
-              <Dropdown
-                label="Type"
-                value={typeFilter}
-                onChange={setTypeFilter}
-                options={TYPE_FILTER_OPTIONS}
-                size="md"
-                variant="secondary"
-                width={150}
-              />
+              <Button
+                type="button" variant="secondary" size="md"
+                onClick={() => setShowFilterModal(true)}
+              >
+                <IconFilter size={13} /> Filter
+              </Button>
+              {isEventsFilterActive(filters) && (
+                <Button
+                  type="button" variant="ghost" size="md"
+                  onClick={() => setFilters({ division: new Set(), type: new Set(), category: new Set() })}
+                >
+                  <IconX size={11} /> Clear filters
+                </Button>
+              )}
               <Dropdown
                 label="Sort by"
                 value={sortField}
@@ -247,6 +258,17 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
             )}
           </Card>
         </>
+      )}
+
+      {showFilterModal && (
+        <EventsFilterModal
+          divisionOptions={divisionOptions}
+          typeOptions={TYPE_OPTIONS}
+          categoryOptions={categoryOptions}
+          filters={filters}
+          onChange={setFilters}
+          onClose={() => setShowFilterModal(false)}
+        />
       )}
 
       {showLoadModal && (
