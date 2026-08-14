@@ -1,6 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
@@ -13,22 +14,15 @@ from app.schemas.tournament.event import EventCreate, EventRead, EventUpdate
 router = APIRouter(prefix="/tournaments/{tournament_id}/events", tags=["tournaments"])
 
 
-def _serialize(event: TournamentEvent) -> dict:
-    return {
-        "id": event.id,
-        "tournament_id": event.tournament_id,
-        "name": event.name,
-        "division": event.division,
-        "event_type": event.event_type,
-        "category": event.category,
-        "building": event.building,
-        "room": event.room,
-        "floor": event.floor,
-        "volunteers_needed": event.volunteers_needed,
-        "blocks": event.blocks or [],
-        "created_at": event.created_at,
-        "updated_at": event.updated_at,
-    }
+def _validate_division(division: str | None, tournament) -> None:
+    """A set division must be one of the divisions the tournament itself
+    supports. SeasonEvent plays no role here — it's independent of what's
+    "suggested" for the tournament."""
+    if division is not None and division not in (tournament.division or []):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"division must be one of the tournament's divisions: {tournament.division}",
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -45,11 +39,12 @@ def list_events(
 
     events = (
         db.query(TournamentEvent)
+        .options(joinedload(TournamentEvent.event), joinedload(TournamentEvent.shifts))
         .filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
         .all()
     )
-    return [_serialize(e) for e in events]
+    return events
 
 
 # ---------------------------------------------------------------------------
@@ -62,7 +57,7 @@ def get_event(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    return _serialize(get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event"))
+    return get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
 
 
 # ---------------------------------------------------------------------------
@@ -85,22 +80,20 @@ def create_event(
             detail="tournament_id in body does not match URL",
         )
 
-    existing = db.query(TournamentEvent).filter(
-        TournamentEvent.tournament_id == tournament_id,
-        TournamentEvent.name == payload.name,
-        TournamentEvent.division == payload.division,
-    ).first()
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Event '{payload.name}' division {payload.division} already exists in this tournament",
-        )
+    _validate_division(payload.division, tournament)
 
     event = TournamentEvent(**payload.model_dump())
     db.add(event)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This catalog event already exists in this tournament for this division",
+        )
     db.refresh(event)
-    return _serialize(event)
+    return event
 
 
 # ---------------------------------------------------------------------------
@@ -119,12 +112,29 @@ def update_event(
 
     event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
 
-    for field, value in payload.model_dump(exclude_none=True).items():
+    update_data = payload.model_dump(exclude_unset=True)
+    if "division" in update_data:
+        _validate_division(update_data["division"], tournament)
+
+    for field, value in update_data.items():
         setattr(event, field, value)
 
-    db.commit()
+    if event.name is None and event.event_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Cannot clear both name and event_id — at least one must be set",
+        )
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This catalog event already exists in this tournament for this division",
+        )
     db.refresh(event)
-    return _serialize(event)
+    return event
 
 
 # ---------------------------------------------------------------------------

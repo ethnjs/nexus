@@ -25,8 +25,7 @@ incrementally as the rewrite progresses:
   - tournament_events: add `event_id` FK to events (SET NULL), nullable
   - tournament_events: add `start_time`/`end_time`, backfilled from the
     parent tournament's start_date/end_date (else now()) since existing
-    rows have no equivalent data — flagged for TD review via a one-off
-    `# TODO(temp)` data note printed during migration, not a new column
+    rows have no equivalent data
   - tournament_events: drop `uq_tournament_event_division`, add a partial
     unique index on (tournament_id, event_id, division) WHERE event_id IS
     NOT NULL — custom (event_id-less) events have no uniqueness constraint
