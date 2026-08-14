@@ -24,7 +24,7 @@ import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { MemberPanel } from "@/components/tournament/MemberPanel";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
-import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash } from "@/components/ui/Icons";
+import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
@@ -265,7 +265,11 @@ export default function MembersPage() {
 
       {members.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState title="No members yet" description="Members who join this tournament will show up here." />
+          <EmptyState
+            icon={<IconMembers size={28} />}
+            title="No members yet"
+            description="Members who join this tournament will show up here."
+          />
         </Card>
       ) : (
         <>
