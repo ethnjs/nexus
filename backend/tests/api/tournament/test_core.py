@@ -60,6 +60,30 @@ def test_list_my_tournaments_unauthenticated(client):
     assert client.get("/tournaments/me/").status_code == 401
 
 
+def test_list_my_tournaments_returns_summary_shape(
+    client, td_user, td_tournament, other_user, db
+):
+    """TournamentSummary — event_count/volunteer_count computed, no
+    roles/owner_id leaked (those belong to the full TournamentRead detail)."""
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/events/", json={
+        "tournament_id": td_tournament.id,
+        "name": "Boomilever",
+        "division": "C",
+        "start_time": "2026-03-14T08:00:00Z",
+        "end_time": "2026-03-14T12:00:00Z",
+    })
+    grant_role(db, td_tournament, other_user, "Volunteer")
+
+    data = client.get("/tournaments/me/").json()
+    summary = next(t for t in data if t["id"] == td_tournament.id)
+
+    assert summary["event_count"] == 1
+    assert summary["volunteer_count"] == 2  # owner (td_user) + other_user
+    assert "roles" not in summary
+    assert "owner_id" not in summary
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/ — any authenticated user
 # ---------------------------------------------------------------------------
