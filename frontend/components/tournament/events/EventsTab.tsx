@@ -11,10 +11,12 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
+import { EventPanel } from "@/components/tournament/events/EventPanel";
+import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 
-const EVENT_ROW_COLUMNS = "2fr 80px 90px 1.2fr 130px 130px";
+const EVENT_ROW_COLUMNS = "2fr 80px 90px 1.2fr 130px 130px 70px";
 
 type SortField = "name" | "division" | "start_time";
 type SortDir = "asc" | "desc";
@@ -57,6 +59,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [panelTarget, setPanelTarget] = useState<TournamentEvent | "new" | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
 
   const [search, setSearch] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("all");
@@ -138,9 +142,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               description="Load this tournament's default events, or add them one at a time."
               action={
                 canManageEvents && !isArchived ? (
-                  <Button type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}>
-                    Load default events
-                  </Button>
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <Button type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}>
+                      Load default events
+                    </Button>
+                    <Button type="button" variant="secondary" size="sm" onClick={() => setPanelTarget("new")}>
+                      <IconPlus size={12} /> Add event
+                    </Button>
+                  </div>
                 ) : undefined
               }
             />
@@ -148,54 +157,62 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
         </Card>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-            <div style={{ width: "300px" }}>
-              <Input
-                label="Search"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search event name"
-                icon={<IconSearch size={14} />}
-                font="sans"
+          <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", flexWrap: "wrap" }}>
+              <div style={{ width: "300px" }}>
+                <Input
+                  label="Search"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search event name"
+                  icon={<IconSearch size={14} />}
+                  font="sans"
+                  size="md"
+                  variant="secondary"
+                  fullWidth
+                />
+              </div>
+              <Dropdown
+                label="Division"
+                value={divisionFilter}
+                onChange={setDivisionFilter}
+                options={[{ value: "all", label: "All divisions" }, ...divisionOptions]}
                 size="md"
                 variant="secondary"
-                fullWidth
+                width={160}
               />
+              <Dropdown
+                label="Type"
+                value={typeFilter}
+                onChange={setTypeFilter}
+                options={TYPE_FILTER_OPTIONS}
+                size="md"
+                variant="secondary"
+                width={150}
+              />
+              <Dropdown
+                label="Sort by"
+                value={sortField}
+                onChange={(v) => setSortField(v as SortField)}
+                options={SORT_FIELD_OPTIONS}
+                size="md"
+                variant="secondary"
+                width={150}
+              />
+              <Button
+                type="button" variant="secondary" size="md" iconOnly
+                title={sortDir === "asc" ? "Ascending" : "Descending"}
+                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              >
+                <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
+              </Button>
             </div>
-            <Dropdown
-              label="Division"
-              value={divisionFilter}
-              onChange={setDivisionFilter}
-              options={[{ value: "all", label: "All divisions" }, ...divisionOptions]}
-              size="md"
-              variant="secondary"
-              width={160}
-            />
-            <Dropdown
-              label="Type"
-              value={typeFilter}
-              onChange={setTypeFilter}
-              options={TYPE_FILTER_OPTIONS}
-              size="md"
-              variant="secondary"
-              width={150}
-            />
-            <Dropdown
-              label="Sort by"
-              value={sortField}
-              onChange={(v) => setSortField(v as SortField)}
-              options={SORT_FIELD_OPTIONS}
-              size="md"
-              variant="secondary"
-              width={150}
-            />
-            <Button
-              type="button" variant="secondary" size="md" iconOnly
-              title={sortDir === "asc" ? "Ascending" : "Descending"}
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
-            >
-              <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
-            </Button>
+
+            {canManageEvents && !isArchived && (
+              <Button type="button" variant="primary" size="md" onClick={() => setPanelTarget("new")}>
+                <IconPlus size={14} /> Add event
+              </Button>
+            )}
           </div>
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
@@ -211,13 +228,21 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               <span>Category</span>
               <span style={{ textAlign: "center" }}>Start</span>
               <span style={{ textAlign: "center" }}>End</span>
+              <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
             {visibleEvents.length === 0 ? (
               <EmptyState title="No matching events" description="Try adjusting your search or filters." />
             ) : (
               visibleEvents.map((e, i) => (
-                <EventRow key={e.id} event={e} isLast={i === visibleEvents.length - 1} />
+                <EventRow
+                  key={e.id}
+                  event={e}
+                  isLast={i === visibleEvents.length - 1}
+                  canDelete={canManageEvents && !isArchived}
+                  onExpand={() => setPanelTarget(e)}
+                  onDelete={() => setDeleteTarget(e)}
+                />
               ))
             )}
           </Card>
@@ -233,11 +258,45 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           onLoaded={(created) => setEvents((prev) => [...(prev ?? []), ...created])}
         />
       )}
+
+      {panelTarget !== null && (
+        <EventPanel
+          tournamentId={tournamentId}
+          event={panelTarget === "new" ? null : panelTarget}
+          locked={isArchived}
+          onClose={() => setPanelTarget(null)}
+          onSaved={(saved) => setEvents((prev) => {
+            const list = prev ?? [];
+            const exists = list.some((e) => e.id === saved.id);
+            return exists ? list.map((e) => (e.id === saved.id ? saved : e)) : [...list, saved];
+          })}
+          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteEventModal
+          tournamentId={tournamentId}
+          eventId={deleteTarget.id}
+          eventName={eventName(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setEvents((prev) => (prev ?? []).filter((e) => e.id !== deleteTarget.id));
+            setDeleteTarget(null);
+          }}
+        />
+      )}
     </div>
   );
 }
 
-function EventRow({ event, isLast }: { event: TournamentEvent; isLast: boolean }) {
+function EventRow({ event, isLast, canDelete, onExpand, onDelete }: {
+  event: TournamentEvent;
+  isLast: boolean;
+  canDelete: boolean;
+  onExpand: () => void;
+  onDelete: () => void;
+}) {
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -276,6 +335,16 @@ function EventRow({ event, isLast }: { event: TournamentEvent; isLast: boolean }
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {event.end_time ? formatDateTime(event.end_time) : "—"}
       </span>
+      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+        {canDelete && (
+          <Button type="button" variant="secondary" size="sm" iconOnly title="Delete event" onClick={onDelete}>
+            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+          </Button>
+        )}
+        <Button type="button" variant="secondary" size="sm" iconOnly title="Expand" onClick={onExpand}>
+          <IconExpand size={13} />
+        </Button>
+      </div>
     </div>
   );
 }

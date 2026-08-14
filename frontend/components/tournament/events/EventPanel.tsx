@@ -1,0 +1,366 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import {
+  tournamentEventsApi, tournamentShiftsApi, canonicalEventsApi, ApiError,
+  TournamentEvent, TournamentEventInput, TournamentShift, CanonicalEvent, TournamentDivision,
+} from "@/lib/api";
+import { useTournament } from "@/lib/useTournament";
+import { SidePanel } from "@/components/ui/SidePanel";
+import { Card } from "@/components/ui/Card";
+import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
+import { Input } from "@/components/ui/Input";
+import { Combobox } from "@/components/ui/Combobox";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Button } from "@/components/ui/Button";
+import { Popover } from "@/components/ui/Popover";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
+import { IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
+
+interface EventDraft {
+  eventText: string;
+  event_id: number | null;
+  name: string | null;
+  division: TournamentDivision | null;
+  event_type: "standard" | "trial";
+  building: string;
+  room: string;
+  floor: string;
+  volunteers_needed: string;
+  start_time: string;
+  end_time: string;
+}
+
+function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fromDatetimeLocal(local: string): string | null {
+  return local ? new Date(local).toISOString() : null;
+}
+
+function draftFromEvent(event: TournamentEvent | null): EventDraft {
+  return {
+    eventText: event?.event?.name ?? event?.name ?? "",
+    event_id: event?.event_id ?? null,
+    name: event?.name ?? null,
+    division: event?.division ?? null,
+    event_type: event?.event_type ?? "standard",
+    building: event?.building ?? "",
+    room: event?.room ?? "",
+    floor: event?.floor ?? "",
+    volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
+    start_time: toDatetimeLocal(event?.start_time ?? null),
+    end_time: toDatetimeLocal(event?.end_time ?? null),
+  };
+}
+
+interface EventPanelProps {
+  tournamentId: number;
+  /** null = creating a new event. */
+  event: TournamentEvent | null;
+  locked: boolean;
+  onClose: () => void;
+  onSaved: (event: TournamentEvent) => void;
+  onDeleted: (id: number) => void;
+}
+
+export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted }: EventPanelProps) {
+  const { selectedTournament } = useTournament();
+  const divisions = selectedTournament?.division ?? [];
+
+  // The event this panel is editing. Starts as `event` (null for "new"),
+  // and becomes the real row once a create lands — so the Shifts section
+  // can appear without closing the panel.
+  const [current, setCurrent] = useState<TournamentEvent | null>(event);
+  const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event));
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
+  const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [showDelete, setShowDelete] = useState(false);
+  const [shiftError, setShiftError] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    canonicalEventsApi.list().then(setCanonicalEvents).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
+  }, [tournamentId]);
+
+  const isNew = current === null;
+  // A brand-new event has nothing to diff against — treat it as dirty from
+  // the moment the panel opens so the save bar is reachable immediately.
+  const isDirty = useMemo(
+    () => isNew || JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
+    [draft, current, isNew]
+  );
+
+  function patch(p: Partial<EventDraft>) {
+    setDraft((d) => ({ ...d, ...p }));
+  }
+
+  function handleEventTextChange(text: string, matched: CanonicalEvent | null) {
+    patch({ eventText: text, event_id: matched ? matched.id : null, name: matched ? null : text });
+  }
+
+  function buildPayload(): TournamentEventInput {
+    return {
+      name: draft.event_id ? null : (draft.name?.trim() || null),
+      division: draft.division,
+      event_type: draft.event_type,
+      event_id: draft.event_id,
+      building: draft.building.trim() || null,
+      room: draft.room.trim() || null,
+      floor: draft.floor.trim() || null,
+      volunteers_needed: draft.volunteers_needed.trim() ? Number(draft.volunteers_needed) : null,
+      start_time: fromDatetimeLocal(draft.start_time),
+      end_time: fromDatetimeLocal(draft.end_time),
+    };
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const payload = buildPayload();
+      const saved = isNew
+        ? await tournamentEventsApi.create(tournamentId, { ...payload, tournament_id: tournamentId })
+        : await tournamentEventsApi.update(tournamentId, current!.id, payload);
+      setCurrent(saved);
+      setDraft(draftFromEvent(saved));
+      onSaved(saved);
+    } catch (err) {
+      setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleCancel() {
+    setDraft(draftFromEvent(current));
+    setSaveError(undefined);
+  }
+
+  // Only offered once the event has its own saved start/end — attaching
+  // against unsaved draft bounds would let a shift through that the
+  // backend's own bounds check (against the persisted row) then rejects.
+  const eligibleShifts = useMemo(() => {
+    if (!allShifts || !current?.start_time || !current?.end_time) return [];
+    const attachedIds = new Set(current.shifts.map((s) => s.id));
+    return allShifts.filter((s) =>
+      !attachedIds.has(s.id) && s.start >= current.start_time! && s.end <= current.end_time!
+    );
+  }, [allShifts, current]);
+
+  async function handleAttachShift(shift: TournamentShift) {
+    if (!current) return;
+    setShiftError(undefined);
+    try {
+      await tournamentShiftsApi.attach(tournamentId, current.id, shift.id);
+      const updated = { ...current, shifts: [...current.shifts, shift] };
+      setCurrent(updated);
+      onSaved(updated);
+    } catch (err) {
+      setShiftError(err instanceof ApiError ? err.message : "Failed to attach shift.");
+      throw err;
+    }
+  }
+
+  async function handleDetachShift(shiftId: number) {
+    if (!current) return;
+    setShiftError(undefined);
+    try {
+      await tournamentShiftsApi.detach(tournamentId, current.id, shiftId);
+      const updated = { ...current, shifts: current.shifts.filter((s) => s.id !== shiftId) };
+      setCurrent(updated);
+      onSaved(updated);
+    } catch (err) {
+      setShiftError(err instanceof ApiError ? err.message : "Failed to detach shift.");
+    }
+  }
+
+  const categoryName = draft.event_id
+    ? (canonicalEvents.find((e) => e.id === draft.event_id)?.category.name ?? current?.event?.category.name)
+    : undefined;
+
+  return (
+    <SidePanel onClose={onClose} width={600}>
+      <div style={{ padding: "20px 28px" }}>
+        <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
+          <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "22px" }}>
+            {isNew ? "New event" : draft.eventText || "Event"}
+          </h2>
+        </Card>
+
+        <SettingsSection title="Details">
+          <SettingsRow label="Event">
+            <Combobox
+              options={canonicalEvents}
+              getId={(e) => e.id}
+              getLabel={(e) => e.name}
+              value={draft.eventText}
+              onChange={handleEventTextChange}
+              allowFreeText
+              locked={locked}
+              placeholder="Search or type a custom event name"
+            />
+          </SettingsRow>
+
+          {categoryName && (
+            <SettingsRow label="Category">
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)" }}>
+                {categoryName}
+              </span>
+            </SettingsRow>
+          )}
+
+          <SettingsRow label="Division">
+            <ButtonGroup
+              options={divisions.map((d) => ({ value: d, label: d }))}
+              value={draft.division ?? ""}
+              onChange={(v) => patch({ division: v as TournamentDivision })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Type">
+            <ButtonGroup
+              options={[{ value: "standard", label: "Standard" }, { value: "trial", label: "Trial" }]}
+              value={draft.event_type}
+              onChange={(v) => patch({ event_type: v as "standard" | "trial" })}
+              locked={locked}
+            />
+          </SettingsRow>
+
+          <SettingsRow label="Start">
+            <Input type="datetime-local" fullWidth locked={locked} value={draft.start_time} onChange={(e) => patch({ start_time: e.target.value })} />
+          </SettingsRow>
+
+          <SettingsRow label="End">
+            <Input type="datetime-local" fullWidth locked={locked} value={draft.end_time} onChange={(e) => patch({ end_time: e.target.value })} />
+          </SettingsRow>
+
+          <SettingsRow label="Building">
+            <Input fullWidth font="sans" locked={locked} value={draft.building} onChange={(e) => patch({ building: e.target.value })} />
+          </SettingsRow>
+
+          <SettingsRow label="Room">
+            <Input fullWidth font="sans" locked={locked} value={draft.room} onChange={(e) => patch({ room: e.target.value })} />
+          </SettingsRow>
+
+          <SettingsRow label="Floor">
+            <Input fullWidth font="sans" locked={locked} value={draft.floor} onChange={(e) => patch({ floor: e.target.value })} />
+          </SettingsRow>
+
+          <SettingsRow label="Volunteers needed" last>
+            <Input fullWidth charset="numeric" locked={locked} value={draft.volunteers_needed} onChange={(e) => patch({ volunteers_needed: e.target.value })} />
+          </SettingsRow>
+        </SettingsSection>
+
+        {/* Attaching a shift needs a real event id, so this only shows up
+            once the event has been created — matches how the roles editor
+            hides its Members tab for an unsaved role. */}
+        {!isNew && current && (
+          <SettingsSection title="Shifts">
+            <SettingsRow
+              label="Attached shifts"
+              helper={!current.start_time || !current.end_time ? "Set start/end time and save to attach shifts." : undefined}
+              last
+            >
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+                {current.shifts.map((shift) => (
+                  <span
+                    key={shift.id}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: "5px",
+                      padding: "3px 6px 3px 9px", borderRadius: "var(--radius-sm)",
+                      background: "var(--color-accent-subtle)", color: "var(--color-text-primary)",
+                      border: "1px solid var(--color-border)",
+                      fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
+                    }}
+                  >
+                    {shift.label}
+                    {!locked && (
+                      <button
+                        type="button"
+                        onClick={() => handleDetachShift(shift.id)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          border: "none", background: "transparent", padding: "2px",
+                          color: "inherit", cursor: "pointer", opacity: 0.7,
+                        }}
+                      >
+                        <IconX size={10} />
+                      </button>
+                    )}
+                  </span>
+                ))}
+
+                {!locked && current.start_time && current.end_time && (
+                  <Popover
+                    trigger={
+                      <Button type="button" variant="secondary" size="sm" iconOnly title="Add shift" style={{ width: "26px", height: "26px", padding: 0 }}>
+                        <IconPlus size={12} />
+                      </Button>
+                    }
+                    items={eligibleShifts}
+                    getKey={(s) => s.id}
+                    renderLabel={(s) => s.label}
+                    emptyMessage="No shifts fit within this event's time window."
+                    onSelect={handleAttachShift}
+                  />
+                )}
+              </div>
+
+              {shiftError && (
+                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "8px" }}>
+                  {shiftError}
+                </p>
+              )}
+            </SettingsRow>
+          </SettingsSection>
+        )}
+
+        {!locked && !isNew && current && (
+          <SettingsSection title="Danger Zone" variant="danger">
+            <SettingsRow label="Delete event" helper="This also detaches every shift from it." last contentStyle={{ display: "flex", justifyContent: "flex-end" }}>
+              <Button type="button" variant="secondary" onClick={() => setShowDelete(true)} style={{ color: "var(--color-danger)" }}>
+                <IconTrash size={13} /> Delete
+              </Button>
+            </SettingsRow>
+          </SettingsSection>
+        )}
+      </div>
+
+      {/* Rendered inside SidePanel's own portaled subtree (not as a sibling
+          of it) — the panel's overlay is a fixed, z-indexed backdrop, and a
+          save bar mounted outside that subtree would paint underneath it. */}
+      {!locked && (
+        <FloatingSaveBar
+          visible={isDirty}
+          saving={saving}
+          error={saveError}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )}
+
+      {showDelete && current && (
+        <DeleteEventModal
+          tournamentId={tournamentId}
+          eventId={current.id}
+          eventName={draft.eventText || "this event"}
+          onClose={() => setShowDelete(false)}
+          onDeleted={() => { onDeleted(current.id); onClose(); }}
+        />
+      )}
+    </SidePanel>
+  );
+}
