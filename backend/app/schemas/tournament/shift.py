@@ -33,6 +33,9 @@ class TournamentShiftRead(BaseModel):
     label: str
     start: datetime
     end: datetime
+    # How many TournamentEvents this shift is currently attached to — drives
+    # the "attached to N events" delete-confirm warning.
+    event_count: int
     created_at: datetime
     updated_at: datetime
 

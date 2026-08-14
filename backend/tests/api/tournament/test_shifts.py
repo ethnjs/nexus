@@ -64,6 +64,20 @@ def test_update_shift(client, td_user, td_tournament):
     assert response.json()["label"] == "Renamed Shift"
 
 
+def test_shift_event_count(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    assert shift["event_count"] == 0
+
+    event1 = _make_event(client, td_tournament.id, name="Boomilever")
+    event2 = _make_event(client, td_tournament.id, name="Hovercraft")
+    client.post(f"/tournaments/{td_tournament.id}/events/{event1['id']}/shifts/{shift['id']}/")
+    client.post(f"/tournaments/{td_tournament.id}/events/{event2['id']}/shifts/{shift['id']}/")
+
+    listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
+    assert next(s for s in listed if s["id"] == shift["id"])["event_count"] == 2
+
+
 def test_delete_shift(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_shift(client, td_tournament.id).json()

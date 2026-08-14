@@ -530,6 +530,13 @@ class TournamentShift(Base):
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
 
+    # Read by TournamentShiftRead — how many events this shift is attached
+    # to, for the delete-confirm warning. Callers that list many shifts
+    # should eager-load tournament_events (see list_shifts) to avoid N+1.
+    @property
+    def event_count(self) -> int:
+        return len(self.tournament_events)
+
 
 # ---------------------------------------------------------------------------
 # TournamentEventShift — bridge table: TournamentEvent <-> TournamentShift.

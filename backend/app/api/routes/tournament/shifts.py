@@ -1,6 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
@@ -24,6 +24,7 @@ def list_shifts(
     get_tournament(tournament_id, db)
     return (
         db.query(TournamentShift)
+        .options(selectinload(TournamentShift.tournament_events))
         .filter(TournamentShift.tournament_id == tournament_id)
         .order_by(TournamentShift.start)
         .all()

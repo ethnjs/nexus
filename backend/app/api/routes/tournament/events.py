@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
-from app.models.models import SeasonEvent, TournamentEvent, User
+from app.models.models import SeasonEvent, TournamentEvent, TournamentShift, User
 from app.schemas.tournament.event import (
     EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventRead, EventUpdate,
 )
@@ -41,7 +41,10 @@ def list_events(
 
     events = (
         db.query(TournamentEvent)
-        .options(joinedload(TournamentEvent.event), joinedload(TournamentEvent.shifts))
+        .options(
+            joinedload(TournamentEvent.event),
+            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events),
+        )
         .filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
         .all()
