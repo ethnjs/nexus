@@ -2,13 +2,40 @@
 
 import { ReactNode, useState, useEffect } from "react";
 import { use } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider } from "@/lib/useMyMembership";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
-import { tournamentsApi } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { IconWarning } from "@/components/ui/Icons";
+import { tournamentsApi, ApiError } from "@/lib/api";
+
+function TournamentNotFound() {
+  const router = useRouter();
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      height: "100vh", gap: "12px", textAlign: "center", background: "var(--color-bg)",
+    }}>
+      <div style={{ color: "var(--color-text-tertiary)" }}>
+        <IconWarning size={28} />
+      </div>
+      <p style={{ fontFamily: "Georgia, serif", fontSize: "20px", color: "var(--color-text-primary)" }}>
+        Tournament not found
+      </p>
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", maxWidth: "300px" }}>
+        It may have been deleted, or you may not have access to it.
+      </p>
+      <div style={{ marginTop: "4px" }}>
+        <Button variant="secondary" onClick={() => router.push("/dashboard")}>
+          Back to dashboard
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function TournamentShell({
   tournamentId,
@@ -18,6 +45,7 @@ function TournamentShell({
   children: ReactNode;
 }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const { setSelectedTournament } = useTournament();
   const pathname = usePathname();
   // Sidebar is locked open (not just hover-expanded) on settings routes —
@@ -25,8 +53,20 @@ function TournamentShell({
   const onSettingsRoute = pathname.startsWith(`/dashboard/tournaments/${tournamentId}/settings`);
 
   useEffect(() => {
-    tournamentsApi.get(Number(tournamentId)).then(setSelectedTournament).catch(console.error);
+    tournamentsApi.get(Number(tournamentId))
+      .then(setSelectedTournament)
+      .catch((err) => {
+        if (err instanceof ApiError && err.status === 404) {
+          setNotFound(true);
+        } else {
+          console.error(err);
+        }
+      });
   }, [tournamentId, setSelectedTournament]);
+
+  if (notFound) {
+    return <TournamentNotFound />;
+  }
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
