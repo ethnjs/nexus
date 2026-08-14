@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { tournamentsApi, tournamentEventsApi, membershipsApi, Tournament, UserMeSlim, authApi, ApiError } from "@/lib/api"
+import { tournamentsApi, Tournament, TournamentSummary, UserMeSlim, authApi, ApiError } from "@/lib/api"
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal"
-import { TournamentCard, CardCounts } from "@/components/tournament/TournamentCard"
+import { TournamentCard } from "@/components/tournament/TournamentCard"
 import { Topbar } from "@/components/layout/Topbar"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Banner, BannerProps } from "@/components/ui/Banner"
@@ -28,8 +28,7 @@ interface BannerRule extends Omit<BannerProps, 'onDismiss'> {
 
 export default function DashboardPage() {
   const router = useRouter()
-  const [tournaments, setTournaments] = useState<Tournament[]>([])
-  const [counts, setCounts]           = useState<Record<number, CardCounts>>({})
+  const [tournaments, setTournaments] = useState<TournamentSummary[]>([])
   const [loading, setLoading]         = useState<Record<string, boolean>>({"page": true})
   const [showModal, setShowModal]     = useState(false)
 
@@ -92,22 +91,14 @@ export default function DashboardPage() {
   
 
   useEffect(() => {
-    tournamentsApi.list().then((data) => {
-      setTournaments(data)
-      data.forEach((t) => {
-        Promise.all([
-          tournamentEventsApi.list(t.id).then((e) => e.length).catch(() => 0),
-          membershipsApi.list(t.id).then((m) => m.length).catch(() => 0),
-        ]).then(([events, volunteers]) => {
-          setCounts((prev) => ({ ...prev, [t.id]: { events, volunteers } }))
-        })
-      })
-    }).catch(() => {}).finally(() => setLoading(l => ({...l, "page": false})))
+    tournamentsApi.list()
+      .then(setTournaments)
+      .catch(() => {})
+      .finally(() => setLoading(l => ({...l, "page": false})))
   }, [])
 
   function handleCreated(t: Tournament) {
-    setTournaments((prev) => [...prev, t])
-    setCounts((prev) => ({ ...prev, [t.id]: { events: 0, volunteers: 0 } }))
+    setTournaments((prev) => [...prev, { ...t, event_count: 0, volunteer_count: 0 }])
     setShowModal(false)
     router.push(`/dashboard/tournaments/${t.id}/overview`)
   }
@@ -169,7 +160,6 @@ export default function DashboardPage() {
               {tournaments.map((t) => (
                 <TournamentCard
                   key={t.id} tournament={t}
-                  counts={counts[t.id] ?? { events: null, volunteers: null }}
                   onClick={() => router.push(`/dashboard/tournaments/${t.id}/overview`)}
                 />
               ))}

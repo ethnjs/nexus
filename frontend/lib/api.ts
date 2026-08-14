@@ -364,8 +364,10 @@ export const TOURNAMENT_STATES = [
 ] as const
 export type TournamentState = typeof TOURNAMENT_STATES[number]
 
-export interface Tournament {
-  id:          number
+// Shared fields — mirrors backend TournamentPublic, the base for
+// Tournament, TournamentSummary (dashboard list), and JoinPreviewTournament
+// (public join preview).
+export interface TournamentPublic {
   name:        string
   short_name:  string | null
   start_date:  string
@@ -375,13 +377,28 @@ export interface Tournament {
   state:       TournamentState
   level:       TournamentLevel
   division:    TournamentDivision[]
-  is_public:   boolean
   is_verified: boolean
+}
+
+export interface Tournament extends TournamentPublic {
+  id:          number
+  is_public:   boolean
   is_archived: boolean
   owner_id:    number
   roles:       Role[]
   created_at:  string
   updated_at:  string
+}
+
+// GET /tournaments/me/ — lightweight card view, no roles/owner
+export interface TournamentSummary extends TournamentPublic {
+  id:              number
+  is_public:       boolean
+  is_archived:     boolean
+  event_count:     number
+  volunteer_count: number
+  created_at:      string
+  updated_at:      string
 }
 
 // location xor university_id — exactly one required, matches backend TournamentCreate
@@ -414,7 +431,7 @@ export interface TournamentUpdate {
 
 export const tournamentsApi = {
   // GET /tournaments/me/ — tournaments the current user has any membership in
-  list:   ()                                       => api.get<Tournament[]>('/tournaments/me/'),
+  list:   ()                                       => api.get<TournamentSummary[]>('/tournaments/me/'),
   get:    (id: number)                             => api.get<Tournament>(`/tournaments/${id}/`),
   create: (body: TournamentCreate)                 => api.post<Tournament>('/tournaments/', body),
   update: (id: number, body: TournamentUpdate)     => api.patch<Tournament>(`/tournaments/${id}/`, body),
@@ -935,19 +952,9 @@ export interface JoinRedeemResponse {
 
 // GET /join/preview/ — discriminated on `type`, mirrors the backend's
 // JoinPreviewTournament/JoinPreviewChapter split.
-export interface JoinPreviewTournament {
-  type:         'tournament'
-  target_id:    number
-  name:         string
-  short_name:   string | null
-  start_date:   string
-  end_date:     string
-  university:   University | null
-  location:     string | null
-  state:        string
-  level:        string
-  division:     string[]
-  is_verified:  boolean
+export interface JoinPreviewTournament extends TournamentPublic {
+  type:      'tournament'
+  target_id: number
 }
 
 export interface JoinPreviewChapter {

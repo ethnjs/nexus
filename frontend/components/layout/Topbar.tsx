@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { Tournament } from "@/lib/api";
+import { Tournament, TournamentPublic } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
@@ -27,20 +27,22 @@ interface TopbarProps {
 // Isolated into its own component so useTournament() is only called when
 // showDropdown=true and a TournamentProvider is present in the tree.
 
-function tournamentDisplayName(t: Tournament) {
+function tournamentDisplayName(t: TournamentPublic) {
   const year = parseLocalDate(t.start_date).getFullYear();
   return `${year} ${t.short_name || t.name}`;
 }
 
 function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }) {
   const router = useRouter();
-  const { tournaments, setSelectedTournament, refresh } = useTournament();
+  const { tournaments, refresh } = useTournament();
   const { guard } = useUnsavedChanges();
   const [showNewModal, setShowNewModal] = useState(false);
 
+  // No optimistic setSelectedTournament here — the [id]/layout.tsx shell
+  // refetches the full tournament keyed off the URL id on every navigation,
+  // which is the sole writer of selectedTournament (see useTournament.tsx).
   async function handleCreated(t: Tournament) {
     await refresh();
-    setSelectedTournament(t);
     setShowNewModal(false);
     router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
@@ -50,7 +52,6 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
     if (!t) return;
     const segment = window.location.pathname.split("/").pop() ?? "overview";
     guard(() => {
-      setSelectedTournament(t);
       router.push(`/dashboard/tournaments/${t.id}/${segment}`);
     });
   }

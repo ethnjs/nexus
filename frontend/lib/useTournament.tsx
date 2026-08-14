@@ -8,10 +8,10 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { tournamentsApi, Tournament } from "./api";
+import { tournamentsApi, Tournament, TournamentSummary } from "./api";
 
 interface TournamentContextValue {
-  tournaments: Tournament[];
+  tournaments: TournamentSummary[];
   selectedTournament: Tournament | null;
   setSelectedTournament: (t: Tournament | null) => void;
   isArchived: boolean;
@@ -22,7 +22,7 @@ interface TournamentContextValue {
 const TournamentContext = createContext<TournamentContextValue | null>(null);
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [tournaments, setTournaments] = useState<TournamentSummary[]>([]);
   const [selectedTournament, setSelectedTournament] =
     useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
