@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
@@ -11,18 +10,18 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { TabStrip } from "@/components/ui/TabStrip";
 import { IconLock } from "@/components/ui/Icons";
+import { EventsTab } from "@/components/tournament/events/EventsTab";
 
-type EventsTab = "events" | "shifts";
+type EventsPageTab = "events" | "shifts";
 
 export default function EventsPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
-  const { isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
-  const [activeTab, setActiveTab] = useState<EventsTab>("events");
+  const [activeTab, setActiveTab] = useState<EventsPageTab>("events");
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -65,9 +64,7 @@ export default function EventsPage() {
       />
 
       {activeTab === "events" ? (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-          Events table — coming soon.
-        </p>
+        <EventsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
       ) : (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
           Shifts table — coming soon.
