@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentEvent, User
-from app.schemas.tournament.event import EventCreate, EventRead, EventUpdate
+from app.models.models import SeasonEvent, TournamentEvent, User
+from app.schemas.tournament.event import (
+    EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventRead, EventUpdate,
+)
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -153,3 +155,70 @@ def delete_event(
     event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
     db.delete(event)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/events/load-defaults/ — manage_events
+# Bulk-creates TournamentEvent rows from every active SeasonEvent whose
+# division the tournament supports. Snapshots name from Event.name at load
+# time — not a live link, the TD can rename after. Skips anything that
+# would violate the (tournament_id, event_id, division) uniqueness
+# constraint (i.e. already loaded) rather than erroring the whole batch.
+# start_time/end_time are left unset — see TournamentEvent.start_time.
+# ---------------------------------------------------------------------------
+@router.post("/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED)
+def load_default_events(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    active_season_events = (
+        db.query(SeasonEvent)
+        .options(joinedload(SeasonEvent.event))
+        .filter(
+            SeasonEvent.is_active.is_(True),
+            SeasonEvent.division.in_(tournament.division or []),
+        )
+        .all()
+    )
+
+    existing_pairs = {
+        (te.event_id, te.division)
+        for te in db.query(TournamentEvent).filter(
+            TournamentEvent.tournament_id == tournament_id,
+            TournamentEvent.event_id.isnot(None),
+        )
+    }
+
+    created: list[TournamentEvent] = []
+    skipped: list[EventLoadDefaultsSkipped] = []
+    seen_pairs: set[tuple[int, str]] = set()
+
+    for season_event in active_season_events:
+        key = (season_event.event_id, season_event.division)
+        if key in existing_pairs or key in seen_pairs:
+            skipped.append(EventLoadDefaultsSkipped(
+                event_id=season_event.event_id,
+                division=season_event.division,
+                name=season_event.event.name,
+            ))
+            continue
+        seen_pairs.add(key)
+
+        event = TournamentEvent(
+            tournament_id=tournament_id,
+            event_id=season_event.event_id,
+            division=season_event.division,
+            name=season_event.event.name,
+        )
+        db.add(event)
+        created.append(event)
+
+    db.commit()
+    for event in created:
+        db.refresh(event)
+
+    return EventLoadDefaultsResponse(created=created, skipped=skipped)

@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 from app.api.routes import (
-    auth, events, join,
+    auth, events, join, season_event,
     sheets, users, user_experience, universities,
 )
 from app.api.routes import tournament as tournament_core
@@ -90,6 +90,7 @@ api_key_dependency = Depends(verify_api_key)
 app.include_router(auth.router,                   prefix="", dependencies=[api_key_dependency])
 app.include_router(join.router,                   prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router,                 prefix="", dependencies=[api_key_dependency])
+app.include_router(season_event.router,           prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_core.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_events.router,             prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_shifts.router,               prefix="", dependencies=[api_key_dependency])

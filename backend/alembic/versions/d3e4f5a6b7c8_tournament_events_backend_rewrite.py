@@ -23,12 +23,14 @@ incrementally as the rewrite progresses:
     custom-event-only display text — catalog-linked events display the
     joined Event.name instead)
   - tournament_events: add `event_id` FK to events (SET NULL), nullable
-  - tournament_events: add `start_time`/`end_time`, backfilled from the
-    parent tournament's start_date/end_date (else now()) since existing
-    rows have no equivalent data
+  - tournament_events: add `start_time`/`end_time`, both nullable. No backfill for
+    existing rows; they simply stay NULL. Frontend is expected to warn on
+    unset times, not block on them.
   - tournament_events: drop `uq_tournament_event_division`, add a partial
     unique index on (tournament_id, event_id, division) WHERE event_id IS
     NOT NULL — custom (event_id-less) events have no uniqueness constraint
+  - tournament_events: `volunteers_needed` made nullable, default dropped
+    (no more implicit "2" — unset means genuinely unset, not a guess)
 
   - season_events: new table — admin-curated per-year/division active
     event list, drives the tournament events bulk-load default list. No
@@ -79,8 +81,9 @@ def upgrade() -> None:
 
     # ------------------------------------------------------------------
     # tournament_events — drop blocks/category, add event_id, add
-    # start_time/end_time (backfilled), relax division, swap the unique
-    # constraint for a partial unique index scoped to catalog-linked rows
+    # start_time/end_time (nullable, no backfill), relax division, swap
+    # the unique constraint for a partial unique index scoped to
+    # catalog-linked rows
     # ------------------------------------------------------------------
     op.drop_constraint("uq_tournament_event_division", "tournament_events", type_="unique")
     op.alter_column("tournament_events", "division", existing_type=sa.String(length=4), nullable=True)
@@ -93,32 +96,8 @@ def upgrade() -> None:
         "tournament_events",
         sa.Column("event_id", sa.Integer(), sa.ForeignKey("events.id", ondelete="SET NULL"), nullable=True),
     )
-
-    # start_time/end_time: add nullable first so the backfill can run, then
-    # tighten to NOT NULL once every row has a value.
     op.add_column("tournament_events", sa.Column("start_time", sa.DateTime(timezone=True), nullable=True))
     op.add_column("tournament_events", sa.Column("end_time", sa.DateTime(timezone=True), nullable=True))
-
-    conn = op.get_bind()
-    # TODO(temp): backfilled from the parent tournament's date range since
-    # old `blocks` was a scheduling mechanism, not a datetime range — TD
-    # should review/adjust these once the events UI ships. Flag in PR.
-    result = conn.execute(
-        text(
-            """
-            UPDATE tournament_events te
-            SET start_time = COALESCE(t.start_date::timestamptz, now()),
-                end_time   = COALESCE(t.end_date::timestamptz, now())
-            FROM tournaments t
-            WHERE t.id = te.tournament_id
-            """
-        )
-    )
-    print(f"[d3e4f5a6b7c8] backfilled start_time/end_time on {result.rowcount} tournament_events row(s) "
-          f"from parent tournament dates — needs TD review, see TODO(temp) in this migration")
-
-    op.alter_column("tournament_events", "start_time", existing_type=sa.DateTime(timezone=True), nullable=False)
-    op.alter_column("tournament_events", "end_time", existing_type=sa.DateTime(timezone=True), nullable=False)
 
     op.create_index(
         "uq_tournament_event_catalog_division",
@@ -127,6 +106,8 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=text("event_id IS NOT NULL"),
     )
+
+    op.alter_column("tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=True)
 
     # ------------------------------------------------------------------
     # season_events — new table
@@ -155,6 +136,11 @@ def downgrade() -> None:
     # NOTE: data will be lost on downgrade (event_id links, start/end times).
     # ------------------------------------------------------------------
     op.drop_index("uq_tournament_event_catalog_division", table_name="tournament_events")
+
+    # Any rows with NULL volunteers_needed get 2 (the old default) so the
+    # NOT NULL constraint below doesn't fail.
+    op.execute("UPDATE tournament_events SET volunteers_needed = 2 WHERE volunteers_needed IS NULL")
+    op.alter_column("tournament_events", "volunteers_needed", existing_type=sa.Integer(), nullable=False)
 
     op.drop_column("tournament_events", "end_time")
     op.drop_column("tournament_events", "start_time")

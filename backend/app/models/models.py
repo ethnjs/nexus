@@ -483,10 +483,12 @@ class TournamentEvent(Base):
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
 
-    volunteers_needed = Column(Integer, nullable=False, default=2)
+    volunteers_needed = Column(Integer, nullable=True)
 
-    start_time = Column(DateTime(timezone=True), nullable=False)
-    end_time = Column(DateTime(timezone=True), nullable=False)
+    # Nullable — tournament planning starts before per-event times are known.
+    # Frontend is expected to warn on unset times, not block on them here.
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

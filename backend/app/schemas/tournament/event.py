@@ -19,9 +19,11 @@ class EventBase(BaseModel):
     building: str | None = None
     room: str | None = None
     floor: str | None = None
-    volunteers_needed: int = 2
-    start_time: datetime
-    end_time: datetime
+    volunteers_needed: int | None = None
+    # Nullable — a tournament's event schedule isn't known at planning
+    # time. Frontend is expected to warn on unset times, not block on them.
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
     @field_validator("division")
     @classmethod
@@ -39,14 +41,14 @@ class EventBase(BaseModel):
 
     @field_validator("volunteers_needed")
     @classmethod
-    def validate_volunteers_needed(cls, v: int) -> int:
-        if v < 1:
+    def validate_volunteers_needed(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
             raise ValueError("volunteers_needed must be at least 1")
         return v
 
     @model_validator(mode="after")
     def validate_times(self) -> "EventBase":
-        if self.end_time <= self.start_time:
+        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
             raise ValueError("end_time must be after start_time")
         return self
 
@@ -117,11 +119,23 @@ class EventRead(BaseModel):
     building: str | None = None
     room: str | None = None
     floor: str | None = None
-    volunteers_needed: int
-    start_time: datetime
-    end_time: datetime
+    volunteers_needed: int | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
     shifts: list[TournamentShiftRead] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EventLoadDefaultsSkipped(BaseModel):
+    event_id: int
+    division: str
+    name: str
+    reason: str = "already loaded"
+
+
+class EventLoadDefaultsResponse(BaseModel):
+    created: list[EventRead]
+    skipped: list[EventLoadDefaultsSkipped]

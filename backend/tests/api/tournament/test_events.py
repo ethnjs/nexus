@@ -29,7 +29,7 @@ def test_create_event_minimal(client, td_user, td_tournament):
     assert data["division"] == "C"
     assert data["tournament_id"] == td_tournament.id
     assert data["event_type"] == "standard"
-    assert data["volunteers_needed"] == 2
+    assert data["volunteers_needed"] is None
 
 
 def test_create_event_full(client, td_user, td_tournament):
