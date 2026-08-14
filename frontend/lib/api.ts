@@ -78,19 +78,20 @@ export interface CanonicalEvent {
   category:    EventCategory
 }
 
+// Writes are admin-only, under /admin/ — GET stays public/unauthenticated.
 export const eventCategoriesApi = {
   list:   ()                                    => api.get<EventCategory[]>('/event-categories/'),
-  create: (body: { name: string })              => api.post<EventCategory>('/event-categories/', body),
-  update: (id: number, body: { name: string })  => api.patch<EventCategory>(`/event-categories/${id}/`, body),
-  delete: (id: number)                          => api.delete<void>(`/event-categories/${id}/`),
+  create: (body: { name: string })              => api.post<EventCategory>('/admin/event-categories/', body),
+  update: (id: number, body: { name: string })  => api.patch<EventCategory>(`/admin/event-categories/${id}/`, body),
+  delete: (id: number)                          => api.delete<void>(`/admin/event-categories/${id}/`),
 }
 
 export const canonicalEventsApi = {
   list:   ()                                              => api.get<CanonicalEvent[]>('/events/'),
-  create: (body: { name: string; category_id: number })   => api.post<CanonicalEvent>('/events/', body),
+  create: (body: { name: string; category_id: number })   => api.post<CanonicalEvent>('/admin/events/', body),
   update: (id: number, body: Partial<{ name: string; category_id: number }>) =>
-    api.patch<CanonicalEvent>(`/events/${id}/`, body),
-  delete: (id: number)                                    => api.delete<void>(`/events/${id}/`),
+    api.patch<CanonicalEvent>(`/admin/events/${id}/`, body),
+  delete: (id: number)                                    => api.delete<void>(`/admin/events/${id}/`),
 }
 
 // -------------------------------------------------------------------------
@@ -436,22 +437,94 @@ export const adminTournamentsApi = {
 
 
 // -------------------------------------------------------------------------
+// Tournament Shifts — nested under /tournaments/{id}/shifts/, and attached
+// to events via /tournaments/{id}/events/{eventId}/shifts/{shiftId}/
+// -------------------------------------------------------------------------
+export interface TournamentShift {
+  id:            number
+  tournament_id: number
+  label:         string
+  start:         string
+  end:           string
+  created_at:    string
+  updated_at:    string
+}
+
+export interface TournamentShiftInput {
+  label: string
+  start: string
+  end:   string
+}
+
+export const tournamentShiftsApi = {
+  list: (tournamentId: number) =>
+    api.get<TournamentShift[]>(`/tournaments/${tournamentId}/shifts/`),
+  create: (tournamentId: number, body: TournamentShiftInput) =>
+    api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
+  update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
+    api.patch<TournamentShift>(`/tournaments/${tournamentId}/shifts/${id}/`, body),
+  // Cascades — detaches from any events it was attached to, no confirmation guard.
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
+  // 409 on either bounds violation (outside the event's start/end) or
+  // overlap with another shift already attached to the same event.
+  attach: (tournamentId: number, eventId: number, shiftId: number) =>
+    api.post<TournamentShift>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`, {}),
+  detach: (tournamentId: number, eventId: number, shiftId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`),
+}
+
+// -------------------------------------------------------------------------
 // Tournament Events — nested under /tournaments/{id}/events/
 // -------------------------------------------------------------------------
+// name is set only for custom (event_id-less) events — a catalog-linked
+// event's display name comes from the joined `event` field instead.
 export interface TournamentEvent {
   id:                number
   tournament_id:     number
-  name:              string
-  division:          'B' | 'C'
+  name:              string | null
+  division:          TournamentDivision | null
   event_type:        'standard' | 'trial'
-  category:          string | null
+  event_id:          number | null
+  // Joined canonical event — set only when event_id is set. Carries
+  // category, since TournamentEvent has no category field of its own.
+  event:             CanonicalEvent | null
   building:          string | null
   room:              string | null
   floor:             string | null
-  volunteers_needed: number
-  blocks:            number[]
+  volunteers_needed: number | null
+  // Nullable — a tournament's event schedule isn't known at planning time.
+  // Warn in the UI on unset times rather than blocking on them.
+  start_time:        string | null
+  end_time:          string | null
+  shifts:            TournamentShift[]
   created_at:        string
   updated_at:        string
+}
+
+export interface TournamentEventInput {
+  name?:              string | null
+  division?:          TournamentDivision | null
+  event_type?:        'standard' | 'trial'
+  event_id?:          number | null
+  building?:          string | null
+  room?:              string | null
+  floor?:             string | null
+  volunteers_needed?: number | null
+  start_time?:        string | null
+  end_time?:          string | null
+}
+
+export interface EventLoadDefaultsSkipped {
+  event_id: number
+  division: string
+  name:     string
+  reason:   string
+}
+
+export interface EventLoadDefaultsResponse {
+  created: TournamentEvent[]
+  skipped: EventLoadDefaultsSkipped[]
 }
 
 export const tournamentEventsApi = {
@@ -459,12 +532,53 @@ export const tournamentEventsApi = {
     api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
   get:    (tournamentId: number, id: number) =>
     api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
-  create: (tournamentId: number, body: Partial<TournamentEvent>) =>
+  create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
     api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
-  update: (tournamentId: number, id: number, body: Partial<TournamentEvent>) =>
+  update: (tournamentId: number, id: number, body: Partial<TournamentEventInput>) =>
     api.patch<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/events/${id}/`),
+  // Bulk-creates events from every active SeasonEvent whose division the
+  // tournament supports. Skips anything already loaded rather than erroring.
+  loadDefaults: (tournamentId: number) =>
+    api.post<EventLoadDefaultsResponse>(`/tournaments/${tournamentId}/events/load-defaults/`, {}),
+}
+
+// -------------------------------------------------------------------------
+// Season Events — admin-curated per-year/division active event list, drives
+// tournamentEventsApi.loadDefaults(). GET is public; writes are admin-only.
+// -------------------------------------------------------------------------
+export interface SeasonEvent {
+  id:         number
+  event_id:   number
+  year:       number
+  division:   TournamentDivision
+  is_active:  boolean
+  event:      CanonicalEvent
+  created_at: string
+}
+
+export interface SeasonEventInput {
+  event_id:   number
+  year:       number
+  division:   TournamentDivision
+  is_active?: boolean
+}
+
+export const seasonEventsApi = {
+  list: (params: { year?: number; division?: TournamentDivision } = {}) => {
+    const qs = new URLSearchParams();
+    if (params.year !== undefined) qs.set('year', String(params.year))
+    if (params.division) qs.set('division', params.division)
+    const query = qs.toString()
+    return api.get<SeasonEvent[]>(`/season-events/${query ? `?${query}` : ''}`)
+  },
+  create: (body: SeasonEventInput) =>
+    api.post<SeasonEvent>('/admin/season-events/', body),
+  update: (id: number, body: Partial<SeasonEventInput>) =>
+    api.patch<SeasonEvent>(`/admin/season-events/${id}/`, body),
+  delete: (id: number) =>
+    api.delete<void>(`/admin/season-events/${id}/`),
 }
 
 // -------------------------------------------------------------------------
@@ -481,11 +595,6 @@ export interface AvailabilitySlot {
   date:  string
   start: string
   end:   string
-}
-
-export interface ScheduleSlot {
-  block: number
-  duty:  string
 }
 
 // Matches RoleRead
@@ -534,8 +643,6 @@ export interface MembershipSlim {
 export interface MembershipFull {
   id:                number
   tournament_id:     number
-  assigned_event_id: number | null
-  schedule:          ScheduleSlot[] | null
   status:            MembershipStatus
   role_preference:   string[] | null
   event_preference:  string[] | null
@@ -563,8 +670,7 @@ export interface MembershipMeUpdate {
 
 // PATCH .../memberships/{id}/ — manage_members override, day-of logistics only
 export interface MembershipCoordinatorUpdate {
-  schedule?: ScheduleSlot[] | null
-  notes?:    string | null
+  notes?: string | null
 }
 
 // GET .../memberships/me/ — current user's membership + effective permissions
