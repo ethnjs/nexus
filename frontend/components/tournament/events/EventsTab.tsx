@@ -191,14 +191,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 type="button" variant="secondary" size="md"
                 onClick={() => setShowFilterModal(true)}
               >
-                <IconFilter size={13} /> Filter
+                <IconFilter size={16} /> Filter
               </Button>
               {isEventsFilterActive(filters) && (
                 <Button
                   type="button" variant="ghost" size="md"
                   onClick={() => setFilters({ division: new Set(), type: new Set(), category: new Set() })}
                 >
-                  <IconX size={11} /> Clear filters
+                  <IconX size={16} /> Clear filters
                 </Button>
               )}
               <Dropdown
