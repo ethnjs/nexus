@@ -11,7 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
-import { IconPlus, IconTrash, IconCalendar, IconEdit } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconCalendar, IconEdit, IconX } from "@/components/ui/Icons";
 
 const SHIFT_ROW_COLUMNS = "2fr 1fr 1fr 90px";
 
@@ -81,7 +81,11 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     [draft, shifts]
   );
   const newRows = useMemo(() => draft.filter((row) => isTempId(row.id)), [draft]);
-  const isDirty = pendingEdits.length > 0 || newRows.length > 0;
+  // Having any row open in edit mode counts as dirty even with no actual
+  // field changes yet — otherwise there'd be no way back to view mode
+  // short of a refresh, since the save bar (the only Cancel control) would
+  // stay hidden.
+  const isDirty = pendingEdits.length > 0 || newRows.length > 0 || editingIds.size > 0;
 
   function patchRow(id: number, patch: Partial<ShiftDraftRow>) {
     setDraft((cur) => cur.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -103,6 +107,29 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     setDraft((cur) => [...cur, { id, label: "", start: "", end: "" }]);
     setEditingIds((cur) => new Set(cur).add(id));
     setSaveError(undefined);
+  }
+
+  // The X a row's Edit button turns into — closes edit mode for just that
+  // row, discarding whatever was typed (an unsaved new row is dropped
+  // entirely; an existing row reverts to its last-saved values).
+  function cancelRowEdit(id: number) {
+    if (isTempId(id)) {
+      setDraft((cur) => cur.filter((row) => row.id !== id));
+    } else {
+      const saved = shifts!.find((s) => s.id === id)!;
+      setDraft((cur) => cur.map((row) => (row.id === id ? toDraftRow(saved) : row)));
+    }
+    setEditingIds((cur) => {
+      if (!cur.has(id)) return cur;
+      const next = new Set(cur);
+      next.delete(id);
+      return next;
+    });
+    setFieldErrors((cur) => {
+      if (!cur[id]) return cur;
+      const { [id]: _omit, ...rest } = cur;
+      return rest;
+    });
   }
 
   function deleteRow(id: number) {
@@ -241,6 +268,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                 errors={fieldErrors[row.id]}
                 onChange={(patch) => patchRow(row.id, patch)}
                 onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
+                onCancelEdit={() => cancelRowEdit(row.id)}
                 onDelete={() => deleteRow(row.id)}
               />
             ))}
@@ -279,7 +307,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onDelete }: {
+function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onCancelEdit, onDelete }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
@@ -287,6 +315,7 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onD
   errors?: RowFieldErrors;
   onChange: (patch: Partial<ShiftDraftRow>) => void;
   onEdit: () => void;
+  onCancelEdit: () => void;
   onDelete: () => void;
 }) {
   return (
@@ -334,7 +363,11 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onD
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
         {canEdit && (
           <>
-            {!editing && (
+            {editing ? (
+              <Button type="button" variant="secondary" size="sm" iconOnly title="Stop editing" onClick={onCancelEdit}>
+                <IconX size={13} />
+              </Button>
+            ) : (
               <Button type="button" variant="secondary" size="sm" iconOnly title="Edit shift" onClick={onEdit}>
                 <IconEdit size={13} />
               </Button>
