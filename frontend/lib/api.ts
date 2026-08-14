@@ -446,6 +446,9 @@ export interface TournamentShift {
   label:         string
   start:         string
   end:           string
+  // How many TournamentEvents this shift is currently attached to — drives
+  // the "attached to N events" delete-confirm warning.
+  event_count:   number
   created_at:    string
   updated_at:    string
 }

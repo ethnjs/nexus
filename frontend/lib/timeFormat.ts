@@ -2,6 +2,20 @@ export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
 }
 
+// For binding an ISO datetime to <input type="datetime-local">, whose value
+// format is always "YYYY-MM-DDTHH:mm" in the user's local time, no seconds
+// or timezone offset.
+export function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function fromDatetimeLocal(local: string): string | null {
+  return local ? new Date(local).toISOString() : null
+}
+
 // Date + time, for a tooltip pinning down the exact moment behind a coarse
 // label like formatDuration's "3d" or "Today".
 export function formatDateTime(iso: string): string {

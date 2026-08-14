@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { TabStrip } from "@/components/ui/TabStrip";
 import { IconLock } from "@/components/ui/Icons";
 import { EventsTab } from "@/components/tournament/events/EventsTab";
+import { ShiftsTab } from "@/components/tournament/events/ShiftsTab";
 
 type EventsPageTab = "events" | "shifts";
 
@@ -66,9 +67,7 @@ export default function EventsPage() {
       {activeTab === "events" ? (
         <EventsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
       ) : (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-          Shifts table — coming soon.
-        </p>
+        <ShiftsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
       )}
     </div>
   );

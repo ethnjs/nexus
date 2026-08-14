@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { toDatetimeLocal, fromDatetimeLocal } from "@/lib/timeFormat";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -31,17 +32,6 @@ interface EventDraft {
   volunteers_needed: string;
   start_time: string;
   end_time: string;
-}
-
-function toDatetimeLocal(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function fromDatetimeLocal(local: string): string | null {
-  return local ? new Date(local).toISOString() : null;
 }
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
