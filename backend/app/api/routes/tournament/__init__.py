@@ -20,7 +20,7 @@ from app.core.tournament.permissions import (
 from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, User
 from app.schemas.tournament import (
-    TournamentCreate, TournamentRead, TournamentUpdate, TransferOwnershipRequest,
+    TournamentCreate, TournamentRead, TournamentSummary, TournamentUpdate, TransferOwnershipRequest,
 )
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
@@ -51,7 +51,7 @@ def _serialize(tournament: Tournament) -> dict:
 # ---------------------------------------------------------------------------
 # GET /tournaments/me — tournaments the current user has any membership in.
 # ---------------------------------------------------------------------------
-@router.get("/me/", response_model=list[TournamentRead])
+@router.get("/me/", response_model=list[TournamentSummary])
 def list_my_tournaments(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -64,7 +64,14 @@ def list_my_tournaments(
         .order_by(Tournament.created_at.desc())
         .all()
     )
-    return [_serialize(t) for t in tournaments]
+    return [
+        TournamentSummary(
+            **_serialize(t),
+            event_count=len(t.events),
+            volunteer_count=len(t.memberships),
+        )
+        for t in tournaments
+    ]
 
 
 # ---------------------------------------------------------------------------

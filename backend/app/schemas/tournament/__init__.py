@@ -156,3 +156,35 @@ class TournamentRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TournamentPublic(BaseModel):
+    """Shared minimal, non-sensitive tournament fields — what any viewer,
+    member or not, needs to identify a tournament and decide whether to
+    engage with it. No owner/roles/registration internals. Base for
+    TournamentSummary (dashboard list) and JoinPreviewTournament (public
+    invite preview) — deliberately has no id/target_id field since the two
+    callers use different names for it."""
+    name: str
+    short_name: str | None = None
+    start_date: date
+    end_date: date
+    university: UniversityResponse | None = None
+    location: str | None = None
+    state: str
+    level: str
+    division: list[str]
+    is_verified: bool
+
+    model_config = {"from_attributes": True}
+
+
+class TournamentSummary(TournamentPublic):
+    """GET /tournaments/me/ — lightweight card view, no roles/owner."""
+    id: int
+    is_public: bool
+    is_archived: bool
+    event_count: int
+    volunteer_count: int
+    created_at: datetime
+    updated_at: datetime
