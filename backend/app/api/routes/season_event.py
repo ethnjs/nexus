@@ -8,20 +8,20 @@ from app.db.session import get_db
 from app.models.models import SeasonEvent, User
 from app.schemas.season_event import SeasonEventCreate, SeasonEventRead, SeasonEventUpdate
 
-# Namespaced under /admin/, matching app/api/routes/tournament/admin.py —
-# platform-admin-only resource, kept under a single consistent prefix.
-router = APIRouter(prefix="/admin/season-events", tags=["season-events"])
+# GET is public/unauthenticated, matching the canonical Event/EventCategory
+# split (app/api/routes/events.py) — writes are admin-only, under /admin/.
+router = APIRouter(prefix="/season-events", tags=["season-events"])
+admin_router = APIRouter(prefix="/admin/season-events", tags=["season-events"])
 
 
 # ---------------------------------------------------------------------------
-# GET /admin/season-events/ — admin only, filterable by year/division
+# GET /season-events/ — filterable by year/division
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[SeasonEventRead])
 def list_season_events(
     year: int | None = Query(None),
     division: str | None = Query(None),
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
 ):
     query = db.query(SeasonEvent).options(joinedload(SeasonEvent.event))
     if year is not None:
@@ -34,7 +34,7 @@ def list_season_events(
 # ---------------------------------------------------------------------------
 # POST /admin/season-events/ — admin only
 # ---------------------------------------------------------------------------
-@router.post("/", response_model=SeasonEventRead, status_code=status.HTTP_201_CREATED)
+@admin_router.post("/", response_model=SeasonEventRead, status_code=status.HTTP_201_CREATED)
 def create_season_event(
     payload: SeasonEventCreate,
     db: Session = Depends(get_db),
@@ -57,7 +57,7 @@ def create_season_event(
 # ---------------------------------------------------------------------------
 # PATCH /admin/season-events/{id}/ — admin only, primarily used to toggle is_active
 # ---------------------------------------------------------------------------
-@router.patch("/{season_event_id}/", response_model=SeasonEventRead)
+@admin_router.patch("/{season_event_id}/", response_model=SeasonEventRead)
 def update_season_event(
     season_event_id: int,
     payload: SeasonEventUpdate,
@@ -86,7 +86,7 @@ def update_season_event(
 # ---------------------------------------------------------------------------
 # DELETE /admin/season-events/{id}/ — admin only
 # ---------------------------------------------------------------------------
-@router.delete("/{season_event_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete("/{season_event_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_season_event(
     season_event_id: int,
     db: Session = Depends(get_db),

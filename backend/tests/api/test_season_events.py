@@ -43,7 +43,7 @@ def test_list_season_events_filter_by_year_division(client, admin_user, event_fa
     _make_season_event(client, event_id=e1.id, year=2026, division="C")
     _make_season_event(client, event_id=e2.id, year=2027, division="B")
 
-    response = client.get("/admin/season-events/", params={"year": 2026})
+    response = client.get("/season-events/", params={"year": 2026})
     assert response.status_code == 200
     assert len(response.json()) == 1
     assert response.json()[0]["event_id"] == e1.id
@@ -63,11 +63,16 @@ def test_delete_season_event(client, admin_user, event):
     assert client.delete(f"/admin/season-events/{created['id']}/").status_code == 204
 
 
-def test_season_event_routes_require_admin(client, td_user, event):
-    """A regular (non-admin) user gets 403 on every admin route."""
+def test_season_event_write_routes_require_admin(client, td_user, event):
+    """A regular (non-admin) user gets 403 on every admin write route."""
     login(client, "td@test.com", "tdpass")
     assert _make_season_event(client, event_id=event.id).status_code == 403
-    assert client.get("/admin/season-events/").status_code == 403
+
+
+def test_list_season_events_is_public(client, event):
+    """GET isn't admin-gated — anyone can read the season event list."""
+    response = client.get("/season-events/")
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
