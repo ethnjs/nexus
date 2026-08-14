@@ -6,6 +6,7 @@ import {
   TournamentEvent, TournamentEventInput, TournamentShift, CanonicalEvent, TournamentDivision,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -72,6 +73,7 @@ interface EventPanelProps {
 export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted }: EventPanelProps) {
   const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
+  const { guard } = useUnsavedChanges();
 
   // The event this panel is editing. Starts as `event` (null for "new"),
   // and becomes the real row once a create lands — so the Shifts section
@@ -95,11 +97,12 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   }, [tournamentId]);
 
   const isNew = current === null;
-  // A brand-new event has nothing to diff against — treat it as dirty from
-  // the moment the panel opens so the save bar is reachable immediately.
+  // For a new event this compares against the blank default draft, so an
+  // untouched "New event" panel reads as clean — closing it needs no
+  // confirmation until the user actually types something.
   const isDirty = useMemo(
-    () => isNew || JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
-    [draft, current, isNew]
+    () => JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
+    [draft, current]
   );
 
   function patch(p: Partial<EventDraft>) {
@@ -146,6 +149,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   function handleCancel() {
     setDraft(draftFromEvent(current));
     setSaveError(undefined);
+    onClose();
   }
 
   // Only offered once the event has its own saved start/end — attaching
@@ -191,8 +195,11 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     : undefined;
 
   return (
-    <SidePanel onClose={onClose} width={600}>
-      <div style={{ padding: "20px 28px" }}>
+    <SidePanel onClose={() => guard(onClose)} width={600}>
+      {/* Extra bottom padding only while the FloatingSaveBar is showing —
+          it floats over the last 80-ish px of this scroll area, so without
+          this the Danger Zone section would be unreachable while it's up. */}
+      <div style={{ padding: `20px 28px ${!locked && isDirty ? "100px" : "20px"}` }}>
         <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
           <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "22px" }}>
             {isNew ? "New event" : draft.eventText || "Event"}

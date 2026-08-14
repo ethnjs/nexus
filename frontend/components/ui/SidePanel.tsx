@@ -59,6 +59,10 @@ export function SidePanel({ onClose, children, width = 480 }: SidePanelProps) {
           display: "flex", flexDirection: "column",
           boxShadow: "var(--shadow-lg)",
           animation: "sidePanelIn 200ms ease-out",
+          // Establishes a containing block for any position:fixed descendant
+          // (e.g. a FloatingSaveBar rendered inside panel content) so it's
+          // scoped to this panel's box instead of centering on the viewport.
+          willChange: "transform",
         }}
         onClick={(e) => e.stopPropagation()}
       >
