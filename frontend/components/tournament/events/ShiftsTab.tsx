@@ -34,8 +34,18 @@ function rowDiffers(row: ShiftDraftRow, saved: TournamentShift): boolean {
   return row.label !== saved.label || row.start !== toDatetimeLocal(saved.start) || row.end !== toDatetimeLocal(saved.end);
 }
 
-function isRowComplete(row: ShiftDraftRow): boolean {
-  return !!row.label.trim() && !!row.start && !!row.end;
+interface RowFieldErrors {
+  label?: string;
+  start?: string;
+  end?: string;
+}
+
+function validateRow(row: ShiftDraftRow): RowFieldErrors | null {
+  const errors: RowFieldErrors = {};
+  if (!row.label.trim()) errors.label = "Required";
+  if (!row.start) errors.start = "Required";
+  if (!row.end) errors.end = "Required";
+  return Object.keys(errors).length > 0 ? errors : null;
 }
 
 interface ShiftsTabProps {
@@ -50,6 +60,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [fieldErrors, setFieldErrors] = useState<Record<number, RowFieldErrors>>({});
   const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
 
   // Any number of rows can show editable inputs at once — clicking Edit on
@@ -74,6 +85,17 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
 
   function patchRow(id: number, patch: Partial<ShiftDraftRow>) {
     setDraft((cur) => cur.map((row) => (row.id === id ? { ...row, ...patch } : row)));
+    // Clear just the fields being edited — leaves errors on fields the user
+    // hasn't touched yet instead of wiping the whole row's error state.
+    setFieldErrors((cur) => {
+      const rowErrors = cur[id];
+      if (!rowErrors) return cur;
+      const next = { ...rowErrors };
+      for (const key of Object.keys(patch) as (keyof RowFieldErrors)[]) delete next[key];
+      if (Object.keys(next).length === Object.keys(rowErrors).length) return cur;
+      const { [id]: _omit, ...rest } = cur;
+      return Object.keys(next).length > 0 ? { ...rest, [id]: next } : rest;
+    });
   }
 
   function addRow() {
@@ -92,6 +114,11 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         next.delete(id);
         return next;
       });
+      setFieldErrors((cur) => {
+        if (!cur[id]) return cur;
+        const { [id]: _omit, ...rest } = cur;
+        return rest;
+      });
       return;
     }
     const saved = shifts!.find((s) => s.id === id);
@@ -100,12 +127,21 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
 
   async function handleSaveAll() {
     if (!shifts) return;
-    const incomplete = [...pendingEdits, ...newRows].some((row) => !isRowComplete(row));
-    if (incomplete) {
-      setSaveError("Every shift needs a label, start, and end.");
+
+    const errors: Record<number, RowFieldErrors> = {};
+    for (const row of [...pendingEdits, ...newRows]) {
+      const rowErrors = validateRow(row);
+      if (rowErrors) errors[row.id] = rowErrors;
+    }
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      // Force every invalid row into edit mode so its errors are visible —
+      // one could be mid-edit-but-collapsed if it was left incomplete earlier.
+      setEditingIds((cur) => new Set([...cur, ...Object.keys(errors).map(Number)]));
       return;
     }
 
+    setFieldErrors({});
     setSaving(true);
     setSaveError(undefined);
     try {
@@ -136,6 +172,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     if (!shifts) return;
     setDraft(shifts.map(toDraftRow));
     setEditingIds(new Set());
+    setFieldErrors({});
     setSaveError(undefined);
   }
 
@@ -201,6 +238,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                 isLast={i === draft.length - 1}
                 editing={canEdit && editingIds.has(row.id)}
                 canEdit={canEdit}
+                errors={fieldErrors[row.id]}
                 onChange={(patch) => patchRow(row.id, patch)}
                 onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
                 onDelete={() => deleteRow(row.id)}
@@ -228,6 +266,11 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
           onDeleted={() => {
             setShifts((cur) => (cur ?? []).filter((s) => s.id !== deleteTarget.id));
             setDraft((cur) => cur.filter((row) => row.id !== deleteTarget.id));
+            setFieldErrors((cur) => {
+              if (!cur[deleteTarget.id]) return cur;
+              const { [deleteTarget.id]: _omit, ...rest } = cur;
+              return rest;
+            });
             setDeleteTarget(null);
           }}
         />
@@ -236,11 +279,12 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, onChange, onEdit, onDelete }: {
+function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onDelete }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
   canEdit: boolean;
+  errors?: RowFieldErrors;
   onChange: (patch: Partial<ShiftDraftRow>) => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -258,18 +302,21 @@ function ShiftRow({ row, isLast, editing, canEdit, onChange, onEdit, onDelete }:
             onChange={(e) => onChange({ label: e.target.value })}
             placeholder="Label"
             font="sans" size="sm" fullWidth
+            error={errors?.label}
           />
           <Input
             type="datetime-local"
             value={row.start}
             onChange={(e) => onChange({ start: e.target.value })}
             size="sm" fullWidth
+            error={errors?.start}
           />
           <Input
             type="datetime-local"
             value={row.end}
             onChange={(e) => onChange({ end: e.target.value })}
             size="sm" fullWidth
+            error={errors?.end}
           />
         </>
       ) : (
