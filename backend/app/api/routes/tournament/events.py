@@ -160,11 +160,7 @@ def delete_event(
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/events/load-defaults/ — manage_events
 # Bulk-creates TournamentEvent rows from every active SeasonEvent whose
-# division the tournament supports. Snapshots name from Event.name at load
-# time — not a live link, the TD can rename after. Skips anything that
-# would violate the (tournament_id, event_id, division) uniqueness
-# constraint (i.e. already loaded) rather than erroring the whole batch.
-# start_time/end_time are left unset — see TournamentEvent.start_time.
+# division the tournament supports. 
 # ---------------------------------------------------------------------------
 @router.post("/load-defaults/", response_model=EventLoadDefaultsResponse, status_code=status.HTTP_201_CREATED)
 def load_default_events(

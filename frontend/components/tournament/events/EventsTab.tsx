@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
 import { formatDateTime } from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
@@ -10,7 +11,8 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { IconSearch, IconArrowDown, IconEvents } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning } from "@/components/ui/Icons";
+import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 
 const EVENT_ROW_COLUMNS = "2fr 80px 90px 1.2fr 130px 130px";
 
@@ -47,11 +49,14 @@ interface EventsTabProps {
 }
 
 export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
+  const router = useRouter();
   const { selectedTournament, isArchived } = useTournament();
+  const divisions = selectedTournament?.division ?? [];
+  const hasDivisions = divisions.length > 0;
 
   const [events, setEvents] = useState<TournamentEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
-  const [loadingDefaults, setLoadingDefaults] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
 
   const [search, setSearch] = useState("");
   const [divisionFilter, setDivisionFilter] = useState("all");
@@ -71,19 +76,6 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   useEffect(() => {
     loadEvents();
   }, [tournamentId]);
-
-  async function handleLoadDefaults() {
-    setLoadingDefaults(true);
-    setLoadError(undefined);
-    try {
-      const result = await tournamentEventsApi.loadDefaults(tournamentId);
-      setEvents((prev) => [...(prev ?? []), ...result.created]);
-    } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Failed to load default events.");
-    } finally {
-      setLoadingDefaults(false);
-    }
-  }
 
   const divisionOptions = useMemo(
     () => (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` })),
@@ -128,18 +120,31 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
       {events.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconEvents size={28} />}
-            title="No events yet"
-            description="Load this tournament's events from the season catalog, or add them one at a time."
-            action={
-              canManageEvents && !isArchived ? (
-                <Button type="button" variant="primary" size="sm" loading={loadingDefaults} onClick={handleLoadDefaults}>
-                  Load from season catalog
+          {canManageEvents && !isArchived && !hasDivisions ? (
+            <EmptyState
+              icon={<IconWarning size={28} />}
+              title="No divisions assigned"
+              description="This tournament has no divisions assigned yet. Assign at least one before loading default events."
+              action={
+                <Button type="button" variant="primary" size="sm" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/settings/general`)}>
+                  Go to settings
                 </Button>
-              ) : undefined
-            }
-          />
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={<IconEvents size={28} />}
+              title="No events yet"
+              description="Load this tournament's default events, or add them one at a time."
+              action={
+                canManageEvents && !isArchived ? (
+                  <Button type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}>
+                    Load default events
+                  </Button>
+                ) : undefined
+              }
+            />
+          )}
         </Card>
       ) : (
         <>
@@ -217,6 +222,16 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
             )}
           </Card>
         </>
+      )}
+
+      {showLoadModal && (
+        <LoadDefaultEventsModal
+          tournamentId={tournamentId}
+          divisions={divisions}
+          existingEvents={events}
+          onClose={() => setShowLoadModal(false)}
+          onLoaded={(created) => setEvents((prev) => [...(prev ?? []), ...created])}
+        />
       )}
     </div>
   );
