@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
@@ -21,6 +22,7 @@ export default function EventsPage() {
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
+  const { guard } = useUnsavedChanges();
 
   const [activeTab, setActiveTab] = useState<EventsPageTab>("events");
 
@@ -61,7 +63,7 @@ export default function EventsPage() {
           { key: "shifts", label: "Shifts" },
         ]}
         activeKey={activeTab}
-        onChange={setActiveTab}
+        onChange={(tab) => guard(() => setActiveTab(tab))}
       />
 
       {activeTab === "events" ? (

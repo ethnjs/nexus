@@ -52,10 +52,10 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
 
-  // Only one row shows editable inputs at a time — clicking Edit on another
-  // row just switches which one, no separate confirm step. Committing to
-  // the backend happens only via the FloatingSaveBar below.
-  const [editingId, setEditingId] = useState<number | null>(null);
+  // Any number of rows can show editable inputs at once — clicking Edit on
+  // one row doesn't close another. No separate per-row confirm step;
+  // committing to the backend happens only via the FloatingSaveBar below.
+  const [editingIds, setEditingIds] = useState<Set<number>>(new Set());
 
   const nextTempIdRef = useRef(-1);
 
@@ -79,14 +79,19 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   function addRow() {
     const id = nextTempIdRef.current--;
     setDraft((cur) => [...cur, { id, label: "", start: "", end: "" }]);
-    setEditingId(id);
+    setEditingIds((cur) => new Set(cur).add(id));
     setSaveError(undefined);
   }
 
   function deleteRow(id: number) {
     if (isTempId(id)) {
       setDraft((cur) => cur.filter((row) => row.id !== id));
-      if (editingId === id) setEditingId(null);
+      setEditingIds((cur) => {
+        if (!cur.has(id)) return cur;
+        const next = new Set(cur);
+        next.delete(id);
+        return next;
+      });
       return;
     }
     const saved = shifts!.find((s) => s.id === id);
@@ -119,7 +124,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
       const fresh = await tournamentShiftsApi.list(tournamentId);
       setShifts(fresh);
       setDraft(fresh.map(toDraftRow));
-      setEditingId(null);
+      setEditingIds(new Set());
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to save shifts.");
     } finally {
@@ -130,7 +135,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   function handleCancelAll() {
     if (!shifts) return;
     setDraft(shifts.map(toDraftRow));
-    setEditingId(null);
+    setEditingIds(new Set());
     setSaveError(undefined);
   }
 
@@ -194,10 +199,10 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                 key={row.id}
                 row={row}
                 isLast={i === draft.length - 1}
-                editing={canEdit && editingId === row.id}
+                editing={canEdit && editingIds.has(row.id)}
                 canEdit={canEdit}
                 onChange={(patch) => patchRow(row.id, patch)}
-                onEdit={() => setEditingId(row.id)}
+                onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
                 onDelete={() => deleteRow(row.id)}
               />
             ))}
