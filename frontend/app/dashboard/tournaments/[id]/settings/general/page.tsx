@@ -63,7 +63,7 @@ export default function GeneralSettingsPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const { user: currentUser } = useAuth();
-  const { selectedTournament, setSelectedTournament, isArchived, refresh } = useTournament();
+  const { selectedTournament, setSelectedTournament, isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
@@ -404,7 +404,7 @@ export default function GeneralSettingsPage() {
           tournamentName={selectedTournament.name}
           mode={selectedTournament.is_archived ? "unarchive" : "archive"}
           onClose={() => setShowArchiveModal(false)}
-          onDone={() => { refresh(); setShowArchiveModal(false); }}
+          onDone={(updated) => { setSelectedTournament(updated); setShowArchiveModal(false); }}
         />
       )}
 

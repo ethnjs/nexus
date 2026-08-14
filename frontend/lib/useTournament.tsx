@@ -23,10 +23,17 @@ const TournamentContext = createContext<TournamentContextValue | null>(null);
 
 export function TournamentProvider({ children }: { children: ReactNode }) {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
-  const [selectedTournament, setSelectedTournamentState] =
+  const [selectedTournament, setSelectedTournament] =
     useState<Tournament | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Only populates the `tournaments` list (used by the Topbar switcher).
+  // selectedTournament is never set from here — every route lives under
+  // /dashboard/tournaments/[id], so TournamentShell's own fetch keyed to
+  // that URL id is the sole writer. Letting this list refresh also assign
+  // selectedTournament (previously via localStorage) raced with that fetch:
+  // this list call is slower, so it would reliably land second and clobber
+  // the correct URL-driven selection with a stale cached one.
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -34,33 +41,10 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
       // has any membership in (admin sees all tournaments)
       const data = await tournamentsApi.list();
       setTournaments(data);
-
-      // Restore last selected from localStorage, or default to first
-      const savedId = localStorage.getItem("nexus_selected_tournament");
-      if (savedId) {
-        const found = data.find((t: Tournament) => t.id === parseInt(savedId));
-        if (found) {
-          setSelectedTournamentState(found);
-          setLoading(false);
-          return;
-        }
-      }
-      if (data.length > 0) {
-        setSelectedTournamentState(data[0]);
-      }
     } catch (err) {
       console.error("Failed to load tournaments", err);
     } finally {
       setLoading(false);
-    }
-  }, []);
-
-  const setSelectedTournament = useCallback((t: Tournament | null) => {
-    setSelectedTournamentState(t);
-    if (t) {
-      localStorage.setItem("nexus_selected_tournament", String(t.id));
-    } else {
-      localStorage.removeItem("nexus_selected_tournament");
     }
   }, []);
 
