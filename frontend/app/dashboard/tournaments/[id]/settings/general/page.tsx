@@ -139,7 +139,7 @@ export default function GeneralSettingsPage() {
     if (!draft.level) fieldErrors.level = "Pick one from the list.";
     if (draft.division.length === 0) fieldErrors.division = "Select at least one division.";
 
-    if (Object.keys(fieldErrors).length > 0) {
+    if (Object.keys(fieldErrors).length > 0 || !draft.state || !draft.level) {
       setErrors(fieldErrors);
       setSaving(false);
       return;
