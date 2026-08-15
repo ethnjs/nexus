@@ -172,22 +172,79 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     setSaving(true);
     setSaveError(undefined);
     try {
-      await Promise.all([
-        ...newRows.map((row) =>
-          tournamentShiftsApi.create(tournamentId, {
+      // allSettled (not all) so a 409 on one row doesn't hide which row it
+      // came from — each entry stays paired with its row for attribution.
+      const entries = [
+        ...newRows.map((row) => ({
+          row,
+          promise: tournamentShiftsApi.create(tournamentId, {
             label: row.label.trim(), start: fromDatetimeLocal(row.start)!, end: fromDatetimeLocal(row.end)!,
-          })
-        ),
-        ...pendingEdits.map((row) =>
-          tournamentShiftsApi.update(tournamentId, row.id, {
+          }),
+        })),
+        ...pendingEdits.map((row) => ({
+          row,
+          promise: tournamentShiftsApi.update(tournamentId, row.id, {
             label: row.label.trim(), start: fromDatetimeLocal(row.start)!, end: fromDatetimeLocal(row.end)!,
-          })
-        ),
-      ]);
-      const fresh = await tournamentShiftsApi.list(tournamentId);
-      setShifts(fresh);
-      setDraft(fresh.map(toDraftRow));
-      setEditingIds(new Set());
+          }),
+        })),
+      ];
+      const results = await Promise.allSettled(entries.map((e) => e.promise));
+
+      const savedById = new Map<number, TournamentShift>();
+      const rowErrors: Record<number, RowFieldErrors> = {};
+      let generic: string | undefined;
+      results.forEach((result, i) => {
+        const { row } = entries[i];
+        if (result.status === "fulfilled") {
+          savedById.set(row.id, result.value);
+          return;
+        }
+        const err = result.reason;
+        // The bounds check comes back as a 409 naming which end it's about
+        // ("Shift start falls before ..." / "Shift end falls after ...") —
+        // route it to that row's Input instead of just the floating bar.
+        if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift start")) {
+          rowErrors[row.id] = { ...rowErrors[row.id], start: err.message };
+        } else if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift end")) {
+          rowErrors[row.id] = { ...rowErrors[row.id], end: err.message };
+        } else {
+          generic = err instanceof ApiError ? err.message : "Failed to save shifts.";
+        }
+      });
+
+      // Rows that saved settle into their real state (a temp new row swaps
+      // its negative id for the real one) and drop out of edit mode. Rows
+      // that failed keep whatever the user typed, still in edit mode with
+      // their error — this matters beyond convenience: if a saved temp row
+      // were left as-is, retrying the batch would resubmit it as a second
+      // create and duplicate it on the backend.
+      if (savedById.size > 0) {
+        setShifts((cur) => {
+          const byId = new Map((cur ?? []).map((s) => [s.id, s] as const));
+          for (const saved of savedById.values()) byId.set(saved.id, saved);
+          return Array.from(byId.values()).sort((a, b) => a.start.localeCompare(b.start));
+        });
+        setDraft((cur) => cur.map((row) => {
+          const saved = savedById.get(row.id);
+          return saved ? toDraftRow(saved) : row;
+        }));
+        setEditingIds((cur) => {
+          const next = new Set(cur);
+          for (const id of savedById.keys()) next.delete(id);
+          return next;
+        });
+      }
+
+      setFieldErrors(rowErrors);
+      if (Object.keys(rowErrors).length > 0) {
+        setEditingIds((cur) => new Set([...cur, ...Object.keys(rowErrors).map(Number)]));
+      } else if (!generic) {
+        // Nothing failed — also close rows that were open in edit mode with
+        // no actual changes (never part of pendingEdits/newRows, so the
+        // savedById cleanup above never saw them).
+        setEditingIds(new Set());
+      }
+      setSaveError(generic);
     } catch (err) {
       setSaveError(err instanceof ApiError ? err.message : "Failed to save shifts.");
     } finally {

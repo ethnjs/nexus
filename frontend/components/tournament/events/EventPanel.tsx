@@ -75,6 +75,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [timeErrors, setTimeErrors] = useState<{ start_time?: string; end_time?: string }>({});
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
 
@@ -97,6 +98,14 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
 
   function patch(p: Partial<EventDraft>) {
     setDraft((d) => ({ ...d, ...p }));
+    if (p.start_time !== undefined || p.end_time !== undefined) {
+      setTimeErrors((cur) => {
+        const next = { ...cur };
+        if (p.start_time !== undefined) delete next.start_time;
+        if (p.end_time !== undefined) delete next.end_time;
+        return next;
+      });
+    }
   }
 
   function handleEventTextChange(text: string, matched: CanonicalEvent | null) {
@@ -121,6 +130,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
+    setTimeErrors({});
     try {
       const payload = buildPayload();
       const saved = isNew
@@ -130,7 +140,16 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
       setDraft(draftFromEvent(saved));
       onSaved(saved);
     } catch (err) {
-      setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
+      // The bounds check comes back as a 409 naming which field it's about
+      // ("... start_time falls before ..." / "... end_time falls after ...")
+      // — route it to that Input instead of just the floating bar.
+      if (err instanceof ApiError && err.status === 409 && err.message.includes("start_time")) {
+        setTimeErrors({ start_time: err.message });
+      } else if (err instanceof ApiError && err.status === 409 && err.message.includes("end_time")) {
+        setTimeErrors({ end_time: err.message });
+      } else {
+        setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
+      }
     } finally {
       setSaving(false);
     }
@@ -139,6 +158,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   function handleCancel() {
     setDraft(draftFromEvent(current));
     setSaveError(undefined);
+    setTimeErrors({});
     onClose();
   }
 
@@ -237,11 +257,19 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
           </SettingsRow>
 
           <SettingsRow label="Start">
-            <Input type="datetime-local" fullWidth locked={locked} value={draft.start_time} onChange={(e) => patch({ start_time: e.target.value })} />
+            <Input
+              type="datetime-local" fullWidth locked={locked} value={draft.start_time}
+              onChange={(e) => patch({ start_time: e.target.value })}
+              error={timeErrors.start_time}
+            />
           </SettingsRow>
 
           <SettingsRow label="End">
-            <Input type="datetime-local" fullWidth locked={locked} value={draft.end_time} onChange={(e) => patch({ end_time: e.target.value })} />
+            <Input
+              type="datetime-local" fullWidth locked={locked} value={draft.end_time}
+              onChange={(e) => patch({ end_time: e.target.value })}
+              error={timeErrors.end_time}
+            />
           </SettingsRow>
 
           <SettingsRow label="Building">
