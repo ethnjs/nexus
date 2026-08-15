@@ -7,6 +7,7 @@ import { formatDateTime } from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
+import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -17,7 +18,15 @@ import { EventPanel } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
 
-const EVENT_ROW_COLUMNS = "2fr 80px 90px 1.2fr 130px 130px 70px";
+// Name doesn't need much room (event names are short); Start/End are 50%
+// wider than before so a full date+time doesn't get clipped.
+const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 195px 195px 70px";
+
+const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisionC"> = {
+  A: "divisionA",
+  B: "divisionB",
+  C: "divisionC",
+};
 
 type SortField = "name" | "division" | "start_time";
 type SortDir = "asc" | "desc";
@@ -339,11 +348,17 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete }: {
       }}>
         {eventName(event)}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.division ?? "—"}
+      <span style={{ display: "flex", justifyContent: "center" }}>
+        {event.division ? (
+          <Badge variant={DIVISION_BADGE_VARIANT[event.division]}>{event.division}</Badge>
+        ) : (
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>
+        )}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.event_type === "trial" ? "Trial" : "Standard"}
+      <span style={{ display: "flex", justifyContent: "center" }}>
+        <Badge variant={event.event_type === "trial" ? "warning" : "default"}>
+          {event.event_type === "trial" ? "Trial" : "Standard"}
+        </Badge>
       </span>
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
