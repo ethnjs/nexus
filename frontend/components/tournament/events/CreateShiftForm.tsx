@@ -4,18 +4,22 @@ import { useState } from "react";
 import { tournamentShiftsApi, TournamentShift, ApiError } from "@/lib/api";
 import { fromDayAndTime } from "@/lib/timeFormat";
 import { Input } from "@/components/ui/Input";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 
 interface CreateShiftFormProps {
   tournamentId: number;
-  /** The day (YYYY-MM-DD) the new shift is created on — shifts don't cross midnight, so this is fixed rather than picked per shift. */
+  /** The day (YYYY-MM-DD) the new shift is created on — shifts don't cross midnight, so there's one to pick. Used as-is when dayOptions is omitted (a single event's own day is unambiguous); seeds the initial selection when dayOptions is given. */
   day: string;
+  /** When set (multi-day tournaments, mass-edit context), renders a Day dropdown instead of silently using `day` — there's no single event to infer it from. */
+  dayOptions?: { value: string; label: string }[];
   /** Called once the shift exists on the backend; the caller owns attaching it (to one event, or several in a mass-edit context) and closing the popover once that succeeds. May throw/reject — the form shows the error inline and stays open. */
   onCreated: (shift: TournamentShift) => void | Promise<void>;
   onCancel: () => void;
 }
 
-export function CreateShiftForm({ tournamentId, day, onCreated, onCancel }: CreateShiftFormProps) {
+export function CreateShiftForm({ tournamentId, day: initialDay, dayOptions, onCreated, onCancel }: CreateShiftFormProps) {
+  const [day, setDay] = useState(initialDay);
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -45,6 +49,9 @@ export function CreateShiftForm({ tournamentId, day, onCreated, onCancel }: Crea
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      {dayOptions && dayOptions.length > 1 && (
+        <Dropdown label="Day" size="sm" fullWidth value={day} onChange={setDay} options={dayOptions} />
+      )}
       <Input
         label="Label" font="sans" size="sm" fullWidth
         value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Morning"

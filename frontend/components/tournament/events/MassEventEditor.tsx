@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
-  tournamentEventsApi, ApiError, TournamentEvent, TournamentEventInput, TournamentDivision,
+  tournamentEventsApi, tournamentShiftsApi, ApiError, TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift,
 } from "@/lib/api";
-import { toDateInput, fromDayAndTime, formatDayLabel } from "@/lib/timeFormat";
+import { toDateInput, fromDayAndTime, formatDayLabel, formatTime } from "@/lib/timeFormat";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { SidePanel } from "@/components/ui/SidePanel";
@@ -14,6 +14,10 @@ import { Input } from "@/components/ui/Input";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
+import { Popover } from "@/components/ui/Popover";
+import { FormPopover } from "@/components/ui/FormPopover";
+import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
+import { IconPlus } from "@/components/ui/Icons";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
 // name/category/building/room/etc. are per-event enough that mass-editing
@@ -36,6 +40,36 @@ interface EventResult {
   error?: string;
 }
 
+// Shared by the field-apply and shift-attach results — same best-effort,
+// per-event pass/fail report shape either way.
+function ResultsCard({ results, successLabel }: { results: EventResult[]; successLabel: string }) {
+  const failureCount = results.filter((r) => r.error).length;
+  const successCount = results.length - failureCount;
+  return (
+    <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
+      <div style={{
+        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
+        marginBottom: "10px",
+      }}>
+        {successCount} {successLabel}, {failureCount} failed
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {results.map((r) => (
+          <p key={r.event.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
+            <span style={{ fontWeight: 500 }}>{eventNameWithDivision(r.event)}</span>{" "}
+            {r.error ? (
+              <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
+            ) : (
+              <span style={{ color: "var(--color-success)" }}>— {successLabel}</span>
+            )}
+          </p>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 interface MassEventEditorProps {
   tournamentId: number;
   events: TournamentEvent[];
@@ -51,6 +85,22 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved }: Mass
   const [draft, setDraft] = useState<MassEventDraft>({});
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<EventResult[] | null>(null);
+
+  const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  const [shiftBusy, setShiftBusy] = useState(false);
+  const [shiftResults, setShiftResults] = useState<EventResult[] | null>(null);
+
+  useEffect(() => {
+    tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
+  }, [tournamentId]);
+
+  // Same day-resolution rule as time-of-day edits: a newly created shift
+  // needs exactly one day, so a multi-day tournament with events on
+  // different days can't default to "each event's own" the way attaching
+  // an existing shift can (that's per-event bounds-checked on the backend
+  // instead, hence no day needed there).
+  const shiftDayOptions = isMultiDay ? days.map((d) => ({ value: d, label: formatDayLabel(d) })) : undefined;
+  const shiftDefaultDay = isMultiDay ? (days[0] ?? "") : (days[0] ?? toDateInput(events[0]?.start_time ?? events[0]?.end_time ?? null));
 
   const isDirty = draft.division !== undefined || draft.event_type !== undefined
     || draft.startTime !== undefined || draft.endTime !== undefined;
@@ -104,8 +154,32 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved }: Mass
     setSaving(false);
   }
 
-  const failureCount = results?.filter((r) => r.error).length ?? 0;
-  const successCount = results ? results.length - failureCount : 0;
+  // Shared by "attach an existing shift" and "create then attach a new
+  // one" — both end up fanning the same attach call out across every
+  // selected event, bounds-checked per event on the backend, best-effort.
+  async function attachShiftToSelected(shift: TournamentShift) {
+    setShiftBusy(true);
+    setShiftResults(null);
+
+    const outcomes = await Promise.allSettled(
+      events.map((event) => tournamentShiftsApi.attach(tournamentId, event.id, shift.id))
+    );
+
+    const nextResults: EventResult[] = [];
+    outcomes.forEach((outcome, i) => {
+      const event = events[i];
+      if (outcome.status === "fulfilled") {
+        const updated = { ...event, shifts: [...event.shifts, shift] };
+        onSaved(updated);
+        nextResults.push({ event: updated });
+      } else {
+        const err = outcome.reason;
+        nextResults.push({ event, error: err instanceof ApiError ? err.message : "Failed to attach." });
+      }
+    });
+    setShiftResults(nextResults);
+    setShiftBusy(false);
+  }
 
   return (
     <SidePanel onClose={onClose} width={480}>
@@ -163,29 +237,50 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved }: Mass
           </SettingsRow>
         </SettingsSection>
 
-        {results && (
-          <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
-            <div style={{
-              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-              letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-              marginBottom: "10px",
-            }}>
-              {successCount} updated, {failureCount} failed
+        {results && <ResultsCard results={results} successLabel="updated" />}
+
+        <SettingsSection title="Shifts">
+          <div style={{ padding: "20px 0" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <Popover
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth disabled={shiftBusy}>
+                    <IconPlus size={12} /> Add shift
+                  </Button>
+                }
+                items={allShifts ?? []}
+                getKey={(s) => s.id}
+                renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
+                emptyMessage="No shifts exist yet in this tournament."
+                onSelect={attachShiftToSelected}
+                width={280}
+              />
+              <FormPopover
+                width={300}
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth disabled={shiftBusy}>
+                    <IconPlus size={12} /> New shift
+                  </Button>
+                }
+              >
+                {(close) => (
+                  <CreateShiftForm
+                    tournamentId={tournamentId}
+                    day={shiftDefaultDay}
+                    dayOptions={shiftDayOptions}
+                    onCreated={async (shift) => { await attachShiftToSelected(shift); close(); }}
+                    onCancel={close}
+                  />
+                )}
+              </FormPopover>
             </div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {results.map((r) => (
-                <p key={r.event.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
-                  <span style={{ fontWeight: 500 }}>{eventNameWithDivision(r.event)}</span>{" "}
-                  {r.error ? (
-                    <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
-                  ) : (
-                    <span style={{ color: "var(--color-success)" }}>— updated</span>
-                  )}
-                </p>
-              ))}
-            </div>
-          </Card>
-        )}
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+              Adding a shift is bounds-checked per event on the backend — one outside an event&rsquo;s time window just fails for that event.
+            </p>
+          </div>
+        </SettingsSection>
+
+        {shiftResults && <ResultsCard results={shiftResults} successLabel="attached" />}
 
         <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
           <Button type="button" variant="secondary" size="md" onClick={onClose}>
