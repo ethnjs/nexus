@@ -1,13 +1,21 @@
 """Tests for /tournaments/{tournament_id}/shifts endpoints (TournamentShift model)
 and event/shift attach-detach."""
+from datetime import date, timedelta
+
 from tests.conftest import grant_role, login
+
+# td_tournament spans [today, today + 1 day] — event/shift times must fall
+# within that window now that tournament-bounds validation exists.
+EVENT_DATE = date.today().isoformat()
+BEFORE_TOURNAMENT = (date.today() - timedelta(days=1)).isoformat()
+AFTER_TOURNAMENT = (date.today() + timedelta(days=3)).isoformat()
 
 
 def _make_shift(client, tournament_id, **overrides):
     payload = {
         "label": "Shift 1",
-        "start": "2026-03-14T08:00:00Z",
-        "end": "2026-03-14T12:00:00Z",
+        "start": EVENT_DATE + "T08:00:00Z",
+        "end": EVENT_DATE + "T12:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/shifts/", json=payload)
@@ -18,8 +26,8 @@ def _make_event(client, tournament_id, **overrides):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "start_time": "2026-03-14T08:00:00Z",
-        "end_time": "2026-03-14T16:00:00Z",
+        "start_time": EVENT_DATE + "T08:00:00Z",
+        "end_time": EVENT_DATE + "T16:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload).json()
@@ -40,14 +48,36 @@ def test_create_shift(client, td_user, td_tournament):
 
 def test_create_shift_end_before_start_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    response = _make_shift(client, td_tournament.id, start="2026-03-14T12:00:00Z", end="2026-03-14T08:00:00Z")
+    response = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T08:00:00Z")
     assert response.status_code == 422
+
+
+def test_create_shift_before_tournament_start_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_shift(client, td_tournament.id, start=BEFORE_TOURNAMENT + "T08:00:00Z", end=BEFORE_TOURNAMENT + "T12:00:00Z")
+    assert response.status_code == 409
+
+
+def test_create_shift_after_tournament_end_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_shift(client, td_tournament.id, start=AFTER_TOURNAMENT + "T08:00:00Z", end=AFTER_TOURNAMENT + "T12:00:00Z")
+    assert response.status_code == 409
+
+
+def test_update_shift_outside_tournament_bounds_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_shift(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/shifts/{created['id']}/",
+        json={"start": AFTER_TOURNAMENT + "T08:00:00Z", "end": AFTER_TOURNAMENT + "T12:00:00Z"},
+    )
+    assert response.status_code == 409
 
 
 def test_list_shifts(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     _make_shift(client, td_tournament.id, label="Shift 1")
-    _make_shift(client, td_tournament.id, label="Shift 2", start="2026-03-14T12:00:00Z", end="2026-03-14T16:00:00Z")
+    _make_shift(client, td_tournament.id, label="Shift 2", start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z")
     response = client.get(f"/tournaments/{td_tournament.id}/shifts/")
     assert response.status_code == 200
     assert len(response.json()) == 2
@@ -129,8 +159,20 @@ def test_attach_shift_success(client, td_user, td_tournament):
 
 def test_attach_shift_outside_event_bounds_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time="2026-03-14T08:00:00Z", end_time="2026-03-14T10:00:00Z")
-    shift = _make_shift(client, td_tournament.id, start="2026-03-14T09:00:00Z", end="2026-03-14T11:00:00Z").json()
+    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T10:00:00Z")
+    shift = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T09:00:00Z", end=EVENT_DATE + "T11:00:00Z").json()
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/"
+    )
+    assert response.status_code == 409
+
+
+def test_attach_shift_event_missing_times_rejected(client, td_user, td_tournament):
+    """Event start_time/end_time are nullable at create time — but a shift
+    can't be bounds-checked against an event that has neither set."""
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id, start_time=None, end_time=None)
+    shift = _make_shift(client, td_tournament.id).json()
     response = client.post(
         f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/"
     )
@@ -139,9 +181,9 @@ def test_attach_shift_outside_event_bounds_rejected(client, td_user, td_tourname
 
 def test_attach_overlapping_shift_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time="2026-03-14T08:00:00Z", end_time="2026-03-14T16:00:00Z")
-    shift1 = _make_shift(client, td_tournament.id, start="2026-03-14T08:00:00Z", end="2026-03-14T12:00:00Z").json()
-    shift2 = _make_shift(client, td_tournament.id, start="2026-03-14T11:00:00Z", end="2026-03-14T15:00:00Z").json()
+    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T16:00:00Z")
+    shift1 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
+    shift2 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T11:00:00Z", end=EVENT_DATE + "T15:00:00Z").json()
 
     assert client.post(
         f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift1['id']}/"
@@ -154,9 +196,9 @@ def test_attach_overlapping_shift_rejected(client, td_user, td_tournament):
 
 def test_attach_adjacent_shift_succeeds(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time="2026-03-14T08:00:00Z", end_time="2026-03-14T16:00:00Z")
-    shift1 = _make_shift(client, td_tournament.id, start="2026-03-14T08:00:00Z", end="2026-03-14T12:00:00Z").json()
-    shift2 = _make_shift(client, td_tournament.id, start="2026-03-14T12:00:00Z", end="2026-03-14T16:00:00Z").json()
+    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T16:00:00Z")
+    shift1 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
+    shift2 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z").json()
 
     assert client.post(
         f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift1['id']}/"

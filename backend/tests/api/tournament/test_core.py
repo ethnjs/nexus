@@ -70,8 +70,8 @@ def test_list_my_tournaments_returns_summary_shape(
         "tournament_id": td_tournament.id,
         "name": "Boomilever",
         "division": "C",
-        "start_time": "2026-03-14T08:00:00Z",
-        "end_time": "2026-03-14T12:00:00Z",
+        "start_time": date.today().isoformat() + "T08:00:00Z",
+        "end_time": date.today().isoformat() + "T12:00:00Z",
     })
     grant_role(db, td_tournament, other_user, "Volunteer")
 

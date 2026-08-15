@@ -1,7 +1,15 @@
 """Tests for /tournaments/{tournament_id}/events endpoints (TournamentEvent model)."""
+from datetime import date, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import grant_role, login
+
+# td_tournament spans [today, today + 1 day] — event/shift times must fall
+# within that window now that tournament-bounds validation exists.
+EVENT_DATE = date.today().isoformat()
+BEFORE_TOURNAMENT = (date.today() - timedelta(days=1)).isoformat()
+AFTER_TOURNAMENT = (date.today() + timedelta(days=3)).isoformat()
 
 
 def _make_event(client, tournament_id, **overrides):
@@ -9,8 +17,8 @@ def _make_event(client, tournament_id, **overrides):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "start_time": "2026-03-14T08:00:00Z",
-        "end_time": "2026-03-14T12:00:00Z",
+        "start_time": EVENT_DATE + "T08:00:00Z",
+        "end_time": EVENT_DATE + "T12:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload)
@@ -91,9 +99,28 @@ def test_create_event_end_before_start_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_event(
         client, td_tournament.id,
-        start_time="2026-03-14T12:00:00Z", end_time="2026-03-14T08:00:00Z",
+        start_time=EVENT_DATE + "T12:00:00Z", end_time=EVENT_DATE + "T08:00:00Z",
     )
     assert response.status_code == 422
+
+
+def test_create_event_start_before_tournament_start_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, start_time=BEFORE_TOURNAMENT + "T08:00:00Z")
+    assert response.status_code == 409
+
+
+def test_create_event_end_after_tournament_end_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, end_time=AFTER_TOURNAMENT + "T12:00:00Z")
+    assert response.status_code == 409
+
+
+def test_create_event_without_times_skips_bounds_check(client, td_user, td_tournament):
+    """start_time/end_time are nullable — bounds only apply once set."""
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, start_time=None, end_time=None)
+    assert response.status_code == 201
 
 
 def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
@@ -102,8 +129,8 @@ def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
         "tournament_id": 9999,
         "name": "Boomilever",
         "division": "C",
-        "start_time": "2026-03-14T08:00:00Z",
-        "end_time": "2026-03-14T12:00:00Z",
+        "start_time": EVENT_DATE + "T08:00:00Z",
+        "end_time": EVENT_DATE + "T12:00:00Z",
     })
     assert response.status_code == 400
 
@@ -223,9 +250,19 @@ def test_update_event_end_before_start_rejected(client, td_user, td_tournament):
     created = _make_event(client, td_tournament.id).json()
     response = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
-        json={"start_time": "2026-03-14T12:00:00Z", "end_time": "2026-03-14T08:00:00Z"},
+        json={"start_time": EVENT_DATE + "T12:00:00Z", "end_time": EVENT_DATE + "T08:00:00Z"},
     )
     assert response.status_code == 422
+
+
+def test_update_event_outside_tournament_bounds_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"start_time": BEFORE_TOURNAMENT + "T08:00:00Z"},
+    )
+    assert response.status_code == 409
 
 
 def test_update_event_volunteer_cannot_patch(
