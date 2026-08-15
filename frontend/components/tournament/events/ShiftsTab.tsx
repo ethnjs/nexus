@@ -90,8 +90,15 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   useEffect(() => {
     if (expandedShiftId !== null) {
       setPanelMountedId(expandedShiftId);
-      const raf = requestAnimationFrame(() => setPanelExpanded(true));
-      return () => cancelAnimationFrame(raf);
+      // A single rAF often fires before the browser has actually painted
+      // the just-mounted width:0 state, so the width:440 flip lands in the
+      // same paint and there's nothing to visibly transition from. Nesting
+      // a second rAF guarantees one real paint happens in between.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setPanelExpanded(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
     }
     setPanelExpanded(false);
   }, [expandedShiftId]);
@@ -396,7 +403,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                 width: panelExpanded ? panelWidth : 0,
                 opacity: panelExpanded ? 1 : 0,
                 flexShrink: 0, overflow: "hidden",
-                transition: "width 220ms ease, opacity 180ms ease",
+                transition: "width 420ms ease, opacity 380ms ease",
               }}
             >
               <div style={{ width: panelWidth }}>

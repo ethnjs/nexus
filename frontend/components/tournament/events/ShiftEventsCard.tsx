@@ -149,6 +149,12 @@ export function ShiftEventsCard({ tournamentId, shift, events, locked, onClose, 
           emptyMessage="No events fit within this shift's time window."
           onSelect={handleAttach}
           width={260}
+          checklist
+          // Every item here is, by construction, not yet attached — checking
+          // one attaches it and it drops out of this list on the next
+          // render. Checklist mode just keeps the popover open across
+          // several picks instead of closing after each one.
+          isSelected={() => false}
         />
       )}
 

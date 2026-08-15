@@ -187,7 +187,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
       setCurrent(updated);
       onSaved(updated);
     } catch (err) {
-      setShiftError(err instanceof ApiError ? err.message : "Failed to attach shift.");
+      setShiftError(err instanceof ApiError ? err.message : "Failed to add shift.");
       throw err;
     }
   }
@@ -210,7 +210,19 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     : undefined;
 
   return (
-    <SidePanel onClose={() => guard(onClose)} width={600}>
+    <SidePanel
+      onClose={() => guard(onClose)}
+      width={600}
+      footer={!locked && (
+        <FloatingSaveBar
+          visible={isDirty}
+          saving={saving}
+          error={saveError}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      )}
+    >
       {/* Extra bottom padding only while the FloatingSaveBar is showing —
           it floats over the last 80-ish px of this scroll area, so without
           this the Danger Zone section would be unreachable while it's up. */}
@@ -304,8 +316,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
         {!isNew && current && (
           <SettingsSection title="Shifts">
             <SettingsRow
-              label="Attached shifts"
-              helper={!current.start_time || !current.end_time ? "Set start/end time and save to attach shifts." : undefined}
+              label="Shifts"
+              helper={!current.start_time || !current.end_time ? "Set start/end time and save to add shifts." : undefined}
               last
             >
               <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
@@ -372,19 +384,6 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
           </SettingsSection>
         )}
       </div>
-
-      {/* Rendered inside SidePanel's own portaled subtree (not as a sibling
-          of it) — the panel's overlay is a fixed, z-indexed backdrop, and a
-          save bar mounted outside that subtree would paint underneath it. */}
-      {!locked && (
-        <FloatingSaveBar
-          visible={isDirty}
-          saving={saving}
-          error={saveError}
-          onSave={handleSave}
-          onCancel={handleCancel}
-        />
-      )}
 
       {showDelete && current && (
         <DeleteEventModal

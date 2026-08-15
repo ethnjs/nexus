@@ -9,13 +9,24 @@ interface SidePanelProps {
   onClose: () => void;
   children: ReactNode;
   width?: number;
+  /**
+   * Rendered below the scrollable content, e.g. a FloatingSaveBar — scoped
+   * to this panel's box (via a containing-block trick) so it centers on
+   * the panel instead of the viewport. Deliberately narrow: only this slot
+   * gets scoped, not all of `children` — anything else position:fixed
+   * inside `children` (a Popover, a Modal) still needs real viewport
+   * coordinates, since its own position math (getBoundingClientRect) is
+   * viewport-relative and would land off-screen if it inherited this
+   * panel's box as its containing block too.
+   */
+  footer?: ReactNode;
 }
 
 // Right-anchored slide-in panel — same overlay/escape/portal pattern as
 // Modal, but docked to the viewport edge instead of centered, for content
 // that's read alongside the page rather than blocking it (e.g. a member's
 // full profile while the roster stays visible).
-export function SidePanel({ onClose, children, width = 480 }: SidePanelProps) {
+export function SidePanel({ onClose, children, width = 480, footer }: SidePanelProps) {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -59,10 +70,6 @@ export function SidePanel({ onClose, children, width = 480 }: SidePanelProps) {
           display: "flex", flexDirection: "column",
           boxShadow: "var(--shadow-lg)",
           animation: "sidePanelIn 200ms ease-out",
-          // Establishes a containing block for any position:fixed descendant
-          // (e.g. a FloatingSaveBar rendered inside panel content) so it's
-          // scoped to this panel's box instead of centering on the viewport.
-          willChange: "transform",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -77,6 +84,13 @@ export function SidePanel({ onClose, children, width = 480 }: SidePanelProps) {
         <div style={{ flex: 1, overflowY: "auto" }}>
           {children}
         </div>
+        {footer && (
+          // Only this slot gets the containing-block trick — see the prop
+          // doc above for why it can't be the whole panel.
+          <div style={{ willChange: "transform" }}>
+            {footer}
+          </div>
+        )}
       </div>
     </div>,
     document.body
