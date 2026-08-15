@@ -38,6 +38,7 @@ def _make_tournament(client):
         "state": "Southern California",
         "level": "nationals",
         "division": ["B", "C"],
+        "timezone": "America/Los_Angeles",
     }).json()
 
 

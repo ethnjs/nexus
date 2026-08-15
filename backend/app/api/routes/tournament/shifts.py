@@ -2,7 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentEvent, TournamentEventShift, TournamentShift, User
@@ -32,12 +32,14 @@ def list_shifts(
 
 
 def _validate_tournament_bounds(shift: TournamentShift, tournament) -> None:
-    if shift.start.date() < tournament.start_date:
+    """Compared in the tournament's own timezone — start_date/end_date are
+    naive local dates, not UTC ones."""
+    if tournament_local_date(tournament, shift.start) < tournament.start_date:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Shift start falls before the tournament's start_date",
         )
-    if shift.end.date() > tournament.end_date:
+    if tournament_local_date(tournament, shift.end) > tournament.end_date:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Shift end falls after the tournament's end_date",

@@ -68,6 +68,7 @@ TOURNAMENT_REQUIRED_FIELDS = {
     "state": "Southern California",
     "level": "invitational",
     "division": ["B", "C"],
+    "timezone": "America/Los_Angeles",
 }
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
@@ -165,6 +166,7 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
         state="Southern California",
         level="invitational",
         division=["B", "C"],
+        timezone="America/Los_Angeles",
     )
     db.add(tournament)
     db.flush()

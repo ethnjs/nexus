@@ -240,6 +240,10 @@ class Tournament(Base):
     level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
     division = Column(JSON, nullable=False, default=list)       # "A" | "B" | "C"
 
+    # IANA name (e.g. "America/Los_Angeles"). Set once at creation from the
+    # creator's browser timezone — immutable after, no update path.
+    timezone = Column(String(64), nullable=False)
+
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # creator
 
     # TD-controlled — shows in the public directory. False = invite-only.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
+from zoneinfo import available_timezones
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.tournament.role import RoleRead
@@ -48,6 +49,12 @@ def _validate_division(v: list[str]) -> list[str]:
     return sorted(set(v))
 
 
+def _validate_timezone(v: str) -> str:
+    if v not in available_timezones():
+        raise ValueError("timezone must be a valid IANA timezone name")
+    return v
+
+
 class TournamentFieldValidators:
     """Shared field validators for TournamentCreate/TournamentUpdate. Mixed in
     rather than inherited from a common BaseModel because the two differ on
@@ -88,6 +95,14 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
     level: str
     division: list[str]
     is_public: bool = False
+    # Set once from the creator's browser timezone — no update path exists,
+    # this field is intentionally absent from TournamentUpdate.
+    timezone: str
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str) -> str:
+        return _validate_timezone(v)
 
     @model_validator(mode="after")
     def validate_dates(self) -> TournamentCreate:

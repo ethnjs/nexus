@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
 from app.models.models import SeasonEvent, TournamentEvent, TournamentShift, User
@@ -29,13 +29,15 @@ def _validate_division(division: str | None, tournament) -> None:
 
 def _validate_tournament_bounds(event: TournamentEvent, tournament) -> None:
     """start_time/end_time are nullable (planning starts before per-event
-    times are known), so only bound whichever ones are set."""
-    if event.start_time is not None and event.start_time.date() < tournament.start_date:
+    times are known), so only bound whichever ones are set. Compared in the
+    tournament's own timezone — start_date/end_date are naive local dates,
+    not UTC ones."""
+    if event.start_time is not None and tournament_local_date(tournament, event.start_time) < tournament.start_date:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Event start_time falls before the tournament's start_date",
         )
-    if event.end_time is not None and event.end_time.date() > tournament.end_date:
+    if event.end_time is not None and tournament_local_date(tournament, event.end_time) > tournament.end_date:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Event end_time falls after the tournament's end_date",

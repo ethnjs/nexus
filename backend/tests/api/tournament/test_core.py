@@ -143,6 +143,7 @@ def test_create_tournament_full(client, td_user):
         "state": "Southern California",
         "level": "nationals",
         "division": ["B", "C"],
+        "timezone": "America/Los_Angeles",
         "is_public": True,
     })
     assert response.status_code == 201

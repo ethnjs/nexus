@@ -35,6 +35,10 @@ incrementally as the rewrite progresses:
   - season_events: new table — admin-curated per-year/division active
     event list, drives the tournament events bulk-load default list. No
     backfill, starts empty.
+
+  - tournaments: add `timezone` (IANA name), NOT NULL. Set once at
+    creation from the creator's browser timezone, immutable after —
+    no update path. Existing rows backfilled to "America/Los_Angeles".
 """
 from typing import Sequence, Union
 from alembic import op
@@ -123,8 +127,22 @@ def upgrade() -> None:
         sa.UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
     )
 
+    # ------------------------------------------------------------------
+    # tournaments — add timezone (backfilled, then locked to NOT NULL)
+    # ------------------------------------------------------------------
+    op.add_column(
+        "tournaments",
+        sa.Column("timezone", sa.String(length=64), nullable=False, server_default="America/Los_Angeles"),
+    )
+    op.alter_column("tournaments", "timezone", server_default=None)
+
 
 def downgrade() -> None:
+    # ------------------------------------------------------------------
+    # tournaments — drop timezone
+    # ------------------------------------------------------------------
+    op.drop_column("tournaments", "timezone")
+
     # ------------------------------------------------------------------
     # season_events — drop new table
     # ------------------------------------------------------------------
