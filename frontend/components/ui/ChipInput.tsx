@@ -55,6 +55,34 @@ const SIZE_MAP: Record<ChipInputSize, { minHeight: string; paddingX: string; fon
 // comma/newline-separated lists (e.g. copied from a spreadsheet column).
 const SPLIT_PATTERN = /[,\n]+/;
 
+// A chip's own "x" — plain native button (Button.tsx's smallest size is
+// 28px with a visible border, too bulky for an inline glyph next to
+// chip text) with its own hover background, since browsers give none.
+function ChipRemoveButton({ onClick }: { onClick: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "flex", alignItems: "center", justifyContent: "center",
+        border: "none", borderRadius: "var(--radius-sm)", background: "transparent",
+        padding: "2px", color: "inherit", cursor: "pointer",
+        // An inset box-shadow acts as a darkening film regardless of which
+        // status color the chip itself is using as background (default/
+        // warning/error) — a fixed background color would wash out against
+        // some of those and be invisible against others.
+        boxShadow: hovered ? "inset 0 0 0 999px rgba(0,0,0,0.12)" : undefined,
+        transition: "box-shadow 100ms ease",
+      }}
+    >
+      <IconX size={10} />
+    </button>
+  );
+}
+
 // Generic tag/chip entry — type-and-Enter or paste a comma/newline-separated
 // list, chips removable via an "x". Content-agnostic: format validation and
 // duplicate/match warnings are the consumer's job via getChipStatus.
@@ -150,17 +178,7 @@ export function ChipInput({
                 </Tooltip>
               )}
               {!locked && !lockReason && (
-                <button
-                  type="button"
-                  onClick={() => removeChip(chip)}
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "none", background: "transparent", padding: "2px",
-                    color: "inherit", cursor: "pointer", opacity: 0.7,
-                  }}
-                >
-                  <IconX size={10} />
-                </button>
+                <ChipRemoveButton onClick={() => removeChip(chip)} />
               )}
             </span>
           );

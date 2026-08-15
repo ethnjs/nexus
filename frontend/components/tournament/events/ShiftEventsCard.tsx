@@ -6,10 +6,17 @@ import { formatDateTime } from "@/lib/timeFormat";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
-import { IconX, IconPlus, IconCalendar } from "@/components/ui/Icons";
+import { IconX, IconPlus, IconEvents } from "@/components/ui/Icons";
 
 function eventName(e: TournamentEvent): string {
   return e.event?.name ?? e.name ?? "—";
+}
+
+// Name + division — a custom event's name alone can collide across
+// divisions, and even a catalog-linked one reads better with its division
+// alongside it here, one row per event, no separate Division column.
+function eventNameWithDivision(e: TournamentEvent): string {
+  return e.division ? `${eventName(e)} ${e.division}` : eventName(e);
 }
 
 interface ShiftEventsCardProps {
@@ -109,27 +116,21 @@ export function ShiftEventsCard({ tournamentId, shift, events, locked, onClose, 
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                <IconCalendar size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
+                <IconEvents size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
                 <span style={{
                   fontFamily: "var(--font-sans)", fontSize: "13px",
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>
-                  {eventName(event)}
+                  {eventNameWithDivision(event)}
                 </span>
               </div>
               {!locked && (
-                <button
-                  type="button"
-                  onClick={() => handleDetach(event)}
-                  title="Remove"
-                  style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    border: "none", background: "transparent", padding: "2px",
-                    color: "var(--color-text-tertiary)", cursor: "pointer", flexShrink: 0,
-                  }}
+                <Button
+                  type="button" variant="ghost" size="xs" iconOnly
+                  title="Remove" onClick={() => handleDetach(event)}
                 >
                   <IconX size={12} />
-                </button>
+                </Button>
               )}
             </div>
           ))}

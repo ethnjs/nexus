@@ -24,6 +24,13 @@ export function formatDateTime(iso: string): string {
   })
 }
 
+// Time only, no date — for compact display where the date is already
+// established by context (e.g. a shift chip inside an event whose own
+// start/end date is already shown above it).
+export function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+}
+
 export function parseUserAgent(ua: string | null): string {
   if (!ua) return "Unknown device"
 

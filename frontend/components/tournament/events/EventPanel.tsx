@@ -7,7 +7,7 @@ import {
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { toDatetimeLocal, fromDatetimeLocal } from "@/lib/timeFormat";
+import { toDatetimeLocal, fromDatetimeLocal, formatTime } from "@/lib/timeFormat";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
-import { IconPlus, IconTrash, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
 
 interface EventDraft {
   eventText: string;
@@ -320,50 +320,77 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
               helper={!current.start_time || !current.end_time ? "Set start/end time and save to add shifts." : undefined}
               last
             >
-              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
-                {current.shifts.map((shift) => (
-                  <span
-                    key={shift.id}
-                    style={{
-                      display: "inline-flex", alignItems: "center", gap: "5px",
-                      padding: "3px 6px 3px 9px", borderRadius: "var(--radius-sm)",
-                      background: "var(--color-accent-subtle)", color: "var(--color-text-primary)",
-                      border: "1px solid var(--color-border)",
-                      fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
-                    }}
-                  >
-                    {shift.label}
-                    {!locked && (
-                      <button
-                        type="button"
-                        onClick={() => handleDetachShift(shift.id)}
-                        style={{
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          border: "none", background: "transparent", padding: "2px",
-                          color: "inherit", cursor: "pointer", opacity: 0.7,
-                        }}
-                      >
-                        <IconX size={10} />
-                      </button>
-                    )}
-                  </span>
-                ))}
+              {/* A list, not chips — shifts can share a label but differ
+                  only by time, so each row needs room to show its own
+                  start/end (condensed to time-of-day; the event's own
+                  date is already shown above). */}
+              {current.shifts.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: current.shifts.length > 0 ? "10px" : "0" }}>
+                  {current.shifts.map((shift) => (
+                    <div
+                      key={shift.id}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                        padding: "8px 10px", borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-border)",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <IconCalendar size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
+                        <span style={{
+                          fontFamily: "var(--font-sans)", fontSize: "13px",
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                        }}>
+                          {shift.label}
+                        </span>
+                        <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>
+                          {formatTime(shift.start)}–{formatTime(shift.end)}
+                        </span>
+                      </div>
+                      {!locked && (
+                        <Button
+                          type="button" variant="ghost" size="xs" iconOnly
+                          title="Remove" onClick={() => handleDetachShift(shift.id)}
+                        >
+                          <IconX size={12} />
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
 
-                {!locked && current.start_time && current.end_time && (
+              {!locked && (
+                current.start_time && current.end_time ? (
                   <Popover
                     trigger={
-                      <Button type="button" variant="secondary" size="sm" iconOnly title="Add shift" style={{ width: "26px", height: "26px", padding: 0 }}>
-                        <IconPlus size={12} />
+                      <Button type="button" variant="secondary" size="sm" fullWidth>
+                        <IconPlus size={12} /> Add shift
                       </Button>
                     }
                     items={eligibleShifts}
                     getKey={(s) => s.id}
-                    renderLabel={(s) => s.label}
+                    renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
                     emptyMessage="No shifts fit within this event's time window."
                     onSelect={handleAttachShift}
+                    checklist
+                    isSelected={() => false}
+                    width={280}
                   />
-                )}
-              </div>
+                ) : (
+                  // Shown in place of the Add-shift control, not just left
+                  // blank — attaching is bounds-checked against the event's
+                  // own start/end, so there's nothing to offer until those
+                  // are set.
+                  <p style={{
+                    fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)",
+                    padding: "10px", textAlign: "center",
+                    border: "1px dashed var(--color-border)", borderRadius: "var(--radius-md)",
+                  }}>
+                    Set a start and end time above, then save, to add shifts.
+                  </p>
+                )
+              )}
 
               {shiftError && (
                 <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "8px" }}>
