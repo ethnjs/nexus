@@ -62,6 +62,18 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
   };
 }
 
+// A single-day tournament auto-fills Day rather than making it a real
+// choice — applied wherever a draft gets (re)built from an event so the
+// dirty-check baseline always agrees with the initial draft state. Without
+// this, a brand-new event's draft would carry the auto-filled day while its
+// "clean" baseline (draftFromEvent(null)) wouldn't, reading as dirty the
+// instant the panel opens.
+function draftWithDayDefault(event: TournamentEvent | null, isMultiDay: boolean, days: string[]): EventDraft {
+  const draft = draftFromEvent(event);
+  if (!draft.day && !isMultiDay && days[0]) draft.day = days[0];
+  return draft;
+}
+
 interface EventPanelProps {
   tournamentId: number;
   /** null = creating a new event. */
@@ -81,13 +93,9 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   // and becomes the real row once a create lands — so the Shifts section
   // can appear without closing the panel.
   const [current, setCurrent] = useState<TournamentEvent | null>(event);
-  const [draft, setDraft] = useState<EventDraft>(() => {
-    const initial = draftFromEvent(event);
-    // A single-day tournament has only one valid day anyway — default to
-    // it immediately instead of making every new event pick it.
-    if (!initial.day && !isMultiDay && days[0]) initial.day = days[0];
-    return initial;
-  });
+  // A single-day tournament has only one valid day anyway — default to it
+  // immediately instead of making every new event pick it.
+  const [draft, setDraft] = useState<EventDraft>(() => draftWithDayDefault(event, isMultiDay, days));
   const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
 
@@ -110,8 +118,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   // untouched "New event" panel reads as clean — closing it needs no
   // confirmation until the user actually types something.
   const isDirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
-    [draft, current]
+    () => JSON.stringify(draft) !== JSON.stringify(draftWithDayDefault(current, isMultiDay, days)),
+    [draft, current, isMultiDay, days]
   );
 
   function patch(p: Partial<EventDraft>) {
@@ -174,7 +182,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   }
 
   function handleCancel() {
-    setDraft(draftFromEvent(current));
+    setDraft(draftWithDayDefault(current, isMultiDay, days));
     setSaveError(undefined);
     setTimeErrors({});
     onClose();
