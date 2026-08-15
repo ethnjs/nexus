@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { tournamentShiftsApi, ApiError, TournamentShift } from "@/lib/api";
+import { tournamentShiftsApi, tournamentEventsApi, ApiError, TournamentShift, TournamentEvent } from "@/lib/api";
 import { toDatetimeLocal, fromDatetimeLocal, formatDateTime } from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
+import { ShiftEventsCard } from "@/components/tournament/events/ShiftEventsCard";
 import { IconPlus, IconTrash, IconCalendar, IconEdit, IconX } from "@/components/ui/Icons";
 
 const SHIFT_ROW_COLUMNS = "2fr 1fr 1fr 90px";
@@ -73,12 +74,35 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   // committing to the backend happens only via the FloatingSaveBar below.
   const [editingIds, setEditingIds] = useState<Set<number>>(new Set());
 
+  // This tournament's events, fetched once so the attached-events card can
+  // filter locally instead of a round-trip per shift click. Only one
+  // shift's card is open at a time (split-view: table shrinks left).
+  const [events, setEvents] = useState<TournamentEvent[] | null>(null);
+  const [expandedShiftId, setExpandedShiftId] = useState<number | null>(null);
+
+  // Drives the panel's open/close animation. panelMountedId lags behind
+  // expandedShiftId on close (stays mounted through the collapse
+  // transition instead of vanishing instantly); panelExpanded is flipped
+  // a frame after mount so there's an actual 0 -> full-width transition
+  // to animate rather than appearing already-open.
+  const [panelMountedId, setPanelMountedId] = useState<number | null>(null);
+  const [panelExpanded, setPanelExpanded] = useState(false);
+  useEffect(() => {
+    if (expandedShiftId !== null) {
+      setPanelMountedId(expandedShiftId);
+      const raf = requestAnimationFrame(() => setPanelExpanded(true));
+      return () => cancelAnimationFrame(raf);
+    }
+    setPanelExpanded(false);
+  }, [expandedShiftId]);
+
   const nextTempIdRef = useRef(-1);
 
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId)
       .then((next) => { setShifts(next); setDraft(next.map(toDraftRow)); })
       .catch((err) => setLoadError(err instanceof ApiError ? err.message : "Failed to load shifts."));
+    tournamentEventsApi.list(tournamentId).then(setEvents).catch(() => setEvents([]));
   }, [tournamentId]);
 
   const pendingEdits = useMemo(
@@ -155,6 +179,19 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     }
     const saved = shifts!.find((s) => s.id === id);
     if (saved) setDeleteTarget(saved);
+  }
+
+  // Mirrors the event panel's own shift attach/detach — updates the local
+  // events list in place instead of refetching, and keeps each shift's
+  // event_count (used by the delete-confirm warning) in sync alongside it.
+  function handleShiftAttached(shift: TournamentShift, event: TournamentEvent) {
+    setEvents((cur) => (cur ?? []).map((e) => (e.id === event.id ? { ...e, shifts: [...e.shifts, shift] } : e)));
+    setShifts((cur) => (cur ?? []).map((s) => (s.id === shift.id ? { ...s, event_count: s.event_count + 1 } : s)));
+  }
+
+  function handleShiftDetached(shift: TournamentShift, event: TournamentEvent) {
+    setEvents((cur) => (cur ?? []).map((e) => (e.id === event.id ? { ...e, shifts: e.shifts.filter((s) => s.id !== shift.id) } : e)));
+    setShifts((cur) => (cur ?? []).map((s) => (s.id === shift.id ? { ...s, event_count: Math.max(0, s.event_count - 1) } : s)));
   }
 
   async function handleSaveAll() {
@@ -284,61 +321,99 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         </p>
       )}
 
-      {isEmpty ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconCalendar size={28} />}
-            title="No shifts yet"
-            description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;."
-            action={canEdit ? (
-              <Button type="button" variant="primary" size="sm" onClick={addRow}>
-                <IconPlus size={12} /> Add shift
-              </Button>
-            ) : undefined}
-          />
-        </Card>
-      ) : (
-        <>
-          {canEdit && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "12px" }}>
-              <Button type="button" variant="primary" size="md" onClick={addRow}>
-                <IconPlus size={14} /> Add shift
-              </Button>
-            </div>
-          )}
-
-          <Card radius="lg" style={{ padding: "8px 12px" }}>
-            <div style={{
-              display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, gap: "10px",
-              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-              fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-              color: "var(--color-text-tertiary)",
-            }}>
-              <span>Shifts — {shifts.length}</span>
-              <span>Start</span>
-              <span>End</span>
-              <span style={{ textAlign: "center" }}>Actions</span>
-            </div>
-
-            {draft.map((row, i) => (
-              <ShiftRow
-                key={row.id}
-                row={row}
-                isLast={i === draft.length - 1}
-                editing={canEdit && editingIds.has(row.id)}
-                canEdit={canEdit}
-                errors={fieldErrors[row.id]}
-                minDateTime={minDateTime}
-                maxDateTime={maxDateTime}
-                onChange={(patch) => patchRow(row.id, patch)}
-                onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
-                onCancelEdit={() => cancelRowEdit(row.id)}
-                onDelete={() => deleteRow(row.id)}
+      <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {isEmpty ? (
+            <Card radius="lg" style={{ padding: "8px" }}>
+              <EmptyState
+                icon={<IconCalendar size={28} />}
+                title="No shifts yet"
+                description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;."
+                action={canEdit ? (
+                  <Button type="button" variant="primary" size="sm" onClick={addRow}>
+                    <IconPlus size={12} /> Add shift
+                  </Button>
+                ) : undefined}
               />
-            ))}
-          </Card>
-        </>
-      )}
+            </Card>
+          ) : (
+            <>
+              {canEdit && (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "12px" }}>
+                  <Button type="button" variant="primary" size="md" onClick={addRow}>
+                    <IconPlus size={14} /> Add shift
+                  </Button>
+                </div>
+              )}
+
+              <Card radius="lg" style={{ padding: "8px 12px" }}>
+                <div style={{
+                  display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, gap: "10px",
+                  padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
+                  fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+                  color: "var(--color-text-tertiary)",
+                }}>
+                  <span>Shifts — {shifts.length}</span>
+                  <span>Start</span>
+                  <span>End</span>
+                  <span style={{ textAlign: "center" }}>Actions</span>
+                </div>
+
+                {draft.map((row, i) => (
+                  <ShiftRow
+                    key={row.id}
+                    row={row}
+                    isLast={i === draft.length - 1}
+                    editing={canEdit && editingIds.has(row.id)}
+                    canEdit={canEdit}
+                    expanded={expandedShiftId === row.id}
+                    errors={fieldErrors[row.id]}
+                    minDateTime={minDateTime}
+                    maxDateTime={maxDateTime}
+                    onChange={(patch) => patchRow(row.id, patch)}
+                    onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
+                    onCancelEdit={() => cancelRowEdit(row.id)}
+                    onDelete={() => deleteRow(row.id)}
+                    onToggleExpand={() => {
+                      if (isTempId(row.id)) return;
+                      setExpandedShiftId((cur) => (cur === row.id ? null : row.id));
+                    }}
+                  />
+                ))}
+              </Card>
+            </>
+          )}
+        </div>
+
+        {panelMountedId !== null && events !== null && (() => {
+          const shift = shifts.find((s) => s.id === panelMountedId);
+          if (!shift) return null;
+          const panelWidth = 440;
+          return (
+            <div
+              onTransitionEnd={() => { if (!panelExpanded) setPanelMountedId(null); }}
+              style={{
+                width: panelExpanded ? panelWidth : 0,
+                opacity: panelExpanded ? 1 : 0,
+                flexShrink: 0, overflow: "hidden",
+                transition: "width 220ms ease, opacity 180ms ease",
+              }}
+            >
+              <div style={{ width: panelWidth }}>
+                <ShiftEventsCard
+                  tournamentId={tournamentId}
+                  shift={shift}
+                  events={events}
+                  locked={!canEdit}
+                  onClose={() => setExpandedShiftId(null)}
+                  onAttached={(event) => handleShiftAttached(shift, event)}
+                  onDetached={(event) => handleShiftDetached(shift, event)}
+                />
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
       {canEdit && (
         <FloatingSaveBar
@@ -363,6 +438,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
               const { [deleteTarget.id]: _omit, ...rest } = cur;
               return rest;
             });
+            setExpandedShiftId((cur) => (cur === deleteTarget.id ? null : cur));
             setDeleteTarget(null);
           }}
         />
@@ -371,11 +447,12 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, errors, minDateTime, maxDateTime, onChange, onEdit, onCancelEdit, onDelete }: {
+function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, minDateTime, maxDateTime, onChange, onEdit, onCancelEdit, onDelete, onToggleExpand }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
   canEdit: boolean;
+  expanded: boolean;
   errors?: RowFieldErrors;
   minDateTime?: string;
   maxDateTime?: string;
@@ -383,18 +460,22 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, minDateTime, maxDateT
   onEdit: () => void;
   onCancelEdit: () => void;
   onDelete: () => void;
+  onToggleExpand: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  const isTemp = isTempId(row.id);
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={editing || isTemp ? undefined : onToggleExpand}
       style={{
         display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: editing ? "8px 12px" : "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: hovered ? "var(--color-bg)" : "transparent",
+        background: expanded ? "var(--color-accent-subtle)" : hovered ? "var(--color-bg)" : "transparent",
+        cursor: editing || isTemp ? undefined : "pointer",
         transition: "background 100ms ease",
       }}
     >
@@ -438,7 +519,7 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, minDateTime, maxDateT
         </>
       )}
 
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canEdit && (
           <>
             {editing ? (
