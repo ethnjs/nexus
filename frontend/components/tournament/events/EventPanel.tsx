@@ -17,8 +17,10 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
+import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
+import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
 
 interface EventDraft {
@@ -203,6 +205,15 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     }
   }
 
+  // The shift already exists on the backend by the time this runs —
+  // attaching failing here would orphan a created-but-unattached shift, but
+  // that's the same tradeoff the standalone Shifts tab accepts for any
+  // create, and it stays visible there / in the Add-shift list either way.
+  async function handleCreateAndAttachShift(shift: TournamentShift) {
+    setAllShifts((prev) => [...(prev ?? []), shift]);
+    await handleAttachShift(shift);
+  }
+
   async function handleDetachShift(shiftId: number) {
     if (!current) return;
     setShiftError(undefined);
@@ -333,11 +344,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
             hides its Members tab for an unsaved role. */}
         {!isNew && current && (
           <SettingsSection title="Shifts">
-            <SettingsRow
-              label="Shifts"
-              helper={!current.start_time || !current.end_time ? "Set start/end time and save to add shifts." : undefined}
-              last
-            >
+            <SettingsRow label="Shifts" last>
               {/* A list, not chips — shifts can share a label but differ
                   only by time, so each row needs room to show its own
                   start/end (condensed to time-of-day; the event's own
@@ -380,21 +387,54 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
 
               {!locked && (
                 current.start_time && current.end_time ? (
-                  <Popover
-                    trigger={
-                      <Button type="button" variant="secondary" size="sm" fullWidth>
-                        <IconPlus size={12} /> Add shift
-                      </Button>
-                    }
-                    items={eligibleShifts}
-                    getKey={(s) => s.id}
-                    renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
-                    emptyMessage="No shifts fit within this event's time window."
-                    onSelect={handleAttachShift}
-                    checklist
-                    isSelected={() => false}
-                    width={280}
-                  />
+                  <div>
+                    <div style={{ display: "flex", gap: "8px" }}>
+                      {eligibleShifts.length > 0 && (
+                        <Popover
+                          trigger={
+                            <Button type="button" variant="secondary" size="sm" fullWidth>
+                              <IconPlus size={12} /> Add shift
+                            </Button>
+                          }
+                          items={eligibleShifts}
+                          getKey={(s) => s.id}
+                          renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
+                          onSelect={handleAttachShift}
+                          checklist
+                          isSelected={() => false}
+                          width={280}
+                        />
+                      )}
+                      <FormPopover
+                        width={300}
+                        trigger={
+                          <Button type="button" variant="secondary" size="sm" fullWidth>
+                            <IconPlus size={12} /> New shift
+                          </Button>
+                        }
+                      >
+                        {(close) => (
+                          <CreateShiftForm
+                            tournamentId={tournamentId}
+                            day={toDateInput(current.start_time!)}
+                            onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
+                            onCancel={close}
+                          />
+                        )}
+                      </FormPopover>
+                    </div>
+                    {/* No existing shift already fits this event's window —
+                        point straight at creating one instead of a
+                        dead-end "nothing to attach" message. */}
+                    {allShifts !== null && eligibleShifts.length === 0 && (
+                      <p style={{
+                        fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
+                        marginTop: "8px",
+                      }}>
+                        No existing shifts fit this event&rsquo;s time window — create one above.
+                      </p>
+                    )}
+                  </div>
                 ) : (
                   // Shown in place of the Add-shift control, not just left
                   // blank — attaching is bounds-checked against the event's
