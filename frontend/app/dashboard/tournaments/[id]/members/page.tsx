@@ -19,6 +19,7 @@ import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { MemberPanel } from "@/components/tournament/MemberPanel";
@@ -28,6 +29,7 @@ import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
+const SELECT_COLUMN = "28px ";
 
 type SortField = "first_name" | "last_name" | "joined" | "account_age";
 type SortDir = "asc" | "desc";
@@ -77,6 +79,7 @@ function DurationCell({ iso }: { iso: string }) {
 
 function MemberRow({
   tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onExpand, onRemove, onSelfRemove, isLast,
+  selectMode, selected, onToggleSelect,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
@@ -93,6 +96,9 @@ function MemberRow({
   onRemove: (membership: MembershipSlim) => void;
   onSelfRemove: (membership: MembershipSlim) => void;
   isLast: boolean;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
   const { user } = membership;
@@ -103,13 +109,18 @@ function MemberRow({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "grid", gridTemplateColumns: MEMBER_ROW_COLUMNS, alignItems: "center",
+        display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + MEMBER_ROW_COLUMNS : MEMBER_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: hovered ? "var(--color-bg)" : "transparent",
+        background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
       }}
     >
+      {selectMode && (
+        <span style={{ display: "flex", justifyContent: "center" }}>
+          <Checkbox checked={selected} onChange={onToggleSelect} />
+        </span>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="sm" />
         <span style={{
@@ -186,6 +197,24 @@ export default function MembersPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  function toggleSelectMode() {
+    setSelectMode((v) => {
+      if (v) setSelectedIds(new Set());
+      return !v;
+    });
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     if (!canManageMembers) return;
@@ -321,15 +350,32 @@ export default function MembersPage() {
             >
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>
+            {canManageMembers && !isArchived && (
+              <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
+                {selectMode ? `${selectedIds.size} selected` : "Select"}
+              </Button>
+            )}
           </div>
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: MEMBER_ROW_COLUMNS, gap: "10px",
+              display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + MEMBER_ROW_COLUMNS : MEMBER_ROW_COLUMNS, gap: "10px",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
               color: "var(--color-text-tertiary)",
             }}>
+              {selectMode && (
+                <span style={{ display: "flex", justifyContent: "center" }}>
+                  <Checkbox
+                    checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
+                    onChange={(checked) => setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      visibleMembers.forEach((m) => (checked ? next.add(m.id) : next.delete(m.id)));
+                      return next;
+                    })}
+                  />
+                </span>
+              )}
               <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
               <span>Email</span>
               <span>Phone</span>
@@ -359,6 +405,9 @@ export default function MembersPage() {
                   onRemove={setRemoveTarget}
                   onSelfRemove={setSelfRemoveTarget}
                   isLast={i === visibleMembers.length - 1}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(m.id)}
+                  onToggleSelect={() => toggleSelected(m.id)}
                 />
               ))
             )}

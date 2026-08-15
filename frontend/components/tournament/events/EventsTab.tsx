@@ -12,6 +12,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { EventPanel } from "@/components/tournament/events/EventPanel";
@@ -21,6 +22,7 @@ import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/co
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
 const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 195px 195px 70px";
+const SELECT_COLUMN = "28px ";
 
 const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisionC"> = {
   A: "divisionA",
@@ -84,6 +86,24 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortField, setSortField] = useState<SortField>("start_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  function toggleSelectMode() {
+    setSelectMode((v) => {
+      if (v) setSelectedIds(new Set());
+      return !v;
+    });
+  }
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
 
   async function loadEvents() {
     try {
@@ -226,6 +246,11 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               >
                 <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
               </Button>
+              {canManageEvents && !isArchived && (
+                <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
+                  {selectMode ? `${selectedIds.size} selected` : "Select"}
+                </Button>
+              )}
             </div>
 
             {canManageEvents && !isArchived && (
@@ -237,11 +262,23 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: EVENT_ROW_COLUMNS, gap: "10px",
+              display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, gap: "10px",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
               color: "var(--color-text-tertiary)",
             }}>
+              {selectMode && (
+                <span style={{ display: "flex", justifyContent: "center" }}>
+                  <Checkbox
+                    checked={visibleEvents.length > 0 && visibleEvents.every((e) => selectedIds.has(e.id))}
+                    onChange={(checked) => setSelectedIds((prev) => {
+                      const next = new Set(prev);
+                      visibleEvents.forEach((e) => (checked ? next.add(e.id) : next.delete(e.id)));
+                      return next;
+                    })}
+                  />
+                </span>
+              )}
               <span>Events — {isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}</span>
               <span style={{ textAlign: "center" }}>Division</span>
               <span style={{ textAlign: "center" }}>Type</span>
@@ -262,6 +299,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   canDelete={canManageEvents && !isArchived}
                   onExpand={() => setPanelTarget(e)}
                   onDelete={() => setDeleteTarget(e)}
+                  selectMode={selectMode}
+                  selected={selectedIds.has(e.id)}
+                  onToggleSelect={() => toggleSelected(e.id)}
                 />
               ))
             )}
@@ -321,12 +361,15 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   );
 }
 
-function EventRow({ event, isLast, canDelete, onExpand, onDelete }: {
+function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, selected, onToggleSelect }: {
   event: TournamentEvent;
   isLast: boolean;
   canDelete: boolean;
   onExpand: () => void;
   onDelete: () => void;
+  selectMode: boolean;
+  selected: boolean;
+  onToggleSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
 
@@ -335,13 +378,18 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete }: {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        display: "grid", gridTemplateColumns: EVENT_ROW_COLUMNS, alignItems: "center",
+        display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: hovered ? "var(--color-bg)" : "transparent",
+        background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
       }}
     >
+      {selectMode && (
+        <span style={{ display: "flex", justifyContent: "center" }}>
+          <Checkbox checked={selected} onChange={onToggleSelect} />
+        </span>
+      )}
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
