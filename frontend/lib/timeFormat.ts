@@ -16,6 +16,45 @@ export function fromDatetimeLocal(local: string): string | null {
   return local ? new Date(local).toISOString() : null
 }
 
+// Day-only ("YYYY-MM-DD") and time-only ("HH:mm") halves of a datetime-local
+// value — for a day-picker + time-input pair instead of one combined field,
+// e.g. an event/shift editor where the day rarely varies (usually locked to
+// the tournament's single day) but the time always does.
+export function toDateInput(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+}
+
+export function toTimeInput(iso: string | null): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+export function fromDayAndTime(day: string, time: string): string | null {
+  return day && time ? new Date(`${day}T${time}`).toISOString() : null
+}
+
+// Formats a bare "HH:mm" (a time-input value with no date attached) as
+// "2:30 PM" — for a view-mode row whose day is already shown in its own
+// column, so there's no ISO datetime to format from directly.
+export function formatTimeOfDay(hhmm: string): string {
+  if (!hhmm) return ""
+  const [h, m] = hhmm.split(":").map(Number)
+  const period = h < 12 ? "AM" : "PM"
+  const h12 = h % 12 === 0 ? 12 : h % 12
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`
+}
+
+// "Wed, Mar 14" — weekday alongside the date so same-named shifts/events on
+// different days of a multi-day tournament aren't ambiguous in a picker.
+export function formatDayLabel(dayISO: string): string {
+  return new Date(`${dayISO}T00:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+}
+
 // Date + time, for a tooltip pinning down the exact moment behind a coarse
 // label like formatDuration's "3d" or "Today".
 export function formatDateTime(iso: string): string {

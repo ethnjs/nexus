@@ -2,11 +2,14 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { tournamentShiftsApi, tournamentEventsApi, ApiError, TournamentShift, TournamentEvent } from "@/lib/api";
-import { toDatetimeLocal, fromDatetimeLocal, formatDateTime } from "@/lib/timeFormat";
+import {
+  toDateInput, toTimeInput, fromDayAndTime, formatTimeOfDay, formatDayLabel,
+} from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
@@ -14,17 +17,20 @@ import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModa
 import { ShiftEventsCard } from "@/components/tournament/events/ShiftEventsCard";
 import { IconPlus, IconTrash, IconCalendar, IconEdit, IconX } from "@/components/ui/Icons";
 
-const SHIFT_ROW_COLUMNS = "2fr 1fr 1fr 90px";
+const SHIFT_ROW_COLUMNS = "1.6fr 1.1fr 0.8fr 0.8fr 90px";
 
 interface ShiftDraftRow {
   id: number; // negative = unsaved new row, matches the roles editor's temp-id convention
   label: string;
-  start: string; // datetime-local value
-  end: string;
+  // Split day + time-of-day — shifts don't cross midnight, so there's one
+  // day to pick, usually locked to the tournament's own single day.
+  day: string;
+  startTime: string;
+  endTime: string;
 }
 
 function toDraftRow(s: TournamentShift): ShiftDraftRow {
-  return { id: s.id, label: s.label, start: toDatetimeLocal(s.start), end: toDatetimeLocal(s.end) };
+  return { id: s.id, label: s.label, day: toDateInput(s.start), startTime: toTimeInput(s.start), endTime: toTimeInput(s.end) };
 }
 
 function isTempId(id: number): boolean {
@@ -32,20 +38,23 @@ function isTempId(id: number): boolean {
 }
 
 function rowDiffers(row: ShiftDraftRow, saved: TournamentShift): boolean {
-  return row.label !== saved.label || row.start !== toDatetimeLocal(saved.start) || row.end !== toDatetimeLocal(saved.end);
+  const savedRow = toDraftRow(saved);
+  return row.label !== savedRow.label || row.day !== savedRow.day || row.startTime !== savedRow.startTime || row.endTime !== savedRow.endTime;
 }
 
 interface RowFieldErrors {
   label?: string;
-  start?: string;
-  end?: string;
+  day?: string;
+  startTime?: string;
+  endTime?: string;
 }
 
 function validateRow(row: ShiftDraftRow): RowFieldErrors | null {
   const errors: RowFieldErrors = {};
   if (!row.label.trim()) errors.label = "Required";
-  if (!row.start) errors.start = "Required";
-  if (!row.end) errors.end = "Required";
+  if (!row.day) errors.day = "Required";
+  if (!row.startTime) errors.startTime = "Required";
+  if (!row.endTime) errors.endTime = "Required";
   return Object.keys(errors).length > 0 ? errors : null;
 }
 
@@ -55,12 +64,7 @@ interface ShiftsTabProps {
 }
 
 export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
-  const { isArchived, selectedTournament } = useTournament();
-  // start_date/end_date are date-only ("YYYY-MM-DD") — widen to the day's
-  // full span so datetime-local min/max don't clip valid times on the
-  // boundary days themselves.
-  const minDateTime = selectedTournament ? `${selectedTournament.start_date}T00:00` : undefined;
-  const maxDateTime = selectedTournament ? `${selectedTournament.end_date}T23:59` : undefined;
+  const { isArchived, days, isMultiDay } = useTournament();
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   const [draft, setDraft] = useState<ShiftDraftRow[]>([]);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
@@ -140,7 +144,10 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
 
   function addRow() {
     const id = nextTempIdRef.current--;
-    setDraft((cur) => [...cur, { id, label: "", start: "", end: "" }]);
+    // A single-day tournament has only one valid day anyway — default to
+    // it immediately instead of making every new shift pick it.
+    const day = !isMultiDay && days[0] ? days[0] : "";
+    setDraft((cur) => [...cur, { id, label: "", day, startTime: "", endTime: "" }]);
     setEditingIds((cur) => new Set(cur).add(id));
     setSaveError(undefined);
   }
@@ -227,13 +234,13 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         ...newRows.map((row) => ({
           row,
           promise: tournamentShiftsApi.create(tournamentId, {
-            label: row.label.trim(), start: fromDatetimeLocal(row.start)!, end: fromDatetimeLocal(row.end)!,
+            label: row.label.trim(), start: fromDayAndTime(row.day, row.startTime)!, end: fromDayAndTime(row.day, row.endTime)!,
           }),
         })),
         ...pendingEdits.map((row) => ({
           row,
           promise: tournamentShiftsApi.update(tournamentId, row.id, {
-            label: row.label.trim(), start: fromDatetimeLocal(row.start)!, end: fromDatetimeLocal(row.end)!,
+            label: row.label.trim(), start: fromDayAndTime(row.day, row.startTime)!, end: fromDayAndTime(row.day, row.endTime)!,
           }),
         })),
       ];
@@ -253,9 +260,9 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         // ("Shift start falls before ..." / "Shift end falls after ...") —
         // route it to that row's Input instead of just the floating bar.
         if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift start")) {
-          rowErrors[row.id] = { ...rowErrors[row.id], start: err.message };
+          rowErrors[row.id] = { ...rowErrors[row.id], startTime: err.message };
         } else if (err instanceof ApiError && err.status === 409 && err.message.includes("Shift end")) {
-          rowErrors[row.id] = { ...rowErrors[row.id], end: err.message };
+          rowErrors[row.id] = { ...rowErrors[row.id], endTime: err.message };
         } else {
           generic = err instanceof ApiError ? err.message : "Failed to save shifts.";
         }
@@ -361,6 +368,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                   color: "var(--color-text-tertiary)",
                 }}>
                   <span>Shifts — {shifts.length}</span>
+                  <span>Day</span>
                   <span>Start</span>
                   <span>End</span>
                   <span style={{ textAlign: "center" }}>Actions</span>
@@ -375,8 +383,8 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                     canEdit={canEdit}
                     expanded={expandedShiftId === row.id}
                     errors={fieldErrors[row.id]}
-                    minDateTime={minDateTime}
-                    maxDateTime={maxDateTime}
+                    days={days}
+                    isMultiDay={isMultiDay}
                     onChange={(patch) => patchRow(row.id, patch)}
                     onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
                     onCancelEdit={() => cancelRowEdit(row.id)}
@@ -454,15 +462,15 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, minDateTime, maxDateTime, onChange, onEdit, onCancelEdit, onDelete, onToggleExpand }: {
+function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, days, isMultiDay, onChange, onEdit, onCancelEdit, onDelete, onToggleExpand }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
   canEdit: boolean;
   expanded: boolean;
   errors?: RowFieldErrors;
-  minDateTime?: string;
-  maxDateTime?: string;
+  days: string[];
+  isMultiDay: boolean;
   onChange: (patch: Partial<ShiftDraftRow>) => void;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -495,33 +503,41 @@ function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, minDateTime
             font="sans" size="sm" fullWidth
             error={errors?.label}
           />
-          <Input
-            type="datetime-local"
-            value={row.start}
-            onChange={(e) => onChange({ start: e.target.value })}
-            size="sm" fullWidth
-            error={errors?.start}
-            min={minDateTime}
-            max={maxDateTime}
+          <Dropdown
+            value={row.day}
+            onChange={(v) => onChange({ day: v })}
+            options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+            placeholder="Day"
+            locked={!isMultiDay}
+            size="sm"
+            fullWidth
           />
           <Input
-            type="datetime-local"
-            value={row.end}
-            onChange={(e) => onChange({ end: e.target.value })}
+            type="time"
+            value={row.startTime}
+            onChange={(e) => onChange({ startTime: e.target.value })}
             size="sm" fullWidth
-            error={errors?.end}
-            min={minDateTime}
-            max={maxDateTime}
+            error={errors?.startTime}
+          />
+          <Input
+            type="time"
+            value={row.endTime}
+            onChange={(e) => onChange({ endTime: e.target.value })}
+            size="sm" fullWidth
+            error={errors?.endTime}
           />
         </>
       ) : (
         <>
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{row.label || "—"}</span>
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-            {row.start ? formatDateTime(fromDatetimeLocal(row.start)!) : "—"}
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {row.day ? formatDayLabel(row.day) : "—"}
           </span>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-            {row.end ? formatDateTime(fromDatetimeLocal(row.end)!) : "—"}
+            {row.startTime ? formatTimeOfDay(row.startTime) : "—"}
+          </span>
+          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
+            {row.endTime ? formatTimeOfDay(row.endTime) : "—"}
           </span>
         </>
       )}

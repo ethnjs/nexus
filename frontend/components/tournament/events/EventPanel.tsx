@@ -7,13 +7,14 @@ import {
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { toDatetimeLocal, fromDatetimeLocal, formatTime } from "@/lib/timeFormat";
+import { toDateInput, toTimeInput, fromDayAndTime, formatTime, formatDayLabel } from "@/lib/timeFormat";
 import { SidePanel } from "@/components/ui/SidePanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
@@ -30,11 +31,19 @@ interface EventDraft {
   room: string;
   floor: string;
   volunteers_needed: string;
-  start_time: string;
-  end_time: string;
+  // Split day + time-of-day rather than one combined datetime-local value —
+  // events don't cross midnight, so there's exactly one day to pick, and
+  // splitting it out lets that day default to (or lock onto) the
+  // tournament's own day instead of requiring it to be repicked per event.
+  day: string;
+  startTime: string;
+  endTime: string;
 }
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
+  // Prefer start_time's day; fall back to end_time's for old data where
+  // only one end got set. Both should agree once actually saved.
+  const dayIso = event?.start_time ?? event?.end_time ?? null;
   return {
     eventText: event?.event?.name ?? event?.name ?? "",
     event_id: event?.event_id ?? null,
@@ -45,8 +54,9 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     room: event?.room ?? "",
     floor: event?.floor ?? "",
     volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
-    start_time: toDatetimeLocal(event?.start_time ?? null),
-    end_time: toDatetimeLocal(event?.end_time ?? null),
+    day: toDateInput(dayIso),
+    startTime: toTimeInput(event?.start_time ?? null),
+    endTime: toTimeInput(event?.end_time ?? null),
   };
 }
 
@@ -61,26 +71,27 @@ interface EventPanelProps {
 }
 
 export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted }: EventPanelProps) {
-  const { selectedTournament } = useTournament();
+  const { selectedTournament, days, isMultiDay } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
-  // start_date/end_date are date-only ("YYYY-MM-DD") — widen to the day's
-  // full span so datetime-local min/max don't clip valid times on the
-  // boundary days themselves.
-  const minDateTime = selectedTournament ? `${selectedTournament.start_date}T00:00` : undefined;
-  const maxDateTime = selectedTournament ? `${selectedTournament.end_date}T23:59` : undefined;
 
   // The event this panel is editing. Starts as `event` (null for "new"),
   // and becomes the real row once a create lands — so the Shifts section
   // can appear without closing the panel.
   const [current, setCurrent] = useState<TournamentEvent | null>(event);
-  const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event));
+  const [draft, setDraft] = useState<EventDraft>(() => {
+    const initial = draftFromEvent(event);
+    // A single-day tournament has only one valid day anyway — default to
+    // it immediately instead of making every new event pick it.
+    if (!initial.day && !isMultiDay && days[0]) initial.day = days[0];
+    return initial;
+  });
   const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
-  const [timeErrors, setTimeErrors] = useState<{ start_time?: string; end_time?: string }>({});
+  const [timeErrors, setTimeErrors] = useState<{ startTime?: string; endTime?: string }>({});
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
 
@@ -103,11 +114,11 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
 
   function patch(p: Partial<EventDraft>) {
     setDraft((d) => ({ ...d, ...p }));
-    if (p.start_time !== undefined || p.end_time !== undefined) {
+    if (p.startTime !== undefined || p.endTime !== undefined) {
       setTimeErrors((cur) => {
         const next = { ...cur };
-        if (p.start_time !== undefined) delete next.start_time;
-        if (p.end_time !== undefined) delete next.end_time;
+        if (p.startTime !== undefined) delete next.startTime;
+        if (p.endTime !== undefined) delete next.endTime;
         return next;
       });
     }
@@ -127,8 +138,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
       room: draft.room.trim() || null,
       floor: draft.floor.trim() || null,
       volunteers_needed: draft.volunteers_needed.trim() ? Number(draft.volunteers_needed) : null,
-      start_time: fromDatetimeLocal(draft.start_time),
-      end_time: fromDatetimeLocal(draft.end_time),
+      start_time: fromDayAndTime(draft.day, draft.startTime),
+      end_time: fromDayAndTime(draft.day, draft.endTime),
     };
   }
 
@@ -149,9 +160,9 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
       // ("... start_time falls before ..." / "... end_time falls after ...")
       // — route it to that Input instead of just the floating bar.
       if (err instanceof ApiError && err.status === 409 && err.message.includes("start_time")) {
-        setTimeErrors({ start_time: err.message });
+        setTimeErrors({ startTime: err.message });
       } else if (err instanceof ApiError && err.status === 409 && err.message.includes("end_time")) {
-        setTimeErrors({ end_time: err.message });
+        setTimeErrors({ endTime: err.message });
       } else {
         setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
       }
@@ -273,23 +284,30 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
             />
           </SettingsRow>
 
+          <SettingsRow label="Day">
+            <Dropdown
+              value={draft.day}
+              onChange={(v) => patch({ day: v })}
+              options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+              placeholder="Select a day"
+              locked={locked || !isMultiDay}
+              fullWidth
+            />
+          </SettingsRow>
+
           <SettingsRow label="Start">
             <Input
-              type="datetime-local" fullWidth locked={locked} value={draft.start_time}
-              onChange={(e) => patch({ start_time: e.target.value })}
-              error={timeErrors.start_time}
-              min={minDateTime}
-              max={maxDateTime}
+              type="time" fullWidth locked={locked} value={draft.startTime}
+              onChange={(e) => patch({ startTime: e.target.value })}
+              error={timeErrors.startTime}
             />
           </SettingsRow>
 
           <SettingsRow label="End">
             <Input
-              type="datetime-local" fullWidth locked={locked} value={draft.end_time}
-              onChange={(e) => patch({ end_time: e.target.value })}
-              error={timeErrors.end_time}
-              min={minDateTime}
-              max={maxDateTime}
+              type="time" fullWidth locked={locked} value={draft.endTime}
+              onChange={(e) => patch({ endTime: e.target.value })}
+              error={timeErrors.endTime}
             />
           </SettingsRow>
 
