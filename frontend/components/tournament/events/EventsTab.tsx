@@ -18,6 +18,8 @@ import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefau
 import { EventPanel } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
+import { MassEventEditor } from "@/components/tournament/events/MassEventEditor";
+import { eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
@@ -48,10 +50,6 @@ const SORT_FIELD_OPTIONS = [
   { value: "start_time", label: "Start" },
 ];
 
-function eventName(e: TournamentEvent): string {
-  return e.event?.name ?? e.name ?? "—";
-}
-
 function categoryKey(e: TournamentEvent): string {
   return e.event?.category.name ?? UNSET;
 }
@@ -80,6 +78,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [panelTarget, setPanelTarget] = useState<TournamentEvent | "new" | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
+  const [massEditOpen, setMassEditOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<EventsFilterState>({ division: new Set(), type: new Set(), category: new Set() });
@@ -251,6 +250,11 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   {selectMode ? `${selectedIds.size} selected` : "Select"}
                 </Button>
               )}
+              {selectMode && selectedIds.size > 0 && (
+                <Button type="button" variant="primary" size="md" onClick={() => setMassEditOpen(true)}>
+                  Edit {selectedIds.size}
+                </Button>
+              )}
             </div>
 
             {canManageEvents && !isArchived && (
@@ -342,6 +346,15 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
             return exists ? list.map((e) => (e.id === saved.id ? saved : e)) : [...list, saved];
           })}
           onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+        />
+      )}
+
+      {massEditOpen && (
+        <MassEventEditor
+          tournamentId={tournamentId}
+          events={events.filter((e) => selectedIds.has(e.id))}
+          onClose={() => setMassEditOpen(false)}
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
         />
       )}
 
