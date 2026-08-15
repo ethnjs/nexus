@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { EventPanel } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
@@ -439,14 +439,14 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, se
         {event.end_time ? formatDateTime(event.end_time) : "—"}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+        <Button type="button" variant="secondary" size="sm" iconOnly title="Edit" onClick={onExpand}>
+          <IconEdit size={13} />
+        </Button>
         {canDelete && (
           <Button type="button" variant="secondary" size="sm" iconOnly title="Delete event" onClick={onDelete}>
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
           </Button>
         )}
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Expand" onClick={onExpand}>
-          <IconExpand size={13} />
-        </Button>
       </div>
     </div>
   );
