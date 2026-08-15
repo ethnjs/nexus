@@ -410,6 +410,8 @@ export type TournamentCreate = {
   state:       TournamentState
   level:       TournamentLevel
   division:    TournamentDivision[]
+  // IANA name — set once from the creator's browser timezone, no update path.
+  timezone:    string
   is_public?:  boolean
 } & (
   | { location: string; university_id?: never }
