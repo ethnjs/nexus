@@ -54,7 +54,12 @@ interface ShiftsTabProps {
 }
 
 export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
-  const { isArchived } = useTournament();
+  const { isArchived, selectedTournament } = useTournament();
+  // start_date/end_date are date-only ("YYYY-MM-DD") — widen to the day's
+  // full span so datetime-local min/max don't clip valid times on the
+  // boundary days themselves.
+  const minDateTime = selectedTournament ? `${selectedTournament.start_date}T00:00` : undefined;
+  const maxDateTime = selectedTournament ? `${selectedTournament.end_date}T23:59` : undefined;
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   const [draft, setDraft] = useState<ShiftDraftRow[]>([]);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
@@ -323,6 +328,8 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                 editing={canEdit && editingIds.has(row.id)}
                 canEdit={canEdit}
                 errors={fieldErrors[row.id]}
+                minDateTime={minDateTime}
+                maxDateTime={maxDateTime}
                 onChange={(patch) => patchRow(row.id, patch)}
                 onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
                 onCancelEdit={() => cancelRowEdit(row.id)}
@@ -364,12 +371,14 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onCancelEdit, onDelete }: {
+function ShiftRow({ row, isLast, editing, canEdit, errors, minDateTime, maxDateTime, onChange, onEdit, onCancelEdit, onDelete }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
   canEdit: boolean;
   errors?: RowFieldErrors;
+  minDateTime?: string;
+  maxDateTime?: string;
   onChange: (patch: Partial<ShiftDraftRow>) => void;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -404,6 +413,8 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onC
             onChange={(e) => onChange({ start: e.target.value })}
             size="sm" fullWidth
             error={errors?.start}
+            min={minDateTime}
+            max={maxDateTime}
           />
           <Input
             type="datetime-local"
@@ -411,6 +422,8 @@ function ShiftRow({ row, isLast, editing, canEdit, errors, onChange, onEdit, onC
             onChange={(e) => onChange({ end: e.target.value })}
             size="sm" fullWidth
             error={errors?.end}
+            min={minDateTime}
+            max={maxDateTime}
           />
         </>
       ) : (

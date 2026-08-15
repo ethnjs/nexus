@@ -64,6 +64,11 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
   const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
+  // start_date/end_date are date-only ("YYYY-MM-DD") — widen to the day's
+  // full span so datetime-local min/max don't clip valid times on the
+  // boundary days themselves.
+  const minDateTime = selectedTournament ? `${selectedTournament.start_date}T00:00` : undefined;
+  const maxDateTime = selectedTournament ? `${selectedTournament.end_date}T23:59` : undefined;
 
   // The event this panel is editing. Starts as `event` (null for "new"),
   // and becomes the real row once a create lands — so the Shifts section
@@ -261,6 +266,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
               type="datetime-local" fullWidth locked={locked} value={draft.start_time}
               onChange={(e) => patch({ start_time: e.target.value })}
               error={timeErrors.start_time}
+              min={minDateTime}
+              max={maxDateTime}
             />
           </SettingsRow>
 
@@ -269,6 +276,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
               type="datetime-local" fullWidth locked={locked} value={draft.end_time}
               onChange={(e) => patch({ end_time: e.target.value })}
               error={timeErrors.end_time}
+              min={minDateTime}
+              max={maxDateTime}
             />
           </SettingsRow>
 
