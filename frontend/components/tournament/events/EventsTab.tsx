@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { SelectionBar } from "@/components/ui/SelectionBar";
 import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconExpand, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { EventPanel } from "@/components/tournament/events/EventPanel";
@@ -247,12 +248,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               </Button>
               {canManageEvents && !isArchived && (
                 <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
-                  {selectMode ? `${selectedIds.size} selected` : "Select"}
-                </Button>
-              )}
-              {selectMode && selectedIds.size > 0 && (
-                <Button type="button" variant="primary" size="md" onClick={() => setMassEditOpen(true)}>
-                  Edit {selectedIds.size}
+                  Select
                 </Button>
               )}
             </div>
@@ -349,6 +345,13 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
         />
       )}
 
+      <SelectionBar
+        visible={selectMode}
+        count={selectedIds.size}
+        onEdit={() => setMassEditOpen(true)}
+        onCancel={toggleSelectMode}
+      />
+
       {massEditOpen && (
         <MassEventEditor
           tournamentId={tournamentId}
@@ -390,16 +393,18 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, se
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={selectMode ? onToggleSelect : undefined}
       style={{
         display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
+        cursor: selectMode ? "pointer" : "default",
       }}
     >
       {selectMode && (
-        <span style={{ display: "flex", justifyContent: "center" }}>
+        <span style={{ display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
           <Checkbox checked={selected} onChange={onToggleSelect} />
         </span>
       )}
@@ -433,7 +438,7 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, se
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {event.end_time ? formatDateTime(event.end_time) : "—"}
       </span>
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {canDelete && (
           <Button type="button" variant="secondary" size="sm" iconOnly title="Delete event" onClick={onDelete}>
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />

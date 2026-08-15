@@ -114,10 +114,12 @@ function MemberRow({
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
+        cursor: selectMode ? "pointer" : "default",
       }}
+      onClick={selectMode ? onToggleSelect : undefined}
     >
       {selectMode && (
-        <span style={{ display: "flex", justifyContent: "center" }}>
+        <span style={{ display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
           <Checkbox checked={selected} onChange={onToggleSelect} />
         </span>
       )}
