@@ -39,6 +39,7 @@ MANAGE_ROLES       = "manage_roles"        # role *definitions* only — create/
 MANAGE_MEMBERS     = "manage_members"      # membership data — roster + assign member roles
 MANAGE_EVENTS      = "manage_events"       # read + write events page
 MANAGE_INVITES     = "manage_invites"      # join codes + staff invites
+MANAGE_FORMS       = "manage_forms"        # forms creation and editing
 
 # Ordered list for documentation / UI display purposes
 ALL_PERMISSIONS: list[str] = [
@@ -47,6 +48,7 @@ ALL_PERMISSIONS: list[str] = [
     MANAGE_MEMBERS,
     MANAGE_EVENTS,
     MANAGE_INVITES,
+    MANAGE_FORMS
 ]
 
 
@@ -70,17 +72,17 @@ DEFAULT_ROLES: list[dict] = [
     {
         "label":       "Tournament Director",
         "rank":        10,
-        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_INVITES],
+        "permissions": [MANAGE_TOURNAMENT, MANAGE_ROLES, MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
     },
     {
         "label":       "Volunteer Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS, MANAGE_INVITES],
+        "permissions": [MANAGE_MEMBERS, MANAGE_ROLES, MANAGE_EVENTS, MANAGE_INVITES, MANAGE_FORMS],
     },
     {
         "label":       "Test Coordinator",
         "rank":        20,
-        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES],
+        "permissions": [MANAGE_MEMBERS, MANAGE_EVENTS, MANAGE_ROLES, MANAGE_INVITES, MANAGE_FORMS],
     },
     {
         "label":       "Runner",
