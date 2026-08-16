@@ -8,7 +8,7 @@ from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 from app.api.routes import (
     auth, events, join,
-    sheets, users, user_experience, universities,
+    sheets, users, user_experience, universities, forms,
 )
 from app.api.routes import tournament as tournament_core
 from app.api.routes.tournament import events as tournament_events
@@ -106,6 +106,7 @@ app.include_router(chapter_core.router,           prefix="", dependencies=[api_k
 app.include_router(chapter_admin.router,          prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_memberships.router,    prefix="", dependencies=[api_key_dependency])
 app.include_router(chapter_join_codes.router,     prefix="", dependencies=[api_key_dependency])
+app.include_router(forms.router,                  prefix="", dependencies=[api_key_dependency])
 
 
 @app.get("/health", tags=["meta"])

@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import FormAnswer, FormField
+from app.models.models import FormAnswer, FormField, TournamentEvent
 
 import re # Regular Expressions for searching, matching, and extracting patterns in text strings
 
@@ -141,3 +141,39 @@ def remove_option_from_field(
     db.commit()
     db.refresh(field)
     return field
+
+def resolve_field_options(db: Session, field: FormField) -> list[dict]:
+    """
+    Resolves option items for a given FormField.
+    If the field depends on live DB data (e.g. event_preference), queries the database.
+    Otherwise, returns options stored in field.config.
+    """
+    # 1. Dynamic lookup: Tournament Event Preferences
+    if field.field_key == "event_preference":
+        if field.form and field.form.tournament_id:
+            events = (
+                db.query(TournamentEvent)
+                .filter(TournamentEvent.tournament_id == field.form.tournament_id)
+                .order_by(TournamentEvent.id.asc())
+                .all()
+            )
+            return [
+                {
+                    "id": f"opt_{event.id}",
+                    "label": event.name,
+                    "archived": False,
+                    "next_section_id": None,
+                    "allow_other": False,
+                }
+                for event in events
+            ]
+        return []
+
+    # 2. Stubbed dynamic lookup: Availability & Lunch
+    elif field.field_key in ("availability", "lunch"):
+        # TODO(temp): wire up in Step 7
+        return []
+
+    # 3. Static fallback: Read options list directly from config
+    config = dict(field.config or {})
+    return config.get("options", [])
