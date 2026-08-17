@@ -1,10 +1,8 @@
 """
 One-time script: populate season_events for the 2027 season (Division B + C).
 
-Renames the pre-existing "Anatomy & Physiology" canon event to "Anatomy and
-Physiology" (matches the 2027 event list spelling), ensures canon events/
-categories are seeded (adds "Botany"), then upserts season_events rows for
-2027 marked is_active=True.
+Ensures canon events/categories are seeded (adds "Botany"), then upserts
+season_events rows for 2027 marked is_active=True.
 
 Run directly:
     python -m app.db.seed_season_events_2027
@@ -71,13 +69,6 @@ DIVISION_C_EVENTS = [
 
 def seed_season_events_2027(db: Session) -> None:
     from app.models.models import Event, SeasonEvent
-
-    # Old canon spelling predates the 2027 list — rename in place so the
-    # unique `name` constraint doesn't produce a duplicate event.
-    old = db.query(Event).filter(Event.name == "Anatomy & Physiology").first()
-    if old is not None:
-        old.name = "Anatomy and Physiology"
-        db.commit()
 
     seed_events_and_categories(db)
 
