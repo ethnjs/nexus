@@ -29,7 +29,10 @@ import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers } from "@/components/ui/Icons";
+import { emptyFilterState } from "@/components/ui/FilterModal";
+import { usePersistedFilter } from "@/lib/usePersistedFilter";
+import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
+import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
@@ -57,10 +60,13 @@ const SORT_FIELD_OPTIONS = [
 ];
 
 const STATUS_FILTER_OPTIONS = [
-  { value: "all", label: "All statuses" },
   { value: "interested", label: "Interested" },
   { value: "confirmed", label: "Confirmed" },
 ];
+
+// Sentinel for "member has no roles at all", so it can sit in the same
+// excluded-values Set as real role ids — mirrors the Events tab's UNSET.
+const NO_ROLES = "__none__";
 
 function memberName(m: MembershipSlim): string {
   return `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
@@ -238,8 +244,9 @@ export default function MembersPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
+  // Committed filters only — the modal keeps its own draft until Apply.
+  const [filters, applyFilters] = usePersistedFilter("members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS);
+  const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -277,8 +284,12 @@ export default function MembersPage() {
     const q = search.trim().toLowerCase();
     const filtered = members.filter((m) => {
       if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q)) return false;
-      if (roleFilter !== "all" && !m.roles.some((r) => String(r.id) === roleFilter)) return false;
-      if (statusFilter !== "all" && m.status !== statusFilter) return false;
+      // A member is hidden only when *every* role they hold is excluded —
+      // otherwise someone with a kept role would vanish for holding an
+      // unrelated excluded one.
+      const roleKeys = m.roles.length > 0 ? m.roles.map((r) => String(r.id)) : [NO_ROLES];
+      if (roleKeys.every((k) => filters.role.has(k))) return false;
+      if (filters.status.has(m.status)) return false;
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {
@@ -288,7 +299,14 @@ export default function MembersPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [members, search, roleFilter, statusFilter, sortField, sortDir]);
+  }, [members, search, filters, sortField, sortDir]);
+
+  const roleFilterOptions = useMemo(() => {
+    const opts = allRoles.map((r) => ({ value: String(r.id), label: r.label }));
+    return (members ?? []).some((m) => m.roles.length === 0)
+      ? [...opts, { value: NO_ROLES, label: "No roles" }]
+      : opts;
+  }, [allRoles, members]);
 
   const handleMemberUpdated = useCallback((updated: MembershipSlim) => {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -421,7 +439,7 @@ export default function MembersPage() {
     );
   }
 
-  const isFiltered = search.trim() !== "" || roleFilter !== "all" || statusFilter !== "all";
+  const isFiltered = search.trim() !== "" || isMembersFilterActive(filters);
 
   return (
     <div>
@@ -457,24 +475,20 @@ export default function MembersPage() {
                 fullWidth
               />
             </div>
-            <Dropdown
-              label="Role"
-              value={roleFilter}
-              onChange={setRoleFilter}
-              options={[{ value: "all", label: "All roles" }, ...allRoles.map((r) => ({ value: String(r.id), label: r.label }))]}
-              size="md"
-              variant="secondary"
-              width={170}
-            />
-            <Dropdown
-              label="Status"
-              value={statusFilter}
-              onChange={setStatusFilter}
-              options={STATUS_FILTER_OPTIONS}
-              size="md"
-              variant="secondary"
-              width={150}
-            />
+            <Button
+              type="button" variant="secondary" size="md"
+              onClick={() => setShowFilterModal(true)}
+            >
+              <IconFilter size={16} /> Filter
+            </Button>
+            {isMembersFilterActive(filters) && (
+              <Button
+                type="button" variant="ghost" size="md"
+                onClick={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
+              >
+                <IconX size={16} /> Clear filters
+              </Button>
+            )}
             <Dropdown
               label="Sort by"
               value={sortField}
@@ -570,6 +584,16 @@ export default function MembersPage() {
             )}
           </Card>
         </>
+      )}
+
+      {showFilterModal && (
+        <MembersFilterModal
+          roleOptions={roleFilterOptions}
+          statusOptions={STATUS_FILTER_OPTIONS}
+          filters={filters}
+          onApply={applyFilters}
+          onClose={() => setShowFilterModal(false)}
+        />
       )}
 
       {/* Stays up through the whole "checking boxes" phase — the panel only

@@ -20,7 +20,10 @@ import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
-import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
+import { EventsFilterModal, isEventsFilterActive, EVENTS_FILTER_KEYS } from "@/components/tournament/events/EventsFilterModal";
+import { emptyFilterState } from "@/components/ui/FilterModal";
+import { usePersistedFilter } from "@/lib/usePersistedFilter";
+import { useAuth } from "@/lib/useAuth";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
 import { eventName } from "@/lib/eventDisplay";
 
@@ -78,6 +81,7 @@ interface EventsTabProps {
 
 export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const { selectedTournament, isArchived } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const hasDivisions = divisions.length > 0;
@@ -91,7 +95,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
 
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState<EventsFilterState>({ division: new Set(), type: new Set(), category: new Set() });
+  // Committed filters only — the modal keeps its own draft until Apply.
+  const [filters, applyFilters] = usePersistedFilter("events", user?.id, tournamentId, EVENTS_FILTER_KEYS);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [sortField, setSortField] = useState<SortField>("start_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -348,7 +353,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               {isEventsFilterActive(filters) && (
                 <Button
                   type="button" variant="ghost" size="md"
-                  onClick={() => setFilters({ division: new Set(), type: new Set(), category: new Set() })}
+                  onClick={() => applyFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
                 >
                   <IconX size={16} /> Clear filters
                 </Button>
@@ -454,7 +459,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           typeOptions={TYPE_OPTIONS}
           categoryOptions={categoryOptions}
           filters={filters}
-          onChange={setFilters}
+          onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
         />
       )}
