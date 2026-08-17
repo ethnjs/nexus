@@ -165,7 +165,7 @@ function MemberRow({
             disabled={!isSelf && locked}
             onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
           >
-            <IconTrash size={13} style={{ color: !isSelf && locked ? undefined : "var(--color-danger)" }} />
+            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
           </Button>
         )}
         <Button
