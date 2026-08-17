@@ -23,8 +23,10 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { MemberPanel } from "@/components/tournament/MemberPanel";
+import { MassRoleEditor } from "@/components/tournament/MassRoleEditor";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
+import { SelectionBar } from "@/components/ui/SelectionBar";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
@@ -202,6 +204,7 @@ export default function MembersPage() {
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [massEditOpen, setMassEditOpen] = useState(false);
 
   function toggleSelectMode() {
     setSelectMode((v) => {
@@ -354,7 +357,7 @@ export default function MembersPage() {
             </Button>
             {canManageMembers && !isArchived && (
               <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
-                {selectMode ? `${selectedIds.size} selected` : "Select"}
+                Select
               </Button>
             )}
           </div>
@@ -425,6 +428,24 @@ export default function MembersPage() {
           canTouchRole={canTouchRole}
           canEditMember={canEditMember}
           onClose={() => setExpandedId(null)}
+          onUpdated={handleMemberUpdated}
+        />
+      )}
+
+      <SelectionBar
+        visible={selectMode}
+        count={selectedIds.size}
+        onEdit={() => setMassEditOpen(true)}
+        onCancel={toggleSelectMode}
+      />
+
+      {massEditOpen && (
+        <MassRoleEditor
+          tournamentId={tournamentId}
+          memberships={members.filter((m) => selectedIds.has(m.id))}
+          allRoles={allRoles}
+          canTouchRole={canTouchRole}
+          onClose={() => setMassEditOpen(false)}
           onUpdated={handleMemberUpdated}
         />
       )}

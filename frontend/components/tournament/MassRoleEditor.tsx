@@ -1,0 +1,222 @@
+"use client";
+
+import { useState } from "react";
+import { membershipsApi, ApiError, MembershipSlim, Role } from "@/lib/api";
+import { personName } from "@/lib/personDisplay";
+import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
+import { SidePanel } from "@/components/ui/SidePanel";
+import { Card } from "@/components/ui/Card";
+import { SettingsSection } from "@/components/settings/SettingsRow";
+import { Button } from "@/components/ui/Button";
+import { Popover } from "@/components/ui/Popover";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { IconPlus, IconX } from "@/components/ui/Icons";
+
+interface MemberResult {
+  membership: MembershipSlim;
+  error?: string;
+}
+
+function ResultsCard({ results }: { results: MemberResult[] }) {
+  const failureCount = results.filter((r) => r.error).length;
+  const successCount = results.length - failureCount;
+  return (
+    <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
+      <div style={{
+        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
+        marginBottom: "10px",
+      }}>
+        {successCount} saved, {failureCount} failed
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+        {results.map((r) => (
+          <p key={r.membership.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
+            <span style={{ fontWeight: 500 }}>{personName(r.membership)}</span>{" "}
+            {r.error ? (
+              <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
+            ) : (
+              <span style={{ color: "var(--color-success)" }}>— saved</span>
+            )}
+          </p>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// A pending role add/remove, shown git-diff style before Save is pressed —
+// undoing just drops it back out of the pending set, nothing hits the
+// backend until Save.
+function RoleDiffRow({ role, sign, onUndo }: { role: Role; sign: "+" | "-"; onUndo: () => void }) {
+  const color = sign === "+" ? "var(--color-success)" : "var(--color-danger)";
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color }}>
+        {sign} {role.label}
+      </span>
+      <Button type="button" variant="ghost" size="xs" iconOnly title="Undo" onClick={onUndo}>
+        <IconX size={11} />
+      </Button>
+    </div>
+  );
+}
+
+interface MassRoleEditorProps {
+  tournamentId: number;
+  memberships: MembershipSlim[];
+  allRoles: Role[];
+  /** Role-level rank gate, same as RolesCell — only roles this returns true for are offered here at all, so there's no per-member lock UI to build: a role you can't touch never appears as an option regardless of which member holds it. */
+  canTouchRole: (role: Role) => boolean;
+  onClose: () => void;
+  /** Called once per membership that saved successfully, so the caller can patch its local list the same way RolesCell's onUpdated does. */
+  onUpdated: (updated: MembershipSlim) => void;
+}
+
+export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRole, onClose, onUpdated }: MassRoleEditorProps) {
+  const { guard } = useUnsavedChanges();
+
+  const [rolesToAdd, setRolesToAdd] = useState<Set<number>>(new Set());
+  const [rolesToRemove, setRolesToRemove] = useState<Set<number>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [results, setResults] = useState<MemberResult[] | null>(null);
+
+  const touchableRoles = allRoles.filter(canTouchRole);
+
+  // Every role currently held by at least one selected member — the only
+  // ones "Remove role" makes sense for.
+  const heldRoles = (() => {
+    const byId = new Map<number, Role>();
+    memberships.forEach((m) => m.roles.forEach((r) => { if (canTouchRole(r)) byId.set(r.id, r); }));
+    return [...byId.values()];
+  })();
+
+  const pendingAddRoles = touchableRoles.filter((r) => rolesToAdd.has(r.id));
+  const pendingRemoveRoles = heldRoles.filter((r) => rolesToRemove.has(r.id));
+
+  const isDirty = rolesToAdd.size > 0 || rolesToRemove.size > 0;
+
+  function addRole(role: Role) {
+    setRolesToAdd((prev) => new Set(prev).add(role.id));
+    setRolesToRemove((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
+  }
+
+  function removeRole(role: Role) {
+    setRolesToRemove((prev) => new Set(prev).add(role.id));
+    setRolesToAdd((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
+  }
+
+  function handleCancel() {
+    setRolesToAdd(new Set());
+    setRolesToRemove(new Set());
+    onClose();
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setResults(null);
+
+    const outcomes = await Promise.allSettled(memberships.map(async (m) => {
+      const heldIds = new Set(m.roles.map((r) => r.id));
+      const add = [...rolesToAdd].filter((id) => !heldIds.has(id));
+      const remove = [...rolesToRemove].filter((id) => heldIds.has(id));
+      if (add.length === 0 && remove.length === 0) return m;
+      return membershipsApi.updateRoles(tournamentId, m.id, {
+        add: add.length > 0 ? add : undefined,
+        remove: remove.length > 0 ? remove : undefined,
+      });
+    }));
+
+    const nextResults: MemberResult[] = [];
+    outcomes.forEach((outcome, i) => {
+      const membership = memberships[i];
+      if (outcome.status === "fulfilled") {
+        onUpdated(outcome.value);
+        nextResults.push({ membership: outcome.value });
+      } else {
+        const err = outcome.reason;
+        nextResults.push({ membership, error: err instanceof ApiError ? err.message : "Failed to save." });
+      }
+    });
+    setResults(nextResults);
+    setRolesToAdd(new Set());
+    setRolesToRemove(new Set());
+    setSaving(false);
+  }
+
+  return (
+    <SidePanel
+      onClose={() => guard(onClose)}
+      width={460}
+      footer={
+        <FloatingSaveBar
+          visible={isDirty}
+          saving={saving}
+          onSave={handleSave}
+          onCancel={handleCancel}
+        />
+      }
+    >
+      <div style={{ padding: `20px 28px ${isDirty ? "100px" : "20px"}` }}>
+        <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
+          <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "22px" }}>
+            Edit roles for {memberships.length} members
+          </h2>
+          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", marginTop: "4px" }}>
+            Adding or removing a role only touches that role — every other role each member already holds is left as-is.
+          </p>
+        </Card>
+
+        <SettingsSection title="Roles">
+          <div style={{ padding: "20px 0" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <Popover
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    <IconPlus size={12} /> Add role
+                  </Button>
+                }
+                items={touchableRoles}
+                getKey={(r) => r.id}
+                renderLabel={(r) => r.label}
+                emptyMessage="No roles you can add."
+                onSelect={addRole}
+                width={240}
+              />
+              <Popover
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    Remove role
+                  </Button>
+                }
+                items={heldRoles}
+                getKey={(r) => r.id}
+                renderLabel={(r) => r.label}
+                emptyMessage="None of the selected members have a role you can remove."
+                onSelect={removeRole}
+                width={240}
+              />
+            </div>
+
+            {(pendingAddRoles.length > 0 || pendingRemoveRoles.length > 0) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+                {pendingAddRoles.map((r) => (
+                  <RoleDiffRow key={r.id} role={r} sign="+" onUndo={() => setRolesToAdd((prev) => new Set([...prev].filter((id) => id !== r.id)))} />
+                ))}
+                {pendingRemoveRoles.map((r) => (
+                  <RoleDiffRow key={r.id} role={r} sign="-" onUndo={() => setRolesToRemove((prev) => new Set([...prev].filter((id) => id !== r.id)))} />
+                ))}
+              </div>
+            )}
+
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+              Changes above apply when you press Save — each member is updated independently, so one failing doesn&rsquo;t block the rest.
+            </p>
+          </div>
+        </SettingsSection>
+
+        {results && <ResultsCard results={results} />}
+      </div>
+    </SidePanel>
+  );
+}
