@@ -64,10 +64,6 @@ const STATUS_FILTER_OPTIONS = [
   { value: "confirmed", label: "Confirmed" },
 ];
 
-// Sentinel for "member has no roles at all", so it can sit in the same
-// excluded-values Set as real role ids — mirrors the Events tab's UNSET.
-const NO_ROLES = "__none__";
-
 function memberName(m: MembershipSlim): string {
   return `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
 }
@@ -286,9 +282,11 @@ export default function MembersPage() {
       if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q)) return false;
       // A member is hidden only when *every* role they hold is excluded —
       // otherwise someone with a kept role would vanish for holding an
-      // unrelated excluded one.
-      const roleKeys = m.roles.length > 0 ? m.roles.map((r) => String(r.id)) : [NO_ROLES];
-      if (roleKeys.every((k) => filters.role.has(k))) return false;
+      // unrelated excluded one. A member with no roles at all is never
+      // hidden by this filter — deselecting every role should surface the
+      // unassigned members, not hide them along with everyone else.
+      const roleKeys = m.roles.map((r) => String(r.id));
+      if (roleKeys.length > 0 && roleKeys.every((k) => filters.role.has(k))) return false;
       if (filters.status.has(m.status)) return false;
       return true;
     });
@@ -301,12 +299,10 @@ export default function MembersPage() {
     return sorted;
   }, [members, search, filters, sortField, sortDir]);
 
-  const roleFilterOptions = useMemo(() => {
-    const opts = allRoles.map((r) => ({ value: String(r.id), label: r.label }));
-    return (members ?? []).some((m) => m.roles.length === 0)
-      ? [...opts, { value: NO_ROLES, label: "No roles" }]
-      : opts;
-  }, [allRoles, members]);
+  const roleFilterOptions = useMemo(
+    () => allRoles.map((r) => ({ value: String(r.id), label: r.label })),
+    [allRoles]
+  );
 
   const handleMemberUpdated = useCallback((updated: MembershipSlim) => {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
