@@ -1,7 +1,7 @@
 """form and form fields models
 
 Revision ID: 2b134a51cf44
-Revises: c7b3f4a9d2e1
+Revises: d3e4f5a6b7c8
 Create Date: 2026-08-12 00:46:13.556533
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '2b134a51cf44'
-down_revision: Union[str, None] = 'c7b3f4a9d2e1'
+down_revision: Union[str, None] = 'd3e4f5a6b7c8'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
