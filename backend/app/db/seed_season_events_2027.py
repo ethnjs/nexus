@@ -56,6 +56,7 @@ DIVISION_C_EVENTS = [
     "Forensics",
     "Hovercraft",
     "Protein Modeling",
+    "Thermodynamics",
     "Boomilever",
     "Electric Vehicle",
     "Mission Possible",
