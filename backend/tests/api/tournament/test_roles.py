@@ -87,6 +87,7 @@ def _make_empty_tournament(client, name="Empty Tournament") -> int:
         "state": "Southern California",
         "level": "invitational",
         "division": ["B", "C"],
+        "timezone": "America/Los_Angeles",
     })
     assert response.status_code == 201
     return response.json()["id"]

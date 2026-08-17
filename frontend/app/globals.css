@@ -18,6 +18,20 @@
   --color-success:        #22C55E;
   --color-success-subtle: #F0FDF4;
 
+  --color-warning:        #EAB308;
+  --color-warning-subtle: #FEFCE8;
+
+  /* Tournament division badges (A/B/C) — own tokens (not aliased to
+     danger/success above) even though A/B happen to land on the same
+     red/green today, so division and status can be recolored independently
+     later without side effects on each other. */
+  --color-division-a:        #DC2626;
+  --color-division-a-subtle: #FEF2F2;
+  --color-division-b:        #16A34A;
+  --color-division-b-subtle: #F0FDF4;
+  --color-division-c:        #2563EB;
+  --color-division-c-subtle: #EFF6FF;
+
   /* aliased, not literal — var(--color-text-*) is used directly in 30+
      inline styles across the app, so that name has to keep existing */
   --color-primary:   var(--color-text-primary);
@@ -146,9 +160,6 @@
 
   --color-danger-subtle-hover:  #FEEAEA;
   --color-success-subtle-hover: #E6FAF0;
-
-  --color-warning:              #EAB308;
-  --color-warning-subtle:       #FEFCE8;
   --color-warning-subtle-hover: #FDF8D0;
 
   /* Status badge colors — muted, desaturated */

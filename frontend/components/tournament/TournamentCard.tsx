@@ -1,11 +1,9 @@
-import { Tournament } from "@/lib/api";
+import { TournamentSummary } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { Card } from "@/components/ui/Card";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
-export interface CardCounts { events: number | null; volunteers: number | null }
-
-export function TournamentCard({ tournament, counts, onClick }: { tournament: Tournament; counts: CardCounts; onClick: () => void }) {
+export function TournamentCard({ tournament, onClick }: { tournament: TournamentSummary; onClick: () => void }) {
   const fmt = (d: string) =>
     parseLocalDate(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 
@@ -46,14 +44,14 @@ export function TournamentCard({ tournament, counts, onClick }: { tournament: To
       <div style={{ paddingTop: "14px", borderTop: "1px solid var(--color-border)", display: "flex", gap: "20px" }}>
         <div>
           <div style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", lineHeight: 1 }}>
-            {counts.events === null ? "—" : counts.events}
+            {tournament.event_count}
           </div>
           <div style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500, color: "var(--color-text-tertiary)", marginTop: "3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Events</div>
         </div>
         <div style={{ width: "1px", background: "var(--color-border)" }} />
         <div>
           <div style={{ fontFamily: "Georgia, serif", fontSize: "22px", color: "var(--color-text-primary)", lineHeight: 1 }}>
-            {counts.volunteers === null ? "—" : counts.volunteers}
+            {tournament.volunteer_count}
           </div>
           <div style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500, color: "var(--color-text-tertiary)", marginTop: "3px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Volunteers</div>
         </div>

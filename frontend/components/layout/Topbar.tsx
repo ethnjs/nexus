@@ -4,14 +4,17 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { Tournament } from "@/lib/api";
+import { Tournament, TournamentPublic } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal";
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconPlus } from "@/components/ui/Icons";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
-import Link from "next/link";
+
+// Shared with DockedPanel so its own header strip lines up exactly with
+// Topbar's bottom border, reading as one continuous bar across both.
+export const TOPBAR_HEIGHT = 52;
 
 interface TopbarProps {
   showWordmark?: boolean;
@@ -28,20 +31,22 @@ interface TopbarProps {
 // Isolated into its own component so useTournament() is only called when
 // showDropdown=true and a TournamentProvider is present in the tree.
 
-function tournamentDisplayName(t: Tournament) {
+function tournamentDisplayName(t: TournamentPublic) {
   const year = parseLocalDate(t.start_date).getFullYear();
   return `${year} ${t.short_name || t.name}`;
 }
 
 function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }) {
   const router = useRouter();
-  const { tournaments, setSelectedTournament, refresh } = useTournament();
+  const { tournaments, refresh } = useTournament();
   const { guard } = useUnsavedChanges();
   const [showNewModal, setShowNewModal] = useState(false);
 
+  // No optimistic setSelectedTournament here — the [id]/layout.tsx shell
+  // refetches the full tournament keyed off the URL id on every navigation,
+  // which is the sole writer of selectedTournament (see useTournament.tsx).
   async function handleCreated(t: Tournament) {
     await refresh();
-    setSelectedTournament(t);
     setShowNewModal(false);
     router.push(`/dashboard/tournaments/${t.id}/overview`);
   }
@@ -51,7 +56,6 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
     if (!t) return;
     const segment = window.location.pathname.split("/").pop() ?? "overview";
     guard(() => {
-      setSelectedTournament(t);
       router.push(`/dashboard/tournaments/${t.id}/${segment}`);
     });
   }
@@ -96,7 +100,7 @@ export function Topbar({
 
   return (
     <header style={{
-      height: "52px",
+      height: `${TOPBAR_HEIGHT}px`,
       background: "var(--color-surface)",
       borderBottom: "1px solid var(--color-border)",
       display: "flex", alignItems: "center",
@@ -109,7 +113,7 @@ export function Topbar({
       flexShrink: 0,
     }}>
       {showWordmark && (
-        <Link
+        <a
           href="/dashboard"
           style={{
             fontFamily: "Georgia, serif", fontSize: "15px",
@@ -119,7 +123,7 @@ export function Topbar({
           }}
         >
           NEXUS
-        </Link>
+        </a>
       )}
 
       {showDropdown && <TournamentDropdown tournamentId={tournamentId} />}

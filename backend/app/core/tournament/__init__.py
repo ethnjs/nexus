@@ -1,5 +1,7 @@
 from __future__ import annotations
+from datetime import datetime
 from typing import TypeVar
+from zoneinfo import ZoneInfo
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,6 +10,16 @@ from app.db.session import get_db
 from app.models.models import Tournament, TournamentMembership, User
 
 T = TypeVar("T")
+
+
+def tournament_local_date(tournament: Tournament, moment: datetime):
+    """Convert a tz-aware UTC instant to the calendar date it falls on in
+    the tournament's own timezone — start_date/end_date are naive dates
+    with no timezone of their own, so any comparison against them needs to
+    go through the tournament's timezone first, not a bare `.date()` on
+    the UTC value (which drifts a day off near midnight for any tz other
+    than UTC)."""
+    return moment.astimezone(ZoneInfo(tournament.timezone)).date()
 
 
 def get_scoped_or_404(db: Session, model: type[T], id_: int, tournament_id: int, label: str) -> T:

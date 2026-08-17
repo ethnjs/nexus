@@ -7,11 +7,12 @@ from app.core.config import get_settings
 from app.core.security import verify_api_key
 from app.db.init_db import init_db, seed_dev_data
 from app.api.routes import (
-    auth, events, join,
+    auth, events, join, season_event,
     sheets, users, user_experience, universities,
 )
 from app.api.routes import tournament as tournament_core
 from app.api.routes.tournament import events as tournament_events
+from app.api.routes.tournament import shifts as tournament_shifts
 from app.api.routes.tournament import memberships as tournament_memberships
 from app.api.routes.tournament import roles as tournament_roles
 from app.api.routes.tournament import join_codes as tournament_join_codes
@@ -89,8 +90,13 @@ api_key_dependency = Depends(verify_api_key)
 app.include_router(auth.router,                   prefix="", dependencies=[api_key_dependency])
 app.include_router(join.router,                   prefix="", dependencies=[api_key_dependency])
 app.include_router(events.router,                 prefix="", dependencies=[api_key_dependency])
+app.include_router(events.admin_router,           prefix="", dependencies=[api_key_dependency])
+app.include_router(season_event.router,           prefix="", dependencies=[api_key_dependency])
+app.include_router(season_event.admin_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_core.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_events.router,             prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_shifts.router,               prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_shifts.event_shifts_router,  prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_memberships.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency])

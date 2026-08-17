@@ -81,15 +81,17 @@ def validate_member_target(actor: "User", tournament: "Tournament", membership: 
     Guards actions taken on a member's own row — removing them from the
     tournament, editing their day-of logistics, or (via validate_role_action)
     whether their role assignments can be touched at all. This is about who
-    can be a target, not which role is involved. Owner and platform admins
-    bypass entirely.
+    can be a target, not which role is involved.
 
     The tournament owner's membership can never be a target for anyone else,
-    full stop — even an actor with no rank of their own to compare against.
-    Rank is opt-in (the owner isn't required to hold a TournamentRole), so
-    without this explicit check an unranked owner would be unprotected by
-    the rank comparison below: get_highest_rank would return None for them,
-    and "target_rank is not None and ..." silently passes on None.
+    full stop — not even a platform admin, and even an actor with no rank of
+    their own to compare against. This check runs before the owner/admin
+    bypass below on purpose: platform admins are exempt from rank checks but
+    not from the "don't touch the owner" rule. Rank is opt-in (the owner
+    isn't required to hold a TournamentRole), so without this explicit check
+    an unranked owner would be unprotected by the rank comparison below:
+    get_highest_rank would return None for them, and
+    "target_rank is not None and ..." silently passes on None.
 
     Otherwise strict `<`: a target whose highest-ranked role ties the
     actor's own is still a fair target (lets peers at the same rank, e.g.
@@ -97,14 +99,14 @@ def validate_member_target(actor: "User", tournament: "Tournament", membership: 
     strictly outranks the actor is protected. Exempt when acting on your
     own membership (you can't outrank yourself).
     """
-    if actor.id == tournament.owner_id or actor.role == "admin":
-        return
-
-    if membership.user_id == tournament.owner_id:
+    if membership.user_id == tournament.owner_id and actor.id != tournament.owner_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot act on the tournament owner's membership",
         )
+
+    if actor.id == tournament.owner_id or actor.role == "admin":
+        return
 
     if membership.user_id == actor.id:
         return
@@ -130,21 +132,24 @@ def validate_role_action(
 ) -> None:
     """
     Rank-bound checks for assigning/removing `role` on `membership`. Owner and
-    platform admins bypass entirely — same rationale as validate_rank_bound
-    above: this route is gated on MANAGE_MEMBERS alone, MANAGE_TOURNAMENT is
-    not a bypass.
+    platform admins bypass the rank checks below — same rationale as
+    validate_rank_bound above: this route is gated on MANAGE_MEMBERS alone,
+    MANAGE_TOURNAMENT is not a bypass. The owner-target check is not part of
+    that bypass, so it runs first and unconditionally.
 
     Two independent checks with different strictness, both must pass:
-      1. The role being assigned/removed must not tie or outrank the actor's
+      1. Whether the target member can be acted on at all — delegated to
+         validate_member_target (owner protection + strict-`<` rank check,
+         self-exempt).
+      2. The role being assigned/removed must not tie or outrank the actor's
          own highest rank — strict `<=`, same as validate_rank_bound for role
          definitions. This has no self-demotion exemption: a member can't
          remove their own top-ranked role either, since it ties their own
          rank. Stepping down from a top role requires the Owner/admin bypass
          (someone else with higher authority does it for them).
-      2. Whether the target member can be acted on at all — delegated to
-         validate_member_target (owner protection + strict-`<` rank check,
-         self-exempt).
     """
+    validate_member_target(actor, tournament, membership, db)
+
     if actor.id == tournament.owner_id or actor.role == "admin":
         return
 
@@ -157,5 +162,3 @@ def validate_role_action(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot assign or remove a role that ties or outranks your own",
         )
-
-    validate_member_target(actor, tournament, membership, db)

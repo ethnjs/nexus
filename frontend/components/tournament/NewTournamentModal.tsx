@@ -81,6 +81,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
         state: matchedState!,
         level: matchedLevel!.value,
         division,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...source,
       })
       onCreated(t)

@@ -15,7 +15,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { HoverCard } from "@/components/ui/HoverCard";
-import { IconArchive, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
+import { IconArchive, IconInvite, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
 import { personUser, personName, personRoles } from "@/lib/personDisplay";
@@ -352,6 +352,7 @@ export default function InvitesSettingsPage() {
       ) : invites.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
+            icon={<IconInvite size={28} />}
             title="No invites yet"
             description="Create an invite to let members or staff join this tournament."
             action={

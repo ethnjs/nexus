@@ -52,13 +52,18 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const canManageInvites = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_invites");
   const canManageTournament = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
   const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
+  const canManageEvents = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_events");
   const settingsSubitems = SETTINGS_SUBITEMS.filter(
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
       (segment !== "invites" || canManageInvites) &&
       (segment !== "audit-log" || canManageTournament)
   );
-  const navItems = NAV_ITEMS.filter(({ segment }) => segment !== "members" || canManageMembers);
+  const navItems = NAV_ITEMS.filter(
+    ({ segment }) =>
+      (segment !== "members" || canManageMembers) &&
+      (segment !== "events" || canManageEvents)
+  );
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.
   const expanded = hovered || onSettingsRoute;

@@ -11,6 +11,10 @@ type BadgeVariant =
   | 'removed'
   | 'admin'
   | 'td'
+  | 'warning'
+  | 'divisionA'
+  | 'divisionB'
+  | 'divisionC'
 
 interface BadgeProps extends HTMLAttributes<HTMLSpanElement> {
   variant?: BadgeVariant
@@ -27,6 +31,10 @@ const variantStyles: Record<BadgeVariant, string> = {
   removed:    'bg-accent-subtle text-tertiary border-border',
   admin:      'bg-accent text-inverse border-accent',
   td:         'bg-accent-subtle text-primary border-border-strong',
+  warning:    'bg-warning-subtle text-warning border-warning/20',
+  divisionA:  'bg-division-a-subtle text-division-a border-division-a/20',
+  divisionB:  'bg-division-b-subtle text-division-b border-division-b/20',
+  divisionC:  'bg-division-c-subtle text-division-c border-division-c/20',
 }
 
 export function Badge({ variant = 'default', className = '', children, copyValue, onClick, style, ...props }: BadgeProps) {

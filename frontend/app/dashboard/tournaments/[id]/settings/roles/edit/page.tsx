@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { TabStrip } from "@/components/ui/TabStrip";
 import { RoleDropDivider } from "@/components/tournament/settings/RoleDropDivider";
 import { RoleMembersTab } from "@/components/tournament/settings/RoleMembersTab";
 import { RoleDraft, RoleEditorForm } from "@/components/tournament/settings/RoleEditorForm";
@@ -354,24 +355,14 @@ export default function RoleEditorPage() {
         <div style={{ flex: 1, minWidth: 0 }}>
           {activeRole ? (
             <>
-              <div style={{ display: "flex", gap: "4px", borderBottom: "1px solid var(--color-border)", marginBottom: "16px" }}>
-                {tabs.map((tab) => (
-                  <button
-                    key={tab}
-                    type="button"
-                    onClick={() => setActiveTab(tab)}
-                    style={{
-                      padding: "10px 4px", marginRight: "20px", border: "none", background: "transparent", cursor: "pointer",
-                      borderBottom: activeTab === tab ? "2px solid var(--color-accent)" : "2px solid transparent",
-                      fontFamily: "var(--font-sans)", fontSize: "13px",
-                      fontWeight: activeTab === tab ? 600 : 500,
-                      color: activeTab === tab ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-                    }}
-                  >
-                    {tab === "details" ? "Details" : `Members — ${memberCounts[activeRole.id] ?? 0}`}
-                  </button>
-                ))}
-              </div>
+              <TabStrip
+                tabs={tabs.map((tab) => ({
+                  key: tab,
+                  label: tab === "details" ? "Details" : `Members — ${memberCounts[activeRole.id] ?? 0}`,
+                }))}
+                activeKey={activeTab}
+                onChange={setActiveTab}
+              />
 
               {activeTab === "details" || activeIsTemp ? (
                 <RoleEditorForm

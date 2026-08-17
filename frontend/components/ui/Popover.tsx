@@ -25,10 +25,13 @@ interface PopoverProps<T> {
   disabledReason?: (item: T) => string | undefined;
 }
 
-type PanelPos = { top: number; left: number };
+// Anchored from the top (below the trigger) normally; flips to bottom
+// (above the trigger) when there isn't room underneath.
+type PanelPos = { left: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
 type HoverTip = { text: string; top: number; left: number };
 
 const PANEL_GAP = 6;
+const PANEL_MAX_HEIGHT = 260;
 
 // Generic click-to-open panel of selectable items, anchored to a trigger —
 // outside-click closes it. In default "list" mode, selecting an item runs
@@ -69,7 +72,16 @@ export function Popover<T>({
     if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
     const left = align === "right" ? r.right - width : r.left;
-    setPanelPos({ top: r.bottom + PANEL_GAP, left });
+    // Flip above the trigger when there isn't enough room below for even a
+    // capped-height panel, but only if there's actually more room above —
+    // otherwise a trigger near the very top of the viewport would flip into
+    // even less space than it started with.
+    const spaceBelow = window.innerHeight - r.bottom;
+    const spaceAbove = r.top;
+    const flip = spaceBelow < PANEL_MAX_HEIGHT + PANEL_GAP && spaceAbove > spaceBelow;
+    setPanelPos(flip
+      ? { bottom: window.innerHeight - r.top + PANEL_GAP, left }
+      : { top: r.bottom + PANEL_GAP, left });
   }
 
   useEffect(() => {
@@ -115,8 +127,10 @@ export function Popover<T>({
 
       {open && panelPos && (
         <div style={{
-          position: "fixed", top: panelPos.top, left: panelPos.left, zIndex: 300,
-          width: `${width}px`, maxHeight: "260px", overflowY: "auto", padding: "6px",
+          position: "fixed",
+          ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
+          left: panelPos.left, zIndex: 300,
+          width: `${width}px`, maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto", padding: "6px",
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
         }}>

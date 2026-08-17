@@ -8,7 +8,7 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 from datetime import datetime, timezone
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column, event,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship
@@ -240,6 +240,10 @@ class Tournament(Base):
     level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
     division = Column(JSON, nullable=False, default=list)       # "A" | "B" | "C"
 
+    # IANA name (e.g. "America/Los_Angeles"). Set once at creation from the
+    # creator's browser timezone — immutable after, no update path.
+    timezone = Column(String(64), nullable=False)
+
     owner_id = Column(Integer, ForeignKey("users.id"), nullable=False)  # creator
 
     # TD-controlled — shows in the public directory. False = invite-only.
@@ -275,6 +279,7 @@ class Tournament(Base):
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
+    event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -305,10 +310,6 @@ class TournamentMembership(Base):
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
-    assigned_event_id = Column(
-        Integer, ForeignKey("tournament_events.id", ondelete="SET NULL"), nullable=True
-    )
-
     source = Column(String(32), nullable=False)  # "join_code" | "public" | "manual"
 
     # Join code redeemed, if source=="join_code". SET NULL on code delete so
@@ -316,8 +317,6 @@ class TournamentMembership(Base):
     join_code_id = Column(
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
     )
-
-    schedule = Column(JSON, nullable=True)  # [{block, duty}, ...] — day-of assignments
 
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
@@ -340,7 +339,6 @@ class TournamentMembership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
-    assigned_event = relationship("TournamentEvent", back_populates="memberships")
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
     join_code = relationship("JoinCode")
 
@@ -476,27 +474,103 @@ class TournamentEvent(Base):
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
     
-    name = Column(String(255), nullable=False)
-    division = Column(String(4), nullable=False)           # "B" | "C"
+    # Custom (event_id-less) events only
+    name = Column(String(255), nullable=True)
+    division = Column(String(4), nullable=True)           # "A" | "B" | "C"
     event_type = Column(String(32), nullable=False, default="standard")  # "standard" | "trial"
-    category = Column(String(255), nullable=True)
-    
+
+    # Canonical event table link — SET NULL on delete so custom (event_id-less)
+    # events are just the default, not a broken reference.
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
+
     building = Column(String(255), nullable=True)
     room = Column(String(64), nullable=True)
     floor = Column(String(64), nullable=True)
-    
-    volunteers_needed = Column(Integer, nullable=False, default=2)
-    
-    blocks = Column(JSON, nullable=False, default=list)    # [1,2,3,4,5,6]
-    
+
+    volunteers_needed = Column(Integer, nullable=True)
+
+    # Nullable — tournament planning starts before per-event times are known.
+    # Frontend is expected to warn on unset times, not block on them here.
+    start_time = Column(DateTime(timezone=True), nullable=True)
+    end_time = Column(DateTime(timezone=True), nullable=True)
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="events")
-    memberships = relationship("TournamentMembership", back_populates="assigned_event")
+    event = relationship("Event")
+    shifts = relationship(
+        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
+    )
 
     __table_args__ = (
-        UniqueConstraint("tournament_id", "name", "division", name="uq_tournament_event_division"),
+        Index(
+            "uq_tournament_event_catalog_division",
+            "tournament_id", "event_id", "division",
+            unique=True,
+            postgresql_where=(event_id.isnot(None)),
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentShift — a tournament-scoped time window (e.g. "Shift 1, 8am-12pm")
+# that can be attached to one or more TournamentEvents via the
+# tournament_event_shifts bridge table.
+# ---------------------------------------------------------------------------
+class TournamentShift(Base):
+    __tablename__ = "tournament_shifts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    label = Column(String(255), nullable=False)
+    start = Column(DateTime(timezone=True), nullable=False)
+    end = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="event_shifts")
+    tournament_events = relationship(
+        "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
+    )
+
+    # Read by TournamentShiftRead — how many events this shift is attached
+    # to, for the delete-confirm warning. Callers that list many shifts
+    # should eager-load tournament_events (see list_shifts) to avoid N+1.
+    @property
+    def event_count(self) -> int:
+        return len(self.tournament_events)
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventShift — bridge table: TournamentEvent <-> TournamentShift.
+# ---------------------------------------------------------------------------
+class TournamentEventShift(Base):
+    __tablename__ = "tournament_event_shifts"
+
+    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
+    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True)
+
+
+# ---------------------------------------------------------------------------
+# SeasonEvent — admin-curated "this canonical event, in this division, is
+# active this year" list. Drives the tournament events bulk-load default
+# list (see TournamentEvent); independent of any single tournament.
+# ---------------------------------------------------------------------------
+class SeasonEvent(Base):
+    __tablename__ = "season_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    year = Column(Integer, nullable=False)
+    division = Column(String(4), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
     )
 
 

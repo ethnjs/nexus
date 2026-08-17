@@ -252,7 +252,7 @@ export function CompetitionExperienceSpreadsheet({
       <tr
         key={row.id ?? `new-${i}`}
         style={{ position: "relative" }}
-        className={showHoverControls ? "spreadsheet-row-hoverable" : undefined}
+        className={`spreadsheet-row-bg-hover${showHoverControls ? " spreadsheet-row-hoverable" : ""}`}
       >
         <td style={cs}>
           {showHoverControls && (
@@ -461,6 +461,13 @@ export function CompetitionExperienceSpreadsheet({
   return (
     <div style={{ position: "relative" }}>
       <style>{`
+        .spreadsheet-row-bg-hover {
+          background: transparent;
+          transition: background 100ms ease;
+        }
+        .spreadsheet-row-bg-hover:hover {
+          background: var(--color-bg);
+        }
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-left,
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right,
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-mid {
@@ -713,7 +720,7 @@ export function VolunteerExperienceSpreadsheet({
       <tr
         key={row.id ?? `new-${i}`}
         style={{ position: "relative" }}
-        className={showHoverControls ? "spreadsheet-row-hoverable" : undefined}
+        className={`spreadsheet-row-bg-hover${showHoverControls ? " spreadsheet-row-hoverable" : ""}`}
       >
         <td style={cs}>
           {showHoverControls && (
@@ -881,6 +888,13 @@ export function VolunteerExperienceSpreadsheet({
   return (
     <div style={{ position: "relative" }}>
       <style>{`
+        .spreadsheet-row-bg-hover {
+          background: transparent;
+          transition: background 100ms ease;
+        }
+        .spreadsheet-row-bg-hover:hover {
+          background: var(--color-bg);
+        }
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-left,
         .spreadsheet-row-hoverable:hover .spreadsheet-row-controls-right {
           opacity: 1 !important;

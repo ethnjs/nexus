@@ -12,6 +12,11 @@ from app.schemas.event import (
 
 router = APIRouter(tags=["events"])
 
+# Admin-only writes live under /admin/, matching app/api/routes/tournament/admin.py
+# and app/api/routes/season_event.py — the public GET routes above stay
+# unprefixed and unauthenticated.
+admin_router = APIRouter(prefix="/admin", tags=["events"])
+
 
 # ---------------------------------------------------------------------------
 # GET /events/ — list all events
@@ -22,9 +27,9 @@ def list_events(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
-# POST /events/ — admin only, create a new event
+# POST /admin/events/ — admin only, create a new event
 # ---------------------------------------------------------------------------
-@router.post("/events/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
+@admin_router.post("/events/", response_model=EventResponse, status_code=status.HTTP_201_CREATED)
 def create_event(body: EventCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     category = db.get(EventCategory, body.category_id)
     if not category:
@@ -38,9 +43,9 @@ def create_event(body: EventCreate, db: Session = Depends(get_db), _: User = Dep
 
 
 # ---------------------------------------------------------------------------
-# PATCH /events/{id}/ — admin only, partial update
+# PATCH /admin/events/{id}/ — admin only, partial update
 # ---------------------------------------------------------------------------
-@router.patch("/events/{event_id}/", response_model=EventResponse)
+@admin_router.patch("/events/{event_id}/", response_model=EventResponse)
 def update_event(event_id: int, body: EventUpdate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     event = db.get(Event, event_id)
     if not event:
@@ -62,9 +67,9 @@ def update_event(event_id: int, body: EventUpdate, db: Session = Depends(get_db)
 
 
 # ---------------------------------------------------------------------------
-# DELETE /events/{id}/ — admin only, hard delete blocked if experience entries exist
+# DELETE /admin/events/{id}/ — admin only, hard delete blocked if experience entries exist
 # ---------------------------------------------------------------------------
-@router.delete("/events/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete("/events/{event_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event(event_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     event = db.get(Event, event_id)
     if not event:
@@ -90,9 +95,9 @@ def list_event_categories(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
-# POST /event-categories/ — admin only, create a new category
+# POST /admin/event-categories/ — admin only, create a new category
 # ---------------------------------------------------------------------------
-@router.post("/event-categories/", response_model=EventCategoryResponse, status_code=status.HTTP_201_CREATED)
+@admin_router.post("/event-categories/", response_model=EventCategoryResponse, status_code=status.HTTP_201_CREATED)
 def create_event_category(body: EventCategoryCreate, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     category = EventCategory(name=body.name)
     db.add(category)
@@ -102,9 +107,9 @@ def create_event_category(body: EventCategoryCreate, db: Session = Depends(get_d
 
 
 # ---------------------------------------------------------------------------
-# PATCH /event-categories/{id}/ — admin only, partial update
+# PATCH /admin/event-categories/{id}/ — admin only, partial update
 # ---------------------------------------------------------------------------
-@router.patch("/event-categories/{category_id}/", response_model=EventCategoryResponse)
+@admin_router.patch("/event-categories/{category_id}/", response_model=EventCategoryResponse)
 def update_event_category(
     category_id: int,
     body: EventCategoryUpdate,
@@ -124,10 +129,10 @@ def update_event_category(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /event-categories/{id}/ — admin only, cascades to delete its events
+# DELETE /admin/event-categories/{id}/ — admin only, cascades to delete its events
 # (blocked if any of those events has experience entries — see delete_event note)
 # ---------------------------------------------------------------------------
-@router.delete("/event-categories/{category_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@admin_router.delete("/event-categories/{category_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_event_category(category_id: int, db: Session = Depends(get_db), _: User = Depends(require_admin)):
     category = db.get(EventCategory, category_id)
     if not category:

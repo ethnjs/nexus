@@ -1,7 +1,15 @@
 """Tests for /tournaments/{tournament_id}/events endpoints (TournamentEvent model)."""
+from datetime import date, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from tests.conftest import grant_role, login
+
+# td_tournament spans [today, today + 1 day] — event/shift times must fall
+# within that window now that tournament-bounds validation exists.
+EVENT_DATE = date.today().isoformat()
+BEFORE_TOURNAMENT = (date.today() - timedelta(days=1)).isoformat()
+AFTER_TOURNAMENT = (date.today() + timedelta(days=3)).isoformat()
 
 
 def _make_event(client, tournament_id, **overrides):
@@ -9,7 +17,8 @@ def _make_event(client, tournament_id, **overrides):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "blocks": [1, 2, 3, 4, 5, 6],
+        "start_time": EVENT_DATE + "T08:00:00Z",
+        "end_time": EVENT_DATE + "T12:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload)
@@ -28,27 +37,90 @@ def test_create_event_minimal(client, td_user, td_tournament):
     assert data["division"] == "C"
     assert data["tournament_id"] == td_tournament.id
     assert data["event_type"] == "standard"
-    assert data["volunteers_needed"] == 2
+    assert data["volunteers_needed"] is None
 
 
 def test_create_event_full(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_event(client, td_tournament.id,
         name="Hovercraft", division="B", event_type="trial",
-        category="Technology & Engineering", building="Main Hall",
-        room="101", floor="1", volunteers_needed=3, blocks=[1, 2, 3],
+        building="Main Hall", room="101", floor="1", volunteers_needed=3,
     )
     assert response.status_code == 201
     data = response.json()
-    assert data["category"] == "Technology & Engineering"
     assert data["volunteers_needed"] == 3
     assert data["event_type"] == "trial"
 
 
-def test_create_event_duplicate_rejected(client, td_user, td_tournament):
+def test_create_event_with_catalog_link_inherits_category(client, td_user, td_tournament, event):
+    """Setting event_id joins the canonical Event — category comes from
+    the join, not a column on TournamentEvent."""
     login(client, "td@test.com", "tdpass")
-    _make_event(client, td_tournament.id)
-    assert _make_event(client, td_tournament.id).status_code == 409
+    response = _make_event(client, td_tournament.id, name=None, event_id=event.id)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["event_id"] == event.id
+    assert data["event"]["category"]["name"] == event.category.name
+
+
+def test_create_event_without_catalog_link_has_no_category(client, td_user, td_tournament):
+    """Custom (event_id-less) events have no category — nothing fabricated."""
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id)
+    assert response.status_code == 201
+    assert response.json()["event"] is None
+
+
+def test_create_event_duplicate_catalog_division_rejected(client, td_user, td_tournament, event):
+    login(client, "td@test.com", "tdpass")
+    first = _make_event(client, td_tournament.id, name=None, event_id=event.id, division="C")
+    assert first.status_code == 201
+    second = _make_event(client, td_tournament.id, name=None, event_id=event.id, division="C")
+    assert second.status_code == 409
+
+
+def test_create_event_two_custom_events_same_name_both_succeed(client, td_user, td_tournament):
+    """Custom events have no uniqueness constraint at all."""
+    login(client, "td@test.com", "tdpass")
+    first = _make_event(client, td_tournament.id, name="Boomilever", division="C")
+    second = _make_event(client, td_tournament.id, name="Boomilever", division="C")
+    assert first.status_code == 201
+    assert second.status_code == 201
+
+
+def test_create_event_division_not_in_tournament_divisions(client, td_user, td_tournament):
+    """td_tournament only supports divisions B/C."""
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, division="A")
+    assert response.status_code == 422
+
+
+def test_create_event_end_before_start_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(
+        client, td_tournament.id,
+        start_time=EVENT_DATE + "T12:00:00Z", end_time=EVENT_DATE + "T08:00:00Z",
+    )
+    assert response.status_code == 422
+
+
+def test_create_event_start_before_tournament_start_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, start_time=BEFORE_TOURNAMENT + "T08:00:00Z")
+    assert response.status_code == 409
+
+
+def test_create_event_end_after_tournament_end_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, end_time=AFTER_TOURNAMENT + "T12:00:00Z")
+    assert response.status_code == 409
+
+
+def test_create_event_without_times_skips_bounds_check(client, td_user, td_tournament):
+    """start_time/end_time are nullable — bounds only apply once set."""
+    login(client, "td@test.com", "tdpass")
+    response = _make_event(client, td_tournament.id, start_time=None, end_time=None)
+    assert response.status_code == 201
 
 
 def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
@@ -57,7 +129,8 @@ def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
         "tournament_id": 9999,
         "name": "Boomilever",
         "division": "C",
-        "blocks": [],
+        "start_time": EVENT_DATE + "T08:00:00Z",
+        "end_time": EVENT_DATE + "T12:00:00Z",
     })
     assert response.status_code == 400
 
@@ -160,6 +233,36 @@ def test_update_event(client, td_user, td_tournament):
     )
     assert response.status_code == 200
     assert response.json()["building"] == "Science Hall"
+
+
+def test_update_event_division_not_in_tournament_divisions(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"division": "A"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_event_end_before_start_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"start_time": EVENT_DATE + "T12:00:00Z", "end_time": EVENT_DATE + "T08:00:00Z"},
+    )
+    assert response.status_code == 422
+
+
+def test_update_event_outside_tournament_bounds_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    created = _make_event(client, td_tournament.id).json()
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"start_time": BEFORE_TOURNAMENT + "T08:00:00Z"},
+    )
+    assert response.status_code == 409
 
 
 def test_update_event_volunteer_cannot_patch(

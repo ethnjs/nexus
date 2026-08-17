@@ -1,28 +1,34 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
-VALID_DIVISIONS = {"B", "C"}
+from app.schemas.event import EventResponse
+from app.schemas.tournament import VALID_DIVISIONS
+from app.schemas.tournament.shift import TournamentShiftRead
+
 VALID_EVENT_TYPES = {"standard", "trial"}
 
 
 class EventBase(BaseModel):
-    name: str
-    division: str
+    # Custom (event_id-less) events only — catalog-linked events display
+    # the joined Event.name instead. See the model_validator below.
+    name: str | None = None
+    division: str | None = None
     event_type: str = "standard"
-    category: str | None = None
+    event_id: int | None = None
     building: str | None = None
     room: str | None = None
     floor: str | None = None
-    volunteers_needed: int = 2
-    # Block numbers this event runs e.g. [1,2,3,4,5,6]
-    # Empty list means the TD hasn't configured blocks yet
-    blocks: list[int] = []
+    volunteers_needed: int | None = None
+    # Nullable — a tournament's event schedule isn't known at planning
+    # time. Frontend is expected to warn on unset times, not block on them.
+    start_time: datetime | None = None
+    end_time: datetime | None = None
 
     @field_validator("division")
     @classmethod
-    def validate_division(cls, v: str) -> str:
-        if v not in VALID_DIVISIONS:
+    def validate_division(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_DIVISIONS:
             raise ValueError(f"division must be one of: {VALID_DIVISIONS}")
         return v
 
@@ -35,19 +41,22 @@ class EventBase(BaseModel):
 
     @field_validator("volunteers_needed")
     @classmethod
-    def validate_volunteers_needed(cls, v: int) -> int:
-        if v < 1:
+    def validate_volunteers_needed(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
             raise ValueError("volunteers_needed must be at least 1")
         return v
 
-    @field_validator("blocks")
-    @classmethod
-    def validate_blocks(cls, v: list[int]) -> list[int]:
-        if len(v) != len(set(v)):
-            raise ValueError("Block numbers must be unique")
-        if any(b < 1 for b in v):
-            raise ValueError("Block numbers must be positive integers")
-        return sorted(v)
+    @model_validator(mode="after")
+    def validate_times(self) -> "EventBase":
+        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
+
+    @model_validator(mode="after")
+    def validate_name_or_event_id(self) -> "EventBase":
+        if self.name is None and self.event_id is None:
+            raise ValueError("at least one of name or event_id must be set")
+        return self
 
 
 class EventCreate(EventBase):
@@ -55,22 +64,78 @@ class EventCreate(EventBase):
 
 
 class EventUpdate(BaseModel):
-    """Partial update — all fields optional."""
+    """Partial update — all fields optional. Only the fields actually sent
+    are validated against each other (mirrors current + incoming values is
+    the route's job, not this schema's)."""
     name: str | None = None
     division: str | None = None
     event_type: str | None = None
-    category: str | None = None
+    event_id: int | None = None
     building: str | None = None
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int | None = None
-    blocks: list[int] | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+
+    @field_validator("division")
+    @classmethod
+    def validate_division(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_DIVISIONS:
+            raise ValueError(f"division must be one of: {VALID_DIVISIONS}")
+        return v
+
+    @field_validator("event_type")
+    @classmethod
+    def validate_event_type(cls, v: str | None) -> str | None:
+        if v is not None and v not in VALID_EVENT_TYPES:
+            raise ValueError(f"event_type must be one of: {VALID_EVENT_TYPES}")
+        return v
+
+    @field_validator("volunteers_needed")
+    @classmethod
+    def validate_volunteers_needed(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
+            raise ValueError("volunteers_needed must be at least 1")
+        return v
+
+    @model_validator(mode="after")
+    def validate_times(self) -> "EventUpdate":
+        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
+            raise ValueError("end_time must be after start_time")
+        return self
 
 
-class EventRead(EventBase):
+class EventRead(BaseModel):
     id: int
     tournament_id: int
+    name: str | None = None
+    division: str | None = None
+    event_type: str
+    event_id: int | None = None
+    # Joined canonical event — set only when event_id is set. Carries
+    # category, since TournamentEvent no longer has its own category field.
+    event: EventResponse | None = None
+    building: str | None = None
+    room: str | None = None
+    floor: str | None = None
+    volunteers_needed: int | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    shifts: list[TournamentShiftRead] = []
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class EventLoadDefaultsSkipped(BaseModel):
+    event_id: int
+    division: str
+    name: str
+    reason: str = "already loaded"
+
+
+class EventLoadDefaultsResponse(BaseModel):
+    created: list[EventRead]
+    skipped: list[EventLoadDefaultsSkipped]

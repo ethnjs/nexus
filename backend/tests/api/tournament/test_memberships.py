@@ -470,21 +470,6 @@ def test_update_my_membership_invalid_availability_shape(client, td_tournament, 
 # Coordinator update — PATCH .../{membership_id}/
 # ---------------------------------------------------------------------------
 
-def test_update_membership_schedule(client, td_user, td_tournament, db):
-    u = _make_user(db)
-    m = _make_membership(db, td_tournament.id, u["id"])
-    login(client, "td@test.com", "tdpass")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/",
-        json={"schedule": [
-            {"block": 1, "duty": "event_supervisor"},
-            {"block": 7, "duty": "scoring"},
-        ]},
-    )
-    assert response.status_code == 200
-    assert response.json()["schedule"][1]["duty"] == "scoring"
-
-
 def test_update_membership_notes(client, td_user, td_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])

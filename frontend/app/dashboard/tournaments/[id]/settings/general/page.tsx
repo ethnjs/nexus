@@ -63,7 +63,7 @@ export default function GeneralSettingsPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const { user: currentUser } = useAuth();
-  const { selectedTournament, setSelectedTournament, isArchived, refresh } = useTournament();
+  const { selectedTournament, setSelectedTournament, isArchived } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
@@ -127,15 +127,23 @@ export default function GeneralSettingsPage() {
     setSaveError(undefined);
     setErrors({});
 
-    if (!draft.name.trim()) { setErrors((e) => ({ ...e, name: "Cannot be empty." })); setSaving(false); return; }
-    if (/\d/.test(draft.name)) { setErrors((e) => ({ ...e, name: "Name must not contain numbers." })); setSaving(false); return; }
-    if (!draft.university_id && !draft.location.trim()) { setSaveError("Location is required."); setSaving(false); return; }
-    if (!draft.start_date || !draft.end_date) { setSaveError("Start and end date are required."); setSaving(false); return; }
-    if (draft.start_date < new Date().toISOString().slice(0, 10)) { setSaveError("Start date cannot be in the past."); setSaving(false); return; }
-    if (draft.end_date < draft.start_date) { setSaveError("End date cannot be before start date."); setSaving(false); return; }
-    if (!draft.state) { setSaveError("State is required — pick one from the list."); setSaving(false); return; }
-    if (!draft.level) { setSaveError("Level is required — pick one from the list."); setSaving(false); return; }
-    if (draft.division.length === 0) { setSaveError("Select at least one division."); setSaving(false); return; }
+    const fieldErrors: Record<string, string> = {};
+    if (!draft.name.trim()) fieldErrors.name = "Cannot be empty.";
+    else if (/\d/.test(draft.name)) fieldErrors.name = "Name must not contain numbers.";
+    if (!draft.university_id && !draft.location.trim()) fieldErrors.location = "Location is required.";
+    if (!draft.start_date) fieldErrors.start_date = "Start date is required.";
+    else if (draft.start_date < new Date().toISOString().slice(0, 10)) fieldErrors.start_date = "Cannot be in the past.";
+    if (!draft.end_date) fieldErrors.end_date = "End date is required.";
+    else if (draft.end_date < draft.start_date) fieldErrors.end_date = "Cannot be before start date.";
+    if (!draft.state) fieldErrors.state = "Pick one from the list.";
+    if (!draft.level) fieldErrors.level = "Pick one from the list.";
+    if (draft.division.length === 0) fieldErrors.division = "Select at least one division.";
+
+    if (Object.keys(fieldErrors).length > 0 || !draft.state || !draft.level) {
+      setErrors(fieldErrors);
+      setSaving(false);
+      return;
+    }
 
     // Explicit nulls clear whichever field isn't the active source — the
     // backend now applies both atomically (see models.py's before_flush check).
@@ -206,6 +214,7 @@ export default function GeneralSettingsPage() {
               onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
               placeholder="e.g. USC"
               locked={isArchived}
+              error={errors.location}
             />
           </SettingsRow>
           <SettingsRow label="Dates">
@@ -218,6 +227,7 @@ export default function GeneralSettingsPage() {
                 min={new Date().toISOString().slice(0, 10)}
                 value={draft.start_date}
                 onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
+                error={errors.start_date}
               />
               <Input
                 label="End"
@@ -226,6 +236,7 @@ export default function GeneralSettingsPage() {
                 locked={isArchived}
                 value={draft.end_date}
                 onChange={(e) => setDraft((d) => d && { ...d, end_date: e.target.value })}
+                error={errors.end_date}
               />
             </div>
           </SettingsRow>
@@ -238,6 +249,7 @@ export default function GeneralSettingsPage() {
               value={stateText}
               onChange={(text, matched) => { setStateText(text); setDraft((d) => d && { ...d, state: matched ?? "" }); }}
               locked={isArchived}
+              error={errors.state}
             />
           </SettingsRow>
           <SettingsRow label="Level">
@@ -249,6 +261,7 @@ export default function GeneralSettingsPage() {
               value={levelText}
               onChange={(text, matched) => { setLevelText(text); setDraft((d) => d && { ...d, level: matched?.value ?? "" }); }}
               locked={isArchived}
+              error={errors.level}
             />
           </SettingsRow>
           <SettingsRow label="Division" last>
@@ -258,6 +271,11 @@ export default function GeneralSettingsPage() {
               onChange={(v) => toggleDivision(v as TournamentDivision)}
               locked={isArchived}
             />
+            {errors.division && (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+                {errors.division}
+              </p>
+            )}
           </SettingsRow>
         </SettingsSection>
       )}
@@ -404,7 +422,7 @@ export default function GeneralSettingsPage() {
           tournamentName={selectedTournament.name}
           mode={selectedTournament.is_archived ? "unarchive" : "archive"}
           onClose={() => setShowArchiveModal(false)}
-          onDone={() => { refresh(); setShowArchiveModal(false); }}
+          onDone={(updated) => { setSelectedTournament(updated); setShowArchiveModal(false); }}
         />
       )}
 

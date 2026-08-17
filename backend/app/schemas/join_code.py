@@ -1,11 +1,11 @@
 from __future__ import annotations
-from datetime import date, datetime
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, EmailStr
 
 from app.schemas.user import UserSlimResponse
+from app.schemas.tournament import TournamentPublic
 from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.university import UniversityResponse
 
 
 class JoinCodeResponse(BaseModel):
@@ -61,24 +61,14 @@ class JoinRedeemResponse(BaseModel):
     membership_id: int
 
 
-class JoinPreviewTournament(BaseModel):
+class JoinPreviewTournament(TournamentPublic):
     """type=="tournament" branch of JoinPreviewResponse — public, read-only,
     so an invite link can show what's being joined before the visitor is
-    even signed in. Deliberately minimal: no owner/roles/registration
-    internals, just what's needed to decide whether to join."""
+    even signed in. Shares its fields with TournamentSummary via
+    TournamentPublic; adds only what this route needs on top."""
 
     type: Literal["tournament"] = "tournament"
     target_id: int
-    name: str
-    short_name: str | None = None
-    start_date: date
-    end_date: date
-    university: UniversityResponse | None = None
-    location: str | None = None
-    state: str
-    level: str
-    division: list[str]
-    is_verified: bool
 
 
 class JoinPreviewChapter(BaseModel):

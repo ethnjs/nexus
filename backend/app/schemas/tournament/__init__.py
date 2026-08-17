@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
+from zoneinfo import available_timezones
 from pydantic import BaseModel, field_validator, model_validator
 
 from app.schemas.tournament.role import RoleRead
@@ -48,6 +49,12 @@ def _validate_division(v: list[str]) -> list[str]:
     return sorted(set(v))
 
 
+def _validate_timezone(v: str) -> str:
+    if v not in available_timezones():
+        raise ValueError("timezone must be a valid IANA timezone name")
+    return v
+
+
 class TournamentFieldValidators:
     """Shared field validators for TournamentCreate/TournamentUpdate. Mixed in
     rather than inherited from a common BaseModel because the two differ on
@@ -88,6 +95,14 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
     level: str
     division: list[str]
     is_public: bool = False
+    # Set once from the creator's browser timezone — no update path exists,
+    # this field is intentionally absent from TournamentUpdate.
+    timezone: str
+
+    @field_validator("timezone")
+    @classmethod
+    def validate_timezone(cls, v: str) -> str:
+        return _validate_timezone(v)
 
     @model_validator(mode="after")
     def validate_dates(self) -> TournamentCreate:
@@ -156,3 +171,35 @@ class TournamentRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class TournamentPublic(BaseModel):
+    """Shared minimal, non-sensitive tournament fields — what any viewer,
+    member or not, needs to identify a tournament and decide whether to
+    engage with it. No owner/roles/registration internals. Base for
+    TournamentSummary (dashboard list) and JoinPreviewTournament (public
+    invite preview) — deliberately has no id/target_id field since the two
+    callers use different names for it."""
+    name: str
+    short_name: str | None = None
+    start_date: date
+    end_date: date
+    university: UniversityResponse | None = None
+    location: str | None = None
+    state: str
+    level: str
+    division: list[str]
+    is_verified: bool
+
+    model_config = {"from_attributes": True}
+
+
+class TournamentSummary(TournamentPublic):
+    """GET /tournaments/me/ — lightweight card view, no roles/owner."""
+    id: int
+    is_public: bool
+    is_archived: bool
+    event_count: int
+    volunteer_count: int
+    created_at: datetime
+    updated_at: datetime
