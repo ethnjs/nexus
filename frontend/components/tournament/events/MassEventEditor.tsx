@@ -8,7 +8,7 @@ import { toDateInput, fromDayAndTime, formatDayLabel, formatTime } from "@/lib/t
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { SidePanel } from "@/components/ui/SidePanel";
+import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
@@ -26,6 +26,10 @@ import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 // them would almost always be wrong. Day is deliberately excluded too: it
 // isn't offered here, only time-of-day, applied against each event's own
 // existing date.
+// Exported so the caller registering this panel in the layout slot reserves
+// exactly the width the panel itself renders at.
+export const MASS_EVENT_EDITOR_WIDTH = 480;
+
 interface MassEventDraft {
   division?: TournamentDivision;
   event_type?: "standard" | "trial";
@@ -164,11 +168,11 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     return null;
   }
 
+  // Discards the pending changes only — the panel stays open.
   function handleCancel() {
     setDraft({});
     setShiftsToAdd(new Set());
     setShiftsToRemove(new Set());
-    onClose();
   }
 
   async function handleSave() {
@@ -224,9 +228,9 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   }
 
   return (
-    <SidePanel
+    <DockedPanel
       onClose={() => guard(onClose)}
-      width={480}
+      width={MASS_EVENT_EDITOR_WIDTH}
       footer={
         <FloatingSaveBar
           visible={isDirty}
@@ -362,6 +366,6 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
 
         {results && <ResultsCard results={results} />}
       </div>
-    </SidePanel>
+    </DockedPanel>
   );
 }

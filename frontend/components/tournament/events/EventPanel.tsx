@@ -8,7 +8,7 @@ import {
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { toDateInput, toTimeInput, fromDayAndTime, formatTime, formatDayLabel } from "@/lib/timeFormat";
-import { SidePanel } from "@/components/ui/SidePanel";
+import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
@@ -22,6 +22,10 @@ import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
+
+// Exported so the caller registering this panel in the layout slot reserves
+// exactly the width the panel itself renders at.
+export const EVENT_PANEL_WIDTH = 600;
 
 interface EventDraft {
   eventText: string;
@@ -185,11 +189,12 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     }
   }
 
+  // Discards the draft only — the panel stays open, matching the table's own
+  // "Cancel" bar (ShiftsTab) rather than treating Cancel as a second Close.
   function handleCancel() {
     setDraft(draftWithDayDefault(current, isMultiDay, days));
     setSaveError(undefined);
     setTimeErrors({});
-    onClose();
   }
 
   // Only offered once the event has its own saved start/end — attaching
@@ -244,9 +249,9 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     : undefined;
 
   return (
-    <SidePanel
+    <DockedPanel
       onClose={() => guard(onClose)}
-      width={600}
+      width={EVENT_PANEL_WIDTH}
       footer={!locked && (
         <FloatingSaveBar
           visible={isDirty}
@@ -263,7 +268,7 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
       <div style={{ padding: `20px 28px ${!locked && isDirty ? "100px" : "20px"}` }}>
         <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
           <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "22px" }}>
-            {isNew ? "New event" : draft.eventText || "Event"}
+            {draft.eventText || (isNew ? "New event" : "Event")}
           </h2>
         </Card>
 
@@ -491,6 +496,6 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
           onDeleted={() => { onDeleted(current.id); onClose(); }}
         />
       )}
-    </SidePanel>
+    </DockedPanel>
   );
 }

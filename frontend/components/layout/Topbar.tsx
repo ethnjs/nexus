@@ -12,6 +12,10 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { IconPlus } from "@/components/ui/Icons";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 
+// Shared with DockedPanel so its own header strip lines up exactly with
+// Topbar's bottom border, reading as one continuous bar across both.
+export const TOPBAR_HEIGHT = 52;
+
 interface TopbarProps {
   showWordmark?: boolean;
   showDropdown?: boolean;
@@ -96,7 +100,7 @@ export function Topbar({
 
   return (
     <header style={{
-      height: "52px",
+      height: `${TOPBAR_HEIGHT}px`,
       background: "var(--color-surface)",
       borderBottom: "1px solid var(--color-border)",
       display: "flex", alignItems: "center",

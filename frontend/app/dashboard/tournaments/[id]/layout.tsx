@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider } from "@/lib/useMyMembership";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
+import { LayoutPanelProvider, useLayoutPanelContent, LayoutPanel } from "@/lib/useLayoutPanel";
 import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
@@ -32,6 +33,55 @@ function TournamentNotFound() {
         <Button variant="secondary" onClick={() => router.push("/dashboard")}>
           Back to dashboard
         </Button>
+      </div>
+    </div>
+  );
+}
+
+// Renders whatever a descendant registered via useSetLayoutPanel as a sibling
+// of the Topbar+main column, so it consumes layout width instead of covering
+// the page.
+//
+// mounted lags behind panel on close (stays mounted through the collapse
+// transition instead of vanishing instantly); expanded flips a frame after
+// mount so there's an actual 0 -> full-width transition to animate rather
+// than appearing already-open. Same technique as ShiftsTab's own split-view
+// panel (panelMountedId/panelExpanded there).
+function LayoutPanelSlot() {
+  const panel = useLayoutPanelContent();
+  const [mounted, setMounted] = useState<LayoutPanel | null>(null);
+  const [expanded, setExpanded] = useState(false);
+
+  useEffect(() => {
+    if (panel) {
+      setMounted(panel);
+      // A single rAF often fires before the browser has actually painted
+      // the just-mounted width:0 state, so the width:full flip lands in the
+      // same paint and there's nothing to visibly transition from. Nesting
+      // a second rAF guarantees one real paint happens in between.
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setExpanded(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    }
+    setExpanded(false);
+  }, [panel]);
+
+  if (!mounted) return null;
+
+  return (
+    <div
+      onTransitionEnd={() => { if (!expanded) setMounted(null); }}
+      style={{
+        width: expanded ? mounted.width : 0,
+        opacity: expanded ? 1 : 0,
+        flexShrink: 0, overflow: "hidden", height: "100%",
+        transition: "width 220ms ease, opacity 200ms ease",
+      }}
+    >
+      <div style={{ width: mounted.width, height: "100%" }}>
+        {mounted.content}
       </div>
     </div>
   );
@@ -84,6 +134,9 @@ function TournamentShell({
           {children}
         </main>
       </div>
+      {/* Third flex sibling, not an overlay: it shrinks the column above
+          (Topbar included) instead of covering it, so the page stays live. */}
+      <LayoutPanelSlot />
     </div>
   );
 }
@@ -103,9 +156,11 @@ export default function TournamentLayout({
         {/* Above the shell so Sidebar/Topbar can read the dirty flag a nested
             page (e.g. the roles editor) registers. */}
         <UnsavedChangesProvider>
-          <TournamentShell tournamentId={tournamentId}>
-            {children}
-          </TournamentShell>
+          <LayoutPanelProvider>
+            <TournamentShell tournamentId={tournamentId}>
+              {children}
+            </TournamentShell>
+          </LayoutPanelProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>
     </TournamentProvider>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
 import { formatDateTime } from "@/lib/timeFormat";
@@ -16,10 +16,11 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
-import { EventPanel } from "@/components/tournament/events/EventPanel";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
-import { MassEventEditor } from "@/components/tournament/events/MassEventEditor";
+import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
 import { eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
@@ -88,21 +89,72 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [sortField, setSortField] = useState<SortField>("start_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  // Two separate, mutually-exclusive ways to open a panel: "Edit" on a row
+  // (single-focus, no checkboxes — click any other row to switch which one
+  // shows) vs. explicit Select mode (checkboxes, accumulate a selection,
+  // panel only opens once you press Edit in the SelectionBar).
+  const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  // Reported up by whichever panel is open. While true, the selection is
-  // frozen so a swap can't silently throw away in-progress edits.
+  const [massPanelOpen, setMassPanelOpen] = useState(false);
+  // Reported up by whichever panel is open. While true, switching focus or
+  // the selection is frozen so a swap can't silently throw away in-progress
+  // edits.
   const [panelDirty, setPanelDirty] = useState(false);
 
-  function clearSelection() {
+  // Stable identities: dependencies of the layout-panel effect below, and a
+  // fresh closure each render would re-register the panel on every render.
+  const clearFocus = useCallback(() => {
+    setFocusedEventId(null);
+    setPanelDirty(false);
+  }, []);
+
+  const clearCreatingNew = useCallback(() => {
+    setCreatingNew(false);
+    setPanelDirty(false);
+  }, []);
+
+  const clearSelection = useCallback(() => {
     setSelectedIds(new Set());
     setSelectMode(false);
+    setMassPanelOpen(false);
     setPanelDirty(false);
+  }, []);
+
+  // Blocked outright (button disables itself, see below) rather than a
+  // confirm-dialog guard — matches how switching focus between rows while
+  // dirty is handled: a visual "you can't do that right now" instead of a
+  // popup to click through.
+  function toggleSelectMode() {
+    if (panelDirty) return;
+    if (selectMode) {
+      clearSelection();
+      return;
+    }
+    // Carries whatever was open into the new mode instead of discarding it:
+    // a focused single event becomes the pre-checked row, and its panel
+    // stays open (massPanelOpen true) rather than dropping to the
+    // SelectionBar — there's already a panel showing it, no reason to close
+    // it just to make you press Edit again. A still-blank "new event" draft
+    // (the only way to get here while creatingNew, since a dirty one would
+    // already be blocked above) is simply dropped.
+    if (creatingNew) clearCreatingNew();
+    if (focusedEventId !== null) {
+      setSelectedIds(new Set([focusedEventId]));
+      setFocusedEventId(null);
+      setMassPanelOpen(true);
+    }
+    setSelectMode(true);
   }
 
-  function toggleSelectMode() {
-    if (selectMode) clearSelection();
-    else setSelectMode(true);
+  // Blocked while dirty, same as toggleSelectMode — otherwise this would
+  // silently replace whatever's open (a focused event, an in-progress
+  // selection) with a blank "new event" draft with no warning.
+  function handleAddEvent() {
+    if (panelDirty) return;
+    clearFocus();
+    clearSelection();
+    setCreatingNew(true);
   }
 
   function toggleSelected(id: number) {
@@ -114,12 +166,17 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     });
   }
 
-  // "Edit" on a row means focus exactly this one — it replaces the selection
-  // rather than adding to it, unlike a checkbox/row click.
+  // "Edit" on a row (or clicking another row while one is already focused)
+  // always lands in plain single-focus mode — it never turns Select mode on,
+  // and drops out of it (or out of creating a new event) if either was
+  // already active, replacing whichever panel was open.
   function focusEvent(id: number) {
     if (panelDirty) return;
-    setSelectMode(true);
-    setSelectedIds(new Set([id]));
+    setCreatingNew(false);
+    setSelectMode(false);
+    setSelectedIds(new Set());
+    setMassPanelOpen(false);
+    setFocusedEventId(id);
   }
 
   async function loadEvents() {
@@ -165,11 +222,107 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     return sorted;
   }, [events, search, filters, sortField, sortDir]);
 
-  // The open panel is derived from the selection: 1 = single edit, >1 = mass.
+  // Only meaningful for the Select-mode flow — the panel there only opens
+  // once "Edit" is pressed in the SelectionBar, not as soon as one row is
+  // checked (see massPanelOpen).
   const selectedEvents = useMemo(
     () => (events ?? []).filter((e) => selectedIds.has(e.id)),
     [events, selectedIds]
   );
+
+  // Unchecking back down to zero while the mass panel is open closes it —
+  // there's nothing left to edit — but leaves Select mode itself on, so the
+  // SelectionBar reappears instead of exiting selection entirely.
+  useEffect(() => {
+    if (massPanelOpen && selectedIds.size === 0) setMassPanelOpen(false);
+  }, [massPanelOpen, selectedIds]);
+
+  const { setPanel, clearPanel } = useSetLayoutPanel();
+
+  // The editors don't render here — they're pushed into the layout shell's
+  // docked slot so the panel is a *sibling* of <main> and shrinks it, leaving
+  // the table clickable. Re-runs whenever anything the panel is built from
+  // changes, so the element never closes over stale props.
+  useEffect(() => {
+    if (creatingNew) {
+      setPanel(
+        <EventPanel
+          tournamentId={tournamentId}
+          event={null}
+          locked={isArchived}
+          onClose={clearCreatingNew}
+          onDirtyChange={setPanelDirty}
+          onSaved={(saved) => setEvents((prev) => {
+            const list = prev ?? [];
+            const exists = list.some((e) => e.id === saved.id);
+            return exists ? list.map((e) => (e.id === saved.id ? saved : e)) : [...list, saved];
+          })}
+          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+        />,
+        EVENT_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    if (focusedEventId !== null) {
+      const event = (events ?? []).find((e) => e.id === focusedEventId);
+      if (!event) { clearFocus(); return; }
+      // Keyed on the event id so clicking a different row while one is
+      // already focused remounts the panel — its draft/current state is
+      // seeded from props via useState, which wouldn't otherwise re-read.
+      setPanel(
+        <EventPanel
+          key={event.id}
+          tournamentId={tournamentId}
+          event={event}
+          locked={isArchived}
+          onClose={clearFocus}
+          onDirtyChange={setPanelDirty}
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
+          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+        />,
+        EVENT_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    if (massPanelOpen && selectedEvents.length === 1) {
+      setPanel(
+        <EventPanel
+          key={selectedEvents[0].id}
+          tournamentId={tournamentId}
+          event={selectedEvents[0]}
+          locked={isArchived}
+          onClose={clearSelection}
+          onDirtyChange={setPanelDirty}
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
+          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+        />,
+        EVENT_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    if (massPanelOpen && selectedEvents.length > 1) {
+      setPanel(
+        <MassEventEditor
+          tournamentId={tournamentId}
+          events={selectedEvents}
+          onClose={clearSelection}
+          onDirtyChange={setPanelDirty}
+          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
+        />,
+        MASS_EVENT_EDITOR_WIDTH,
+      );
+      return;
+    }
+
+    clearPanel();
+  }, [creatingNew, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived, clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel]);
+
+  // Unmount only (e.g. switching away from the Events tab) — clearing in the
+  // effect above's cleanup instead would tear the panel down on every re-run.
+  useEffect(() => () => clearPanel(), [clearPanel]);
 
   if (events === null) {
     return (
@@ -213,7 +366,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                     <Button type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}>
                       Load default events
                     </Button>
-                    <Button type="button" variant="secondary" size="sm" onClick={() => setCreatingNew(true)}>
+                    <Button type="button" variant="secondary" size="sm" onClick={handleAddEvent}>
                       <IconPlus size={12} /> Add event
                     </Button>
                   </div>
@@ -270,14 +423,24 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
               </Button>
               {canManageEvents && !isArchived && (
-                <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
+                <Button
+                  type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+                  onClick={toggleSelectMode}
+                  disabled={panelDirty}
+                  title={panelDirty ? "Save or discard your changes first" : undefined}
+                >
                   Select
                 </Button>
               )}
             </div>
 
             {canManageEvents && !isArchived && (
-              <Button type="button" variant="primary" size="md" onClick={() => setCreatingNew(true)}>
+              <Button
+                type="button" variant="primary" size="md"
+                onClick={handleAddEvent}
+                disabled={panelDirty}
+                title={panelDirty ? "Save or discard your changes first" : undefined}
+              >
                 <IconPlus size={14} /> Add event
               </Button>
             )}
@@ -324,12 +487,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   event={e}
                   isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents && !isArchived}
-                  onExpand={() => focusEvent(e.id)}
+                  onFocus={() => focusEvent(e.id)}
                   onDelete={() => setDeleteTarget(e)}
                   selectMode={selectMode}
                   selected={selectedIds.has(e.id)}
                   selectionLocked={panelDirty}
                   onToggleSelect={() => toggleSelected(e.id)}
+                  focusActive={focusedEventId !== null}
+                  focused={focusedEventId === e.id}
                 />
               ))
             )}
@@ -358,53 +523,12 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
         />
       )}
 
-      {creatingNew && (
-        <EventPanel
-          tournamentId={tournamentId}
-          event={null}
-          locked={isArchived}
-          onClose={() => setCreatingNew(false)}
-          onSaved={(saved) => setEvents((prev) => {
-            const list = prev ?? [];
-            const exists = list.some((e) => e.id === saved.id);
-            return exists ? list.map((e) => (e.id === saved.id ? saved : e)) : [...list, saved];
-          })}
-          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
-        />
-      )}
-
-      {/* Keyed on the event id so switching which single row is selected
-          remounts the panel — its draft/current state is seeded from props
-          via useState, which wouldn't otherwise re-read. */}
-      {!creatingNew && selectedEvents.length === 1 && (
-        <EventPanel
-          key={selectedEvents[0].id}
-          tournamentId={tournamentId}
-          event={selectedEvents[0]}
-          locked={isArchived}
-          onClose={clearSelection}
-          onDirtyChange={setPanelDirty}
-          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
-          onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
-        />
-      )}
-
-      {!creatingNew && selectedEvents.length > 1 && (
-        <MassEventEditor
-          tournamentId={tournamentId}
-          events={selectedEvents}
-          onClose={clearSelection}
-          onDirtyChange={setPanelDirty}
-          onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
-        />
-      )}
-
-      {/* Only while nothing is picked yet — from one selection on, the panel
-          itself is the editor, so the bar's Edit button has nothing to do. */}
+      {/* Stays up through the whole "checking boxes" phase — the panel only
+          opens once Edit is pressed here, not as soon as one row is checked. */}
       <SelectionBar
-        visible={selectMode && selectedIds.size === 0}
+        visible={selectMode && !massPanelOpen}
         count={selectedIds.size}
-        onEdit={() => {}}
+        onEdit={() => setMassPanelOpen(true)}
         onCancel={toggleSelectMode}
       />
 
@@ -416,14 +540,15 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
             setEvents((prev) => (prev ?? []).filter((e) => e.id !== deleteTarget.id));
-            // Otherwise a deleted-but-still-selected row would keep a panel
-            // open against a row that no longer exists.
+            // Otherwise a deleted-but-still-selected/focused row would keep
+            // a panel open against a row that no longer exists.
             setSelectedIds((prev) => {
               if (!prev.has(deleteTarget.id)) return prev;
               const next = new Set(prev);
               next.delete(deleteTarget.id);
               return next;
             });
+            setFocusedEventId((prev) => (prev === deleteTarget.id ? null : prev));
             setDeleteTarget(null);
           }}
         />
@@ -432,35 +557,46 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   );
 }
 
-function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, selected, selectionLocked, onToggleSelect }: {
+function EventRow({
+  event, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+}: {
   event: TournamentEvent;
   isLast: boolean;
   canDelete: boolean;
-  onExpand: () => void;
+  onFocus: () => void;
   onDelete: () => void;
   selectMode: boolean;
   selected: boolean;
-  /** Open panel has unsaved changes — selection is frozen until it resolves. */
+  /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
   selectionLocked: boolean;
   onToggleSelect: () => void;
+  /** A single-edit panel is open (for some row, not necessarily this one) — rows become click-to-switch instead of inert. */
+  focusActive: boolean;
+  /** This row is the one currently shown in the single-edit panel. */
+  focused: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
-  const selectable = selectMode && !selectionLocked;
+  // Two different reasons a row might be clickable: toggling a checkbox in
+  // Select mode, or switching which row the single-edit panel shows. Never
+  // both at once — the two flows are mutually exclusive.
+  const clickable = (selectMode || focusActive) && !selectionLocked;
+  const handleRowClick = selectMode ? onToggleSelect : onFocus;
+  const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={selectable ? onToggleSelect : undefined}
-      title={selectMode ? lockedTitle : undefined}
+      onClick={clickable ? handleRowClick : undefined}
+      title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
         display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
+        background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
-        cursor: selectable ? "pointer" : selectionLocked ? "not-allowed" : "default",
+        cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
     >
       {selectMode && (
@@ -499,7 +635,7 @@ function EventRow({ event, isLast, canDelete, onExpand, onDelete, selectMode, se
         {event.end_time ? formatDateTime(event.end_time) : "—"}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onExpand}>
+        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>
           <IconEdit size={13} />
         </Button>
         {canDelete && (
