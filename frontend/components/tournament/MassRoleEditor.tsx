@@ -10,7 +10,7 @@ import { SettingsSection } from "@/components/settings/SettingsRow";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { IconPlus, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
 interface MemberResult {
   membership: MembershipSlim;
@@ -96,13 +96,24 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
 
   const isDirty = rolesToAdd.size > 0 || rolesToRemove.size > 0;
 
-  function addRole(role: Role) {
-    setRolesToAdd((prev) => new Set(prev).add(role.id));
+  // Checklist popovers stay open across picks, so toggling has to handle
+  // both directions (pick to stage, pick again to un-stage) rather than
+  // just the one-way "select to add" a plain list would need.
+  function toggleAddRole(role: Role) {
+    setRolesToAdd((prev) => {
+      const next = new Set(prev);
+      if (next.has(role.id)) next.delete(role.id); else next.add(role.id);
+      return next;
+    });
     setRolesToRemove((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
   }
 
-  function removeRole(role: Role) {
-    setRolesToRemove((prev) => new Set(prev).add(role.id));
+  function toggleRemoveRole(role: Role) {
+    setRolesToRemove((prev) => {
+      const next = new Set(prev);
+      if (next.has(role.id)) next.delete(role.id); else next.add(role.id);
+      return next;
+    });
     setRolesToAdd((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
   }
 
@@ -180,20 +191,24 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
                 getKey={(r) => r.id}
                 renderLabel={(r) => r.label}
                 emptyMessage="No roles you can add."
-                onSelect={addRole}
+                onSelect={toggleAddRole}
+                checklist
+                isSelected={(r) => rolesToAdd.has(r.id)}
                 width={240}
               />
               <Popover
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
-                    Remove role
+                    <IconMinus size={12} /> Remove role
                   </Button>
                 }
                 items={heldRoles}
                 getKey={(r) => r.id}
                 renderLabel={(r) => r.label}
                 emptyMessage="None of the selected members have a role you can remove."
-                onSelect={removeRole}
+                onSelect={toggleRemoveRole}
+                checklist
+                isSelected={(r) => rolesToRemove.has(r.id)}
                 width={240}
               />
             </div>

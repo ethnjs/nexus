@@ -19,7 +19,7 @@ import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
-import { IconPlus, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
 // name/category/building/room/etc. are per-event enough that mass-editing
@@ -305,7 +305,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved }: Mass
               <Popover
                 trigger={
                   <Button type="button" variant="secondary" size="sm" fullWidth>
-                    Remove shift
+                    <IconMinus size={12} /> Remove shift
                   </Button>
                 }
                 items={attachedShifts}
