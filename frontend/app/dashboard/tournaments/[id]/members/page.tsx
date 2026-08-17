@@ -33,7 +33,16 @@ import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
-const SELECT_COLUMN = "28px ";
+// Roles dropped — the fr tracks below just absorb its share automatically.
+const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 70px";
+// Always present as a grid track (never conditionally added/removed) so its
+// width can transition between 0 and full instead of popping in — animating
+// grid-template-columns only works when the track count stays constant.
+const SELECT_COLUMN_WIDTH = "28px";
+function memberColumns(selectMode: boolean, panelOpen: boolean) {
+  const rest = panelOpen ? MEMBER_ROW_COLUMNS_COMPACT : MEMBER_ROW_COLUMNS;
+  return `${selectMode ? SELECT_COLUMN_WIDTH : "0px"} ${rest}`;
+}
 
 const DIRTY_TITLE = "Save or discard your changes first";
 
@@ -85,7 +94,7 @@ function DurationCell({ iso }: { iso: string }) {
 
 function MemberRow({
   tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove, isLast,
-  selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly,
+  selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly, panelOpen,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
@@ -113,6 +122,8 @@ function MemberRow({
   focused: boolean;
   /** This row's roles are open in the docked panel — don't offer a second, inline way to edit the same thing. */
   rolesReadOnly: boolean;
+  /** Any docked panel is open — the table is narrower, so the Roles column drops out to give the rest room. */
+  panelOpen: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const { user } = membership;
@@ -133,19 +144,24 @@ function MemberRow({
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
-        display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + MEMBER_ROW_COLUMNS : MEMBER_ROW_COLUMNS, alignItems: "center",
+        display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
-        transition: "background 100ms ease",
+        transition: "background 100ms ease, grid-template-columns 200ms ease",
         cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
     >
-      {selectMode && (
-        <span style={{ display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
-        </span>
-      )}
+      <span
+        style={{
+          display: "flex", justifyContent: "center", overflow: "hidden",
+          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+          transition: "opacity 150ms ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+      </span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="sm" />
         <span style={{
@@ -170,19 +186,21 @@ function MemberRow({
       <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
         {membership.status}
       </Badge>
-      {/* Stops row clicks (select toggle / focus switch) from firing when
-          the intent was to pick a role chip. */}
-      <div onClick={(e) => e.stopPropagation()} style={{ minWidth: 0 }}>
-        <RolesCell
-          tournamentId={tournamentId}
-          membership={membership}
-          allRoles={allRoles}
-          canTouchRole={canTouchRole}
-          locked={locked}
-          readOnly={rolesReadOnly}
-          onUpdated={onUpdated}
-        />
-      </div>
+      {!panelOpen && (
+        // Stops row clicks (select toggle / focus switch) from firing when
+        // the intent was to pick a role chip.
+        <div onClick={(e) => e.stopPropagation()} style={{ minWidth: 0 }}>
+          <RolesCell
+            tournamentId={tournamentId}
+            membership={membership}
+            allRoles={allRoles}
+            canTouchRole={canTouchRole}
+            locked={locked}
+            readOnly={rolesReadOnly}
+            onUpdated={onUpdated}
+          />
+        </div>
+      )}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {!isArchived && (
           <Button
@@ -275,6 +293,10 @@ export default function MembersPage() {
   const handleMemberUpdated = useCallback((updated: MembershipSlim) => {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
   }, []);
+
+  // Either flow narrows the table for a docked panel — drop the Roles
+  // column to give the rest more room while it's up.
+  const panelOpen = focusedId !== null || massPanelOpen;
 
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
@@ -483,23 +505,26 @@ export default function MembersPage() {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + MEMBER_ROW_COLUMNS : MEMBER_ROW_COLUMNS, gap: "10px",
+              display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen), gap: "10px",
+              transition: "grid-template-columns 200ms ease",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
               color: "var(--color-text-tertiary)",
             }}>
-              {selectMode && (
-                <span
-                  style={{ display: "flex", justifyContent: "center" }}
-                  title={panelDirty ? DIRTY_TITLE : undefined}
-                >
-                  <Checkbox
-                    checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
-                    locked={panelDirty}
-                    onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
-                  />
-                </span>
-              )}
+              <span
+                style={{
+                  display: "flex", justifyContent: "center", overflow: "hidden",
+                  opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+                  transition: "opacity 150ms ease",
+                }}
+                title={panelDirty ? DIRTY_TITLE : undefined}
+              >
+                <Checkbox
+                  checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
+                  locked={panelDirty}
+                  onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
+                />
+              </span>
               <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
               <span>Email</span>
               <span>Phone</span>
@@ -507,7 +532,7 @@ export default function MembersPage() {
               <span style={{ textAlign: "center" }}>Joined</span>
               <span style={{ textAlign: "center" }}>Method</span>
               <span style={{ textAlign: "center" }}>Status</span>
-              <span>Roles</span>
+              {!panelOpen && <span>Roles</span>}
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
@@ -539,6 +564,7 @@ export default function MembersPage() {
                   // read-only here, so the same roles can't be edited from
                   // two places at once.
                   rolesReadOnly={focusedId === m.id || (massPanelOpen && selectedIds.has(m.id))}
+                  panelOpen={panelOpen}
                 />
               ))
             )}

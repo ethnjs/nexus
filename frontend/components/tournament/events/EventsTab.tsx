@@ -27,7 +27,13 @@ import { eventName } from "@/lib/eventDisplay";
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
 const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 195px 195px 70px";
-const SELECT_COLUMN = "28px ";
+// Always present as a grid track (never conditionally added/removed) so its
+// width can transition between 0 and full instead of popping in — animating
+// grid-template-columns only works when the track count stays constant.
+const SELECT_COLUMN_WIDTH = "28px";
+function eventColumns(selectMode: boolean) {
+  return `${selectMode ? SELECT_COLUMN_WIDTH : "0px"} ${EVENT_ROW_COLUMNS}`;
+}
 
 const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisionC"> = {
   A: "divisionA",
@@ -389,23 +395,26 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, gap: "10px",
+              display: "grid", gridTemplateColumns: eventColumns(selectMode), gap: "10px",
+              transition: "grid-template-columns 200ms ease",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
               color: "var(--color-text-tertiary)",
             }}>
-              {selectMode && (
-                <span
-                  style={{ display: "flex", justifyContent: "center" }}
-                  title={panelDirty ? "Save or discard your changes first" : undefined}
-                >
-                  <Checkbox
-                    checked={visibleEvents.length > 0 && visibleEvents.every((e) => selectedIds.has(e.id))}
-                    locked={panelDirty}
-                    onChange={(checked) => toggleSelectAll(visibleEvents.map((e) => e.id), checked)}
-                  />
-                </span>
-              )}
+              <span
+                style={{
+                  display: "flex", justifyContent: "center", overflow: "hidden",
+                  opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+                  transition: "opacity 150ms ease",
+                }}
+                title={panelDirty ? "Save or discard your changes first" : undefined}
+              >
+                <Checkbox
+                  checked={visibleEvents.length > 0 && visibleEvents.every((e) => selectedIds.has(e.id))}
+                  locked={panelDirty}
+                  onChange={(checked) => toggleSelectAll(visibleEvents.map((e) => e.id), checked)}
+                />
+              </span>
               <span>Events — {isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}</span>
               <span style={{ textAlign: "center" }}>Division</span>
               <span style={{ textAlign: "center" }}>Type</span>
@@ -522,19 +531,24 @@ function EventRow({
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
-        display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + EVENT_ROW_COLUMNS : EVENT_ROW_COLUMNS, alignItems: "center",
+        display: "grid", gridTemplateColumns: eventColumns(selectMode), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
-        transition: "background 100ms ease",
+        transition: "background 100ms ease, grid-template-columns 200ms ease",
         cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
     >
-      {selectMode && (
-        <span style={{ display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
-        </span>
-      )}
+      <span
+        style={{
+          display: "flex", justifyContent: "center", overflow: "hidden",
+          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+          transition: "opacity 150ms ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+      </span>
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
