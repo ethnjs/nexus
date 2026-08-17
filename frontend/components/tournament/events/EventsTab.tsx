@@ -222,6 +222,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     return sorted;
   }, [events, search, filters, sortField, sortDir]);
 
+  // Prev/next only make sense for the plain single-focus flow (not while
+  // mass-editing several at once) and step through the table's own current
+  // filter/sort order, so switching sort or narrowing a filter mid-edit
+  // still lands somewhere sensible.
+  const focusedIndex = focusedEventId !== null ? visibleEvents.findIndex((e) => e.id === focusedEventId) : -1;
+  const hasPrev = !panelDirty && focusedIndex > 0;
+  const hasNext = !panelDirty && focusedIndex !== -1 && focusedIndex < visibleEvents.length - 1;
+
   // Only meaningful for the Select-mode flow — the panel there only opens
   // once "Edit" is pressed in the SelectionBar, not as soon as one row is
   // checked (see massPanelOpen).
@@ -280,6 +288,10 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           onDirtyChange={setPanelDirty}
           onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
           onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
+          onPrev={() => setFocusedEventId(visibleEvents[focusedIndex - 1].id)}
+          onNext={() => setFocusedEventId(visibleEvents[focusedIndex + 1].id)}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
         />,
         EVENT_PANEL_WIDTH,
       );
@@ -318,7 +330,11 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     }
 
     clearPanel();
-  }, [creatingNew, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived, clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel]);
+  }, [
+    creatingNew, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
+    visibleEvents, focusedIndex, hasPrev, hasNext,
+    clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
+  ]);
 
   // Unmount only (e.g. switching away from the Events tab) — clearing in the
   // effect above's cleanup instead would tear the panel down on every re-run.

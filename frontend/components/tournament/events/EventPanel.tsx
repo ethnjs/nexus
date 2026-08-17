@@ -88,9 +88,16 @@ interface EventPanelProps {
   onDeleted: (id: number) => void;
   /** Lets the owning table block selection changes while this panel is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while creating a new event, or editing several at once). */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
-export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange }: EventPanelProps) {
+export function EventPanel({
+  tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange, onPrev, onNext, hasPrev, hasNext,
+}: EventPanelProps) {
   const { selectedTournament, days, isMultiDay } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
@@ -252,6 +259,10 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     <DockedPanel
       onClose={() => guard(onClose)}
       width={EVENT_PANEL_WIDTH}
+      onPrev={onPrev}
+      onNext={onNext}
+      prevDisabled={!hasPrev}
+      nextDisabled={!hasNext}
       footer={!locked && (
         <FloatingSaveBar
           visible={isDirty}

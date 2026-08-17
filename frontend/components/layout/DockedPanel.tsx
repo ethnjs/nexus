@@ -2,7 +2,7 @@
 
 import { ReactNode, useEffect } from "react";
 import { Button } from "@/components/ui/Button";
-import { IconX } from "@/components/ui/Icons";
+import { IconX, IconChevronLeft, IconChevronRight } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 
 interface DockedPanelProps {
@@ -19,6 +19,11 @@ interface DockedPanelProps {
    * and would land off-screen if it inherited this panel's box too.
    */
   footer?: ReactNode;
+  /** Prev/next controls in the header, left of the close button — e.g. stepping through a table's current filtered/sorted order. Omit both to hide the controls entirely. */
+  onPrev?: () => void;
+  onNext?: () => void;
+  prevDisabled?: boolean;
+  nextDisabled?: boolean;
 }
 
 // Same chrome as SidePanel, different mechanism: no portal, no backdrop, no
@@ -26,7 +31,10 @@ interface DockedPanelProps {
 // top-level row (see useLayoutPanel), so it *takes* horizontal space rather
 // than covering it — the page beside it stays fully interactive, which a
 // modal overlay can't offer.
-export function DockedPanel({ onClose, children, width = 480, footer }: DockedPanelProps) {
+export function DockedPanel({
+  onClose, children, width = 480, footer, onPrev, onNext, prevDisabled, nextDisabled,
+}: DockedPanelProps) {
+  const showNav = onPrev !== undefined || onNext !== undefined;
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") onClose();
@@ -51,10 +59,20 @@ export function DockedPanel({ onClose, children, width = 480, footer }: DockedPa
       {/* Same height/background as Topbar so this strip's bottom border lines
           up with Topbar's and the two read as one continuous bar. */}
       <div style={{
-        display: "flex", alignItems: "center", justifyContent: "flex-end", flexShrink: 0,
+        display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0,
         height: `${TOPBAR_HEIGHT}px`, padding: "0 12px",
         background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)",
       }}>
+        {showNav ? (
+          <div style={{ display: "flex", gap: "4px" }}>
+            <Button type="button" variant="secondary" size="sm" iconOnly disabled={!onPrev || prevDisabled} onClick={onPrev} title="Previous">
+              <IconChevronLeft size={14} />
+            </Button>
+            <Button type="button" variant="secondary" size="sm" iconOnly disabled={!onNext || nextDisabled} onClick={onNext} title="Next">
+              <IconChevronRight size={14} />
+            </Button>
+          </div>
+        ) : <span />}
         <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
           <IconX size={13} />
         </Button>
