@@ -82,9 +82,11 @@ interface EventPanelProps {
   onClose: () => void;
   onSaved: (event: TournamentEvent) => void;
   onDeleted: (id: number) => void;
+  /** Lets the owning table block selection changes while this panel is dirty. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted }: EventPanelProps) {
+export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange }: EventPanelProps) {
   const { selectedTournament, days, isMultiDay } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
@@ -121,6 +123,8 @@ export function EventPanel({ tournamentId, event, locked, onClose, onSaved, onDe
     () => JSON.stringify(draft) !== JSON.stringify(draftWithDayDefault(current, isMultiDay, days)),
     [draft, current, isMultiDay, days]
   );
+
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   function patch(p: Partial<EventDraft>) {
     setDraft((d) => ({ ...d, ...p }));

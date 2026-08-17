@@ -93,9 +93,11 @@ interface MassEventEditorProps {
   onClose: () => void;
   /** Called once per event that saved successfully, so the caller can patch its local list the same way EventPanel's onSaved does. */
   onSaved: (updated: TournamentEvent) => void;
+  /** Lets the owning table block selection changes while this panel is dirty. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function MassEventEditor({ tournamentId, events, onClose, onSaved }: MassEventEditorProps) {
+export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirtyChange }: MassEventEditorProps) {
   const { selectedTournament, days, isMultiDay } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
@@ -134,6 +136,8 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved }: Mass
   const isDirty = draft.division !== undefined || draft.event_type !== undefined
     || draft.startTime !== undefined || draft.endTime !== undefined
     || shiftsToAdd.size > 0 || shiftsToRemove.size > 0;
+
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   const touchesTime = draft.startTime !== undefined || draft.endTime !== undefined;
 
