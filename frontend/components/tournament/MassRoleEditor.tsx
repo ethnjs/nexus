@@ -81,17 +81,21 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<MemberResult[] | null>(null);
 
-  const touchableRoles = allRoles.filter(canTouchRole);
-
   // Every role currently held by at least one selected member — the only
-  // ones "Remove role" makes sense for.
+  // ones "Remove role" is meaningful for. Includes roles the actor can't
+  // touch too (shown locked, like RolesCell's own picker) rather than
+  // hiding them — a role being untouchable is still useful to see.
   const heldRoles = (() => {
     const byId = new Map<number, Role>();
-    memberships.forEach((m) => m.roles.forEach((r) => { if (canTouchRole(r)) byId.set(r.id, r); }));
+    memberships.forEach((m) => m.roles.forEach((r) => byId.set(r.id, r)));
     return [...byId.values()];
   })();
 
-  const pendingAddRoles = touchableRoles.filter((r) => rolesToAdd.has(r.id));
+  function rankLockReason(): string {
+    return "You can't touch a role that ties or outranks your own highest role.";
+  }
+
+  const pendingAddRoles = allRoles.filter((r) => rolesToAdd.has(r.id));
   const pendingRemoveRoles = heldRoles.filter((r) => rolesToRemove.has(r.id));
 
   const isDirty = rolesToAdd.size > 0 || rolesToRemove.size > 0;
@@ -187,13 +191,15 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
                     <IconPlus size={12} /> Add role
                   </Button>
                 }
-                items={touchableRoles}
+                items={allRoles}
                 getKey={(r) => r.id}
                 renderLabel={(r) => r.label}
-                emptyMessage="No roles you can add."
+                emptyMessage="No roles yet."
                 onSelect={toggleAddRole}
                 checklist
                 isSelected={(r) => rolesToAdd.has(r.id)}
+                isDisabled={(r) => !canTouchRole(r)}
+                disabledReason={rankLockReason}
                 width={240}
               />
               <Popover
@@ -205,9 +211,11 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
                 items={heldRoles}
                 getKey={(r) => r.id}
                 renderLabel={(r) => r.label}
-                emptyMessage="None of the selected members have a role you can remove."
+                emptyMessage="None of the selected members have a role."
                 onSelect={toggleRemoveRole}
                 checklist
+                isDisabled={(r) => !canTouchRole(r)}
+                disabledReason={rankLockReason}
                 isSelected={(r) => rolesToRemove.has(r.id)}
                 width={240}
               />
