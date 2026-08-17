@@ -7,7 +7,7 @@ import {
 } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
 import { STATUS_VARIANT } from "@/lib/membershipDisplay";
-import { SidePanel } from "@/components/ui/SidePanel";
+import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
@@ -19,6 +19,10 @@ import { LogisticsSection } from "@/components/profile/sections/LogisticsSection
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 
+// Exported so the caller registering this panel in the layout slot reserves
+// exactly the width the panel itself renders at.
+export const MEMBER_PANEL_WIDTH = 700;
+
 interface MemberPanelProps {
   tournamentId: number;
   membershipId: number;
@@ -28,6 +32,11 @@ interface MemberPanelProps {
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipSlim) => void;
+  /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while this panel is showing one member of a multi-select). */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
 }
 
 // Read-only member detail panel — reuses the same profile section
@@ -36,7 +45,10 @@ interface MemberPanelProps {
 // (status, join method, roles). Meant to be dropped into any tournament
 // page that lists members (roster, event rosters, etc.) behind an
 // "expand" action.
-export function MemberPanel({ tournamentId, membershipId, allRoles, canTouchRole, canEditMember, onClose, onUpdated }: MemberPanelProps) {
+export function MemberPanel({
+  tournamentId, membershipId, allRoles, canTouchRole, canEditMember, onClose, onUpdated,
+  onPrev, onNext, hasPrev, hasNext,
+}: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -54,7 +66,14 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canTouchRole
   }
 
   return (
-    <SidePanel onClose={onClose} width={700}>
+    <DockedPanel
+      onClose={onClose}
+      width={MEMBER_PANEL_WIDTH}
+      onPrev={onPrev}
+      onNext={onNext}
+      prevDisabled={!hasPrev}
+      nextDisabled={!hasNext}
+    >
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: "20px" }}>
         {error ? (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>
@@ -146,6 +165,6 @@ export function MemberPanel({ tournamentId, membershipId, allRoles, canTouchRole
           </>
         )}
       </div>
-    </SidePanel>
+    </DockedPanel>
   );
 }

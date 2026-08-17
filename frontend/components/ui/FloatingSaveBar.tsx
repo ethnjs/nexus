@@ -24,7 +24,7 @@ export function FloatingSaveBar({ visible, saving, error, onSave, onCancel, stay
       transform: "translateX(-50%)",
       // % resolves against the nearest ancestor that establishes a
       // containing block for fixed-position elements — the viewport by
-      // default, but SidePanel's footer slot claims that role (via
+      // default, but DockedPanel's footer slot claims that role (via
       // will-change: transform) so this shrinks to the panel's own width
       // automatically wherever it's scoped, no per-caller width prop needed.
       width: "min(560px, calc(100% - 40px))",

@@ -17,6 +17,7 @@ import { SelectionBar } from "@/components/ui/SelectionBar";
 import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { usePanelSelection } from "@/lib/usePanelSelection";
 import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { EventsFilterModal, EventsFilterState, isEventsFilterActive } from "@/components/tournament/events/EventsFilterModal";
@@ -89,94 +90,29 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [sortField, setSortField] = useState<SortField>("start_time");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
-  // Two separate, mutually-exclusive ways to open a panel: "Edit" on a row
-  // (single-focus, no checkboxes — click any other row to switch which one
-  // shows) vs. explicit Select mode (checkboxes, accumulate a selection,
-  // panel only opens once you press Edit in the SelectionBar).
-  const [focusedEventId, setFocusedEventId] = useState<number | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [massPanelOpen, setMassPanelOpen] = useState(false);
-  // Reported up by whichever panel is open. While true, switching focus or
-  // the selection is frozen so a swap can't silently throw away in-progress
-  // edits.
-  const [panelDirty, setPanelDirty] = useState(false);
+  // The two mutually-exclusive panel flows (single-focus vs. Select mode) and
+  // the dirty gate that freezes both — shared with the Members page.
+  // onClearExternal drops a still-blank "new event" draft when either flow
+  // takes the panel over; it never needs to clear panelDirty, since both of
+  // those transitions are already blocked while dirty.
+  const {
+    focusedId: focusedEventId, selectMode, selectedIds, massPanelOpen, panelDirty,
+    setPanelDirty, focusItem: focusEvent, toggleSelectMode, toggleSelected, toggleSelectAll,
+    openMassPanel, clearFocus, clearSelection, forgetItem, startExternalFlow, getPrevNext,
+  } = usePanelSelection({ onClearExternal: () => setCreatingNew(false) });
 
-  // Stable identities: dependencies of the layout-panel effect below, and a
-  // fresh closure each render would re-register the panel on every render.
-  const clearFocus = useCallback(() => {
-    setFocusedEventId(null);
-    setPanelDirty(false);
-  }, []);
-
+  // Stable identity: it's a dependency of the layout-panel effect below, and
+  // a fresh closure each render would re-register the panel every render.
   const clearCreatingNew = useCallback(() => {
     setCreatingNew(false);
     setPanelDirty(false);
-  }, []);
+  }, [setPanelDirty]);
 
-  const clearSelection = useCallback(() => {
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setMassPanelOpen(false);
-    setPanelDirty(false);
-  }, []);
-
-  // Blocked outright (button disables itself, see below) rather than a
-  // confirm-dialog guard — matches how switching focus between rows while
-  // dirty is handled: a visual "you can't do that right now" instead of a
-  // popup to click through.
-  function toggleSelectMode() {
-    if (panelDirty) return;
-    if (selectMode) {
-      clearSelection();
-      return;
-    }
-    // Carries whatever was open into the new mode instead of discarding it:
-    // a focused single event becomes the pre-checked row, and its panel
-    // stays open (massPanelOpen true) rather than dropping to the
-    // SelectionBar — there's already a panel showing it, no reason to close
-    // it just to make you press Edit again. A still-blank "new event" draft
-    // (the only way to get here while creatingNew, since a dirty one would
-    // already be blocked above) is simply dropped.
-    if (creatingNew) clearCreatingNew();
-    if (focusedEventId !== null) {
-      setSelectedIds(new Set([focusedEventId]));
-      setFocusedEventId(null);
-      setMassPanelOpen(true);
-    }
-    setSelectMode(true);
-  }
-
-  // Blocked while dirty, same as toggleSelectMode — otherwise this would
-  // silently replace whatever's open (a focused event, an in-progress
-  // selection) with a blank "new event" draft with no warning.
+  // Blocked while dirty and clears whatever else was open — otherwise this
+  // would silently replace a focused event or an in-progress selection with a
+  // blank "new event" draft with no warning.
   function handleAddEvent() {
-    if (panelDirty) return;
-    clearFocus();
-    clearSelection();
-    setCreatingNew(true);
-  }
-
-  function toggleSelected(id: number) {
-    if (panelDirty) return;
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  // "Edit" on a row (or clicking another row while one is already focused)
-  // always lands in plain single-focus mode — it never turns Select mode on,
-  // and drops out of it (or out of creating a new event) if either was
-  // already active, replacing whichever panel was open.
-  function focusEvent(id: number) {
-    if (panelDirty) return;
-    setCreatingNew(false);
-    setSelectMode(false);
-    setSelectedIds(new Set());
-    setMassPanelOpen(false);
-    setFocusedEventId(id);
+    startExternalFlow(() => setCreatingNew(true));
   }
 
   async function loadEvents() {
@@ -222,13 +158,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     return sorted;
   }, [events, search, filters, sortField, sortDir]);
 
-  // Prev/next only make sense for the plain single-focus flow (not while
-  // mass-editing several at once) and step through the table's own current
-  // filter/sort order, so switching sort or narrowing a filter mid-edit
-  // still lands somewhere sensible.
-  const focusedIndex = focusedEventId !== null ? visibleEvents.findIndex((e) => e.id === focusedEventId) : -1;
-  const hasPrev = !panelDirty && focusedIndex > 0;
-  const hasNext = !panelDirty && focusedIndex !== -1 && focusedIndex < visibleEvents.length - 1;
+  // Steps through the table's own current filter/sort order, so switching
+  // sort or narrowing a filter mid-edit still lands somewhere sensible.
+  const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleEvents, (e) => e.id);
 
   // Only meaningful for the Select-mode flow — the panel there only opens
   // once "Edit" is pressed in the SelectionBar, not as soon as one row is
@@ -237,13 +169,6 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     () => (events ?? []).filter((e) => selectedIds.has(e.id)),
     [events, selectedIds]
   );
-
-  // Unchecking back down to zero while the mass panel is open closes it —
-  // there's nothing left to edit — but leaves Select mode itself on, so the
-  // SelectionBar reappears instead of exiting selection entirely.
-  useEffect(() => {
-    if (massPanelOpen && selectedIds.size === 0) setMassPanelOpen(false);
-  }, [massPanelOpen, selectedIds]);
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -288,8 +213,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           onDirtyChange={setPanelDirty}
           onSaved={(saved) => setEvents((prev) => (prev ?? []).map((e) => (e.id === saved.id ? saved : e)))}
           onDeleted={(id) => setEvents((prev) => (prev ?? []).filter((e) => e.id !== id))}
-          onPrev={() => setFocusedEventId(visibleEvents[focusedIndex - 1].id)}
-          onNext={() => setFocusedEventId(visibleEvents[focusedIndex + 1].id)}
+          onPrev={() => prevId !== null && focusEvent(prevId)}
+          onNext={() => nextId !== null && focusEvent(nextId)}
           hasPrev={hasPrev}
           hasNext={hasNext}
         />,
@@ -332,7 +257,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     clearPanel();
   }, [
     creatingNew, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
-    visibleEvents, focusedIndex, hasPrev, hasNext,
+    prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);
 
@@ -477,11 +402,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   <Checkbox
                     checked={visibleEvents.length > 0 && visibleEvents.every((e) => selectedIds.has(e.id))}
                     locked={panelDirty}
-                    onChange={(checked) => setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      visibleEvents.forEach((e) => (checked ? next.add(e.id) : next.delete(e.id)));
-                      return next;
-                    })}
+                    onChange={(checked) => toggleSelectAll(visibleEvents.map((e) => e.id), checked)}
                   />
                 </span>
               )}
@@ -544,7 +465,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
       <SelectionBar
         visible={selectMode && !massPanelOpen}
         count={selectedIds.size}
-        onEdit={() => setMassPanelOpen(true)}
+        onEdit={openMassPanel}
         onCancel={toggleSelectMode}
       />
 
@@ -558,13 +479,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
             setEvents((prev) => (prev ?? []).filter((e) => e.id !== deleteTarget.id));
             // Otherwise a deleted-but-still-selected/focused row would keep
             // a panel open against a row that no longer exists.
-            setSelectedIds((prev) => {
-              if (!prev.has(deleteTarget.id)) return prev;
-              const next = new Set(prev);
-              next.delete(deleteTarget.id);
-              return next;
-            });
-            setFocusedEventId((prev) => (prev === deleteTarget.id ? null : prev));
+            forgetItem(deleteTarget.id);
             setDeleteTarget(null);
           }}
         />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
@@ -9,6 +9,8 @@ import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { usePanelSelection } from "@/lib/usePanelSelection";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -22,8 +24,8 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
-import { MemberPanel } from "@/components/tournament/MemberPanel";
-import { MassRoleEditor } from "@/components/tournament/MassRoleEditor";
+import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/MemberPanel";
+import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/MassRoleEditor";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
@@ -32,6 +34,8 @@ import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers
 // Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
 const SELECT_COLUMN = "28px ";
+
+const DIRTY_TITLE = "Save or discard your changes first";
 
 type SortField = "first_name" | "last_name" | "joined" | "account_age";
 type SortDir = "asc" | "desc";
@@ -80,8 +84,8 @@ function DurationCell({ iso }: { iso: string }) {
 }
 
 function MemberRow({
-  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onExpand, onRemove, onSelfRemove, isLast,
-  selectMode, selected, onToggleSelect,
+  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove, isLast,
+  selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
@@ -94,35 +98,52 @@ function MemberRow({
   /** Archived tournaments hide the remove control entirely rather than showing it disabled. */
   isArchived: boolean;
   onUpdated: (updated: MembershipSlim) => void;
-  onExpand: (membershipId: number) => void;
+  onFocus: () => void;
   onRemove: (membership: MembershipSlim) => void;
   onSelfRemove: (membership: MembershipSlim) => void;
   isLast: boolean;
   selectMode: boolean;
   selected: boolean;
+  /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
+  selectionLocked: boolean;
   onToggleSelect: () => void;
+  /** A single-member panel is open (for some row, not necessarily this one) — rows become click-to-switch instead of inert. */
+  focusActive: boolean;
+  /** This row is the one currently shown in the single-member panel. */
+  focused: boolean;
+  /** This row's roles are open in the docked panel — don't offer a second, inline way to edit the same thing. */
+  rolesReadOnly: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const { user } = membership;
   const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "—";
 
+  // Two different reasons a row might be clickable: toggling a checkbox in
+  // Select mode, or switching which row the single-member panel shows. Never
+  // both at once — the two flows are mutually exclusive.
+  const clickable = (selectMode || focusActive) && !selectionLocked;
+  const handleRowClick = selectMode ? onToggleSelect : onFocus;
+  const highlighted = selectMode ? selected : focused;
+  const lockedTitle = selectionLocked ? DIRTY_TITLE : undefined;
+
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onClick={clickable ? handleRowClick : undefined}
+      title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
         display: "grid", gridTemplateColumns: selectMode ? SELECT_COLUMN + MEMBER_ROW_COLUMNS : MEMBER_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: selected ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
+        background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
         transition: "background 100ms ease",
-        cursor: selectMode ? "pointer" : "default",
+        cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
-      onClick={selectMode ? onToggleSelect : undefined}
     >
       {selectMode && (
         <span style={{ display: "flex", justifyContent: "center" }} onClick={(e) => e.stopPropagation()}>
-          <Checkbox checked={selected} onChange={onToggleSelect} />
+          <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
         </span>
       )}
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
@@ -149,15 +170,20 @@ function MemberRow({
       <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
         {membership.status}
       </Badge>
-      <RolesCell
-        tournamentId={tournamentId}
-        membership={membership}
-        allRoles={allRoles}
-        canTouchRole={canTouchRole}
-        locked={locked}
-        onUpdated={onUpdated}
-      />
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+      {/* Stops row clicks (select toggle / focus switch) from firing when
+          the intent was to pick a role chip. */}
+      <div onClick={(e) => e.stopPropagation()} style={{ minWidth: 0 }}>
+        <RolesCell
+          tournamentId={tournamentId}
+          membership={membership}
+          allRoles={allRoles}
+          canTouchRole={canTouchRole}
+          locked={locked}
+          readOnly={rolesReadOnly}
+          onUpdated={onUpdated}
+        />
+      </div>
+      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {!isArchived && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly
@@ -170,8 +196,9 @@ function MemberRow({
         )}
         <Button
           type="button" variant="secondary" size="sm" iconOnly
-          title="Expand"
-          onClick={() => onExpand(membership.id)}
+          disabled={selectionLocked}
+          title={lockedTitle ?? "Expand"}
+          onClick={onFocus}
         >
           <IconExpand size={13} />
         </Button>
@@ -198,28 +225,26 @@ export default function MembersPage() {
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
 
-  const [selectMode, setSelectMode] = useState(false);
-  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
-  const [massEditOpen, setMassEditOpen] = useState(false);
+  // The two mutually-exclusive panel flows ("Expand" a single member vs.
+  // Select mode) and the dirty gate that freezes both — shared with the
+  // Events tab. No "creating new" flow here: members join via invite/join
+  // code, so there's nothing to create from this page.
+  const {
+    focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
+    setPanelDirty, focusItem, toggleSelectMode, toggleSelected, toggleSelectAll,
+    openMassPanel, clearFocus, clearSelection, forgetItem, getPrevNext,
+  } = usePanelSelection();
 
-  function toggleSelectMode() {
-    setSelectMode((v) => {
-      if (v) setSelectedIds(new Set());
-      return !v;
-    });
-  }
-
-  function toggleSelected(id: number) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
+  // useMemberRoleLock hands back fresh closures every render, which would
+  // re-register the docked panel in a loop if they went straight into the
+  // effect's deps. These wrappers are stable and read the latest ones.
+  const roleLockRef = useRef({ canTouchRole, canEditMember });
+  useEffect(() => { roleLockRef.current = { canTouchRole, canEditMember }; });
+  const canTouchRoleStable = useCallback((role: Role) => roleLockRef.current.canTouchRole(role), []);
+  const canEditMemberStable = useCallback((target: MembershipSlim) => roleLockRef.current.canEditMember(target), []);
 
   useEffect(() => {
     if (!canManageMembers) return;
@@ -247,9 +272,98 @@ export default function MembersPage() {
     return sorted;
   }, [members, search, roleFilter, statusFilter, sortField, sortDir]);
 
-  function handleMemberUpdated(updated: MembershipSlim) {
+  const handleMemberUpdated = useCallback((updated: MembershipSlim) => {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
-  }
+  }, []);
+
+  // Steps through the table's own current filter/sort order, so switching
+  // sort or narrowing a filter mid-edit still lands somewhere sensible.
+  const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleMembers, (m) => m.id);
+
+  // Only meaningful for the Select-mode flow — the panel there only opens
+  // once "Edit" is pressed in the SelectionBar, not as soon as one row is
+  // checked (see massPanelOpen).
+  const selectedMembers = useMemo(
+    () => (members ?? []).filter((m) => selectedIds.has(m.id)),
+    [members, selectedIds]
+  );
+
+  const { setPanel, clearPanel } = useSetLayoutPanel();
+
+  // The panels don't render here — they're pushed into the layout shell's
+  // docked slot so the panel is a *sibling* of <main> and shrinks it, leaving
+  // the table clickable. Re-runs whenever anything the panel is built from
+  // changes, so the element never closes over stale props.
+  useEffect(() => {
+    if (focusedId !== null) {
+      const membership = (members ?? []).find((m) => m.id === focusedId);
+      if (!membership) { clearFocus(); return; }
+      setPanel(
+        <MemberPanel
+          key={membership.id}
+          tournamentId={tournamentId}
+          membershipId={membership.id}
+          allRoles={allRoles}
+          canTouchRole={canTouchRoleStable}
+          canEditMember={canEditMemberStable}
+          onClose={clearFocus}
+          onUpdated={handleMemberUpdated}
+          onPrev={() => prevId !== null && focusItem(prevId)}
+          onNext={() => nextId !== null && focusItem(nextId)}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+        />,
+        MEMBER_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    // One row checked in Select mode gets the same detail panel the focus
+    // flow shows — the mass editor would be a worse view of a single member.
+    if (massPanelOpen && selectedMembers.length === 1) {
+      setPanel(
+        <MemberPanel
+          key={selectedMembers[0].id}
+          tournamentId={tournamentId}
+          membershipId={selectedMembers[0].id}
+          allRoles={allRoles}
+          canTouchRole={canTouchRoleStable}
+          canEditMember={canEditMemberStable}
+          onClose={clearSelection}
+          onUpdated={handleMemberUpdated}
+        />,
+        MEMBER_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    if (massPanelOpen && selectedMembers.length > 1) {
+      setPanel(
+        <MassRoleEditor
+          tournamentId={tournamentId}
+          memberships={selectedMembers}
+          allRoles={allRoles}
+          canTouchRole={canTouchRoleStable}
+          onClose={clearSelection}
+          onDirtyChange={setPanelDirty}
+          onUpdated={handleMemberUpdated}
+        />,
+        MASS_ROLE_EDITOR_WIDTH,
+      );
+      return;
+    }
+
+    clearPanel();
+  }, [
+    focusedId, members, massPanelOpen, selectedMembers, tournamentId, allRoles,
+    prevId, nextId, hasPrev, hasNext, focusItem, setPanelDirty,
+    canTouchRoleStable, canEditMemberStable, handleMemberUpdated,
+    clearFocus, clearSelection, setPanel, clearPanel,
+  ]);
+
+  // Unmount only (e.g. navigating off the Members page) — clearing in the
+  // effect above's cleanup instead would tear the panel down on every re-run.
+  useEffect(() => () => clearPanel(), [clearPanel]);
 
   if (membershipLoading) {
     return (
@@ -356,7 +470,12 @@ export default function MembersPage() {
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>
             {canManageMembers && !isArchived && (
-              <Button type="button" variant={selectMode ? "primary" : "secondary"} size="md" onClick={toggleSelectMode}>
+              <Button
+                type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+                onClick={toggleSelectMode}
+                disabled={panelDirty}
+                title={panelDirty ? DIRTY_TITLE : undefined}
+              >
                 Select
               </Button>
             )}
@@ -370,14 +489,14 @@ export default function MembersPage() {
               color: "var(--color-text-tertiary)",
             }}>
               {selectMode && (
-                <span style={{ display: "flex", justifyContent: "center" }}>
+                <span
+                  style={{ display: "flex", justifyContent: "center" }}
+                  title={panelDirty ? DIRTY_TITLE : undefined}
+                >
                   <Checkbox
                     checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
-                    onChange={(checked) => setSelectedIds((prev) => {
-                      const next = new Set(prev);
-                      visibleMembers.forEach((m) => (checked ? next.add(m.id) : next.delete(m.id)));
-                      return next;
-                    })}
+                    locked={panelDirty}
+                    onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
                   />
                 </span>
               )}
@@ -406,13 +525,20 @@ export default function MembersPage() {
                   isSelf={currentUser?.id === m.user.id}
                   isArchived={isArchived}
                   onUpdated={handleMemberUpdated}
-                  onExpand={setExpandedId}
+                  onFocus={() => focusItem(m.id)}
                   onRemove={setRemoveTarget}
                   onSelfRemove={setSelfRemoveTarget}
                   isLast={i === visibleMembers.length - 1}
                   selectMode={selectMode}
                   selected={selectedIds.has(m.id)}
+                  selectionLocked={panelDirty}
                   onToggleSelect={() => toggleSelected(m.id)}
+                  focusActive={focusedId !== null}
+                  focused={focusedId === m.id}
+                  // Whichever row the open panel is editing shows its roles
+                  // read-only here, so the same roles can't be edited from
+                  // two places at once.
+                  rolesReadOnly={focusedId === m.id || (massPanelOpen && selectedIds.has(m.id))}
                 />
               ))
             )}
@@ -420,35 +546,14 @@ export default function MembersPage() {
         </>
       )}
 
-      {expandedId !== null && (
-        <MemberPanel
-          tournamentId={tournamentId}
-          membershipId={expandedId}
-          allRoles={allRoles}
-          canTouchRole={canTouchRole}
-          canEditMember={canEditMember}
-          onClose={() => setExpandedId(null)}
-          onUpdated={handleMemberUpdated}
-        />
-      )}
-
+      {/* Stays up through the whole "checking boxes" phase — the panel only
+          opens once Edit is pressed here, not as soon as one row is checked. */}
       <SelectionBar
-        visible={selectMode}
+        visible={selectMode && !massPanelOpen}
         count={selectedIds.size}
-        onEdit={() => setMassEditOpen(true)}
+        onEdit={openMassPanel}
         onCancel={toggleSelectMode}
       />
-
-      {massEditOpen && (
-        <MassRoleEditor
-          tournamentId={tournamentId}
-          memberships={members.filter((m) => selectedIds.has(m.id))}
-          allRoles={allRoles}
-          canTouchRole={canTouchRole}
-          onClose={() => setMassEditOpen(false)}
-          onUpdated={handleMemberUpdated}
-        />
-      )}
 
       {removeTarget && (
         <RemoveMemberModal
@@ -458,6 +563,9 @@ export default function MembersPage() {
           onClose={() => setRemoveTarget(null)}
           onRemoved={() => {
             setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            // Otherwise a removed-but-still-selected/focused row would keep a
+            // panel open against a member who no longer exists.
+            forgetItem(removeTarget.id);
             setRemoveTarget(null);
           }}
         />

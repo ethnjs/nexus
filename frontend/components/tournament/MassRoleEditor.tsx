@@ -1,16 +1,20 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { membershipsApi, ApiError, MembershipSlim, Role } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { SidePanel } from "@/components/ui/SidePanel";
+import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection } from "@/components/settings/SettingsRow";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
+
+// Exported so the caller registering this panel in the layout slot reserves
+// exactly the width the panel itself renders at.
+export const MASS_ROLE_EDITOR_WIDTH = 460;
 
 interface MemberResult {
   membership: MembershipSlim;
@@ -71,9 +75,11 @@ interface MassRoleEditorProps {
   onClose: () => void;
   /** Called once per membership that saved successfully, so the caller can patch its local list the same way RolesCell's onUpdated does. */
   onUpdated: (updated: MembershipSlim) => void;
+  /** Lets the owning table block selection changes while this panel is dirty. */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
-export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRole, onClose, onUpdated }: MassRoleEditorProps) {
+export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRole, onClose, onUpdated, onDirtyChange }: MassRoleEditorProps) {
   const { guard } = useUnsavedChanges();
 
   const [rolesToAdd, setRolesToAdd] = useState<Set<number>>(new Set());
@@ -100,6 +106,8 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
 
   const isDirty = rolesToAdd.size > 0 || rolesToRemove.size > 0;
 
+  useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+
   // Checklist popovers stay open across picks, so toggling has to handle
   // both directions (pick to stage, pick again to un-stage) rather than
   // just the one-way "select to add" a plain list would need.
@@ -121,10 +129,11 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
     setRolesToAdd((prev) => (prev.has(role.id) ? new Set([...prev].filter((id) => id !== role.id)) : prev));
   }
 
+  // Discards the pending changes only — the panel stays open, matching
+  // EventPanel/MassEventEditor rather than treating Cancel as a second Close.
   function handleCancel() {
     setRolesToAdd(new Set());
     setRolesToRemove(new Set());
-    onClose();
   }
 
   async function handleSave() {
@@ -160,9 +169,9 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
   }
 
   return (
-    <SidePanel
+    <DockedPanel
       onClose={() => guard(onClose)}
-      width={460}
+      width={MASS_ROLE_EDITOR_WIDTH}
       footer={
         <FloatingSaveBar
           visible={isDirty}
@@ -240,6 +249,6 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
 
         {results && <ResultsCard results={results} />}
       </div>
-    </SidePanel>
+    </DockedPanel>
   );
 }

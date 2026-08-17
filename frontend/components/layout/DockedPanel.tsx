@@ -26,8 +26,7 @@ interface DockedPanelProps {
   nextDisabled?: boolean;
 }
 
-// Same chrome as SidePanel, different mechanism: no portal, no backdrop, no
-// overlay. It's meant to be rendered as a plain flex child of the app shell's
+// Modal-free side panel: no portal, no backdrop, no overlay. It's meant to be rendered as a plain flex child of the app shell's
 // top-level row (see useLayoutPanel), so it *takes* horizontal space rather
 // than covering it — the page beside it stays fully interactive, which a
 // modal overlay can't offer.

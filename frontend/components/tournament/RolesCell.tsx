@@ -17,13 +17,21 @@ interface RolesCellProps {
   canTouchRole: (role: Role) => boolean;
   /** Member-level gate — false hides the add control and every chip's remove "x" entirely, e.g. tournament archived or this member's own roles outrank the actor. Independent of canTouchRole: when the member IS editable, individual chips still lock (with a lock icon in place of "x") for roles that tie or outrank the actor's own rank. */
   locked: boolean;
+  /**
+   * Suppress the interactive controls without implying the member *can't* be
+   * edited — used for the one table row whose roles are currently open in the
+   * docked panel, so the same roles aren't editable in two places at once.
+   */
+  readOnly?: boolean;
   onUpdated: (updated: MembershipSlim) => void;
 }
 
 // Inline role editor — chips for held roles (removable), a checklist
 // popover to add/remove more. Shared between the roster table and the
 // member detail panel.
-export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, onUpdated }: RolesCellProps) {
+export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, onUpdated }: RolesCellProps) {
+  // Two different reasons the chips go inert; ChipInput only has the one knob.
+  const inert = locked || readOnly;
   const { show } = useToast();
   const { user: currentUser } = useAuth();
   const memberName = personName(membership.user);
@@ -65,14 +73,14 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
       variant="transparent"
       size="sm"
       disableInput
-      locked={locked}
+      locked={inert}
       chipLockReason={(label: string) => {
         const role = roleByLabel.get(label);
         return role ? rankLockReason(role) : undefined;
       }}
       fullWidth
       addButton={
-        !locked && (
+        !inert && (
           <Popover
             trigger={
               <Button
