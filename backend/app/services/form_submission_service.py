@@ -4,7 +4,14 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from fastapi import HTTPException, status
 
-from models import Form, FormAnswer, FormResponse, User, TournamentMembership, ChapterMembership
+from app.models.models import (
+    Form,
+    FormAnswer,
+    FormResponse,
+    User,
+    TournamentMembership,
+    ChapterMembership,
+)
 
 
 def _write_through_availability(
@@ -99,7 +106,7 @@ def _validate_answers(
 
     # 2. Check for missing required fields
     for field in form.fields:
-        if field.is_required:
+        if field.required:
             val = answers.get(field.id)
             if val is None or (isinstance(val, str) and not val.strip()):
                 raise HTTPException(
@@ -129,7 +136,7 @@ def submit_form(
     # 4. Dispatch each answer based on field key/type
     for field_id, raw_value in answers.items():
         field = fields_by_id[field_id]
-        field_key = getattr(field, "field_key", None) or field.field_type
+        field_key = getattr(field, "field_key", None) or getattr(field, "field_type", None)
 
         if field_key == "availability":
             _write_through_availability(form_response, field_id, raw_value, db)
