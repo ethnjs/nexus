@@ -283,11 +283,11 @@ def create_form_field(
             )
 
     try:
-        validate_field_config(payload.question_type, payload.config)
+        normalized_config = validate_field_config(payload.question_type, payload.config)
         validate_reserved_field_key(field_key, payload.question_type)
-        validate_branching_options(db, form.id, payload.question_type, payload.config or {})
+        validate_branching_options(db, form.id, payload.question_type, normalized_config)
         if field_key == "availability" and payload.question_type == "multi_select_checkbox":
-            validate_availability_options(db, form.tournament_id, payload.config or {})
+            validate_availability_options(db, form.tournament_id, normalized_config)
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
@@ -303,7 +303,7 @@ def create_form_field(
         description=payload.description,
         question_type=payload.question_type,
         field_key=field_key,
-        config=payload.config,
+        config=normalized_config,
         is_archived=False,
     )
     db.add(field)
@@ -330,11 +330,11 @@ def edit_form_field(
     final_config = payload.config if payload.config is not None else field.config
 
     try:
-        validate_field_config(final_question_type, final_config)
+        normalized_config = validate_field_config(final_question_type, final_config)
         validate_reserved_field_key(field.field_key, final_question_type)
-        validate_branching_options(db, form.id, final_question_type, final_config or {}, field_id=field.id)
+        validate_branching_options(db, form.id, final_question_type, normalized_config, field_id=field.id)
         if field.field_key == "availability" and final_question_type == "multi_select_checkbox":
-            validate_availability_options(db, form.tournament_id, final_config or {})
+            validate_availability_options(db, form.tournament_id, normalized_config)
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
@@ -348,7 +348,7 @@ def edit_form_field(
         field = reorder_field(db, field, payload.order)
 
     if payload.config is not None:
-        field = set_field_config(db, field, payload.config)
+        field = set_field_config(db, field, normalized_config)
 
     return field
 
