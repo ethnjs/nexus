@@ -3,6 +3,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     remove_form_field,
     reorder_field,
@@ -11,9 +12,10 @@ from app.core.form import (
     set_field_config,
     update_field_text,
 )
-from app.core.form.permissions import require_form_manage_access, require_form_view_access, user_can_link_all
+from app.core.form.permissions import require_form_manage_access, require_form_view_access
+from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
-from app.models.models import Form, FormAnswer, FormChapter, FormField, FormResponse, FormTournament, User, utcnow
+from app.models.models import Form, FormAnswer, FormField, FormResponse, User, utcnow
 from app.schemas.form import (
     FormCreate,
     FormFieldCreate,
@@ -29,32 +31,74 @@ router = APIRouter(tags=["forms"])
 
 
 # ---------------------------------------------------------------------------
-# POST /forms/ — creates the FormTournament/FormChapter links up front, so
-# it requires MANAGE_FORMS/lead-officer on EVERY tournament/chapter in the
-# payload, not just one (see user_can_link_all).
+# POST /tournaments/{tournament_id}/forms/ — MANAGE_FORMS on the tournament.
 # ---------------------------------------------------------------------------
-@router.post("/forms/", response_model=FormRead, status_code=status.HTTP_201_CREATED)
-def create_form(
+@router.post(
+    "/tournaments/{tournament_id}/forms/",
+    response_model=FormRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["tournaments"],
+)
+def create_tournament_form(
+    tournament_id: int,
     form_in: FormCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
-    if not user_can_link_all(current_user, form_in.tournament_ids, form_in.chapter_ids, db):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+    if form_in.owner_type != "tournament" or form_in.tournament_id != tournament_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="owner_type must be 'tournament' and tournament_id must match the path",
+        )
 
     form = Form(
         name=form_in.name,
         description=form_in.description,
+        owner_type="tournament",
+        tournament_id=tournament_id,
+        chapter_id=None,
+        creates_membership_on_submit=form_in.creates_membership_on_submit,
         created_by=current_user.id,
     )
     db.add(form)
-    db.flush()
+    db.commit()
+    db.refresh(form)
+    return form
 
-    for tournament_id in form_in.tournament_ids:
-        db.add(FormTournament(form_id=form.id, tournament_id=tournament_id))
-    for chapter_id in form_in.chapter_ids:
-        db.add(FormChapter(form_id=form.id, chapter_id=chapter_id))
 
+# ---------------------------------------------------------------------------
+# POST /chapters/{chapter_id}/forms/ — lead/officer on the chapter.
+# ---------------------------------------------------------------------------
+@router.post(
+    "/chapters/{chapter_id}/forms/",
+    response_model=FormRead,
+    status_code=status.HTTP_201_CREATED,
+    tags=["chapters"],
+)
+def create_chapter_form(
+    chapter_id: int,
+    form_in: FormCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_officer_or_lead(chapter_id, db, current_user)
+
+    if form_in.owner_type != "chapter" or form_in.chapter_id != chapter_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="owner_type must be 'chapter' and chapter_id must match the path",
+        )
+
+    form = Form(
+        name=form_in.name,
+        description=form_in.description,
+        owner_type="chapter",
+        tournament_id=None,
+        chapter_id=chapter_id,
+        creates_membership_on_submit=form_in.creates_membership_on_submit,
+        created_by=current_user.id,
+    )
+    db.add(form)
     db.commit()
     db.refresh(form)
     return form
