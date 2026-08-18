@@ -12,7 +12,7 @@ TournamentShift) and reserved field_key pairing."""
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.models.models import FormField, TournamentShift
+from app.models.models import Form, FormField, TournamentShift
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
@@ -106,6 +106,51 @@ def validate_branching_options(
         not missing,
         f"next_field_id(s) do not reference an existing, non-archived field in this form: {sorted(missing)}",
     )
+
+
+def validate_form_for_publish(db: Session, form: Form) -> None:
+    """Aggregate pass run on every draft->published transition and every
+    explicit republish while already published. Per-field validation on
+    create/update can't catch problems that only exist in aggregate — a
+    form with zero fields, or a next_field_id left dangling after some
+    other field got archived later — so this re-runs every check across
+    the whole active field set. Collects every problem found instead of
+    stopping at the first, so a TD sees the full list in one pass."""
+    fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .all()
+    )
+
+    errors: list[str] = []
+    if not fields:
+        errors.append("form has no fields")
+
+    for field in fields:
+        try:
+            normalized_config = validate_field_config(field.question_type, field.config)
+        except FormFieldValidationError as e:
+            errors.append(f"field '{field.field_key}': {e}")
+            continue
+
+        for check in (
+            lambda: validate_reserved_field_key(field.field_key, field.question_type),
+            lambda: validate_branching_options(
+                db, form.id, field.question_type, normalized_config, field_id=field.id
+            ),
+        ):
+            try:
+                check()
+            except FormFieldValidationError as e:
+                errors.append(f"field '{field.field_key}': {e}")
+
+        if field.field_key == "availability" and field.question_type == "multi_select_checkbox":
+            try:
+                validate_availability_options(db, form.tournament_id, normalized_config)
+            except FormFieldValidationError as e:
+                errors.append(f"field '{field.field_key}': {e}")
+
+    _require(not errors, "; ".join(errors))
 
 
 def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:

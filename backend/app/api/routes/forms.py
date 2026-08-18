@@ -21,6 +21,7 @@ from app.core.form.validation import (
     validate_availability_options,
     validate_branching_options,
     validate_field_config,
+    validate_form_for_publish,
     validate_reserved_field_key,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
@@ -180,6 +181,12 @@ def update_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    if payload.status == "published":
+        try:
+            validate_form_for_publish(db, form)
+        except FormFieldValidationError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
     if payload.name is not None:
         form.name = payload.name
     if payload.description is not None:
