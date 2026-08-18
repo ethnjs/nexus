@@ -604,9 +604,11 @@ class Form(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "
-            "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
-            name="ck_form_owner_exclusive",
+            "(owner_type = 'tournament' AND tournament_id IS NOT NULL) OR "
+            "(owner_type = 'chapter' AND chapter_id IS NOT NULL) OR "
+            "(owner_type = 'both' AND tournament_id IS NOT NULL AND chapter_id IS NOT NULL) OR "
+            "(tournament_id IS NOT NULL OR chapter_id IS NOT NULL)",
+            name="ck_form_at_least_one_owner",
         ),
     )
 

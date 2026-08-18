@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 # ==========================================
 # Form Field Schemas
@@ -52,9 +52,16 @@ class FormRead(BaseModel):
 class FormCreate(BaseModel):
     title: str
     description: str | None = None
-    owner_type: Literal["tournament", "chapter", "global"]
     tournament_id: int | None = None
     chapter_id: int | None = None
+
+    @model_validator(mode="after")
+    def check_at_least_one_owner(self):
+        if self.tournament_id is None and self.chapter_id is None:
+            raise ValueError(
+                "At least one owner context (tournament_id or chapter_id) must be provided."
+            )
+        return self
 
 
 class FormUpdate(BaseModel):

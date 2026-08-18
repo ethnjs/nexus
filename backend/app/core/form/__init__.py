@@ -1,8 +1,26 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import FormAnswer, FormField, TournamentEvent
+from fastapi import HTTPException, status
+from app.models.models import User, FormAnswer, FormField, TournamentEvent
+from app.core.tournament.permissions import has_permission
 
 import re # Regular Expressions for searching, matching, and extracting patterns in text strings
+
+def has_form_permission(
+        db: Session,
+        tournament_id: int | None,
+        chapter_id: int | None,
+        user: User,
+) -> None:
+
+    if tournament_id:
+        if not has_permission(user, tournament_id, "MANAGE_FORMS", db):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to manage this form")
+
+    if chapter_id:
+        #TODO(temp): Replace with chapter permissions check when implemented
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Chapter-owned form management is not yet supported")
+
 
 def remove_form_field(
         db: Session,
