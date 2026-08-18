@@ -36,6 +36,29 @@ def update_field_text(
     db.refresh(field)
     return field
 
+def set_field_config(
+        db: Session,
+        field: FormField,
+        config: dict,
+) -> FormField:
+    field.config = config
+    flag_modified(field, "config")
+    db.commit()
+    db.refresh(field)
+    return field
+
+
+def reorder_field(
+        db: Session,
+        field: FormField,
+        order: int,
+) -> FormField:
+    field.order = order
+    db.commit()
+    db.refresh(field)
+    return field
+
+
 def replace_field_type(
         db: Session,
         field: FormField,

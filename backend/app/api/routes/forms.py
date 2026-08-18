@@ -1,26 +1,72 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.form import remove_form_field, update_field_text, replace_field_type, add_option, change_option_label, remove_option_from_field, resolve_field_options
+from app.core.form import (
+    remove_form_field,
+    reorder_field,
+    replace_field_type,
+    resolve_field_options,
+    set_field_config,
+    update_field_text,
+)
+from app.core.form.permissions import require_form_manage_access, require_form_view_access, user_can_link_all
 from app.db.session import get_db
-from app.models.models import User, Form, FormField, FormAnswer, FormResponse
-from app.schemas.form import FormCreate, FormRead, FormUpdate, FormFieldCreate, FormFieldRead, FormFieldUpdate
-from app.core.tournament.permissions import has_permission
+from app.models.models import Form, FormChapter, FormField, FormResponse, FormTournament, User
+from app.schemas.form import FormCreate, FormFieldCreate, FormFieldRead, FormFieldUpdate, FormRead, FormUpdate
 
 router = APIRouter(tags=["forms"])
 
 
+# ---------------------------------------------------------------------------
+# POST /forms/ — creates the FormTournament/FormChapter links up front, so
+# it requires MANAGE_FORMS/lead-officer on EVERY tournament/chapter in the
+# payload, not just one (see user_can_link_all).
+# ---------------------------------------------------------------------------
+@router.post("/forms/", response_model=FormRead, status_code=status.HTTP_201_CREATED)
+def create_form(
+    form_in: FormCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not user_can_link_all(current_user, form_in.tournament_ids, form_in.chapter_ids, db):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
+    form = Form(
+        name=form_in.name,
+        description=form_in.description,
+        created_by=current_user.id,
+    )
+    db.add(form)
+    db.flush()
+
+    for tournament_id in form_in.tournament_ids:
+        db.add(FormTournament(form_id=form.id, tournament_id=tournament_id))
+    for chapter_id in form_in.chapter_ids:
+        db.add(FormChapter(form_id=form.id, chapter_id=chapter_id))
+
+    db.commit()
+    db.refresh(form)
+    return form
+
+
+# ---------------------------------------------------------------------------
+# GET /forms/{form_id}/ — view/render. Any member of a linked
+# tournament/chapter can view (not just managers) — this is what the form
+# renderer for people filling it out calls.
+# ---------------------------------------------------------------------------
 @router.get("/forms/{form_id}/", response_model=FormRead)
 def get_form_for_rendering(
-    form_id: int,
     db: Session = Depends(get_db),
+    form: Form = Depends(require_form_view_access),
 ):
-    form = db.query(Form).filter(Form.id == form_id).first()
-    if not form:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
-
-    active_fields = db.query(FormField).filter(FormField.form_id == form_id, FormField.is_archived == False).all()
+    active_fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .order_by(FormField.order)
+        .all()
+    )
 
     for field in active_fields:
         resolved_options = resolve_field_options(db, field)
@@ -33,61 +79,147 @@ def get_form_for_rendering(
     return form
 
 
-@router.post("/tournaments/{tournament_id}/forms/", response_model=FormRead, status_code=status.HTTP_201_CREATED)
-def create_tournament_form(
-    tournament_id: int,
-    form_in: FormCreate,
+# ---------------------------------------------------------------------------
+# PATCH /forms/{form_id}/ — name/description/status only. Adding/removing
+# tournament or chapter links isn't handled here yet.
+# ---------------------------------------------------------------------------
+@router.patch("/forms/{form_id}/", response_model=FormRead)
+def update_form(
+    form_in: FormUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    form: Form = Depends(require_form_manage_access),
 ):
-    """Create Tournament Form. MANAGE_FORMS permission required."""
-    if not has_permission(tournament_id, "MANAGE_FORMS", db):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authorized to perform this action")
+    if form_in.name is not None:
+        form.name = form_in.name
+    if form_in.description is not None:
+        form.description = form_in.description
+    if form_in.status is not None:
+        form.status = form_in.status
 
-    form = Form(
-        **form_in.model_dump(),
-        tournament_id=tournament_id,
-        chapter_id=None,
-    )
-    db.add(form)
     db.commit()
     db.refresh(form)
     return form
 
 
+# ---------------------------------------------------------------------------
+# POST /forms/{form_id}/archive/ — soft delete via status="archived".
+# Responses and fields are left in place.
+# ---------------------------------------------------------------------------
+@router.post("/forms/{form_id}/archive/", response_model=FormRead)
+def archive_form(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    form.status = "archived"
+    db.commit()
+    db.refresh(form)
+    return form
+
+
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/ — hard delete. Blocked if any responses exist
+# (use the archive route above instead — hard delete would cascade away
+# submitted response data). Cascades to fields and the tournament/chapter
+# links otherwise.
+# ---------------------------------------------------------------------------
+@router.delete("/forms/{form_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def delete_form(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    has_responses = db.query(FormResponse).filter(FormResponse.form_id == form.id).first() is not None
+    if has_responses:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Form has existing responses — archive it instead of deleting",
+        )
+
+    db.delete(form)
+    db.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /forms/{form_id}/fields/ — MANAGE_FORMS on any linked tournament, or
+# lead/officer on any linked chapter (the form already exists and is
+# already linked, so the "any one" rule applies here, unlike form creation).
+# ---------------------------------------------------------------------------
+@router.post("/forms/{form_id}/fields/", response_model=FormFieldRead, status_code=status.HTTP_201_CREATED)
+def create_form_field(
+    field_in: FormFieldCreate,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    if field_in.field_key is not None:
+        existing = (
+            db.query(FormField)
+            .filter(FormField.form_id == form.id, FormField.field_key == field_in.field_key)
+            .first()
+        )
+        if existing:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="field_key already in use on this form")
+
+    order = field_in.order
+    if order is None:
+        max_order = db.query(func.max(FormField.order)).filter(FormField.form_id == form.id).scalar()
+        order = (max_order or 0) + 1
+
+    field = FormField(
+        form_id=form.id,
+        order=order,
+        label=field_in.label,
+        description=field_in.description,
+        question_type=field_in.question_type,
+        field_key=field_in.field_key,
+        config=field_in.config,
+        is_archived=False,
+    )
+    db.add(field)
+    db.commit()
+    db.refresh(field)
+    return field
+
+
+# ---------------------------------------------------------------------------
+# PATCH /forms/{form_id}/fields/{field_id}/
+# ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/fields/{field_id}/", response_model=FormFieldRead)
 def edit_form_field(
-    form_id: int,
     field_id: int,
     field_in: FormFieldUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    form: Form = Depends(require_form_manage_access),
 ):
-    """Update a form field. MANAGE_FORMS permission required"""
-    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form_id).first()
-
+    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    if (field_in.question_type and field_in.question_type != field.question_type):
-        return replace_field_type(db, field, field_in.question_type)
+    if field_in.question_type is not None and field_in.question_type != field.question_type:
+        field = replace_field_type(db, field, field_in.question_type)
+
+    if field_in.label is not None or field_in.description is not None:
+        field = update_field_text(db, field, field_in.label, field_in.description)
+
+    if field_in.order is not None:
+        field = reorder_field(db, field, field_in.order)
+
+    if field_in.config is not None:
+        field = set_field_config(db, field, field_in.config)
+
+    return field
 
 
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/fields/{field_id}/
+# Archives a form field if responses exist. Hard deletes if responses do
+# not exist.
+# ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/")
 def delete_or_archive_form_field(
-    form_id: int,
     field_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    form: Form = Depends(require_form_manage_access),
 ):
-    """
-    Archives a form field if responses exist.
-    Hard Deletes if responses do not exist.
-    Requires MANAGE_FORM permissions.
-    """
-
-    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form_id).first()
-
+    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
@@ -96,5 +228,5 @@ def delete_or_archive_form_field(
     return {
         "success": True,
         "action": "archived" if was_archived else "deleted",
-        "field_id": field_id
+        "field_id": field_id,
     }
