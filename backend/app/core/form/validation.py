@@ -24,6 +24,14 @@ ALL_QUESTION_TYPES = QUESTION_TYPES_WITH_OPTIONS | {
     "long_text",
 }
 
+# field_key values with a system-defined meaning. `lunch_{custom}` is also
+# reserved (any key starting with "lunch_") but its config shape isn't
+# designed yet, so it isn't enforced here — see form-question-types-reference.md.
+RESERVED_FIELD_KEY_QUESTION_TYPES = {
+    "availability": {"multi_select_checkbox"},
+    "event_preference": {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"},
+}
+
 
 def _require(condition: bool, message: str) -> None:
     if not condition:
@@ -82,6 +90,21 @@ def validate_field_config(question_type: str, config: dict | None) -> None:
             isinstance(max_length, int) and not isinstance(max_length, bool) and max_length > 0,
             "config.max_length must be a positive integer",
         )
+
+
+def validate_reserved_field_key(field_key: str, question_type: str) -> None:
+    """Reserved field_keys (availability, event_preference) reuse an
+    existing structural question_type rather than introducing their own —
+    reject a reserved key paired with a question_type it doesn't allow.
+    Applies identically regardless of owner_type (tournament vs. chapter);
+    only write-through, not validation, differs by ownership."""
+    allowed_types = RESERVED_FIELD_KEY_QUESTION_TYPES.get(field_key)
+    if allowed_types is None:
+        return
+    _require(
+        question_type in allowed_types,
+        f"field_key '{field_key}' requires question_type in {sorted(allowed_types)}, got '{question_type}'",
+    )
 
 
 def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:

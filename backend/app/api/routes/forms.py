@@ -20,6 +20,7 @@ from app.core.form.validation import (
     FormFieldValidationError,
     validate_availability_options,
     validate_field_config,
+    validate_reserved_field_key,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -58,33 +59,33 @@ router = APIRouter(tags=["forms"])
 )
 def create_tournament_form(
     tournament_id: int,
-    form_in: FormCreate,
+    payload: FormCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
-    if form_in.owner_type != "tournament" or form_in.tournament_id != tournament_id:
+    if payload.owner_type != "tournament" or payload.tournament_id != tournament_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="owner_type must be 'tournament' and tournament_id must match the path",
         )
 
     form = Form(
-        name=form_in.name,
-        description=form_in.description,
+        name=payload.name,
+        description=payload.description,
         owner_type="tournament",
         tournament_id=tournament_id,
         chapter_id=None,
-        creates_membership_on_submit=form_in.creates_membership_on_submit,
+        creates_membership_on_submit=payload.creates_membership_on_submit,
         created_by=current_user.id,
     )
     db.add(form)
     db.flush()
 
-    if form_in.tournament_membership_config is not None:
+    if payload.tournament_membership_config is not None:
         db.add(FormTournamentMembershipConfig(
             form_id=form.id,
-            status_on_submit=form_in.tournament_membership_config.status_on_submit,
-            role_ids_on_submit=form_in.tournament_membership_config.role_ids_on_submit or None,
+            status_on_submit=payload.tournament_membership_config.status_on_submit,
+            role_ids_on_submit=payload.tournament_membership_config.role_ids_on_submit or None,
         ))
 
     db.commit()
@@ -103,34 +104,34 @@ def create_tournament_form(
 )
 def create_chapter_form(
     chapter_id: int,
-    form_in: FormCreate,
+    payload: FormCreate,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     require_officer_or_lead(chapter_id, db, current_user)
 
-    if form_in.owner_type != "chapter" or form_in.chapter_id != chapter_id:
+    if payload.owner_type != "chapter" or payload.chapter_id != chapter_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="owner_type must be 'chapter' and chapter_id must match the path",
         )
 
     form = Form(
-        name=form_in.name,
-        description=form_in.description,
+        name=payload.name,
+        description=payload.description,
         owner_type="chapter",
         tournament_id=None,
         chapter_id=chapter_id,
-        creates_membership_on_submit=form_in.creates_membership_on_submit,
+        creates_membership_on_submit=payload.creates_membership_on_submit,
         created_by=current_user.id,
     )
     db.add(form)
     db.flush()
 
-    if form_in.chapter_membership_config is not None:
+    if payload.chapter_membership_config is not None:
         db.add(FormChapterMembershipConfig(
             form_id=form.id,
-            role_on_submit=form_in.chapter_membership_config.role_on_submit,
+            role_on_submit=payload.chapter_membership_config.role_on_submit,
         ))
 
     db.commit()
@@ -174,33 +175,33 @@ def get_form_for_rendering(
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/", response_model=FormRead)
 def update_form(
-    form_in: FormUpdate,
+    payload: FormUpdate,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    if form_in.name is not None:
-        form.name = form_in.name
-    if form_in.description is not None:
-        form.description = form_in.description
-    if form_in.status is not None:
-        form.status = form_in.status
-    if form_in.creates_membership_on_submit is not None:
-        form.creates_membership_on_submit = form_in.creates_membership_on_submit
+    if payload.name is not None:
+        form.name = payload.name
+    if payload.description is not None:
+        form.description = payload.description
+    if payload.status is not None:
+        form.status = payload.status
+    if payload.creates_membership_on_submit is not None:
+        form.creates_membership_on_submit = payload.creates_membership_on_submit
 
-    if form_in.tournament_membership_config is not None and form.owner_type == "tournament":
+    if payload.tournament_membership_config is not None and form.owner_type == "tournament":
         config = form.tournament_membership_config
         if config is None:
             config = FormTournamentMembershipConfig(form_id=form.id)
             db.add(config)
-        config.status_on_submit = form_in.tournament_membership_config.status_on_submit
-        config.role_ids_on_submit = form_in.tournament_membership_config.role_ids_on_submit or None
+        config.status_on_submit = payload.tournament_membership_config.status_on_submit
+        config.role_ids_on_submit = payload.tournament_membership_config.role_ids_on_submit or None
 
-    if form_in.chapter_membership_config is not None and form.owner_type == "chapter":
+    if payload.chapter_membership_config is not None and form.owner_type == "chapter":
         config = form.chapter_membership_config
         if config is None:
             config = FormChapterMembershipConfig(form_id=form.id)
             db.add(config)
-        config.role_on_submit = form_in.chapter_membership_config.role_on_submit
+        config.role_on_submit = payload.chapter_membership_config.role_on_submit
 
     db.commit()
     db.refresh(form)
@@ -256,11 +257,11 @@ def delete_form(
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/fields/", response_model=FormFieldRead, status_code=status.HTTP_201_CREATED)
 def create_form_field(
-    field_in: FormFieldCreate,
+    payload: FormFieldCreate,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    field_key = slugify(field_in.field_key)
+    field_key = slugify(payload.field_key)
 
     if form.owner_type == "tournament":
         if field_key_taken_in_tournament(db, form.tournament_id, field_key):
@@ -281,13 +282,14 @@ def create_form_field(
             )
 
     try:
-        validate_field_config(field_in.question_type, field_in.config)
-        if field_key == "availability" and field_in.question_type == "multi_select_checkbox":
-            validate_availability_options(db, form.tournament_id, field_in.config or {})
+        validate_field_config(payload.question_type, payload.config)
+        validate_reserved_field_key(field_key, payload.question_type)
+        if field_key == "availability" and payload.question_type == "multi_select_checkbox":
+            validate_availability_options(db, form.tournament_id, payload.config or {})
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
-    order = field_in.order
+    order = payload.order
     if order is None:
         max_order = db.query(func.max(FormField.order)).filter(FormField.form_id == form.id).scalar()
         order = (max_order or 0) + 1
@@ -295,11 +297,11 @@ def create_form_field(
     field = FormField(
         form_id=form.id,
         order=order,
-        label=field_in.label,
-        description=field_in.description,
-        question_type=field_in.question_type,
+        label=payload.label,
+        description=payload.description,
+        question_type=payload.question_type,
         field_key=field_key,
-        config=field_in.config,
+        config=payload.config,
         is_archived=False,
     )
     db.add(field)
@@ -314,7 +316,7 @@ def create_form_field(
 @router.patch("/forms/{form_id}/fields/{field_id}/", response_model=FormFieldRead)
 def edit_form_field(
     field_id: int,
-    field_in: FormFieldUpdate,
+    payload: FormFieldUpdate,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
@@ -322,27 +324,28 @@ def edit_form_field(
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
 
-    final_question_type = field_in.question_type if field_in.question_type is not None else field.question_type
-    final_config = field_in.config if field_in.config is not None else field.config
+    final_question_type = payload.question_type if payload.question_type is not None else field.question_type
+    final_config = payload.config if payload.config is not None else field.config
 
     try:
         validate_field_config(final_question_type, final_config)
+        validate_reserved_field_key(field.field_key, final_question_type)
         if field.field_key == "availability" and final_question_type == "multi_select_checkbox":
             validate_availability_options(db, form.tournament_id, final_config or {})
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
-    if field_in.question_type is not None and field_in.question_type != field.question_type:
-        field = replace_field_type(db, field, field_in.question_type)
+    if payload.question_type is not None and payload.question_type != field.question_type:
+        field = replace_field_type(db, field, payload.question_type)
 
-    if field_in.label is not None or field_in.description is not None:
-        field = update_field_text(db, field, field_in.label, field_in.description)
+    if payload.label is not None or payload.description is not None:
+        field = update_field_text(db, field, payload.label, payload.description)
 
-    if field_in.order is not None:
-        field = reorder_field(db, field, field_in.order)
+    if payload.order is not None:
+        field = reorder_field(db, field, payload.order)
 
-    if field_in.config is not None:
-        field = set_field_config(db, field, field_in.config)
+    if payload.config is not None:
+        field = set_field_config(db, field, payload.config)
 
     return field
 
@@ -379,12 +382,12 @@ def delete_or_archive_form_field(
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
 def submit_form_response(
-    response_in: FormResponseCreate,
+    payload: FormResponseCreate,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
-    field_ids = [answer_in.field_id for answer_in in response_in.answers]
+    field_ids = [answer_in.field_id for answer_in in payload.answers]
     if field_ids:
         valid_field_ids = {
             field_id
@@ -415,7 +418,7 @@ def submit_form_response(
         db.query(FormAnswer).filter(FormAnswer.response_id == response.id).delete()
         response.updated_at = utcnow()
 
-    for answer_in in response_in.answers:
+    for answer_in in payload.answers:
         db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
 
     if is_first_response:
