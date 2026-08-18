@@ -16,6 +16,11 @@ from app.core.form import (
 )
 from app.core.form.membership import create_membership_on_first_submit
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
+from app.core.form.validation import (
+    FormFieldValidationError,
+    validate_field_config,
+    validate_shift_select_options,
+)
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -275,6 +280,13 @@ def create_form_field(
                 detail=f"field_key '{field_key}' is already in use on this form — pick a more distinct label",
             )
 
+    try:
+        validate_field_config(field_in.question_type, field_in.config)
+        if field_in.question_type == "shift_select":
+            validate_shift_select_options(db, form.tournament_id, field_in.config or {})
+    except FormFieldValidationError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+
     order = field_in.order
     if order is None:
         max_order = db.query(func.max(FormField.order)).filter(FormField.form_id == form.id).scalar()
@@ -309,6 +321,16 @@ def edit_form_field(
     field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+
+    final_question_type = field_in.question_type if field_in.question_type is not None else field.question_type
+    final_config = field_in.config if field_in.config is not None else field.config
+
+    try:
+        validate_field_config(final_question_type, final_config)
+        if final_question_type == "shift_select":
+            validate_shift_select_options(db, form.tournament_id, final_config or {})
+    except FormFieldValidationError as e:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
     if field_in.question_type is not None and field_in.question_type != field.question_type:
         field = replace_field_type(db, field, field_in.question_type)
