@@ -18,8 +18,8 @@ from app.core.form.membership import create_membership_on_first_submit
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
     FormFieldValidationError,
+    validate_availability_options,
     validate_field_config,
-    validate_shift_select_options,
 )
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -282,8 +282,8 @@ def create_form_field(
 
     try:
         validate_field_config(field_in.question_type, field_in.config)
-        if field_in.question_type == "shift_select":
-            validate_shift_select_options(db, form.tournament_id, field_in.config or {})
+        if field_key == "availability" and field_in.question_type == "multi_select_checkbox":
+            validate_availability_options(db, form.tournament_id, field_in.config or {})
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 
@@ -327,8 +327,8 @@ def edit_form_field(
 
     try:
         validate_field_config(final_question_type, final_config)
-        if final_question_type == "shift_select":
-            validate_shift_select_options(db, form.tournament_id, final_config or {})
+        if field.field_key == "availability" and final_question_type == "multi_select_checkbox":
+            validate_availability_options(db, form.tournament_id, final_config or {})
     except FormFieldValidationError as e:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
 

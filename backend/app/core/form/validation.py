@@ -16,7 +16,6 @@ QUESTION_TYPES_WITH_OPTIONS = {
     "single_select_dropdown",
     "multi_select_checkbox",
     "ranked_choice",
-    "shift_select",
 }
 
 ALL_QUESTION_TYPES = QUESTION_TYPES_WITH_OPTIONS | {
@@ -77,9 +76,6 @@ def validate_field_config(question_type: str, config: dict | None) -> None:
         options = _validate_options_list(config)
         _require(ranks <= len(options), "config.ranks cannot exceed the number of options")
 
-    elif question_type == "shift_select":
-        _validate_options_list(config)
-
     elif question_type in ("short_text", "long_text"):
         max_length = config.get("max_length")
         _require(
@@ -88,10 +84,11 @@ def validate_field_config(question_type: str, config: dict | None) -> None:
         )
 
 
-def validate_shift_select_options(db: Session, tournament_id: int | None, config: dict) -> None:
-    """shift_select option values must reference a real TournamentShift
-    belonging to the field's own tournament — validated strictly since a
-    bad value directly corrupts MembershipAvailability write-through.
+def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:
+    """A `multi_select_checkbox` field with field_key = "availability" must
+    have every option's `value` reference a real TournamentShift belonging
+    to the field's own tournament — validated strictly since a bad value
+    directly corrupts MembershipAvailability write-through.
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
@@ -108,7 +105,7 @@ def validate_shift_select_options(db: Session, tournament_id: int | None, config
         value = option.get("value")
         _require(
             value is not None and str(value).isdigit(),
-            f"shift_select option value '{value}' must be a TournamentShift id",
+            f"availability option value '{value}' must be a TournamentShift id",
         )
         shift_ids.add(int(value))
 
@@ -121,5 +118,5 @@ def validate_shift_select_options(db: Session, tournament_id: int | None, config
     missing = shift_ids - valid_ids
     _require(
         not missing,
-        f"shift_select option value(s) do not reference a real TournamentShift on this tournament: {sorted(missing)}",
+        f"availability option value(s) do not reference a real TournamentShift on this tournament: {sorted(missing)}",
     )

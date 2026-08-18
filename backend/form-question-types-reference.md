@@ -20,7 +20,7 @@ Every `FormField` shares the same outer shape:
 
 **`field_key` is required on every field, no exceptions.** The TD types a normal-language label for how they want the question to show up on their dashboard (e.g. "Test Writing Interest") and it's slugified into `field_key` (lowercase, alphanumeric + underscores, e.g. `test_writing_interest`) — this is what the TD sees when scanning/filtering responses later, not just an internal id. Must be unique **per tournament** — across every `Form` that tournament owns, not just within one form — so creating a field checks existing `field_key`s across all of that tournament's forms, including archived fields (an archived key isn't freed for reuse, to keep historical dashboard references unambiguous).
 
-Reserved keys (`availability`, `lunch`, `event_preference`) are exact system-defined slugs. When a TD picks a reserved question type (e.g. `shift_select` for availability) from a preset/template, `field_key` should be locked to the reserved value rather than freely typed — otherwise a stray typo (`availibility`) silently breaks write-through with no error. Flagging this as the intended behavior, not yet confirmed.
+**Line between `question_type` and `field_key`:** `question_type` is purely structural — how the question is rendered and answered. `field_key` is semantic — when it's a reserved key (`availability`, `event_preference`, `lunch_{custom}`), it changes how a *structurally normal* field's options/answers get parsed and, for tournament forms, written through to a structural table. Reserved keys don't get their own `question_type` — they reuse the existing structural types and layer extra validation on top. When a TD picks a reserved-key preset/template, `field_key` should be locked to the reserved value rather than freely typed — otherwise a stray typo (`availibility`) silently breaks write-through with no error. Flagging this as the intended behavior, not yet confirmed.
 
 **Options-storage rule:** wherever a type has an `options` array, each option is `{ "value": ..., "label": ... }` — `label` is what's shown, `value` is what's actually stored in `FormAnswer` (or referenced by write-through). Options are stored raw and literal — a resolved snapshot at creation/edit time, not a dynamic source reference. Editors may offer an "auto-load from tournament" convenience (events, categories, shifts) that populates this array once; after that it's just a normal static list like any other question's options. `value` is the stable identifier for edit-lifecycle purposes (renaming `label` is a safe in-place edit; old answers referencing `value` still resolve) — for options backed by a real entity (a `TournamentShift`, `TournamentEvent`, etc.) `value` is that entity's real id.
 
@@ -70,6 +70,8 @@ Pick any number, shown as checkboxes.
 Answer value: array of chosen option `value`s.
 Branching: not supported (not single-select).
 
+**Reserved-key note:** when `field_key = "availability"`, this is the required `question_type`, and `value` on each option must resolve to a real `TournamentShift` belonging to the field's tournament (auto-loadable from the tournament's shift catalog, not free-typed). On submit, the answer write-throughs into `MembershipAvailability` (diffed against the prior submission) instead of being stored in `FormAnswer` — this only fires on tournament-owned forms; on a chapter-owned form the same field is valid but stores as a normal `FormAnswer`, no write-through.
+
 ## `ranked_choice`
 Rank a fixed number of options in order of preference.
 
@@ -86,23 +88,8 @@ Rank a fixed number of options in order of preference.
 ```
 Answer value: dict of rank → option `value`, e.g. `{"1": "te_anat_physio", "2": "te_disease_detectives"}`.
 Branching: not supported.
-Typical use: `field_key = "event_preference"`.
 
-## `shift_select`
-Pick from a TD-defined set of time windows. Options reference real `TournamentShift` rows (auto-loadable from the tournament's shift catalog), not free-typed ranges.
-
-```json
-"config": {
-  "required": false,
-  "options": [
-    { "value": "1", "label": "Saturday, February 13, 2027" },
-    { "value": "2", "label": "Saturday, February 20, 2027" }
-  ]
-}
-```
-Answer value: array of chosen `TournamentShift.id`s (the `value`s above).
-Branching: not supported.
-**Reserved:** this is the only question type allowed for `field_key = "availability"`. On submit, the answer write-throughs into `MembershipAvailability` (diffed against the prior submission) instead of being stored in `FormAnswer`.
+**Reserved-key note:** `event_preference` is allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. When it's used, `value` needs to be the real `TournamentEvent` id so it can be matched back to the tournament's actual events — this strict resolution isn't validated yet, it's tied to a future "auto-load events into options" feature, not this phase.
 
 ## `short_text` / `long_text`
 Free text — `short_text` single line, `long_text` multi-line.
@@ -128,7 +115,9 @@ Only `single_select_radio` and `single_select_dropdown` options may carry branch
 
 | `field_key` | Allowed `question_type`(s) | Write-through |
 |---|---|---|
-| `availability` | `shift_select` only | `MembershipAvailability` |
-| `lunch` | single/multi-select (config shape still open — depends on `TournamentLunchOption` category/`allow_multiple` mapping, not yet designed for Forms) | `MembershipLunchSelection` |
-| `event_preference` | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer` |
+| `availability` | `multi_select_checkbox` only | `MembershipAvailability` (tournament-owned forms only) |
+| `lunch_{custom}` — TD fills in `{custom}` per lunch question (e.g. `lunch_protein`, `lunch_drink`), one per `TournamentLunchOption` category | single/multi-select depending on the category's `allow_multiple` (config shape still open, discussed in the write-through issue) | `MembershipLunchSelection` (tournament-owned forms only) |
+| `event_preference` | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer` (option `value` should be a real `TournamentEvent` id, not yet strictly validated) |
 | any TD-typed slug | any type | none — generic `FormAnswer` |
+
+Reserved keys are valid on both tournament- and chapter-owned forms — the key itself doesn't require tournament ownership. Only the write-through step is tournament-only; on a chapter-owned form these fields behave exactly like a normal custom question.
