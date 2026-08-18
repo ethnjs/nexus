@@ -14,6 +14,7 @@ from app.core.form import (
     slugify,
     update_field_text,
 )
+from app.core.form.branching import missing_required_field_keys
 from app.core.form.membership import create_membership_on_first_submit
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
@@ -397,22 +398,28 @@ def submit_form_response(
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
+    active_fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .all()
+    )
+    valid_field_ids = {field.id for field in active_fields}
+
     field_ids = [answer_in.field_id for answer_in in payload.answers]
-    if field_ids:
-        valid_field_ids = {
-            field_id
-            for (field_id,) in db.query(FormField.id).filter(
-                FormField.id.in_(field_ids),
-                FormField.form_id == form.id,
-                FormField.is_archived == False,
-            ).all()
-        }
-        invalid_field_ids = set(field_ids) - valid_field_ids
-        if invalid_field_ids:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid field_id(s) for this form: {sorted(invalid_field_ids)}",
-            )
+    invalid_field_ids = set(field_ids) - valid_field_ids
+    if invalid_field_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid field_id(s) for this form: {sorted(invalid_field_ids)}",
+        )
+
+    answers_by_field = {answer_in.field_id: answer_in.value for answer_in in payload.answers}
+    missing_required = missing_required_field_keys(active_fields, answers_by_field)
+    if missing_required:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required field(s): {sorted(missing_required)}",
+        )
 
     response = (
         db.query(FormResponse)
