@@ -12,10 +12,20 @@ from app.core.form import (
     set_field_config,
     update_field_text,
 )
+from app.core.form.membership import create_membership_on_first_submit
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
-from app.models.models import Form, FormAnswer, FormField, FormResponse, User, utcnow
+from app.models.models import (
+    Form,
+    FormAnswer,
+    FormChapterMembershipConfig,
+    FormField,
+    FormResponse,
+    FormTournamentMembershipConfig,
+    User,
+    utcnow,
+)
 from app.schemas.form import (
     FormCreate,
     FormFieldCreate,
@@ -61,6 +71,15 @@ def create_tournament_form(
         created_by=current_user.id,
     )
     db.add(form)
+    db.flush()
+
+    if form_in.tournament_membership_config is not None:
+        db.add(FormTournamentMembershipConfig(
+            form_id=form.id,
+            status_on_submit=form_in.tournament_membership_config.status_on_submit,
+            role_ids_on_submit=form_in.tournament_membership_config.role_ids_on_submit or None,
+        ))
+
     db.commit()
     db.refresh(form)
     return form
@@ -99,6 +118,14 @@ def create_chapter_form(
         created_by=current_user.id,
     )
     db.add(form)
+    db.flush()
+
+    if form_in.chapter_membership_config is not None:
+        db.add(FormChapterMembershipConfig(
+            form_id=form.id,
+            role_on_submit=form_in.chapter_membership_config.role_on_submit,
+        ))
+
     db.commit()
     db.refresh(form)
     return form
@@ -133,8 +160,10 @@ def get_form_for_rendering(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/ — name/description/status only. Adding/removing
-# tournament or chapter links isn't handled here yet.
+# PATCH /forms/{form_id}/ — name/description/status/membership config.
+# A membership_config payload for the "wrong" owner_type is ignored (PATCH
+# is a partial update, not worth 422ing over — FormCreate already prevents
+# ever creating a form with a mismatched config).
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/", response_model=FormRead)
 def update_form(
@@ -148,6 +177,23 @@ def update_form(
         form.description = form_in.description
     if form_in.status is not None:
         form.status = form_in.status
+    if form_in.creates_membership_on_submit is not None:
+        form.creates_membership_on_submit = form_in.creates_membership_on_submit
+
+    if form_in.tournament_membership_config is not None and form.owner_type == "tournament":
+        config = form.tournament_membership_config
+        if config is None:
+            config = FormTournamentMembershipConfig(form_id=form.id)
+            db.add(config)
+        config.status_on_submit = form_in.tournament_membership_config.status_on_submit
+        config.role_ids_on_submit = form_in.tournament_membership_config.role_ids_on_submit or None
+
+    if form_in.chapter_membership_config is not None and form.owner_type == "chapter":
+        config = form.chapter_membership_config
+        if config is None:
+            config = FormChapterMembershipConfig(form_id=form.id)
+            db.add(config)
+        config.role_on_submit = form_in.chapter_membership_config.role_on_submit
 
     db.commit()
     db.refresh(form)
@@ -320,6 +366,7 @@ def submit_form_response(
         .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
         .first()
     )
+    is_first_response = response is None
     if response is None:
         response = FormResponse(form_id=form.id, user_id=current_user.id)
         db.add(response)
@@ -330,6 +377,9 @@ def submit_form_response(
 
     for answer_in in response_in.answers:
         db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
+
+    if is_first_response:
+        create_membership_on_first_submit(db, form, current_user)
 
     db.commit()
     db.refresh(response)

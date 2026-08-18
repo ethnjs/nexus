@@ -43,6 +43,21 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_forms_id'), 'forms', ['id'], unique=False)
 
+    op.create_table('form_tournament_membership_configs',
+    sa.Column('form_id', sa.Integer(), nullable=False),
+    sa.Column('status_on_submit', sa.String(length=32), nullable=True),
+    sa.Column('role_ids_on_submit', sa.JSON(), nullable=True),
+    sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('form_id')
+    )
+
+    op.create_table('form_chapter_membership_configs',
+    sa.Column('form_id', sa.Integer(), nullable=False),
+    sa.Column('role_on_submit', sa.String(length=32), nullable=False),
+    sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('form_id')
+    )
+
     op.create_table('form_fields',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('form_id', sa.Integer(), nullable=False),
@@ -94,5 +109,7 @@ def downgrade() -> None:
     op.drop_table('form_responses')
     op.drop_index(op.f('ix_form_fields_id'), table_name='form_fields')
     op.drop_table('form_fields')
+    op.drop_table('form_chapter_membership_configs')
+    op.drop_table('form_tournament_membership_configs')
     op.drop_index(op.f('ix_forms_id'), table_name='forms')
     op.drop_table('forms')
