@@ -19,6 +19,7 @@ from app.core.form.permissions import require_form_manage_access, require_form_v
 from app.core.form.validation import (
     FormFieldValidationError,
     validate_availability_options,
+    validate_branching_options,
     validate_field_config,
     validate_reserved_field_key,
 )
@@ -284,6 +285,7 @@ def create_form_field(
     try:
         validate_field_config(payload.question_type, payload.config)
         validate_reserved_field_key(field_key, payload.question_type)
+        validate_branching_options(db, form.id, payload.question_type, payload.config or {})
         if field_key == "availability" and payload.question_type == "multi_select_checkbox":
             validate_availability_options(db, form.tournament_id, payload.config or {})
     except FormFieldValidationError as e:
@@ -330,6 +332,7 @@ def edit_form_field(
     try:
         validate_field_config(final_question_type, final_config)
         validate_reserved_field_key(field.field_key, final_question_type)
+        validate_branching_options(db, form.id, final_question_type, final_config or {}, field_id=field.id)
         if field.field_key == "availability" and final_question_type == "multi_select_checkbox":
             validate_availability_options(db, form.tournament_id, final_config or {})
     except FormFieldValidationError as e:

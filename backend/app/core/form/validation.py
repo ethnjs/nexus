@@ -3,7 +3,7 @@ backend/form-question-types-reference.md for the shapes enforced here."""
 
 from sqlalchemy.orm import Session
 
-from app.models.models import TournamentShift
+from app.models.models import FormField, TournamentShift
 
 
 class FormFieldValidationError(ValueError):
@@ -23,6 +23,8 @@ ALL_QUESTION_TYPES = QUESTION_TYPES_WITH_OPTIONS | {
     "short_text",
     "long_text",
 }
+
+BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
 # field_key values with a system-defined meaning. `lunch_{custom}` is also
 # reserved (any key starting with "lunch_") but its config shape isn't
@@ -104,6 +106,61 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
     _require(
         question_type in allowed_types,
         f"field_key '{field_key}' requires question_type in {sorted(allowed_types)}, got '{question_type}'",
+    )
+
+
+def validate_branching_options(
+    db: Session,
+    form_id: int,
+    question_type: str,
+    config: dict,
+    field_id: int | None = None,
+) -> None:
+    """`next_field_id`/`action` on an option are only valid on
+    single_select_radio/single_select_dropdown fields. `field_id` is the
+    field being edited (None on create, since a new field has no id yet
+    for an option to self-reference)."""
+    options = config.get("options") or []
+
+    if question_type not in BRANCHING_QUESTION_TYPES:
+        for option in options:
+            _require(
+                "next_field_id" not in option and "action" not in option,
+                "next_field_id/action are only valid on single_select_radio/single_select_dropdown options",
+            )
+        return
+
+    next_field_ids = set()
+    for option in options:
+        next_field_id = option.get("next_field_id")
+        action = option.get("action")
+        _require(
+            next_field_id is None or action is None,
+            "an option cannot have both next_field_id and action",
+        )
+        if action is not None:
+            _require(action == "submit_form", f"unknown option action '{action}'")
+        if next_field_id is not None:
+            _require(
+                isinstance(next_field_id, int) and not isinstance(next_field_id, bool),
+                "next_field_id must be an integer",
+            )
+            _require(next_field_id != field_id, "an option cannot jump to the field it belongs to")
+            next_field_ids.add(next_field_id)
+
+    if not next_field_ids:
+        return
+
+    valid_ids = {
+        fid
+        for (fid,) in db.query(FormField.id)
+        .filter(FormField.form_id == form_id, FormField.id.in_(next_field_ids), FormField.is_archived == False)
+        .all()
+    }
+    missing = next_field_ids - valid_ids
+    _require(
+        not missing,
+        f"next_field_id(s) do not reference an existing, non-archived field in this form: {sorted(missing)}",
     )
 
 
