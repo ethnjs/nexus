@@ -5,11 +5,13 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
+    field_key_taken_in_tournament,
     remove_form_field,
     reorder_field,
     replace_field_type,
     resolve_field_options,
     set_field_config,
+    slugify,
     update_field_text,
 )
 from app.core.form.membership import create_membership_on_first_submit
@@ -238,9 +240,14 @@ def delete_form(
 
 
 # ---------------------------------------------------------------------------
-# POST /forms/{form_id}/fields/ — MANAGE_FORMS on any linked tournament, or
-# lead/officer on any linked chapter (the form already exists and is
-# already linked, so the "any one" rule applies here, unlike form creation).
+# POST /forms/{form_id}/fields/ — field_key is TD-typed (separate from
+# label), normalized server-side via slugify(). For tournament-owned forms
+# the normalized key must be unique across every form that tournament owns
+# (not just this one) since it's a TD-visible dashboard lookup key;
+# collisions 409 rather than auto-suffixing so the TD can pick a more
+# distinct key instead of silently getting a different one than they typed.
+# Chapter-owned forms fall back to the plain per-form uniqueness the DB
+# constraint already enforces.
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/fields/", response_model=FormFieldRead, status_code=status.HTTP_201_CREATED)
 def create_form_field(
@@ -248,14 +255,25 @@ def create_form_field(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    if field_in.field_key is not None:
+    field_key = slugify(field_in.field_key)
+
+    if form.owner_type == "tournament":
+        if field_key_taken_in_tournament(db, form.tournament_id, field_key):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"field_key '{field_key}' is already in use elsewhere in this tournament — pick a more distinct label",
+            )
+    else:
         existing = (
             db.query(FormField)
-            .filter(FormField.form_id == form.id, FormField.field_key == field_in.field_key)
+            .filter(FormField.form_id == form.id, FormField.field_key == field_key)
             .first()
         )
         if existing:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="field_key already in use on this form")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"field_key '{field_key}' is already in use on this form — pick a more distinct label",
+            )
 
     order = field_in.order
     if order is None:
@@ -268,7 +286,7 @@ def create_form_field(
         label=field_in.label,
         description=field_in.description,
         question_type=field_in.question_type,
-        field_key=field_in.field_key,
+        field_key=field_key,
         config=field_in.config,
         is_archived=False,
     )

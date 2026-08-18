@@ -11,12 +11,11 @@ from sqlalchemy import (
     ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from typing import Optional
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
-from pydantic import field_validator
 
 
 def utcnow():
@@ -750,7 +749,11 @@ class FormField(Base):
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
 
-    field_key = Column(String(64), nullable=True)
+    # Dashboard lookup key — slugified from the TD-typed label at create
+    # time (see app/core/form.slugify) and stable afterward, even if the
+    # label is later edited. Unique per tournament, not just per form (see
+    # app/core/form.check_field_key_available_in_tournament).
+    field_key = Column(String(64), nullable=False)
 
     config = Column(JSON, nullable=True)
     # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
@@ -771,12 +774,11 @@ class FormField(Base):
         UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
     )
 
-    @field_validator("field_key")
-    @classmethod
-    def validate_field_key(cls, v: str | None) -> str | None:
-        if v is not None and not v.replace("_", "").isalnum():
+    @validates("field_key")
+    def validate_field_key(self, key, value):
+        if not value or not value.replace("_", "").isalnum():
             raise ValueError("field_key must be snake_case alphanumeric")
-        return v
+        return value
 
 
 # ---------------------------------------------------------------------------

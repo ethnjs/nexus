@@ -1,8 +1,29 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import FormAnswer, FormField, TournamentEvent
+from app.models.models import Form, FormAnswer, FormField, TournamentEvent
 
 import re # Regular Expressions for searching, matching, and extracting patterns in text strings
+
+
+def slugify(text: str, max_len: int = 64) -> str:
+    """Convert a TD-typed label into a snake_case field_key candidate."""
+    slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return slug[:max_len]
+
+
+def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: str) -> bool:
+    """True if `field_key` is already used by any FormField — archived
+    included, an archived key isn't released for reuse — belonging to any
+    Form owned by `tournament_id`. field_key is the TD-visible dashboard
+    lookup key, so it's unique tournament-wide, not just per form."""
+    return (
+        db.query(FormField)
+        .join(Form, Form.id == FormField.form_id)
+        .filter(Form.tournament_id == tournament_id, FormField.field_key == field_key)
+        .first()
+        is not None
+    )
+
 
 def remove_form_field(
         db: Session,

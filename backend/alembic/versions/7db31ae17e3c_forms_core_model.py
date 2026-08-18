@@ -65,7 +65,7 @@ def upgrade() -> None:
     sa.Column('label', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('question_type', sa.String(length=32), nullable=False),
-    sa.Column('field_key', sa.String(length=64), nullable=True),
+    sa.Column('field_key', sa.String(length=64), nullable=False),
     sa.Column('config', sa.JSON(), nullable=True),
     sa.Column('is_archived', sa.Boolean(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),

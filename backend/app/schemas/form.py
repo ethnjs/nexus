@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, model_validator
 class FormFieldRead(BaseModel):
     id: int
     form_id: int
-    field_key: str | None = None
+    field_key: str
     order: int
     label: str
     description: str | None = None
@@ -23,10 +23,13 @@ class FormFieldRead(BaseModel):
 
 
 class FormFieldCreate(BaseModel):
+    # field_key is TD-typed, separate from `label` — the TD's own name for
+    # the dashboard lookup key. Server-side slugify() normalizes it (see
+    # app/core/form.slugify)
     label: str
+    field_key: str
     question_type: str
     description: str | None = None
-    field_key: str | None = None
     order: int | None = None
     config: dict[str, Any] | None = None
 
