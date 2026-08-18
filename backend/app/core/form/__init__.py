@@ -172,13 +172,12 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     """
     # 1. Dynamic lookup: Tournament Event Preferences
     if field.field_key == "event_preference":
-        tournament_ids = [link.tournament_id for link in field.form.tournament_links] if field.form else []
-        if not tournament_ids:
+        if not (field.form and field.form.tournament_id):
             return []
 
         events = (
             db.query(TournamentEvent)
-            .filter(TournamentEvent.tournament_id.in_(tournament_ids))
+            .filter(TournamentEvent.tournament_id == field.form.tournament_id)
             .order_by(TournamentEvent.id.asc())
             .all()
         )

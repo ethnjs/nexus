@@ -283,7 +283,7 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
-    form_tournaments = relationship("FormTournament", back_populates="tournament", cascade="all, delete-orphan")
+    forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -618,7 +618,7 @@ class AlumniChapter(Base):
     chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
     tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
-    form_chapters = relationship("FormChapter", back_populates="chapter", cascade="all, delete-orphan")
+    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
 
 
 # ---------------------------------------------------------------------------
@@ -654,55 +654,42 @@ class TournamentChapter(Base):
 
 # ---------------------------------------------------------------------------
 # Form — a first-party form (replaces the Google Forms + sheet-sync
-# pipeline). Owned via FormTournament/FormChapter, not a direct FK — a form
-# can be linked to any combination of tournaments and chapters.
+# pipeline). Owned by exactly one tournament OR one chapter (owner_type +
+# CHECK constraint) — multi-tournament "group forms" are a later phase.
 # ---------------------------------------------------------------------------
 class Form(Base):
     __tablename__ = "forms"
 
     id = Column(Integer, primary_key=True, index=True)
+    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
+
+    # If true, a user's first response to this form also creates a pending
+    # membership on the owning tournament/chapter (see app/core/form).
+    creates_membership_on_submit = Column(Boolean, nullable=False, default=False)
+
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
+    tournament = relationship("Tournament", back_populates="forms")
+    chapter = relationship("AlumniChapter", back_populates="forms")
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
-    tournament_links = relationship("FormTournament", back_populates="form", cascade="all, delete-orphan")
-    chapter_links = relationship("FormChapter", back_populates="form", cascade="all, delete-orphan")
 
-
-# ---------------------------------------------------------------------------
-# FormTournament — junction table, Form <-> Tournament (many-to-many). A
-# form must have at least one FormTournament or FormChapter link, enforced
-# at the schema/service layer (can't CHECK across two tables).
-# ---------------------------------------------------------------------------
-class FormTournament(Base):
-    __tablename__ = "form_tournaments"
-
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), primary_key=True)
-
-    form = relationship("Form", back_populates="tournament_links")
-    tournament = relationship("Tournament", back_populates="form_tournaments")
-
-
-# ---------------------------------------------------------------------------
-# FormChapter — junction table, Form <-> AlumniChapter (many-to-many). See
-# FormTournament above — the same at-least-one-link rule applies jointly.
-# ---------------------------------------------------------------------------
-class FormChapter(Base):
-    __tablename__ = "form_chapters"
-
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), primary_key=True)
-
-    form = relationship("Form", back_populates="chapter_links")
-    chapter = relationship("AlumniChapter", back_populates="form_chapters")
+    __table_args__ = (
+        CheckConstraint(
+            "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "
+            "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
+            name="ck_form_owner_exclusive",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
