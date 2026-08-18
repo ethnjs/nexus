@@ -50,8 +50,10 @@ class FormRead(BaseModel):
     name: str
     description: str | None = None
     status: Literal["draft", "published", "archived"]
-    tournament_ids: list[int] = []
-    chapter_ids: list[int] = []
+    owner_type: Literal["tournament", "chapter"]
+    tournament_id: int | None = None
+    chapter_id: int | None = None
+    creates_membership_on_submit: bool = False
     created_by: int
     created_at: datetime
     updated_at: datetime
@@ -59,37 +61,23 @@ class FormRead(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
-    @model_validator(mode="before")
-    @classmethod
-    def _flatten_links(cls, obj):
-        # ORM objects expose tournament_ids/chapter_ids via the
-        # FormTournament/FormChapter join rows, not a plain column.
-        if isinstance(obj, dict):
-            return obj
-        return {
-            "id": obj.id,
-            "name": obj.name,
-            "description": obj.description,
-            "status": obj.status,
-            "tournament_ids": [link.tournament_id for link in obj.tournament_links],
-            "chapter_ids": [link.chapter_id for link in obj.chapter_links],
-            "created_by": obj.created_by,
-            "created_at": obj.created_at,
-            "updated_at": obj.updated_at,
-            "fields": obj.fields,
-        }
-
 
 class FormCreate(BaseModel):
     name: str
     description: str | None = None
-    tournament_ids: list[int] = []
-    chapter_ids: list[int] = []
+    owner_type: Literal["tournament", "chapter"]
+    tournament_id: int | None = None
+    chapter_id: int | None = None
+    creates_membership_on_submit: bool = False
 
     @model_validator(mode="after")
-    def _require_at_least_one_owner(self):
-        if not self.tournament_ids and not self.chapter_ids:
-            raise ValueError("Form must be linked to at least one tournament or chapter")
+    def _require_matching_owner(self):
+        if self.owner_type == "tournament":
+            if self.tournament_id is None or self.chapter_id is not None:
+                raise ValueError("owner_type 'tournament' requires tournament_id and no chapter_id")
+        else:
+            if self.chapter_id is None or self.tournament_id is not None:
+                raise ValueError("owner_type 'chapter' requires chapter_id and no tournament_id")
         return self
 
 
@@ -97,6 +85,7 @@ class FormUpdate(BaseModel):
     name: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
+    creates_membership_on_submit: bool | None = None
 
 
 # ---------------------------------------------------------------------------
