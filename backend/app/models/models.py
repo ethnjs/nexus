@@ -283,7 +283,7 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
-    forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
+    form_tournaments = relationship("FormTournament", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -605,7 +605,6 @@ class SheetConfig(Base):
 # ---------------------------------------------------------------------------
 # AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
 # ---------------------------------------------------------------------------
-
 class AlumniChapter(Base):
     __tablename__ = "alumni_chapters"
 
@@ -619,13 +618,12 @@ class AlumniChapter(Base):
     chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
     tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
-    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
+    form_chapters = relationship("FormChapter", back_populates="chapter", cascade="all, delete-orphan")
 
 
 # ---------------------------------------------------------------------------
 # ChapterMembership — join table, User <-> AlumniChapter.
 # ---------------------------------------------------------------------------
-
 class ChapterMembership(Base):
     __tablename__ = "chapter_memberships"
 
@@ -644,7 +642,6 @@ class ChapterMembership(Base):
 # ---------------------------------------------------------------------------
 # TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
 # ---------------------------------------------------------------------------
-
 class TournamentChapter(Base):
     __tablename__ = "tournament_chapters"
 
@@ -655,34 +652,64 @@ class TournamentChapter(Base):
     tournament = relationship("Tournament", back_populates="tournament_chapters")
     chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
 
+# ---------------------------------------------------------------------------
+# Form — a first-party form (replaces the Google Forms + sheet-sync
+# pipeline). Owned via FormTournament/FormChapter, not a direct FK — a form
+# can be linked to any combination of tournaments and chapters.
+# ---------------------------------------------------------------------------
 class Form(Base):
     __tablename__ = "forms"
 
     id = Column(Integer, primary_key=True, index=True)
-    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
-    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
-    tournament = relationship("Tournament", back_populates="forms")
-    chapter = relationship("AlumniChapter", back_populates="forms")
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
-
-    __table_args__ = (
-        CheckConstraint(
-            "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "
-            "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
-            name="ck_form_owner_exclusive",
-        ),
-    )
+    tournament_links = relationship("FormTournament", back_populates="form", cascade="all, delete-orphan")
+    chapter_links = relationship("FormChapter", back_populates="form", cascade="all, delete-orphan")
 
 
+# ---------------------------------------------------------------------------
+# FormTournament — junction table, Form <-> Tournament (many-to-many). A
+# form must have at least one FormTournament or FormChapter link, enforced
+# at the schema/service layer (can't CHECK across two tables).
+# ---------------------------------------------------------------------------
+class FormTournament(Base):
+    __tablename__ = "form_tournaments"
+
+    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), primary_key=True)
+
+    form = relationship("Form", back_populates="tournament_links")
+    tournament = relationship("Tournament", back_populates="form_tournaments")
+
+
+# ---------------------------------------------------------------------------
+# FormChapter — junction table, Form <-> AlumniChapter (many-to-many). See
+# FormTournament above — the same at-least-one-link rule applies jointly.
+# ---------------------------------------------------------------------------
+class FormChapter(Base):
+    __tablename__ = "form_chapters"
+
+    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), primary_key=True)
+
+    form = relationship("Form", back_populates="chapter_links")
+    chapter = relationship("AlumniChapter", back_populates="form_chapters")
+
+
+# ---------------------------------------------------------------------------
+# FormField — a single question on a Form. question_type drives how config
+# is shaped (see comments inline below). Removing a field with existing
+# answers archives it instead of deleting (see app/core/form).
+# ---------------------------------------------------------------------------
 class FormField(Base):
     __tablename__ = "form_fields"
 
@@ -695,8 +722,8 @@ class FormField(Base):
     question_type = Column(String(32), nullable=False)
     # short_text | paragraph | single_select_radio | single_select_dropdown
     # | multi_select | ranked_choice | grid | shift_select | page_break
-    
-    field_key = Column(String(64), nullable=False)
+
+    field_key = Column(String(64), nullable=True)
 
     config = Column(JSON, nullable=True)
     # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
@@ -705,8 +732,10 @@ class FormField(Base):
     #   "column_selection": "single"|"multiple"}
     # For "page_break": unused, null
 
-    required = Column(Boolean, nullable=False, default=False)
     is_archived = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     form = relationship("Form", back_populates="fields")
     answer = relationship("FormAnswer", back_populates="field")
@@ -717,12 +746,16 @@ class FormField(Base):
 
     @field_validator("field_key")
     @classmethod
-    def validate_field_key(cls, v: str) -> str:
-        if not v.replace("_", "").isalnum():
+    def validate_field_key(cls, v: str | None) -> str | None:
+        if v is not None and not v.replace("_", "").isalnum():
             raise ValueError("field_key must be snake_case alphanumeric")
         return v
 
 
+# ---------------------------------------------------------------------------
+# FormResponse — one row per (form, user). Resubmitting overwrites the
+# existing response's answers in place; no submission history is kept.
+# ---------------------------------------------------------------------------
 class FormResponse(Base):
     __tablename__ = "form_responses"
 
@@ -742,6 +775,10 @@ class FormResponse(Base):
     )
 
 
+# ---------------------------------------------------------------------------
+# FormAnswer — one row per (response, field). Generic value storage; shape
+# of `value` depends on the field's question_type.
+# ---------------------------------------------------------------------------
 class FormAnswer(Base):
     __tablename__ = "form_answers"
 

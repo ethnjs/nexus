@@ -54,7 +54,6 @@ def replace_field_type(
         description=field.description,
         question_type=new_type,
         field_key=old_key,
-        required=field.required,
         is_archived=False,
     )
 
@@ -150,24 +149,26 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     """
     # 1. Dynamic lookup: Tournament Event Preferences
     if field.field_key == "event_preference":
-        if field.form and field.form.tournament_id:
-            events = (
-                db.query(TournamentEvent)
-                .filter(TournamentEvent.tournament_id == field.form.tournament_id)
-                .order_by(TournamentEvent.id.asc())
-                .all()
-            )
-            return [
-                {
-                    "id": f"opt_{event.id}",
-                    "label": event.name,
-                    "archived": False,
-                    "next_section_id": None,
-                    "allow_other": False,
-                }
-                for event in events
-            ]
-        return []
+        tournament_ids = [link.tournament_id for link in field.form.tournament_links] if field.form else []
+        if not tournament_ids:
+            return []
+
+        events = (
+            db.query(TournamentEvent)
+            .filter(TournamentEvent.tournament_id.in_(tournament_ids))
+            .order_by(TournamentEvent.id.asc())
+            .all()
+        )
+        return [
+            {
+                "id": f"opt_{event.id}",
+                "label": event.name,
+                "archived": False,
+                "next_section_id": None,
+                "allow_other": False,
+            }
+            for event in events
+        ]
 
     # 2. Stubbed dynamic lookup: Availability & Lunch
     elif field.field_key in ("availability", "lunch"):
