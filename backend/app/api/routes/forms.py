@@ -13,8 +13,17 @@ from app.core.form import (
 )
 from app.core.form.permissions import require_form_manage_access, require_form_view_access, user_can_link_all
 from app.db.session import get_db
-from app.models.models import Form, FormChapter, FormField, FormResponse, FormTournament, User
-from app.schemas.form import FormCreate, FormFieldCreate, FormFieldRead, FormFieldUpdate, FormRead, FormUpdate
+from app.models.models import Form, FormAnswer, FormChapter, FormField, FormResponse, FormTournament, User, utcnow
+from app.schemas.form import (
+    FormCreate,
+    FormFieldCreate,
+    FormFieldRead,
+    FormFieldUpdate,
+    FormRead,
+    FormResponseCreate,
+    FormResponseRead,
+    FormUpdate,
+)
 
 router = APIRouter(tags=["forms"])
 
@@ -230,3 +239,90 @@ def delete_or_archive_form_field(
         "action": "archived" if was_archived else "deleted",
         "field_id": field_id,
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /forms/{form_id}/responses/ — submit or resubmit. One row per
+# (form, user); resubmitting replaces all of that user's answers in place
+# (no submission history). View access, not manage — this is what the
+# person filling the form out calls.
+# ---------------------------------------------------------------------------
+@router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
+def submit_form_response(
+    response_in: FormResponseCreate,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_view_access),
+    current_user: User = Depends(get_current_user),
+):
+    field_ids = [answer_in.field_id for answer_in in response_in.answers]
+    if field_ids:
+        valid_field_ids = {
+            field_id
+            for (field_id,) in db.query(FormField.id).filter(
+                FormField.id.in_(field_ids),
+                FormField.form_id == form.id,
+                FormField.is_archived == False,
+            ).all()
+        }
+        invalid_field_ids = set(field_ids) - valid_field_ids
+        if invalid_field_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid field_id(s) for this form: {sorted(invalid_field_ids)}",
+            )
+
+    response = (
+        db.query(FormResponse)
+        .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
+        .first()
+    )
+    if response is None:
+        response = FormResponse(form_id=form.id, user_id=current_user.id)
+        db.add(response)
+        db.flush()
+    else:
+        db.query(FormAnswer).filter(FormAnswer.response_id == response.id).delete()
+        response.updated_at = utcnow()
+
+    for answer_in in response_in.answers:
+        db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
+
+    db.commit()
+    db.refresh(response)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# GET /forms/{form_id}/responses/ — all responses to a form. Manage access
+# only — this is roster data, not something every member should see.
+# ---------------------------------------------------------------------------
+@router.get("/forms/{form_id}/responses/", response_model=list[FormResponseRead])
+def list_form_responses(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    return (
+        db.query(FormResponse)
+        .filter(FormResponse.form_id == form.id)
+        .order_by(FormResponse.id)
+        .all()
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /forms/{form_id}/responses/me/ — the current user's own response.
+# ---------------------------------------------------------------------------
+@router.get("/forms/{form_id}/responses/me/", response_model=FormResponseRead)
+def get_my_form_response(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_view_access),
+    current_user: User = Depends(get_current_user),
+):
+    response = (
+        db.query(FormResponse)
+        .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
+        .first()
+    )
+    if not response:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No response found")
+    return response
