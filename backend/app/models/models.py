@@ -606,6 +606,14 @@ class TournamentShift(Base):
     def event_count(self) -> int:
         return len(self.tournament_events)
 
+    # Unlike event_count (advisory only — deletion still cascades through
+    # events), a nonzero availability_count hard-blocks deletion — see
+    # delete_shift. Availability write-through is membership-owned data,
+    # not something a shift edit should silently detach.
+    @property
+    def availability_count(self) -> int:
+        return len(self.membership_availabilities)
+
 
 # ---------------------------------------------------------------------------
 # TournamentEventShift — bridge table: TournamentEvent <-> TournamentShift.

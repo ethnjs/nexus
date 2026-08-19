@@ -95,9 +95,15 @@ def update_shift(
 
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/shifts/{shift_id}/ — manage_events
-# No guard — cascades through tournament_event_shifts (ondelete="CASCADE"),
-# silently detaching from any events it was attached to. Intentionally
-# different from how TimeBlock deletion worked in the old scrapped design.
+# Event references are not a guard — deletion cascades through
+# tournament_event_shifts (ondelete="CASCADE"), silently detaching from any
+# events it was attached to. Intentionally different from how TimeBlock
+# deletion worked in the old scrapped design.
+#
+# Membership availability *is* a hard guard, unlike events — it's
+# member-submitted data (write-through from a form response, see
+# app/core/form/write_through.py), not planning structure a TD can just
+# re-derive, so silently cascading it away on a shift edit isn't acceptable.
 # ---------------------------------------------------------------------------
 @router.delete("/{shift_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shift(
@@ -110,6 +116,13 @@ def delete_shift(
     require_not_archived(tournament)
 
     shift = get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
+
+    if shift.availability_count:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Shift has {shift.availability_count} membership availability selection(s) — cannot delete",
+        )
+
     db.delete(shift)
     db.commit()
 
