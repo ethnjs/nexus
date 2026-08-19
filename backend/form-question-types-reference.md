@@ -115,8 +115,8 @@ Only `single_select_radio` and `single_select_dropdown` options may carry branch
 
 | `field_key` | Allowed `question_type`(s) | Write-through |
 |---|---|---|
-| `availability` | `multi_select_checkbox` only | `MembershipAvailability` (tournament-owned forms only) |
-| `lunch_{custom}` — TD fills in `{custom}` per lunch question (e.g. `lunch_protein`, `lunch_drink`), one per `TournamentLunchOption` category | single/multi-select depending on the category's `allow_multiple` (config shape still open, discussed in the write-through issue) | `MembershipLunchSelection` (tournament-owned forms only) |
+| `availability` | `multi_select_checkbox` only | `TournamentMembershipAvailability` (tournament-owned forms only) |
+| `lunch_{date}_{category}` — e.g. `lunch_20270213_protein` (`^lunch_\d{8}_[a-z0-9_]+$`), one per (date, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); no catalog table — stores whatever option was selected, keyed by category string |
 | `event_preference` | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer` (option `value` should be a real `TournamentEvent` id, not yet strictly validated) |
 | any TD-typed slug | any type | none — generic `FormAnswer` |
 

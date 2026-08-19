@@ -9,6 +9,8 @@ what a stateless schema can't check: DB-backed lookups (next_field_id
 resolving to a real field, availability options resolving to a real
 TournamentShift) and reserved field_key pairing."""
 
+import re
+
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -17,13 +19,17 @@ from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
-# field_key values with a system-defined meaning. `lunch_{custom}` is also
-# reserved (any key starting with "lunch_") but its config shape isn't
-# designed yet, so it isn't enforced here — see form-question-types-reference.md.
+# field_key values with a system-defined meaning.
 RESERVED_FIELD_KEY_QUESTION_TYPES = {
     "availability": {"multi_select_checkbox"},
     "event_preference": {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"},
 }
+
+# lunch_{date}_{category}, e.g. "lunch_20270213_protein" — date is baked
+# into the key, so per-tournament field_key uniqueness already covers
+# per-(date, category) uniqueness with no separate check needed.
+LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_\d{8}_[a-z0-9_]+$")
+LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
 
 class FormFieldValidationError(ValueError):
@@ -52,11 +58,18 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
 
 
 def validate_reserved_field_key(field_key: str, question_type: str) -> None:
-    """Reserved field_keys (availability, event_preference) reuse an
+    """Reserved field_keys (availability, event_preference, lunch_*) reuse an
     existing structural question_type rather than introducing their own —
     reject a reserved key paired with a question_type it doesn't allow.
     Applies identically regardless of owner_type (tournament vs. chapter);
     only write-through, not validation, differs by ownership."""
+    if LUNCH_FIELD_KEY_PATTERN.match(field_key):
+        _require(
+            question_type in LUNCH_QUESTION_TYPES,
+            f"field_key '{field_key}' requires question_type in {sorted(LUNCH_QUESTION_TYPES)}, got '{question_type}'",
+        )
+        return
+
     allowed_types = RESERVED_FIELD_KEY_QUESTION_TYPES.get(field_key)
     if allowed_types is None:
         return
