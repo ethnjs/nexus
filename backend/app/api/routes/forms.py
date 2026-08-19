@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
+    field_has_answers,
     field_key_taken_in_tournament,
     remove_form_field,
     reorder_field,
@@ -282,7 +283,11 @@ def create_form_field(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/fields/{field_id}/
+# PATCH /forms/{form_id}/fields/{field_id}/ — locked once the field has any
+# FormAnswer (see field_has_answers): editing label/config/type of an
+# already-answered field would silently invalidate submitted data, so it's
+# a flat reject rather than a partial one. New fields on a published form
+# are unaffected — they start with zero answers.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/fields/{field_id}/", response_model=FormFieldRead)
 def edit_form_field(
@@ -294,6 +299,12 @@ def edit_form_field(
     field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+
+    if field_has_answers(db, field.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Field has existing answers — it cannot be edited",
+        )
 
     final_question_type = payload.question_type if payload.question_type is not None else field.question_type
     final_config = payload.config if payload.config is not None else field.config

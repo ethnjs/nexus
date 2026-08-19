@@ -25,14 +25,18 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
     )
 
 
+def field_has_answers(db: Session, field_id: int) -> bool:
+    """True if any FormAnswer exists for this field — locks it against
+    edit (see forms.py's edit_form_field) and hard delete (below)."""
+    return db.query(FormAnswer).filter(FormAnswer.field_id == field_id).first() is not None
+
+
 def remove_form_field(
         db: Session,
         field: FormField
 ) -> bool:
-    
-    has_answers = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).first() is not None
 
-    if has_answers:
+    if field_has_answers(db, field.id):
         field.is_archived = True
         db.commit()
         return True
