@@ -60,11 +60,11 @@ class VerificationToken(Base):
     token_hash = Column(String(255), nullable=False, index=True, unique=True)
     purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
     new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
- 
+
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
- 
+
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
@@ -122,6 +122,28 @@ class Event(Base):
 
 
 # ---------------------------------------------------------------------------
+# SeasonEvent — admin-curated "this canonical event, in this division, is
+# active this year" list. Drives the tournament events bulk-load default
+# list (see TournamentEvent); independent of any single tournament.
+# ---------------------------------------------------------------------------
+class SeasonEvent(Base):
+    __tablename__ = "season_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    year = Column(Integer, nullable=False)
+    division = Column(String(4), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # User — core identity for volunteers, TDs, and admins.
 # role="admin" bypasses all tournament permission checks; "user" is gated by
 # TournamentMembershipRole. Sheet-synced volunteers have hashed_password=None.
@@ -142,7 +164,7 @@ class User(Base):
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
-    
+
     # if a student
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     major = Column(String(255), nullable=True)
@@ -152,14 +174,14 @@ class User(Base):
 
     # if not a student
     employer = Column(String(255), nullable=True)
-    
+
     has_competition_experience = Column(Boolean, nullable=True)
     has_volunteer_experience = Column(Boolean, nullable=True)
     # has_stem_experience = Column(Boolean, nullable=True)        # debatable
 
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
-    
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -210,18 +232,53 @@ class UserVolunteerExperience(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
-    
+
     # manual add by the user
     tournament_name = Column(String(255), nullable=False)
     year = Column(Integer, nullable=False)
     event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
     role = Column(String(63), nullable=False)
-    
+
     notes = Column(JSON, nullable=True)  # {"event": custom name, "other": free notes}
 
     user = relationship("User", back_populates="volunteer_experience")
     event = relationship("Event", back_populates="user_volunteer_experience")
 
+
+# ---------------------------------------------------------------------------
+# AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
+# ---------------------------------------------------------------------------
+class AlumniChapter(Base):
+    __tablename__ = "alumni_chapters"
+
+    id = Column(Integer,  primary_key=True)
+    name = Column(String(255), nullable=False)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    university = relationship("University", back_populates="alumni_chapter")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
+    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
+
+
+# ---------------------------------------------------------------------------
+# ChapterMembership — join table, User <-> AlumniChapter.
+# ---------------------------------------------------------------------------
+class ChapterMembership(Base):
+    __tablename__ = "chapter_memberships"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
+    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
+    joined_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
+    user = relationship("User", back_populates="chapter_membership")
 
 
 # ---------------------------------------------------------------------------
@@ -344,21 +401,23 @@ class TournamentMembership(Base):
     tournament = relationship("Tournament", back_populates="memberships")
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
     join_code = relationship("JoinCode")
+    availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
+    lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
         if self.user.date_of_birth is None:
             return None
-        
+
         return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 18)
-    
+
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
         if self.user.date_of_birth is None:
             return None
-        
+
         return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 21)
-    
+
     # TODO: add .expression variants for server-side age filtering once needed.
 
     __table_args__ = (
@@ -476,7 +535,7 @@ class TournamentEvent(Base):
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
-    
+
     # Custom (event_id-less) events only
     name = Column(String(255), nullable=True)
     division = Column(String(4), nullable=True)           # "A" | "B" | "C"
@@ -536,6 +595,9 @@ class TournamentShift(Base):
     tournament_events = relationship(
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
+    membership_availabilities = relationship(
+        "TournamentMembershipAvailability", back_populates="tournament_shift", cascade="all, delete-orphan"
+    )
 
     # Read by TournamentShiftRead — how many events this shift is attached
     # to, for the delete-confirm warning. Callers that list many shifts
@@ -556,26 +618,17 @@ class TournamentEventShift(Base):
 
 
 # ---------------------------------------------------------------------------
-# SeasonEvent — admin-curated "this canonical event, in this division, is
-# active this year" list. Drives the tournament events bulk-load default
-# list (see TournamentEvent); independent of any single tournament.
+# TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
 # ---------------------------------------------------------------------------
-class SeasonEvent(Base):
-    __tablename__ = "season_events"
+class TournamentChapter(Base):
+    __tablename__ = "tournament_chapters"
 
-    id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    year = Column(Integer, nullable=False)
-    division = Column(String(4), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
 
-    event = relationship("Event")
-
-    __table_args__ = (
-        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
-    )
-
+    # Relationships
+    tournament = relationship("Tournament", back_populates="tournament_chapters")
+    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
 
 # ---------------------------------------------------------------------------
 # SheetConfig
@@ -600,56 +653,6 @@ class SheetConfig(Base):
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
 
-
-# ---------------------------------------------------------------------------
-# AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
-# ---------------------------------------------------------------------------
-class AlumniChapter(Base):
-    __tablename__ = "alumni_chapters"
-
-    id = Column(Integer,  primary_key=True)
-    name = Column(String(255), nullable=False)
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-
-    # Relationships
-    university = relationship("University", back_populates="alumni_chapter")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
-    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
-
-
-# ---------------------------------------------------------------------------
-# ChapterMembership — join table, User <-> AlumniChapter.
-# ---------------------------------------------------------------------------
-class ChapterMembership(Base):
-    __tablename__ = "chapter_memberships"
-
-    id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
-    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
-    joined_at = Column(DateTime(timezone=True), default=utcnow)
-
-    # Relationships
-    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
-    user = relationship("User", back_populates="chapter_membership")
-
-
-
-# ---------------------------------------------------------------------------
-# TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
-# ---------------------------------------------------------------------------
-class TournamentChapter(Base):
-    __tablename__ = "tournament_chapters"
-
-    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
-
-    # Relationships
-    tournament = relationship("Tournament", back_populates="tournament_chapters")
-    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
 
 # ---------------------------------------------------------------------------
 # Form — a first-party form (replaces the Google Forms + sheet-sync
@@ -777,4 +780,45 @@ class FormAnswer(Base):
 
     __table_args__ = (
         UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipAvailability — write-through target for a form's "availability"
+# field_key answer. Reuses TournamentShift directly, no separate catalog.
+# ---------------------------------------------------------------------------
+class TournamentMembershipAvailability(Base):
+    __tablename__ = "tournament_membership_availability"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="availability_shifts")
+    tournament_shift = relationship("TournamentShift", back_populates="membership_availabilities")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "tournament_shift_id", name="uq_membership_availability"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipLunch — write-through target for a form's
+# "lunch_{date}_{category}" field_key answers. Stores whatever was actually
+# selected, keyed by category string — no dedicated menu/catalog table.
+# ---------------------------------------------------------------------------
+class TournamentMembershipLunch(Base):
+    __tablename__ = "tournament_membership_lunch"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    category = Column(String(64), nullable=False)
+    value = Column(String(64), nullable=False)
+    label = Column(String(255), nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="lunch_selections")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "date", "category", "value", name="uq_membership_lunch_selection"),
     )

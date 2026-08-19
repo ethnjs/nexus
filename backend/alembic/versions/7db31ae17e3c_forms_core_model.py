@@ -9,6 +9,11 @@ form_responses/form_answers) into one. Local-dev-only history, so squashing
 instead of layering a third migration on top of a broken shape. Form
 ownership is single tournament-or-chapter (owner_type + CHECK constraint) —
 multi-tournament "group forms" are a later, separate phase.
+
+Also includes tournament_membership_availability and tournament_membership_lunch —
+write-through targets for the "availability" and "lunch_{date}_{category}"
+reserved field_keys. Squashed in here rather than a new migration, same
+local-dev-only reasoning as above.
 """
 from typing import Sequence, Union
 
@@ -85,8 +90,36 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_form_answers_id'), 'form_answers', ['id'], unique=False)
 
+    op.create_table('tournament_membership_availability',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('tournament_shift_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_shift_id'], ['tournament_shifts.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('membership_id', 'tournament_shift_id', name='uq_membership_availability')
+    )
+    op.create_index(op.f('ix_tournament_membership_availability_id'), 'tournament_membership_availability', ['id'], unique=False)
+
+    op.create_table('tournament_membership_lunch',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('date', sa.Date(), nullable=False),
+    sa.Column('category', sa.String(length=64), nullable=False),
+    sa.Column('value', sa.String(length=64), nullable=False),
+    sa.Column('label', sa.String(length=255), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('membership_id', 'date', 'category', 'value', name='uq_membership_lunch_selection')
+    )
+    op.create_index(op.f('ix_tournament_membership_lunch_id'), 'tournament_membership_lunch', ['id'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_tournament_membership_lunch_id'), table_name='tournament_membership_lunch')
+    op.drop_table('tournament_membership_lunch')
+    op.drop_index(op.f('ix_tournament_membership_availability_id'), table_name='tournament_membership_availability')
+    op.drop_table('tournament_membership_availability')
     op.drop_index(op.f('ix_form_answers_id'), table_name='form_answers')
     op.drop_table('form_answers')
     op.drop_index(op.f('ix_form_responses_id'), table_name='form_responses')
