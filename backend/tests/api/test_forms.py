@@ -1,7 +1,7 @@
 """Route tests for /forms/ (app/api/routes/forms.py). Model CRUD, field
-helpers, slugify/uniqueness, the creates_membership_on_submit side effect,
-and the access-control dependency functions are covered directly in
-tests/core/test_forms.py — this file exercises the HTTP layer on top."""
+helpers, slugify/uniqueness, and the access-control dependency functions are
+covered directly in tests/core/test_forms.py — this file exercises the HTTP
+layer on top."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -16,7 +16,6 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
-    TournamentMembership,
     TournamentShift,
 )
 
@@ -191,13 +190,6 @@ class TestGetForm:
         login(client, "other@test.com", "otherpass")
         res = client.get(f"/forms/{form.id}/")
         assert res.status_code == 403
-
-    def test_non_member_allowed_when_creates_membership_on_submit(self, client, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.commit()
-        login(client, "other@test.com", "otherpass")
-        res = client.get(f"/forms/{form.id}/")
-        assert res.status_code == 200
 
     def test_missing_form_404(self, client, td_user):
         login(client, "td@test.com", "tdpass")
@@ -454,20 +446,6 @@ class TestSubmitResponse:
         login(client, "other@test.com", "otherpass")
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert res.status_code == 403
-
-    def test_non_member_can_submit_when_creates_membership_on_submit(self, client, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.commit()
-        login(client, "other@test.com", "otherpass")
-
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
-        assert res.status_code == 200
-
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.user_id == other_user.id,
-            TournamentMembership.tournament_id == td_tournament.id,
-        ).one()
-        assert membership.status == "interested"
 
 
 # ---------------------------------------------------------------------------

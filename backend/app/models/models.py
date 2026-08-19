@@ -667,10 +667,6 @@ class Form(Base):
     description = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
 
-    # If true, a user's first response to this form also creates a pending
-    # membership on the owning tournament/chapter (see app/core/form).
-    creates_membership_on_submit = Column(Boolean, nullable=False, default=False)
-
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -681,12 +677,6 @@ class Form(Base):
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
-    tournament_membership_config = relationship(
-        "FormTournamentMembershipConfig", back_populates="form", uselist=False, cascade="all, delete-orphan"
-    )
-    chapter_membership_config = relationship(
-        "FormChapterMembershipConfig", back_populates="form", uselist=False, cascade="all, delete-orphan"
-    )
 
     __table_args__ = (
         CheckConstraint(
@@ -695,40 +685,6 @@ class Form(Base):
             name="ck_form_owner_exclusive",
         ),
     )
-
-
-# ---------------------------------------------------------------------------
-# FormTournamentMembershipConfig — optional per-form config for what
-# creates_membership_on_submit does on a tournament-owned Form. Absent row =
-# use defaults (TournamentMembership's own status default, no extra roles).
-# ---------------------------------------------------------------------------
-class FormTournamentMembershipConfig(Base):
-    __tablename__ = "form_tournament_membership_configs"
-
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-
-    # "interested" | "confirmed" | None (None = TournamentMembership default
-    # on create; an existing membership's status is never touched either way)
-    status_on_submit = Column(String(32), nullable=True)
-
-    # list[int] of TournamentRole ids to attach via TournamentMembershipRole
-    role_ids_on_submit = Column(JSON, nullable=True)
-
-    form = relationship("Form", back_populates="tournament_membership_config")
-
-
-# ---------------------------------------------------------------------------
-# FormChapterMembershipConfig — optional per-form config for what
-# creates_membership_on_submit does on a chapter-owned Form. Absent row =
-# defaults to role_on_submit="member".
-# ---------------------------------------------------------------------------
-class FormChapterMembershipConfig(Base):
-    __tablename__ = "form_chapter_membership_configs"
-
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
-    role_on_submit = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
-
-    form = relationship("Form", back_populates="chapter_membership_config")
 
 
 # ---------------------------------------------------------------------------

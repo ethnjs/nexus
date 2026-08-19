@@ -1,7 +1,7 @@
 """Tests for app/core/form — model CRUD building blocks, field-editing
-helpers, field_key derivation/uniqueness, the creates_membership_on_submit
-side effect, and the access-control dependency functions, all exercised
-directly (no HTTP layer). See tests/api/test_forms.py for the routes."""
+helpers, field_key derivation/uniqueness, and the access-control dependency
+functions, all exercised directly (no HTTP layer). See tests/api/test_forms.py
+for the routes."""
 import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -16,19 +16,13 @@ from app.core.form import (
     replace_field_type,
     slugify,
 )
-from app.core.form.membership import create_membership_on_first_submit
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.models.models import (
     ChapterMembership,
     Form,
     FormAnswer,
-    FormChapterMembershipConfig,
     FormField,
     FormResponse,
-    FormTournamentMembershipConfig,
-    TournamentMembership,
-    TournamentMembershipRole,
-    TournamentRole,
 )
 
 
@@ -103,8 +97,7 @@ def _chapter_lead(db, chapter, email="chapterlead@test.com", password="LeadPass1
 
 
 # ---------------------------------------------------------------------------
-# Model-level CRUD — Form, FormField, FormResponse, FormAnswer,
-# FormTournamentMembershipConfig, FormChapterMembershipConfig
+# Model-level CRUD — Form, FormField, FormResponse, FormAnswer
 # ---------------------------------------------------------------------------
 
 class TestModelCRUD:
@@ -187,23 +180,6 @@ class TestModelCRUD:
         with pytest.raises(IntegrityError):
             db.flush()
         db.rollback()
-
-    def test_tournament_membership_config_round_trip(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.add(FormTournamentMembershipConfig(form_id=form.id, status_on_submit="confirmed", role_ids_on_submit=[1, 2]))
-        db.commit()
-        db.refresh(form)
-
-        assert form.tournament_membership_config.status_on_submit == "confirmed"
-        assert form.tournament_membership_config.role_ids_on_submit == [1, 2]
-
-    def test_chapter_membership_config_round_trip(self, db, td_user, chapter):
-        form = _make_chapter_form(db, td_user, chapter, creates_membership_on_submit=True)
-        db.add(FormChapterMembershipConfig(form_id=form.id, role_on_submit="officer"))
-        db.commit()
-        db.refresh(form)
-
-        assert form.chapter_membership_config.role_on_submit == "officer"
 
     def test_deleting_tournament_cascades_to_forms(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -325,121 +301,6 @@ class TestSlugifyAndUniqueness:
 
 
 # ---------------------------------------------------------------------------
-# creates_membership_on_submit
-# ---------------------------------------------------------------------------
-
-class TestMembershipOnSubmit:
-    def test_noop_when_flag_false(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=False)
-        db.commit()
-        new_user = make_user(db, "flagoff@test.com", password="Pass123!")
-
-        create_membership_on_first_submit(db, form, new_user)
-        db.commit()
-
-        assert db.query(TournamentMembership).filter(TournamentMembership.user_id == new_user.id).count() == 0
-
-    def test_tournament_new_member_gets_default_status_and_no_roles(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.commit()
-        new_user = make_user(db, "newtdmember1@test.com", password="Pass123!")
-
-        create_membership_on_first_submit(db, form, new_user)
-        db.commit()
-
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.user_id == new_user.id,
-            TournamentMembership.tournament_id == td_tournament.id,
-        ).one()
-        assert membership.status == "interested"
-        assert membership.source == "manual"
-        assert db.query(TournamentMembershipRole).filter(TournamentMembershipRole.membership_id == membership.id).count() == 0
-
-    def test_tournament_config_applies_status_and_roles(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        role = TournamentRole(tournament_id=td_tournament.id, label="Custom Role", rank=99, permissions=[])
-        db.add(role)
-        db.flush()
-        db.add(FormTournamentMembershipConfig(form_id=form.id, status_on_submit="confirmed", role_ids_on_submit=[role.id]))
-        db.flush()
-        new_user = make_user(db, "newtdmember2@test.com", password="Pass123!")
-
-        create_membership_on_first_submit(db, form, new_user)
-        db.commit()
-
-        membership = db.query(TournamentMembership).filter(
-            TournamentMembership.user_id == new_user.id,
-            TournamentMembership.tournament_id == td_tournament.id,
-        ).one()
-        assert membership.status == "confirmed"
-
-        role_ids = [
-            r.role_id
-            for r in db.query(TournamentMembershipRole).filter(TournamentMembershipRole.membership_id == membership.id)
-        ]
-        assert role_ids == [role.id]
-
-    def test_tournament_skips_and_leaves_status_untouched_when_membership_exists(self, db, td_user, td_tournament):
-        # td_user already has a "confirmed" membership via the td_tournament fixture
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.add(FormTournamentMembershipConfig(form_id=form.id, status_on_submit="interested"))
-        db.commit()
-
-        create_membership_on_first_submit(db, form, td_user)
-        db.commit()
-
-        memberships = db.query(TournamentMembership).filter(
-            TournamentMembership.user_id == td_user.id,
-            TournamentMembership.tournament_id == td_tournament.id,
-        ).all()
-        assert len(memberships) == 1
-        assert memberships[0].status == "confirmed"  # untouched, not reset to "interested"
-
-    def test_chapter_new_member_gets_default_role(self, db, chapter):
-        lead = _chapter_lead(db, chapter)
-        form = _make_chapter_form(db, lead, chapter, creates_membership_on_submit=True)
-        db.commit()
-        new_user = make_user(db, "newchaptermember1@test.com", password="Pass123!")
-
-        create_membership_on_first_submit(db, form, new_user)
-        db.commit()
-
-        membership = db.query(ChapterMembership).filter(ChapterMembership.user_id == new_user.id).one()
-        assert membership.role == "member"
-        assert membership.chapter_id == chapter.id
-
-    def test_chapter_config_applies_role(self, db, chapter):
-        lead = _chapter_lead(db, chapter)
-        form = _make_chapter_form(db, lead, chapter, creates_membership_on_submit=True)
-        db.add(FormChapterMembershipConfig(form_id=form.id, role_on_submit="officer"))
-        db.commit()
-        new_user = make_user(db, "newchaptermember2@test.com", password="Pass123!")
-
-        create_membership_on_first_submit(db, form, new_user)
-        db.commit()
-
-        membership = db.query(ChapterMembership).filter(ChapterMembership.user_id == new_user.id).one()
-        assert membership.role == "officer"
-
-    def test_chapter_skips_if_user_already_in_a_different_chapter(self, db, chapter):
-        other_university = make_university(db)
-        other_chapter = make_chapter(db, other_university.id)
-        user = make_user(db, "alreadyelsewhere@test.com", password="Pass123!")
-        db.add(ChapterMembership(chapter_id=other_chapter.id, user_id=user.id, role="member"))
-        db.commit()
-
-        lead = _chapter_lead(db, chapter)
-        form = _make_chapter_form(db, lead, chapter, creates_membership_on_submit=True)
-        db.commit()
-
-        create_membership_on_first_submit(db, form, user)
-        db.commit()
-
-        membership = db.query(ChapterMembership).filter(ChapterMembership.user_id == user.id).one()
-        assert membership.chapter_id == other_chapter.id  # unchanged, no second row created
-
-
-# ---------------------------------------------------------------------------
 # require_form_manage_access / require_form_view_access
 # ---------------------------------------------------------------------------
 
@@ -482,15 +343,8 @@ class TestAccessDependencies:
             require_form_manage_access(form.id, db, member)
         assert exc_info.value.status_code == 403
 
-    def test_view_access_creates_membership_flag_bypasses_membership_requirement(self, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=True)
-        db.commit()
-        # other_user has NO membership in td_tournament at all
-        result = require_form_view_access(form.id, db, other_user)
-        assert result.id == form.id
-
-    def test_view_access_without_flag_requires_membership(self, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament, creates_membership_on_submit=False)
+    def test_view_access_non_member_requires_membership(self, db, td_user, td_tournament, other_user):
+        form = _make_form(db, td_user, td_tournament)
         db.commit()
         with pytest.raises(HTTPException) as exc_info:
             require_form_view_access(form.id, db, other_user)

@@ -51,16 +51,8 @@ def require_form_view_access(
 ) -> Form:
     """Dependency — loads the Form and requires either manage access, or
     plain membership in the owning tournament/chapter (for the people
-    filling the form out, not just the people managing it).
-
-    A creates_membership_on_submit form is open to any authenticated user
-    regardless of existing membership — that flag exists specifically to
-    onboard NON-members via their first submission, so gating view access
-    on membership they don't have yet would make the flag unreachable."""
+    filling the form out, not just the people managing it)."""
     form = _load_form_or_404(form_id, db)
-
-    if form.creates_membership_on_submit:
-        return form
 
     if form.owner_type == "tournament":
         if not has_any_membership(current_user, form.tournament_id, db):
