@@ -2,6 +2,8 @@
 helpers, slugify/uniqueness, the creates_membership_on_submit side effect,
 and the access-control dependency functions are covered directly in
 tests/core/test_forms.py — this file exercises the HTTP layer on top."""
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from tests.conftest import grant_role, login
@@ -15,6 +17,7 @@ from app.models.models import (
     FormField,
     FormResponse,
     TournamentMembership,
+    TournamentShift,
 )
 
 
@@ -61,10 +64,11 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
         question_type=question_type,
         field_key=field_key,
         config={
+            "required": False,
             "options": [
-                {"id": "opt_1", "label": "Red", "archived": False, "next_section_id": None, "allow_other": False},
-                {"id": "opt_2", "label": "Blue", "archived": False, "next_section_id": None, "allow_other": False},
-            ]
+                {"value": "opt_1", "label": "Red"},
+                {"value": "opt_2", "label": "Blue"},
+            ],
         },
         is_archived=False,
     )
@@ -218,6 +222,7 @@ class TestGetForm:
 class TestUpdateArchiveDeleteForm:
     def test_patch_updates_fields(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
+        _make_field(db, form)
         db.commit()
         login(client, "td@test.com", "tdpass")
         res = client.patch(f"/forms/{form.id}/", json={"name": "Renamed", "status": "published"})
@@ -263,7 +268,12 @@ class TestCreateField:
         login(client, "td@test.com", "tdpass")
         res = client.post(
             f"/forms/{form.id}/fields/",
-            json={"label": "Test Writing Interest", "field_key": "Test Writing Interest!", "question_type": "short_text"},
+            json={
+                "label": "Test Writing Interest",
+                "field_key": "Test Writing Interest!",
+                "question_type": "short_text",
+                "config": {"required": False, "max_length": 500},
+            },
         )
         assert res.status_code == 201
         assert res.json()["field_key"] == "test_writing_interest"
@@ -325,7 +335,12 @@ class TestCreateField:
         login(client, "chapterlead@test.com", "LeadPass123!")
         res = client.post(
             f"/forms/{form_b.id}/fields/",
-            json={"label": "Anything", "field_key": "shared_key", "question_type": "short_text"},
+            json={
+                "label": "Anything",
+                "field_key": "shared_key",
+                "question_type": "short_text",
+                "config": {"required": False, "max_length": 500},
+            },
         )
         # Different form -> allowed for chapter-owned forms (only per-form uniqueness applies)
         assert res.status_code == 201
@@ -361,9 +376,9 @@ class TestEditDeleteField:
         field = _make_field(db, form, field_key="color")
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.patch(f"/forms/{form.id}/fields/{field.id}/", json={"question_type": "multi_select"})
+        res = client.patch(f"/forms/{form.id}/fields/{field.id}/", json={"question_type": "multi_select_checkbox"})
         assert res.status_code == 200
-        assert res.json()["question_type"] == "multi_select"
+        assert res.json()["question_type"] == "multi_select_checkbox"
         assert res.json()["field_key"] == "color"
         assert res.json()["id"] != field.id
 
@@ -493,3 +508,157 @@ class TestListAndMyResponses:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/forms/{form.id}/responses/me/")
         assert res.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Reserved field_key <-> question_type pairing (validated identically on
+# tournament- and chapter-owned forms — see form-question-types-reference.md)
+# ---------------------------------------------------------------------------
+
+class TestReservedFieldKeyRoutes:
+    def test_availability_wrong_type_rejected_on_tournament_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Availability",
+                "field_key": "availability",
+                "question_type": "single_select_dropdown",
+                "config": {"required": False, "options": [{"value": "1", "label": "Saturday"}]},
+            },
+        )
+        assert res.status_code == 422
+
+    def test_availability_wrong_type_rejected_on_chapter_form(self, client, db, td_user, chapter):
+        form = _make_chapter_form(db, td_user, chapter)
+        db.commit()
+        _chapter_lead(db, chapter)
+        login(client, "chapterlead@test.com", "LeadPass123!")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Availability",
+                "field_key": "availability",
+                "question_type": "single_select_dropdown",
+                "config": {"required": False, "options": [{"value": "1", "label": "Saturday"}]},
+            },
+        )
+        assert res.status_code == 422
+
+    def test_availability_valid_type_accepted_on_chapter_form_no_shift_check(self, client, db, td_user, chapter):
+        # Chapter forms have no tournament shift catalog to validate
+        # against, so any option value is accepted — stores as a normal
+        # FormAnswer, no write-through (write-through is tournament-only).
+        form = _make_chapter_form(db, td_user, chapter)
+        db.commit()
+        _chapter_lead(db, chapter)
+        login(client, "chapterlead@test.com", "LeadPass123!")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Availability",
+                "field_key": "availability",
+                "question_type": "multi_select_checkbox",
+                "config": {"required": False, "options": [{"value": "not_a_real_shift_id", "label": "Whenever"}]},
+            },
+        )
+        assert res.status_code == 201
+
+    def test_availability_option_must_resolve_to_real_shift_on_tournament_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Availability",
+                "field_key": "availability",
+                "question_type": "multi_select_checkbox",
+                "config": {"required": False, "options": [{"value": "9999", "label": "Nonexistent shift"}]},
+            },
+        )
+        assert res.status_code == 422
+
+    def test_availability_valid_shift_accepted_on_tournament_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            label="Saturday",
+            start=datetime.now(timezone.utc),
+            end=datetime.now(timezone.utc) + timedelta(hours=8),
+        )
+        db.add(shift)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Availability",
+                "field_key": "availability",
+                "question_type": "multi_select_checkbox",
+                "config": {"required": False, "options": [{"value": str(shift.id), "label": shift.label}]},
+            },
+        )
+        assert res.status_code == 201
+
+    def test_event_preference_disallowed_type_rejected(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "Event Preference",
+                "field_key": "event_preference",
+                "question_type": "short_text",
+                "config": {"required": False, "max_length": 100},
+            },
+        )
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Submission-time required enforcement via branching reachability replay
+# ---------------------------------------------------------------------------
+
+class TestSubmissionReachabilityEnforcement:
+    def test_submission_rejected_when_reachable_required_field_missing(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        required_field = _make_field(
+            db, form, order=1, field_key="required_field", question_type="short_text",
+            config={"required": True, "max_length": 100},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
+        assert res.status_code == 400
+
+    def test_submission_accepted_when_branch_skips_required_field(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        skipped = _make_field(
+            db, form, order=2, field_key="skipped", question_type="short_text",
+            config={"required": True, "max_length": 100},
+        )
+        target = _make_field(db, form, order=3, field_key="target", question_type="short_text",
+                              config={"required": False, "max_length": 100})
+        branch_field = _make_field(
+            db, form, order=1, field_key="branch", question_type="single_select_radio",
+            config={
+                "required": True,
+                "options": [
+                    {"value": "yes", "label": "Yes", "next_field_id": target.id},
+                    {"value": "no", "label": "No"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": branch_field.id, "value": "yes"}]},
+        )
+        assert res.status_code == 200
