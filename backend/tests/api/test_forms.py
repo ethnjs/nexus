@@ -2,7 +2,7 @@
 helpers, slugify/uniqueness, and the access-control dependency functions are
 covered directly in tests/core/test_forms.py — this file exercises the HTTP
 layer on top."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -16,6 +16,9 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    TournamentMembership,
+    TournamentMembershipAvailability,
+    TournamentMembershipLunch,
     TournamentShift,
 )
 
@@ -347,6 +350,29 @@ class TestCreateField:
         )
         assert res.status_code == 422
 
+    def test_new_field_addable_to_form_with_existing_responses(self, client, db, td_user, td_tournament):
+        """Locking only applies to fields that already have answers — adding
+        a brand new field to an already-answered form is unaffected."""
+        form = _make_form(db, td_user, td_tournament)
+        existing_field = _make_field(db, form, field_key="color")
+        response = FormResponse(form_id=form.id, user_id=td_user.id)
+        db.add(response)
+        db.flush()
+        db.add(FormAnswer(response_id=response.id, field_id=existing_field.id, value=["opt_1"]))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        res = client.post(
+            f"/forms/{form.id}/fields/",
+            json={
+                "label": "New question",
+                "field_key": "new_question",
+                "question_type": "short_text",
+                "config": {"required": False, "max_length": 100},
+            },
+        )
+        assert res.status_code == 201
+
 
 # ---------------------------------------------------------------------------
 # PATCH / DELETE /forms/{form_id}/fields/{field_id}/
@@ -373,6 +399,27 @@ class TestEditDeleteField:
         assert res.json()["question_type"] == "multi_select_checkbox"
         assert res.json()["field_key"] == "color"
         assert res.json()["id"] != field.id
+
+    def test_patch_rejected_once_field_has_answers(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color")
+        response = FormResponse(form_id=form.id, user_id=td_user.id)
+        db.add(response)
+        db.flush()
+        db.add(FormAnswer(response_id=response.id, field_id=field.id, value=["opt_1"]))
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(f"/forms/{form.id}/fields/{field.id}/", json={"label": "New label"})
+        assert res.status_code == 409
+        assert db.query(FormField).filter(FormField.id == field.id).first().label == "Favorite color"
+
+    def test_patch_allowed_when_field_has_no_answers(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.patch(f"/forms/{form.id}/fields/{field.id}/", json={"label": "New label"})
+        assert res.status_code == 200
 
     def test_delete_hard_deletes_when_no_answers(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -446,6 +493,115 @@ class TestSubmitResponse:
         login(client, "other@test.com", "otherpass")
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Write-through — availability/lunch reserved-key answers syncing into their
+# structural tables (app/core/form/write_through.py), tournament-owned forms
+# only. See tests/core/test_form_write_through.py for the diff-sync logic
+# itself; this covers the route wiring.
+# ---------------------------------------------------------------------------
+
+class TestWriteThroughOnSubmit:
+    def test_availability_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        shift = TournamentShift(
+            tournament_id=td_tournament.id,
+            label="Saturday",
+            start=datetime.now(timezone.utc),
+            end=datetime.now(timezone.utc) + timedelta(hours=8),
+        )
+        db.add(shift)
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"value": str(shift.id), "label": shift.label}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": [str(shift.id)]}]},
+        )
+        assert res.status_code == 200
+
+        membership = (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .first()
+        )
+        rows = db.query(TournamentMembershipAvailability).filter(
+            TournamentMembershipAvailability.membership_id == membership.id
+        ).all()
+        assert [row.tournament_shift_id for row in rows] == [shift.id]
+
+    def test_lunch_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "chicken"}]},
+        )
+        assert res.status_code == 200
+
+        membership = (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .first()
+        )
+        rows = db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.membership_id == membership.id
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].value == "chicken"
+        assert rows[0].label == "Chicken"
+        assert rows[0].category == "protein"
+        assert rows[0].date == date(2027, 2, 13)
+
+    def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+        form = _make_chapter_form(db, td_user, chapter)
+        field = _make_field(
+            db, form, field_key="availability", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"value": "not_a_real_shift_id", "label": "Whenever"}]},
+        )
+        db.commit()
+        _chapter_lead(db, chapter)
+        login(client, "chapterlead@test.com", "LeadPass123!")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["not_a_real_shift_id"]}]},
+        )
+        assert res.status_code == 200
+        assert res.json()["answers"][0]["value"] == ["not_a_real_shift_id"]
+        assert db.query(TournamentMembershipAvailability).count() == 0
+
+    def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+        form = _make_chapter_form(db, td_user, chapter)
+        field = _make_field(
+            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            config={"required": False, "options": [{"value": "chicken", "label": "Chicken"}]},
+        )
+        db.commit()
+        _chapter_lead(db, chapter)
+        login(client, "chapterlead@test.com", "LeadPass123!")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "chicken"}]},
+        )
+        assert res.status_code == 200
+        assert db.query(TournamentMembershipLunch).count() == 0
 
 
 # ---------------------------------------------------------------------------

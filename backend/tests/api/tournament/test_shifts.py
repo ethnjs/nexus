@@ -4,6 +4,8 @@ from datetime import date, timedelta
 
 from tests.conftest import grant_role, login
 
+from app.models.models import TournamentMembership, TournamentMembershipAvailability
+
 # td_tournament spans [today, today + 1 day] — event/shift times must fall
 # within that window now that tournament-bounds validation exists.
 EVENT_DATE = date.today().isoformat()
@@ -133,6 +135,27 @@ def test_delete_shift_attached_to_two_events_detaches_both(client, td_user, td_t
     e2 = client.get(f"/tournaments/{td_tournament.id}/events/{event2['id']}/").json()
     assert e1["shifts"] == []
     assert e2["shifts"] == []
+
+
+def test_delete_shift_blocked_when_referenced_by_availability(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+
+    membership = (
+        db.query(TournamentMembership)
+        .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+        .first()
+    )
+    db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift["id"]))
+    db.commit()
+
+    response = client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
+    assert response.status_code == 409
+    assert "1" in response.json()["detail"]
+
+    # Not deleted.
+    listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
+    assert any(s["id"] == shift["id"] for s in listed)
 
 
 def test_shift_routes_require_manage_events(client, td_user, other_tournament, db):
