@@ -8,11 +8,20 @@ untouched row (e.g. a different lunch date/category) is never disturbed.
 Callers commit — these only add/delete/flush, so the write-through and the
 FormAnswer rows it's derived from land in the same transaction."""
 
-from datetime import date as date_type
+from datetime import date as date_type, datetime
 
 from sqlalchemy.orm import Session
 
+from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN
 from app.models.models import TournamentMembershipAvailability, TournamentMembershipLunch
+
+
+def parse_lunch_field_key(field_key: str) -> tuple[date_type, str]:
+    """Splits a `lunch_{date}_{category}` field_key (already known to match
+    LUNCH_FIELD_KEY_PATTERN) into its date and category parts."""
+    match = LUNCH_FIELD_KEY_PATTERN.match(field_key)
+    date_str, category = match.group(1), match.group(2)
+    return datetime.strptime(date_str, "%Y%m%d").date(), category
 
 
 def sync_availability(db: Session, membership_id: int, tournament_shift_ids: list[int]) -> None:

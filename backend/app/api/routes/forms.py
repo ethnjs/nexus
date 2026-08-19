@@ -17,6 +17,7 @@ from app.core.form import (
 from app.core.form.branching import missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
+    LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
     validate_availability_options,
     validate_branching_options,
@@ -24,6 +25,7 @@ from app.core.form.validation import (
     validate_form_for_publish,
     validate_reserved_field_key,
 )
+from app.core.form.write_through import parse_lunch_field_key, sync_availability, sync_lunch
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -31,6 +33,7 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    TournamentMembership,
     User,
     utcnow,
 )
@@ -395,9 +398,53 @@ def submit_form_response(
     for answer_in in payload.answers:
         db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
 
+    if form.owner_type == "tournament":
+        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user)
+
     db.commit()
     db.refresh(response)
     return response
+
+
+def _write_through_reserved_fields(
+    db: Session,
+    form: Form,
+    active_fields: list[FormField],
+    answers_by_field: dict[int, object],
+    current_user: User,
+) -> None:
+    """Syncs `availability`/`lunch_{date}_{category}` answers into their
+    structural tables — tournament-owned forms only (see
+    form-question-types-reference.md). Runs over every active field, not
+    just answered ones, so a reserved field left blank on resubmit clears
+    any previously-synced rows rather than leaving them stale."""
+    membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == current_user.id,
+            TournamentMembership.tournament_id == form.tournament_id,
+        )
+        .first()
+    )
+    if membership is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No membership found for a tournament-owned form response — require_form_view_access should have guaranteed one",
+        )
+
+    for field in active_fields:
+        value = answers_by_field.get(field.id)
+        selected = value if isinstance(value, list) else ([value] if value else [])
+
+        if field.field_key == "availability":
+            sync_availability(db, membership.id, [int(v) for v in selected])
+            continue
+
+        if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
+            lunch_date, category = parse_lunch_field_key(field.field_key)
+            options_by_value = {opt["value"]: opt["label"] for opt in (field.config or {}).get("options", [])}
+            values = [{"value": v, "label": options_by_value.get(v, v)} for v in selected]
+            sync_lunch(db, membership.id, lunch_date, category, values)
 
 
 # ---------------------------------------------------------------------------

@@ -28,7 +28,7 @@ RESERVED_FIELD_KEY_QUESTION_TYPES = {
 # lunch_{date}_{category}, e.g. "lunch_20270213_protein" — date is baked
 # into the key, so per-tournament field_key uniqueness already covers
 # per-(date, category) uniqueness with no separate check needed.
-LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_\d{8}_[a-z0-9_]+$")
+LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
 LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
 
