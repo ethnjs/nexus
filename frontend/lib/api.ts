@@ -2,7 +2,7 @@
 // In prod: NEXT_PUBLIC_API_URL is unset → goes through /api/proxy → Next.js adds API key server-side
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
 
 interface RequestOptions {
   method?:  HttpMethod
@@ -61,6 +61,7 @@ export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
+  put:    <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',   body }),
   delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
 }
 
@@ -1130,4 +1131,164 @@ export const sheetsApi = {
     const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
     return memberships.map((m) => m.user.email)
   },
+}
+
+// -------------------------------------------------------------------------
+// Forms — see backend/form-question-types-reference.md for the full
+// question_type/config/reserved-field_key shape reference this mirrors.
+// -------------------------------------------------------------------------
+export type FormQuestionType =
+  | 'acknowledgment'
+  | 'single_select_radio'
+  | 'single_select_dropdown'
+  | 'multi_select_checkbox'
+  | 'ranked_choice'
+  | 'short_text'
+  | 'long_text'
+
+export type FormStatus = 'draft' | 'published' | 'archived'
+export type FormOwnerType = 'tournament' | 'chapter'
+
+// value is normally TD-facing display text; for an entity-backed reserved
+// field_key (availability → TournamentShift ids, event_preference →
+// TournamentEvent ids) it's the raw list[int] instead — resolved in place
+// into FormFieldOptionResolved on GET (see resolveFieldOptionValue below).
+export interface FormFieldOption {
+  option_id:      string
+  value:          string | number[]
+  label:          string
+  is_archived?:   boolean
+  // single_select_radio/dropdown only — mutually exclusive with each other.
+  next_field_id?: number | null
+  action?:        'submit_form' | null
+}
+
+// value shape after GET-time resolution for availability/event_preference —
+// one entry per grouped entity, kept separate rather than collapsed.
+export interface ResolvedShiftOption {
+  id:    number
+  label: string
+  start: string
+  end:   string
+}
+
+export interface ResolvedEventOption {
+  id:       number
+  name:     string
+  division: string
+}
+
+export interface FormFieldConfig {
+  required?:         boolean
+  confirm_label?:    string
+  options?:          FormFieldOption[]
+  ranks?:            number
+  allow_duplicates?: boolean
+  max_length?:       number
+}
+
+export interface FormField {
+  id:            number
+  form_id:       string
+  field_key:     string
+  order:         number
+  label:         string
+  description:   string | null
+  question_type: FormQuestionType
+  is_archived:   boolean
+  config:        FormFieldConfig | null
+  created_at:    string
+  updated_at:    string
+}
+
+// One entry in a PUT .../fields/ bulk-update payload. `id` omitted = create;
+// `id` present must match a currently-live field. `field_key` only matters
+// on create — the server ignores/derives it otherwise (see BulkFieldEntry
+// in backend/app/schemas/form.py).
+export interface FormFieldInput {
+  id?:            number
+  field_key?:     string
+  label:          string
+  description?:   string | null
+  question_type:  FormQuestionType
+  config?:        FormFieldConfig | null
+}
+
+export interface Form {
+  id:              string
+  name:            string
+  title:           string | null
+  description:     string | null
+  status:          FormStatus
+  owner_type:      FormOwnerType
+  tournament_id:   number | null
+  chapter_id:      number | null
+  created_by:      number
+  created_at:      string
+  updated_at:      string
+  response_count:  number
+  fields:          FormField[]
+}
+
+export interface FormCreateInput {
+  name:          string
+  title?:        string | null
+  description?:  string | null
+  owner_type:    FormOwnerType
+  tournament_id?: number | null
+  chapter_id?:   number | null
+}
+
+export interface FormUpdateInput {
+  name?:        string
+  title?:       string
+  description?: string
+  status?:      FormStatus
+}
+
+export interface FormAnswer {
+  id:       number
+  field_id: number
+  value:    unknown
+}
+
+export interface FormAnswerInput {
+  field_id: number
+  value:    unknown
+}
+
+export interface FormResponse {
+  id:           number
+  form_id:      string
+  user_id:      number
+  submitted_at: string
+  updated_at:   string
+  answers:      FormAnswer[]
+}
+
+export const formsApi = {
+  listForTournament: (tournamentId: number) =>
+    api.get<Form[]>(`/tournaments/${tournamentId}/forms/`),
+  listForChapter: (chapterId: number) =>
+    api.get<Form[]>(`/chapters/${chapterId}/forms/`),
+  createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
+    api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
+  createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>
+    api.post<Form>(`/chapters/${chapterId}/forms/`, { ...body, owner_type: 'chapter', chapter_id: chapterId }),
+  // Renders with option values already resolved (availability/event_preference).
+  get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
+  update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
+  archive: (formId: string) => api.post<Form>(`/forms/${formId}/archive/`, {}),
+  // 409s if the form has any responses — check response_count client-side first.
+  delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
+  // Full ordered target field list — see FormFieldInput and the Edit
+  // Lifecycle section of form-question-types-reference.md. On a published
+  // form, an existing option missing from the submitted config must still
+  // be echoed back (via its option_id) or the server archives it.
+  putFields: (formId: string, fields: FormFieldInput[]) =>
+    api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  submitResponse: (formId: string, answers: FormAnswerInput[]) =>
+    api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
+  listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
+  getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
 }
