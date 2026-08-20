@@ -87,7 +87,7 @@ def assign_option_ids(config: dict | None) -> dict | None:
     for option in config["options"]:
         option = dict(option)
         if not option.get("option_id"):
-            option["option_id"] = f"opt_{secrets.token_hex(5)}"
+            option["option_id"] = secrets.token_hex(5)
         options.append(option)
     return {**config, "options": options}
 

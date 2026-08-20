@@ -22,7 +22,15 @@ Every `FormField` shares the same outer shape:
 
 **Line between `question_type` and `field_key`:** `question_type` is purely structural — how the question is rendered and answered. `field_key` is semantic — when it's a reserved key (`availability`, `event_preference`, `lunch_{custom}`), it changes how a *structurally normal* field's options/answers get parsed and, for tournament forms, written through to a structural table. Reserved keys don't get their own `question_type` — they reuse the existing structural types and layer extra validation on top. When a TD picks a reserved-key preset/template, `field_key` should be locked to the reserved value rather than freely typed — otherwise a stray typo (`availibility`) silently breaks write-through with no error. Flagging this as the intended behavior, not yet confirmed.
 
-**Options-storage rule:** wherever a type has an `options` array, each option is `{ "value": ..., "label": ... }` — `label` is what's shown, `value` is what's actually stored in `FormAnswer` (or referenced by write-through). Options are stored raw and literal — a resolved snapshot at creation/edit time, not a dynamic source reference. Editors may offer an "auto-load from tournament" convenience (events, categories, shifts) that populates this array once; after that it's just a normal static list like any other question's options. `value` is the stable identifier for edit-lifecycle purposes (renaming `label` is a safe in-place edit; old answers referencing `value` still resolve) — for options backed by a real entity (a `TournamentShift`, `TournamentEvent`, etc.) `value` is that entity's real id.
+**Options-storage rule:** wherever a type has an `options` array, each option is `{ "option_id": ..., "value": ..., "label": ..., "is_archived": false }`:
+- `option_id` — system-generated, opaque, required, and the **sole stable identifier**: what a submitted answer actually references, what branching matches against, and what Edit Lifecycle diffs/archives by (see "Reserved `field_key`s" and the Edit Lifecycle section below). Never client-authored; a create/update request may omit it (new option) or echo back one from a prior `GET` (existing option, kept stable).
+- `value` — normally TD-facing display text (typically a shortened version of `label`). For an entity-backed reserved `field_key` (`availability` grouping `TournamentShift`s, `event_preference` grouping `TournamentEvent`s), it's instead `list[int]` — the real ids of the underlying entities this option groups together — and the client is responsible for interpreting which shape to expect based on `field_key`. A bare `list[int]` for `event_preference` is resolved on render (see below); a legacy plain-string `value` there passes through unresolved.
+- `label` — responder-facing display text.
+- `is_archived` — set by the server during a published-form republish (see Edit Lifecycle); an archived option is dropped from what a new respondent sees/can select, but stays in storage so a past answer referencing its `option_id` still resolves.
+
+Options are stored raw and literal — a resolved snapshot at creation/edit time, not a dynamic source reference. Editors may offer an "auto-load from tournament" convenience (events, shifts) that populates `value`'s entity-id list once; after that it's just a normal static list like any other question's options, no live server-side lookup involved.
+
+**Answer-value snapshotting:** for any option-bearing type except `availability` (still on its own raw-shift-id submission path, see below), `FormAnswer.value` doesn't store a bare `option_id` — it stores a `{ "option_id": ..., "value": ..., "label": ... }` snapshot captured at submission time (a list of snapshots for `multi_select_checkbox`, a rank→snapshot dict for `ranked_choice`). This means a later edit to an option's `value`/`label` (TD-editable text, unlike `option_id`) never retroactively changes how a past answer displays — see `FormResponsePendingUpdate` below for how a TD/respondent actually finds out something changed.
 
 ---
 
@@ -42,13 +50,13 @@ Pick exactly one, shown as radio buttons.
 "config": {
   "required": true,
   "options": [
-    { "value": "yes", "label": "Yes", "next_field_id": 15 },
-    { "value": "no", "label": "No", "action": "submit_form" },
-    { "value": "maybe", "label": "Maybe" }
+    { "option_id": "a1b2c3d4e5", "value": "yes", "label": "Yes", "next_field_id": 15 },
+    { "option_id": "f6e5d4c3b2", "value": "no", "label": "No", "action": "submit_form" },
+    { "option_id": "7g8h9i0j1k", "value": "maybe", "label": "Maybe" }
   ]
 }
 ```
-Answer value: the chosen option's `value`.
+Answer value: the chosen option's `option_id` — stored as a `{option_id, value, label}` snapshot (see "Answer-value snapshotting" above).
 Branching: supported — see Branching section below.
 
 ## `single_select_dropdown`
@@ -62,15 +70,21 @@ Pick any number, shown as checkboxes.
 "config": {
   "required": true,
   "options": [
-    { "value": "anat_physio", "label": "Anatomy and Physiology" },
-    { "value": "disease_detectives", "label": "Disease Detectives" }
+    { "option_id": "a1b2c3d4e5", "value": "anat_physio", "label": "Anatomy and Physiology" },
+    { "option_id": "f6e5d4c3b2", "value": "disease_detectives", "label": "Disease Detectives" }
   ]
 }
 ```
-Answer value: array of chosen option `value`s.
+Answer value: array of chosen option `option_id`s — stored as a list of `{option_id, value, label}` snapshots.
 Branching: not supported (not single-select).
 
-**Reserved-key note:** when `field_key = "availability"`, this is the required `question_type`, and `value` on each option must resolve to a real `TournamentShift` belonging to the field's tournament (auto-loadable from the tournament's shift catalog, not free-typed). On submit, the answer write-throughs into `MembershipAvailability` (diffed against the prior submission) instead of being stored in `FormAnswer` — this only fires on tournament-owned forms; on a chapter-owned form the same field is valid but stores as a normal `FormAnswer`, no write-through.
+**Reserved-key note (`availability`):** `field_key = "availability"` is allowed on either `single_select_radio` or `multi_select_checkbox` — the TD's choice of type determines whether a respondent can select more than one grouped option at once (multi-select, e.g. "free both Morning and Evening but not Afternoon") or at most one (single-select, for a tournament that only wants one blanket answer per person); it doesn't change write-through, only how many options can be selected. Each option's `value` is `list[int]` — one or more real `TournamentShift` ids belonging to the field's tournament, grouped under a single TD-labeled choice (e.g. `"All Day"` → `[1, 2, 3]`), auto-loadable from the tournament's shift catalog. A responder never sees the raw shift list: `GET`-rendering resolves each option into its `label` plus the combined `start`/`end` across every shift it groups (`resolve_field_options`'s availability branch), e.g.:
+
+```json
+{ "option_id": "a1b2c3d4e5", "label": "All Day", "start": "2027-02-13T07:00:00Z", "end": "2027-02-13T16:00:00Z" }
+```
+
+On submit, the answer's selected option_id(s) are expanded into their grouped shift ids (deduped via set union across selections) and write-through into `MembershipAvailability` (diffed against the prior submission) — this fires only on tournament-owned forms; on a chapter-owned form the same field is valid but stores as a normal `FormAnswer`, no write-through. Availability answers are **not** snapshotted the way other option types are (see "Answer-value snapshotting" above) — `FormAnswer.value` stores the raw selected `option_id`(s) directly. Deleting a `TournamentShift` is rejected if it's referenced either by an existing `MembershipAvailability` row, or inside any non-archived field's option `value` list — a shift that's part of a live option's grouping can't be pulled out from under it even before anyone's answered.
 
 ## `ranked_choice`
 Rank a fixed number of options in order of preference.
@@ -81,15 +95,21 @@ Rank a fixed number of options in order of preference.
   "ranks": 3,
   "allow_duplicates": false,
   "options": [
-    { "value": "te_anat_physio", "label": "Anatomy and Physiology" },
-    { "value": "te_disease_detectives", "label": "Disease Detectives" }
+    { "option_id": "a1b2c3d4e5", "value": "te_anat_physio", "label": "Anatomy and Physiology" },
+    { "option_id": "f6e5d4c3b2", "value": "te_disease_detectives", "label": "Disease Detectives" }
   ]
 }
 ```
-Answer value: dict of rank → option `value`, e.g. `{"1": "te_anat_physio", "2": "te_disease_detectives"}`.
+Answer value: dict of rank → option `option_id`, e.g. `{"1": "a1b2c3d4e5", "2": "f6e5d4c3b2"}` — stored as rank → `{option_id, value, label}` snapshot.
 Branching: not supported.
 
-**Reserved-key note:** `event_preference` is allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. When it's used, `value` needs to be the real `TournamentEvent` id so it can be matched back to the tournament's actual events — this strict resolution isn't validated yet, it's tied to a future "auto-load events into options" feature, not this phase.
+**Reserved-key note (`event_preference`):** allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. An option's `value` may be `list[int]` — one or more real `TournamentEvent` ids grouped under a single label (the same grouping pattern as availability's shift ids), auto-loadable from the tournament's event catalog. `GET`-rendering resolves a `list[int]` value into the actual events instead of exposing raw ids (`resolve_field_options`'s event_preference branch):
+
+```json
+{ "option_id": "a1b2c3d4e5", "label": "Life Science", "events": [{ "id": 5, "name": "Anatomy and Physiology", "division": "B" }, { "id": 9, "name": "Disease Detectives", "division": "C" }] }
+```
+
+A `value` that's still a plain string (a single legacy id) passes through unresolved — strict validation that every `event_preference` option's ids are real `TournamentEvent`s isn't built yet, unlike `availability`'s strict shift-id check.
 
 ## `short_text` / `long_text`
 Free text — `short_text` single line, `long_text` multi-line.
@@ -109,15 +129,37 @@ Only `single_select_radio` and `single_select_dropdown` options may carry branch
 - `action: "submit_form"` — end the flow immediately and submit whatever's been answered.
 - Neither present — fall through to the next field in document `order` (the default case).
 
-`next_field_id`/`action` are mutually exclusive per option, and `next_field_id` must reference an existing field in the same form. Next-field computation happens **client-side** — the frontend fetches the full field list once and walks the jump graph locally, no per-answer round trip. Multi-field loops (A→B→A) aren't currently guarded against — deferred until it's a real problem.
+`next_field_id`/`action` are mutually exclusive per option, and `next_field_id` must reference an existing field in the same form. The branching replay (both the frontend's client-side jump-graph walk and the backend's submission-time reachability check) matches a submitted answer against an option by `option_id`, not `value`. Multi-field loops (A→B→A) aren't currently guarded against — deferred until it's a real problem.
 
 ## Reserved `field_key`s
 
 | `field_key` | Allowed `question_type`(s) | Write-through |
 |---|---|---|
-| `availability` | `multi_select_checkbox` only | `TournamentMembershipAvailability` (tournament-owned forms only) |
-| `lunch_{date}_{category}` — e.g. `lunch_20270213_protein` (`^lunch_\d{8}_[a-z0-9_]+$`), one per (date, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); no catalog table — stores whatever option was selected, keyed by category string |
-| `event_preference` | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer` (option `value` should be a real `TournamentEvent` id, not yet strictly validated) |
+| `availability` | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipAvailability` (tournament-owned forms only); selected option_id(s) expand into their grouped `TournamentShift` ids before diffing |
+| `lunch_{date}_{category}` — e.g. `lunch_20270213_protein` (`^lunch_\d{8}_[a-z0-9_]+$`), one per (date, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); selected option_id(s) resolve to their stored `value`/`label`, no catalog table — stores whatever option was selected, keyed by category string |
+| `event_preference` | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer` (option `value` may be `list[int]` of real `TournamentEvent` ids, resolved on render; not yet strictly validated against real events) |
 | any TD-typed slug | any type | none — generic `FormAnswer` |
 
 Reserved keys are valid on both tournament- and chapter-owned forms — the key itself doesn't require tournament ownership. Only the write-through step is tournament-only; on a chapter-owned form these fields behave exactly like a normal custom question.
+
+---
+
+## Edit Lifecycle
+
+Once a form is `published`, someone may have already answered it, so editing its fields doesn't work the way it does on a `draft` form. There's no server-side draft/staging table — the client holds an in-progress edit locally and sends the complete target field list in one request, which the server treats as "go live now."
+
+**`PUT /forms/{id}/fields/`** replaces the old per-field `POST`/`PATCH`/`DELETE` routes entirely. Body is the full ordered target list of fields:
+- Entry with an existing field `id` → update.
+- Entry with no `id` → create.
+- A currently-live, non-archived field whose `id` is missing from the list → removal.
+
+**`draft`-status forms:** applied directly — hard delete removed fields, update changed ones (including `question_type` changes, in place), insert new ones. No archiving, since nothing on a form that's never been published has ever been answerable.
+
+**`published`-status forms:** the server diffs the submitted list against current live fields, then validates the whole proposed end-state (config shape, options, branching `next_field_id` resolution) before anything commits — a dangling branch reference, including one that would point at a field this same request removes, rejects the whole batch atomically. If valid:
+- Label/description/config-only changes → update in place.
+- `question_type` change → archive the old field, create a replacement at the same list position, inheriting the same `field_key` (an explicit exception to "archived keys stay reserved forever" — this is the same logical question continuing, not a new one).
+- Missing from the submitted list → archive, not delete.
+- No `id` → insert as new.
+- Within an updated field, options are diffed by `option_id` the same way — one missing from the submitted config gets `is_archived: true` added rather than being dropped from storage.
+
+**`FormResponsePendingUpdate`** (`response_id`, `field_key`, `reason`: `"field_replaced"` | `"option_archived"`, unique on `(response_id, field_key)`) is generated whenever a republish archives a field or option that a response had already answered — this is how a TD or respondent finds out an existing answer needs another look. Keyed by `field_key` (not a field id) so it always resolves to whichever field currently holds that key, regardless of further edits. `reason` only ever escalates `option_archived` → `field_replaced`, never the reverse. Cleared when the response next submits a fresh answer to whichever field currently holds that `field_key`.
