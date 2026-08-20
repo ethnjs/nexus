@@ -11,9 +11,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
+import { Dropdown } from "@/components/ui/Dropdown";
+import { Combobox } from "@/components/ui/Combobox";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconX, IconPlus, IconDescription } from "@/components/ui/Icons";
+import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 
 // A field being edited in the builder — same shape as FormField, but `id`
@@ -190,11 +191,7 @@ function TitleCard({ form, onUpdated }: {
   );
 }
 
-// Real question_type options + reserved presets below a separator. Picking
-// a preset sets question_type and field_key together — no separate
-// creation-time picker, it's all one dropdown. Lunch's field_key is left
-// unset here since it's server-derived from a date+category picker that
-// lands in a later step (the card body swap for reserved types generally).
+// Plain question_type options — no reserved presets here (see FIELD_KEY_PRESETS).
 const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
   { value: "short_text", label: "Short Answer" },
   { value: "long_text", label: "Paragraph" },
@@ -205,48 +202,59 @@ const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
   { value: "acknowledgment", label: "Acknowledgment" },
 ];
 
-const RESERVED_PRESETS: Record<string, { question_type: FormQuestionType; field_key: string; label: string }> = {
-  "preset:availability_single": { question_type: "single_select_radio", field_key: "availability", label: "Availability (single choice)" },
-  "preset:availability_multi": { question_type: "multi_select_checkbox", field_key: "availability", label: "Availability (multiple choice)" },
-  "preset:event_preference": { question_type: "ranked_choice", field_key: "event_preference", label: "Event Preference" },
-  "preset:lunch": { question_type: "single_select_radio", field_key: "", label: "Lunch" },
-};
-
-const QUESTION_TYPE_DROPDOWN_ITEMS: DropdownItem[] = [
-  ...QUESTION_TYPE_OPTIONS,
-  {
-    group: "Reserved",
-    options: Object.entries(RESERVED_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
-  },
-];
-
-// Reflects a field's current question_type/field_key back onto the dropdown
-// — a reserved preset and its underlying question_type share the same
-// question_type value, so the dropdown must key off field_key first to show
-// the preset (not the plain type) as selected.
-function fieldToDropdownValue(field: EditableField): string {
-  const presetEntry = Object.entries(RESERVED_PRESETS).find(
-    ([, preset]) => preset.field_key && preset.field_key === field.field_key && preset.question_type === field.question_type
-  );
-  if (presetEntry) return presetEntry[0];
-  if (field.field_key?.startsWith("lunch_") && field.question_type === "single_select_radio") return "preset:lunch";
-  return field.question_type;
+// Reserved field_key presets, picked from the field_key Combobox rather than
+// the question_type Dropdown — selecting one sets question_type and
+// field_key together. Lunch's field_key is a "lunch_" sentinel (not a real
+// key yet) since the real key is server-derived from a date+category picker
+// that lands in a later step (the card body swap for reserved types generally).
+interface FieldKeyPreset {
+  key: string;
+  field_key: string;
+  question_type: FormQuestionType;
+  label: string;
 }
 
-function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange, onAddFieldBelow }: {
+const FIELD_KEY_PRESETS: FieldKeyPreset[] = [
+  { key: "availability_single", field_key: "availability", question_type: "single_select_radio", label: "Availability (single choice)" },
+  { key: "availability_multi", field_key: "availability", question_type: "multi_select_checkbox", label: "Availability (multiple choice)" },
+  { key: "event_preference", field_key: "event_preference", question_type: "ranked_choice", label: "Event Preference" },
+  { key: "lunch", field_key: "lunch_", question_type: "single_select_radio", label: "Lunch" },
+];
+
+// Reflects a field's current field_key/question_type back onto the Combobox
+// — shows the preset's descriptive label when both match, the raw field_key
+// otherwise (a custom TD-typed key).
+function fieldToComboboxValue(field: EditableField): string {
+  const preset = FIELD_KEY_PRESETS.find((p) =>
+    p.key === "lunch" ? field.field_key.startsWith("lunch_") : p.field_key === field.field_key && p.question_type === field.question_type
+  );
+  return preset ? preset.label : field.field_key;
+}
+
+function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }: {
   field: EditableField;
   expanded: boolean;
   onExpand: () => void;
-  onCollapse: () => void;
   onFieldChange: (updates: Partial<EditableField>) => void;
   onAddFieldBelow: () => void;
 }) {
   const [showDescription, setShowDescription] = useState(!!field.description);
+  const [hovered, setHovered] = useState(false);
 
   if (!expanded) {
     return (
-      <Card radius="lg" style={{ padding: "16px 20px", cursor: "pointer" }} onClick={onExpand}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: "10px", color: "var(--color-text-tertiary)" }}>
+      <Card
+        radius="lg"
+        style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
+        onClick={onExpand}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
+        <div style={{
+          position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+          display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+          opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
+        }}>
           <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
         </div>
         <QuestionRenderer field={field} interactive={false} />
@@ -256,8 +264,14 @@ function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange, onAdd
 
   return (
     <div style={{ position: "relative" }}>
-      <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "16px 20px" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: showDescription ? "10px" : "16px" }}>
+      <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
+        <div style={{
+          position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+          display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+        }}>
+          <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
           <Input
             value={field.label}
             onChange={(e) => onFieldChange({ label: e.target.value })}
@@ -265,18 +279,27 @@ function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange, onAdd
             fullWidth
           />
           <Dropdown
-            value={fieldToDropdownValue(field)}
-            onChange={(v) => {
-              const preset = RESERVED_PRESETS[v];
-              if (preset) onFieldChange({ question_type: preset.question_type, field_key: preset.field_key });
-              else onFieldChange({ question_type: v as FormQuestionType });
-            }}
-            options={QUESTION_TYPE_DROPDOWN_ITEMS}
+            value={field.question_type}
+            onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
+            options={QUESTION_TYPE_OPTIONS}
             width={220}
           />
-          <Button type="button" variant="ghost" size="sm" iconOnly title="Collapse" onClick={onCollapse}>
-            <IconX size={14} />
-          </Button>
+        </div>
+        <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
+          <Combobox
+            label="Field Key"
+            value={fieldToComboboxValue(field)}
+            onChange={(text, matched) => {
+              if (matched) onFieldChange({ field_key: matched.field_key, question_type: matched.question_type });
+              else onFieldChange({ field_key: text });
+            }}
+            options={FIELD_KEY_PRESETS}
+            getId={(p) => p.key}
+            getLabel={(p) => p.label}
+            placeholder="e.g. volunteer_availability"
+            allowFreeText
+            size="md"
+          />
         </div>
         {showDescription && (
           <div style={{ marginBottom: "16px" }}>
@@ -289,7 +312,7 @@ function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange, onAdd
             />
           </div>
         )}
-        <QuestionRenderer field={field} interactive={false} />
+        <QuestionRenderer field={field} interactive={false} showHeader={false} />
       </Card>
 
       {/* Floating toolbar — add a field below, toggle this field's description input. */}
@@ -365,7 +388,6 @@ function FieldList({ form }: { form: Form }) {
           field={field}
           expanded={expandedKey === field.clientKey}
           onExpand={() => setExpandedKey(field.clientKey)}
-          onCollapse={() => setExpandedKey(null)}
           onFieldChange={(updates) => updateField(field.clientKey, updates)}
           onAddFieldBelow={() => addField(field.clientKey)}
         />

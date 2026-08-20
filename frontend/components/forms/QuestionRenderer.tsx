@@ -27,6 +27,8 @@ interface QuestionRendererProps {
   /** Only consulted when interactive. Shape depends on question_type (string for text types, boolean for acknowledgment, ...). */
   value?: unknown
   onChange?: (value: unknown) => void
+  /** Hide the label/description header — e.g. the builder's expanded card already shows the label via its own editable Input, so repeating it here would be redundant. */
+  showHeader?: boolean
 }
 
 // Shared between the builder's collapsed field-card preview (interactive=false)
@@ -36,22 +38,24 @@ interface QuestionRendererProps {
 // respondent sees. Reserved-key entity grouping (availability/event_preference)
 // doesn't affect this component — it only ever reads an option's `label`,
 // never its `value`, which is the only field whose shape differs for those.
-export function QuestionRenderer({ field, interactive, value, onChange }: QuestionRendererProps) {
+export function QuestionRenderer({ field, interactive, value, onChange, showHeader = true }: QuestionRendererProps) {
   const config = field.config ?? {}
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <div>
-        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-          {field.label || 'Untitled question'}
-          {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
-        </span>
-        {field.description && (
-          <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
-            {field.description}
-          </p>
-        )}
-      </div>
+      {showHeader && (
+        <div>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+            {field.label || 'Untitled question'}
+            {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+          </span>
+          {field.description && (
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+              {field.description}
+            </p>
+          )}
+        </div>
+      )}
 
       <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} />
     </div>
