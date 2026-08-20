@@ -1,91 +1,26 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
+import { EditableText } from "@/components/ui/EditableText";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { IconArrowLeft, IconArchive, IconTrash } from "@/components/ui/Icons";
+
+// Matches the eventual centered content column (title card, field list) —
+// the sub-header's content is constrained the same way, Google-Forms-style,
+// rather than stretching edge to edge.
+const CONTENT_MAX_WIDTH = 800;
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
   published: "confirmed",
   archived: "removed",
 };
-
-function EditableName({ form, onUpdated }: {
-  form: Form;
-  onUpdated: (form: Form) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(form.name);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
-  function startEdit() {
-    setValue(form.name);
-    setError(undefined);
-    setEditing(true);
-  }
-
-  async function save() {
-    const trimmed = value.trim();
-    if (!trimmed || trimmed === form.name) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await formsApi.update(form.id, { name: trimmed });
-      onUpdated(updated);
-      setEditing(false);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to update name.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (editing) {
-    return (
-      <Input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); save(); }
-          if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
-        }}
-        error={error}
-        disabled={saving}
-        size="sm"
-        font="sans"
-      />
-    );
-  }
-
-  return (
-    <span
-      onClick={startEdit}
-      title="Click to edit name"
-      style={{
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 600,
-        color: "var(--color-text-primary)", cursor: "pointer",
-      }}
-    >
-      {form.name}
-    </span>
-  );
-}
 
 function StatusControl({ form, onUpdated, onDeleted }: {
   form: Form;
@@ -175,22 +110,29 @@ function SubHeader({ form, onUpdated, onDeleted }: {
   const backHref = form.owner_type === "tournament" ? `/dashboard/tournaments/${form.tournament_id}/forms` : null;
 
   return (
-    <div style={{
-      display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px",
-      padding: "14px 24px", background: "var(--color-surface)", borderBottom: "1px solid var(--color-border)",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
-        <Button
-          type="button" variant="ghost" size="sm" iconOnly
-          title="Back to forms"
-          onClick={() => (backHref ? router.push(backHref) : router.back())}
-        >
-          <IconArrowLeft size={14} />
-        </Button>
-        <EditableName form={form} onUpdated={onUpdated} />
-        <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
-      </div>
-      <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
+    <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "16px 24px 0" }}>
+      <Card radius="lg" style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px",
+        padding: "12px 20px",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "14px", minWidth: 0 }}>
+          <Button
+            type="button" variant="ghost" size="sm" iconOnly
+            title="Back to forms"
+            onClick={() => (backHref ? router.push(backHref) : router.back())}
+          >
+            <IconArrowLeft size={14} />
+          </Button>
+          <EditableText
+            value={form.name}
+            onSave={async (name) => onUpdated(await formsApi.update(form.id, { name }))}
+            textStyle={{ fontSize: "15px", fontWeight: 600 }}
+            title="Click to edit name"
+          />
+          <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
+        </div>
+        <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
+      </Card>
     </div>
   );
 }
@@ -237,7 +179,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   return (
     <div>
       <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} />
-      <div style={{ padding: "22px 24px" }}>
+      <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
         <p style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-secondary)" }}>
           Field list and title card land in later steps.
         </p>
