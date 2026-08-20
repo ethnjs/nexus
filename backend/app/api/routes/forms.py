@@ -491,7 +491,16 @@ def _write_through_reserved_fields(
         selected = value if isinstance(value, list) else ([value] if value else [])
 
         if field.field_key == "availability":
-            sync_availability(db, membership.id, [int(v) for v in selected])
+            # `selected` is the chosen option_id(s) — each option's `value`
+            # is the list of real TournamentShift ids it groups together
+            # (see validate_availability_options); expand and flatten
+            # before diffing, so overlapping shifts across multiple
+            # selected options naturally dedupe via set union.
+            options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+            shift_ids: set[int] = set()
+            for option_id in selected:
+                shift_ids.update(options_by_id.get(option_id, {}).get("value") or [])
+            sync_availability(db, membership.id, list(shift_ids))
             continue
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):

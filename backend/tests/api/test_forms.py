@@ -750,14 +750,14 @@ class TestWriteThroughOnSubmit:
         db.flush()
         field = _make_field(
             db, form, field_key="availability", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"option_id": f"opt_{shift.id}", "value": str(shift.id), "label": shift.label}]},
+            config={"required": False, "options": [{"option_id": f"opt_{shift.id}", "value": [shift.id], "label": shift.label}]},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
 
         res = client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": [str(shift.id)]}]},
+            json={"answers": [{"field_id": field.id, "value": [f"opt_{shift.id}"]}]},
         )
         assert res.status_code == 200
 
@@ -770,6 +770,96 @@ class TestWriteThroughOnSubmit:
             TournamentMembershipAvailability.membership_id == membership.id
         ).all()
         assert [row.tournament_shift_id for row in rows] == [shift.id]
+
+    def _shift_ids(self, db, membership_id):
+        return {
+            row.tournament_shift_id
+            for row in db.query(TournamentMembershipAvailability).filter(
+                TournamentMembershipAvailability.membership_id == membership_id
+            ).all()
+        }
+
+    def _membership_id(self, db, user, tournament):
+        return (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+            .first()
+            .id
+        )
+
+    def test_grouped_availability_option_writes_one_row_per_shift(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
+        db.add_all([morning, afternoon])
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability", question_type="single_select_radio",
+            config={"required": False, "options": [{"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_all_day"}]})
+        assert res.status_code == 200
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
+
+    def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
+        db.add_all([morning, afternoon])
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_morning", "value": [morning.id], "label": "Morning"},
+                    {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_morning", "opt_all_day"]}]},
+        )
+        assert res.status_code == 200
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
+
+    def test_deselecting_option_keeps_shift_still_covered_by_another(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
+        db.add_all([morning, afternoon])
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_morning", "value": [morning.id], "label": "Morning"},
+                    {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning", "opt_all_day"]}]})
+        # Deselect "All Day" — "Morning" alone still covers the morning shift.
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
+        assert res.status_code == 200
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {morning.id}
 
     def test_lunch_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
