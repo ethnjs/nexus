@@ -18,6 +18,7 @@ import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { OptionsEditor, EditableOption } from "@/components/forms/OptionsEditor";
+import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -320,12 +321,13 @@ function useHeightTransition(expandedOnMount: boolean) {
   return { wrapperRef, contentRef };
 }
 
-function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }: {
+function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, tournamentId }: {
   field: EditableField;
   expanded: boolean;
   onExpand: () => void;
   onFieldChange: (updates: Partial<EditableField>) => void;
   onAddFieldBelow: () => void;
+  tournamentId: number | null;
 }) {
   const [showDescription, setShowDescription] = useState(!!field.description);
   const [hovered, setHovered] = useState(false);
@@ -418,7 +420,14 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
                   />
                 </div>
               )}
-              {!preset && OPTION_BEARING_TYPES.includes(field.question_type) ? (
+              {(preset?.key === "availability" || preset?.key === "event_preference") && tournamentId ? (
+                <EntityOptionsEditor
+                  fieldKey={preset.key}
+                  tournamentId={tournamentId}
+                  options={(field.config?.options as EditableOption[] | undefined) ?? []}
+                  onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+                />
+              ) : !preset && OPTION_BEARING_TYPES.includes(field.question_type) ? (
                 <>
                   <OptionsEditor
                     options={(field.config?.options as EditableOption[] | undefined) ?? []}
@@ -553,6 +562,7 @@ function FieldList({ form }: { form: Form }) {
           onExpand={() => setExpandedKey(field.clientKey)}
           onFieldChange={(updates) => updateField(field.clientKey, updates)}
           onAddFieldBelow={() => addField(field.clientKey)}
+          tournamentId={form.tournament_id}
         />
       ))}
     </div>
