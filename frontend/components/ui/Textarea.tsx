@@ -4,6 +4,8 @@ import { forwardRef, TextareaHTMLAttributes, useEffect, useId, useRef, useState 
 
 type InputFont = 'sans' | 'mono' | 'serif'
 type InputSize = 'xs' | 'sm' | 'md'
+// primary -- light gray; secondary -- white (matches Input's variant)
+type InputVariant = 'primary' | 'secondary'
 
 interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   label?: string
@@ -12,6 +14,7 @@ interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   rows?: number
   font?: InputFont
   size?: InputSize
+  variant?: InputVariant
   /**
    * Pops the textarea out into a larger floating box (top-left corner
    * anchored to the collapsed box) while focused or hovered. Collapses once
@@ -35,9 +38,14 @@ const SIZE_MAP: Record<InputSize, { height?: string; padding: string; fontSize: 
   md: { padding: '16px', fontSize: '14px' },
 }
 
+const BACKGROUND_MAP: Record<InputVariant, string> = {
+  primary:   'var(--color-bg)',
+  secondary: 'var(--color-surface)',
+}
+
 export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
   ({
-    label, error, fullWidth, rows = 4, font = 'mono', size = 'md', className = '', id, value, style,
+    label, error, fullWidth, rows = 4, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, style,
     expandable = false, expandedWidth = '280px', expandedHeight = '140px',
     onFocus, onBlur, onMouseEnter, onMouseLeave,
     ...props
@@ -97,7 +105,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
         {label && (
           <label
             htmlFor={inputId}
-            style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', fontWeight: 400, color: 'var(--color-text-secondary)'}}
+            style={{
+              fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
+            }}
           >{label}</label>
         )}
         <textarea
@@ -109,7 +120,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             padding: sizing.padding,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
-            background: 'var(--color-surface)',
+            background: BACKGROUND_MAP[variant],
             color: 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
             borderRadius: 'var(--radius-sm)',

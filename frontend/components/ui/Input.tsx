@@ -51,7 +51,7 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, ...props }, ref) => {
+  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, onFocus, onBlur, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -121,9 +121,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             }}
             onFocus={e => {
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
+              onFocus?.(e)
             }}
             onBlur={e => {
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
+              onBlur?.(e)
             }}
             className={className}
             value={value ?? ''}
