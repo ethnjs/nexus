@@ -15,8 +15,8 @@ import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/u
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
 
-// Name / Status / Fields / Updated / Actions
-const FORM_ROW_COLUMNS = "1.6fr 110px 90px 110px 76px";
+// Name / Status / Fields / Responses / Updated / Actions
+const FORM_ROW_COLUMNS = "1.6fr 110px 80px 100px 110px 76px";
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
@@ -58,6 +58,9 @@ function FormRow({ form, isLast }: {
         {fieldCount}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        {form.response_count}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {formatRelativeTime(form.updated_at)}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
@@ -92,6 +95,7 @@ function FormTable({ forms }: { forms: Form[] }) {
         <span>Forms — {forms.length}</span>
         <span style={{ textAlign: "center" }}>Status</span>
         <span style={{ textAlign: "center" }}>Fields</span>
+        <span style={{ textAlign: "center" }}>Responses</span>
         <span style={{ textAlign: "center" }}>Updated</span>
         <span />
       </div>
