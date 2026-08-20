@@ -96,9 +96,9 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
             checked={interactive ? Boolean(value) : false}
             onChange={(checked) => onChange?.(checked)}
             locked={!interactive}
-            size={20}
+            size={18}
           />
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-secondary)' }}>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)' }}>
             {config.confirm_label || 'I understand'}
           </span>
         </label>
@@ -125,9 +125,9 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
           value={selected}
           onChange={(v) => interactive && onChange?.(v)}
           locked={!interactive}
-          size={20}
-          fontSize="16px"
-          gap="12px"
+          size={18}
+          fontSize="14px"
+          gap="10px"
         />
       )
     }
@@ -172,9 +172,9 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
           value={selected}
           onChange={toggle}
           locked={!interactive}
-          size={20}
-          fontSize="16px"
-          gap="12px"
+          size={18}
+          fontSize="14px"
+          gap="10px"
         />
       )
     }

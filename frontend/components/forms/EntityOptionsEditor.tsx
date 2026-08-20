@@ -173,13 +173,13 @@ function EntityOptionRow({ option, entities, fieldKey, bulletType, emptyMessage,
         <IconGripVertical size={13} />
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {bulletType === 'radio' && <RadioCircle checked={false} disabled />}
-        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked />}
+        {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
+        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
         <Input
           value={option.label}
           onChange={(e) => onLabelChange(e.target.value)}
           placeholder="e.g. All Day"
-          size="sm"
+          size="md"
           fullWidth
         />
         <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>

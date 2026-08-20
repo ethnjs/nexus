@@ -132,13 +132,13 @@ function OptionRow({ option, bulletType, onChange, onRemove }: {
       >
         <IconGripVertical size={13} />
       </span>
-      {bulletType === 'radio' && <RadioCircle checked={false} disabled />}
-      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked />}
+      {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
+      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
       <Input
         value={option.label}
         onChange={(e) => onChange(e.target.value)}
         placeholder="Option"
-        size="sm"
+        size="md"
         fullWidth
       />
       <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
