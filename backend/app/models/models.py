@@ -6,6 +6,7 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 """
 
 from datetime import datetime, timezone
+from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
     ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
@@ -16,6 +17,14 @@ from typing import Optional
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
+
+
+def generate_form_id() -> str:
+    """Form.id is a public-facing 12-char random string (nanoid's default
+    alphabet is already URL-safe), not an auto-increment int — forms are
+    referenced directly in URLs (/forms/{id}/edit) the way a user-facing
+    document id is, not as an internal implementation detail."""
+    return generate_nanoid(size=12)
 
 
 def utcnow():
@@ -670,11 +679,16 @@ class SheetConfig(Base):
 class Form(Base):
     __tablename__ = "forms"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(12), primary_key=True, default=generate_form_id)
     owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
+    # Respondent-facing title, shown on the actual form — distinct from
+    # `name` (the TD-facing dashboard/list label). Independently editable;
+    # callers default it to `name` at creation time if not given, but
+    # nothing here enforces them staying in sync afterward.
+    title = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
     status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
 
@@ -697,6 +711,13 @@ class Form(Base):
         ),
     )
 
+    # Read by the forms list page to preemptively disable Delete (which
+    # 409s server-side if any responses exist) rather than let a TD hit a
+    # dead-end click.
+    @property
+    def response_count(self) -> int:
+        return len(self.responses)
+
 
 # ---------------------------------------------------------------------------
 # FormField — a single question on a Form. question_type drives how config
@@ -707,7 +728,7 @@ class FormField(Base):
     __tablename__ = "form_fields"
 
     id = Column(Integer, primary_key=True, index=True)
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
     order = Column(Integer, nullable=False)
     label = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
@@ -756,7 +777,7 @@ class FormResponse(Base):
     __tablename__ = "form_responses"
 
     id = Column(Integer, primary_key=True, index=True)
-    form_id = Column(Integer, ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
     submitted_at = Column(DateTime(timezone=True), default=utcnow)

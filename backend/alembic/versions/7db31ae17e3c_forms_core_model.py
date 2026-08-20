@@ -29,11 +29,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     op.create_table('forms',
-    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=12), nullable=False),
     sa.Column('owner_type', sa.String(length=16), nullable=False),
     sa.Column('tournament_id', sa.Integer(), nullable=True),
     sa.Column('chapter_id', sa.Integer(), nullable=True),
     sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('title', sa.String(length=255), nullable=True),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('status', sa.String(length=16), nullable=False),
     sa.Column('created_by', sa.Integer(), nullable=False),
@@ -49,7 +50,7 @@ def upgrade() -> None:
 
     op.create_table('form_fields',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('form_id', sa.Integer(), nullable=False),
+    sa.Column('form_id', sa.String(length=12), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=255), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
@@ -67,7 +68,7 @@ def upgrade() -> None:
 
     op.create_table('form_responses',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('form_id', sa.Integer(), nullable=False),
+    sa.Column('form_id', sa.String(length=12), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('submitted_at', sa.DateTime(timezone=True), nullable=True),
     sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),

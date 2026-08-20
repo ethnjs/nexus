@@ -15,7 +15,7 @@ from app.models.models import ChapterMembership, Form, User
 # ---------------------------------------------------------------------------
 
 
-def _load_form_or_404(form_id: int, db: Session) -> Form:
+def _load_form_or_404(form_id: str, db: Session) -> Form:
     form = db.query(Form).filter(Form.id == form_id).first()
     if not form:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
@@ -23,7 +23,7 @@ def _load_form_or_404(form_id: int, db: Session) -> Form:
 
 
 def require_form_manage_access(
-    form_id: int,
+    form_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Form:
@@ -45,7 +45,7 @@ def require_form_manage_access(
 
 
 def require_form_view_access(
-    form_id: int,
+    form_id: str,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Form:

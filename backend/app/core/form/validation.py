@@ -81,7 +81,7 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
 
 def validate_branching_options(
     db: Session,
-    form_id: int,
+    form_id: str,
     question_type: str,
     config: dict,
     field_id: int | None = None,

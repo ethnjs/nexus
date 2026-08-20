@@ -75,6 +75,7 @@ def create_tournament_form(
 
     form = Form(
         name=payload.name,
+        title=payload.title or payload.name,
         description=payload.description,
         owner_type="tournament",
         tournament_id=tournament_id,
@@ -112,6 +113,7 @@ def create_chapter_form(
 
     form = Form(
         name=payload.name,
+        title=payload.title or payload.name,
         description=payload.description,
         owner_type="chapter",
         tournament_id=None,
@@ -175,6 +177,8 @@ def update_form(
 
     if payload.name is not None:
         form.name = payload.name
+    if payload.title is not None:
+        form.title = payload.title
     if payload.description is not None:
         form.description = payload.description
     if payload.status is not None:

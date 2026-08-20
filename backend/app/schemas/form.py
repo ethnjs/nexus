@@ -135,7 +135,7 @@ QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
 
 class FormFieldRead(BaseModel):
     id: int
-    form_id: int
+    form_id: str
     field_key: str
     order: int
     label: str
@@ -172,8 +172,9 @@ class BulkFieldsUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 class FormRead(BaseModel):
-    id: int
+    id: str
     name: str
+    title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"]
     owner_type: Literal["tournament", "chapter"]
@@ -182,6 +183,7 @@ class FormRead(BaseModel):
     created_by: int
     created_at: datetime
     updated_at: datetime
+    response_count: int = 0
     fields: list[FormFieldRead] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -189,6 +191,7 @@ class FormRead(BaseModel):
 
 class FormCreate(BaseModel):
     name: str
+    title: str | None = None
     description: str | None = None
     owner_type: Literal["tournament", "chapter"]
     tournament_id: int | None = None
@@ -207,6 +210,7 @@ class FormCreate(BaseModel):
 
 class FormUpdate(BaseModel):
     name: str | None = None
+    title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
 
@@ -234,7 +238,7 @@ class FormResponseCreate(BaseModel):
 
 class FormResponseRead(BaseModel):
     id: int
-    form_id: int
+    form_id: str
     user_id: int
     submitted_at: datetime
     updated_at: datetime
