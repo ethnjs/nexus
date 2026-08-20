@@ -266,7 +266,7 @@ class TestFieldHelpers:
 # ---------------------------------------------------------------------------
 
 class TestResolveAvailabilityOptions:
-    def test_single_shift_option_resolves_its_own_range(self, db, td_user, td_tournament):
+    def test_single_shift_option_resolves_to_one_value_entry(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
         end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
@@ -278,9 +278,11 @@ class TestResolveAvailabilityOptions:
         db.commit()
 
         options = resolve_field_options(db, field)
-        assert options == [{"option_id": "opt_1", "label": "Saturday", "start": start, "end": end}]
+        assert options == [
+            {"option_id": "opt_1", "label": "Saturday", "value": [{"id": shift.id, "label": "Saturday", "start": start, "end": end}]}
+        ]
 
-    def test_grouped_shifts_resolve_combined_range(self, db, td_user, td_tournament):
+    def test_grouped_shifts_resolve_to_one_entry_each(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         morning_start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
         morning_end = datetime(2027, 2, 13, 12, 0, tzinfo=timezone.utc)
@@ -299,22 +301,16 @@ class TestResolveAvailabilityOptions:
         db.commit()
 
         options = resolve_field_options(db, field)
-        assert options == [{"option_id": "opt_all_day", "label": "All Day", "start": morning_start, "end": afternoon_end}]
-
-    def test_raw_shift_ids_not_exposed(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        shift = _make_shift(
-            db, td_tournament, "Saturday",
-            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
-        )
-        field = _make_field(
-            db, form, field_key="availability", question_type="single_select_radio",
-            config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": False}]},
-        )
-        db.commit()
-
-        options = resolve_field_options(db, field)
-        assert "value" not in options[0]
+        assert options == [
+            {
+                "option_id": "opt_all_day",
+                "label": "All Day",
+                "value": [
+                    {"id": morning.id, "label": "Morning", "start": morning_start, "end": morning_end},
+                    {"id": afternoon.id, "label": "Afternoon", "start": afternoon_start, "end": afternoon_end},
+                ],
+            }
+        ]
 
     def test_archived_option_excluded(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -363,7 +359,7 @@ class TestResolveEventPreferenceOptions:
             {
                 "option_id": "opt_life_science",
                 "label": "Life Science",
-                "events": [
+                "value": [
                     {"id": anat.id, "name": "Anatomy and Physiology", "division": "B"},
                     {"id": disease.id, "name": "Disease Detectives", "division": "C"},
                 ],

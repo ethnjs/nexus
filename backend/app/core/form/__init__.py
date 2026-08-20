@@ -291,35 +291,40 @@ def flag_pending_updates_for_archived_options(db: Session, field: FormField, arc
 
 
 def _resolve_availability_option(db: Session, option: dict) -> dict:
-    """Responder-facing view of one availability option: its label plus the
-    combined start/end across every TournamentShift its `value` groups
-    together — never the raw shift id list itself. A respondent selects
-    "All Day", not the three shifts underneath it; `option_id` is what
-    they actually submit back on answer (see write-through, which resolves
-    it server-side against the field's stored config, not this rendering)."""
+    """Responder-facing view of one availability option: `value` (normally
+    the raw list[int] of grouped TournamentShift ids) is resolved in place
+    into one `{id, label, start, end}` dict per shift — reusing `value`
+    rather than inventing new keys, and keeping every underlying shift's own
+    id/label/range intact (not collapsed into one combined range) so a
+    builder UI can reconstruct exactly what's grouped, not just the result.
+    `option_id` is what's actually submitted back on answer (see
+    write-through, which resolves it server-side against the field's stored
+    config, not this rendering)."""
     shift_ids = option.get("value") or []
     rows = (
-        db.query(TournamentShift.start, TournamentShift.end)
+        db.query(TournamentShift.id, TournamentShift.label, TournamentShift.start, TournamentShift.end)
         .filter(TournamentShift.id.in_(shift_ids))
+        .order_by(TournamentShift.start)
         .all()
     )
-    starts = [start for start, _ in rows]
-    ends = [end for _, end in rows]
     return {
         "option_id": option["option_id"],
         "label": option["label"],
-        "start": min(starts) if starts else None,
-        "end": max(ends) if ends else None,
+        "value": [
+            {"id": shift_id, "label": label, "start": start, "end": end}
+            for shift_id, label, start, end in rows
+        ],
     }
 
 
 def _resolve_event_preference_option(db: Session, option: dict) -> dict:
-    """Responder-facing view of one event_preference option: its label
-    plus the actual TournamentEvents its `value` groups together, instead
-    of raw ids — same "resolve, don't expose ids" treatment as availability.
-    A `value` that's still a plain string (a single legacy id, per the
-    Branching/Config-Validation issue's not-yet-strict event_preference
-    validation) passes through unchanged rather than being resolved."""
+    """Responder-facing view of one event_preference option: `value`
+    (list[int] of grouped TournamentEvent ids) is resolved in place into one
+    `{id, name, division}` dict per event — same "reuse value, one entry per
+    grouped entity" treatment as availability. A `value` that's still a
+    plain string (a single legacy id, per the Branching/Config-Validation
+    issue's not-yet-strict event_preference validation) passes through
+    unchanged rather than being resolved."""
     value = option.get("value")
     if not isinstance(value, list):
         return option
@@ -327,12 +332,13 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
     events = (
         db.query(TournamentEvent.id, TournamentEvent.name, TournamentEvent.division)
         .filter(TournamentEvent.id.in_(value))
+        .order_by(TournamentEvent.id)
         .all()
     )
     return {
         "option_id": option["option_id"],
         "label": option["label"],
-        "events": [
+        "value": [
             {"id": event_id, "name": name, "division": division}
             for event_id, name, division in events
         ],

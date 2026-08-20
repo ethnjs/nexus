@@ -78,10 +78,13 @@ Pick any number, shown as checkboxes.
 Answer value: array of chosen option `option_id`s — stored as a list of `{option_id, value, label}` snapshots.
 Branching: not supported (not single-select).
 
-**Reserved-key note (`availability`):** `field_key = "availability"` is allowed on either `single_select_radio` or `multi_select_checkbox` — the TD's choice of type determines whether a respondent can select more than one grouped option at once (multi-select, e.g. "free both Morning and Evening but not Afternoon") or at most one (single-select, for a tournament that only wants one blanket answer per person); it doesn't change write-through, only how many options can be selected. Each option's `value` is `list[int]` — one or more real `TournamentShift` ids belonging to the field's tournament, grouped under a single TD-labeled choice (e.g. `"All Day"` → `[1, 2, 3]`), auto-loadable from the tournament's shift catalog. A responder never sees the raw shift list: `GET`-rendering resolves each option into its `label` plus the combined `start`/`end` across every shift it groups (`resolve_field_options`'s availability branch), e.g.:
+**Reserved-key note (`availability`):** `field_key = "availability"` is allowed on either `single_select_radio` or `multi_select_checkbox` — the TD's choice of type determines whether a respondent can select more than one grouped option at once (multi-select, e.g. "free both Morning and Evening but not Afternoon") or at most one (single-select, for a tournament that only wants one blanket answer per person); it doesn't change write-through, only how many options can be selected. Each option's stored `value` is `list[int]` — one or more real `TournamentShift` ids belonging to the field's tournament, grouped under a single TD-labeled choice (e.g. `"All Day"` → `[1, 2, 3]`), auto-loadable from the tournament's shift catalog. `GET`-rendering resolves `value` in place (`resolve_field_options`'s availability branch) from that raw id list into one `{id, label, start, end}` entry per shift, ordered by `start` — reusing `value` rather than inventing new keys, and keeping every underlying shift's own id/label/range intact (not collapsed into one combined range) so an editor can see exactly what's grouped:
 
 ```json
-{ "option_id": "a1b2c3d4e5", "label": "All Day", "start": "2027-02-13T07:00:00Z", "end": "2027-02-13T16:00:00Z" }
+{ "option_id": "a1b2c3d4e5", "label": "All Day", "value": [
+  { "id": 1, "label": "Morning", "start": "2027-02-13T07:00:00Z", "end": "2027-02-13T12:00:00Z" },
+  { "id": 2, "label": "Afternoon", "start": "2027-02-13T12:00:00Z", "end": "2027-02-13T16:00:00Z" }
+] }
 ```
 
 On submit, the answer's selected option_id(s) are expanded into their grouped shift ids (deduped via set union across selections) and write-through into `MembershipAvailability` (diffed against the prior submission) — this fires only on tournament-owned forms; on a chapter-owned form the same field is valid but stores as a normal `FormAnswer`, no write-through. Availability answers are **not** snapshotted the way other option types are (see "Answer-value snapshotting" above) — `FormAnswer.value` stores the raw selected `option_id`(s) directly. Deleting a `TournamentShift` is rejected if it's referenced either by an existing `MembershipAvailability` row, or inside any non-archived field's option `value` list — a shift that's part of a live option's grouping can't be pulled out from under it even before anyone's answered.
@@ -103,10 +106,10 @@ Rank a fixed number of options in order of preference.
 Answer value: dict of rank → option `option_id`, e.g. `{"1": "a1b2c3d4e5", "2": "f6e5d4c3b2"}` — stored as rank → `{option_id, value, label}` snapshot.
 Branching: not supported.
 
-**Reserved-key note (`event_preference`):** allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. An option's `value` may be `list[int]` — one or more real `TournamentEvent` ids grouped under a single label (the same grouping pattern as availability's shift ids), auto-loadable from the tournament's event catalog. `GET`-rendering resolves a `list[int]` value into the actual events instead of exposing raw ids (`resolve_field_options`'s event_preference branch):
+**Reserved-key note (`event_preference`):** allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. An option's stored `value` may be `list[int]` — one or more real `TournamentEvent` ids grouped under a single label (the same grouping pattern as availability's shift ids), auto-loadable from the tournament's event catalog. `GET`-rendering resolves `value` in place into one `{id, name, division}` entry per event, ordered by id (`resolve_field_options`'s event_preference branch) — same "reuse `value`, one entry per grouped entity" treatment as availability:
 
 ```json
-{ "option_id": "a1b2c3d4e5", "label": "Life Science", "events": [{ "id": 5, "name": "Anatomy and Physiology", "division": "B" }, { "id": 9, "name": "Disease Detectives", "division": "C" }] }
+{ "option_id": "a1b2c3d4e5", "label": "Life Science", "value": [{ "id": 5, "name": "Anatomy and Physiology", "division": "B" }, { "id": 9, "name": "Disease Detectives", "division": "C" }] }
 ```
 
 A `value` that's still a plain string (a single legacy id) passes through unresolved — strict validation that every `event_preference` option's ids are real `TournamentEvent`s isn't built yet, unlike `availability`'s strict shift-id check.
