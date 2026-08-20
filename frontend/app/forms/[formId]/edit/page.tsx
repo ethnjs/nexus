@@ -265,6 +265,58 @@ function fieldToComboboxValue(field: EditableField): string {
   return activePreset(field)?.label ?? field.field_key;
 }
 
+// lunch_{YYYYMMDD}_{category} — one date+category pair per lunch field (not
+// per option; the options below are just that lunch's food choices).
+// Matches LUNCH_FIELD_KEY_PATTERN in backend/app/core/form/validation.py.
+function parseLunchFieldKey(fieldKey: string): { date: string; category: string } {
+  const match = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/.exec(fieldKey);
+  if (!match) return { date: "", category: "" };
+  const [, y, m, d, category] = match;
+  return { date: `${y}-${m}-${d}`, category };
+}
+
+function buildLunchFieldKey(date: string, category: string): string {
+  const slug = category.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  if (!date || !slug) return "lunch_";
+  return `lunch_${date.replaceAll("-", "")}_${slug}`;
+}
+
+// Lunch's card body: a date + category picker (the field-level key
+// derivation), not a per-option picker — the options below are just that
+// lunch's food choices, edited with the same freeform OptionsEditor as any
+// other select/checkbox field.
+function LunchFieldBody({ field, onFieldChange }: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+}) {
+  const { date, category } = parseLunchFieldKey(field.field_key);
+
+  function setDate(newDate: string) {
+    onFieldChange({ field_key: buildLunchFieldKey(newDate, category) });
+  }
+
+  function setCategory(newCategory: string) {
+    onFieldChange({ field_key: buildLunchFieldKey(date, newCategory) });
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      <div style={{ display: "flex", gap: "10px" }}>
+        <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} size="sm" fullWidth />
+        <Input label="Category" placeholder="e.g. Protein" value={category} onChange={(e) => setCategory(e.target.value)} size="sm" fullWidth />
+      </div>
+      <p style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+        {field.field_key === "lunch_" ? "Set a date and category to derive the field key" : field.field_key}
+      </p>
+      <OptionsEditor
+        options={(field.config?.options as EditableOption[] | undefined) ?? []}
+        onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+        questionType={field.question_type}
+      />
+    </div>
+  );
+}
+
 const EXPAND_MS = 200;
 const EXPAND_EASING = "ease-out";
 
@@ -427,6 +479,8 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
                   options={(field.config?.options as EditableOption[] | undefined) ?? []}
                   onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
                 />
+              ) : preset?.key === "lunch" ? (
+                <LunchFieldBody field={field} onFieldChange={onFieldChange} />
               ) : !preset && OPTION_BEARING_TYPES.includes(field.question_type) ? (
                 <>
                   <OptionsEditor
