@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate
+from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentShift
 
 import re
 import secrets
@@ -262,6 +262,29 @@ def flag_pending_updates_for_archived_options(db: Session, field: FormField, arc
             _upsert_pending_update(db, answer.response_id, field.field_key, "option_archived")
 
 
+def _resolve_availability_option(db: Session, option: dict) -> dict:
+    """Responder-facing view of one availability option: its label plus the
+    combined start/end across every TournamentShift its `value` groups
+    together — never the raw shift id list itself. A respondent selects
+    "All Day", not the three shifts underneath it; `option_id` is what
+    they actually submit back on answer (see write-through, which resolves
+    it server-side against the field's stored config, not this rendering)."""
+    shift_ids = option.get("value") or []
+    rows = (
+        db.query(TournamentShift.start, TournamentShift.end)
+        .filter(TournamentShift.id.in_(shift_ids))
+        .all()
+    )
+    starts = [start for start, _ in rows]
+    ends = [end for _, end in rows]
+    return {
+        "option_id": option["option_id"],
+        "label": option["label"],
+        "start": min(starts) if starts else None,
+        "end": max(ends) if ends else None,
+    }
+
+
 def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     """Options for a given FormField, filtering out any `is_archived: true`
     option — archived options stay in `config` for historical answer/
@@ -272,6 +295,14 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     tournament" conveniences (pulling in events/shifts/etc.) are a
     TD-editor-side action that populates this array once, same as any
     manually-authored option list, not a live server-side lookup. See
-    form-question-types-reference.md's "Options-storage rule"."""
+    form-question-types-reference.md's "Options-storage rule". availability
+    is the one exception to "just return config as-is": its `value` is
+    internal (real TournamentShift ids), so rendering resolves it into a
+    combined start/end range instead of exposing the raw shift list."""
     config = dict(field.config or {})
-    return [o for o in config.get("options", []) if not o.get("is_archived")]
+    options = [o for o in config.get("options", []) if not o.get("is_archived")]
+
+    if field.field_key == "availability":
+        return [_resolve_availability_option(db, o) for o in options]
+
+    return options

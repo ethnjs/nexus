@@ -9,10 +9,13 @@ from sqlalchemy.exc import IntegrityError
 from tests.conftest import grant_role
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 
+from datetime import datetime, timedelta, timezone
+
 from app.core.form import (
     field_key_taken_in_tournament,
     remove_form_field,
     replace_field_type,
+    resolve_field_options,
     slugify,
 )
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
@@ -22,6 +25,7 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    TournamentShift,
 )
 
 
@@ -93,6 +97,13 @@ def _chapter_lead(db, chapter, email="chapterlead@test.com", password="LeadPass1
     db.add(ChapterMembership(chapter_id=chapter.id, user_id=user.id, role="lead"))
     db.commit()
     return user
+
+
+def _make_shift(db, tournament, label, start, end):
+    shift = TournamentShift(tournament_id=tournament.id, label=label, start=start, end=end)
+    db.add(shift)
+    db.flush()
+    return shift
 
 
 # ---------------------------------------------------------------------------
@@ -240,6 +251,84 @@ class TestFieldHelpers:
         assert replacement.question_type == "multi_select"
         assert replacement.field_key == "tshirt_size"
         assert replacement.is_archived is False
+
+
+# ---------------------------------------------------------------------------
+# resolve_field_options — availability combined display
+# ---------------------------------------------------------------------------
+
+class TestResolveAvailabilityOptions:
+    def test_single_shift_option_resolves_its_own_range(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
+        end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
+        shift = _make_shift(db, td_tournament, "Saturday", start, end)
+        field = _make_field(
+            db, form, field_key="availability", question_type="single_select_radio",
+            config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": False}]},
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options == [{"option_id": "opt_1", "label": "Saturday", "start": start, "end": end}]
+
+    def test_grouped_shifts_resolve_combined_range(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        morning_start = datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc)
+        morning_end = datetime(2027, 2, 13, 12, 0, tzinfo=timezone.utc)
+        afternoon_start = datetime(2027, 2, 13, 12, 0, tzinfo=timezone.utc)
+        afternoon_end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
+        morning = _make_shift(db, td_tournament, "Morning", morning_start, morning_end)
+        afternoon = _make_shift(db, td_tournament, "Afternoon", afternoon_start, afternoon_end)
+        field = _make_field(
+            db, form, field_key="availability", question_type="multi_select_checkbox",
+            config={
+                "options": [
+                    {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day", "is_archived": False},
+                ],
+            },
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options == [{"option_id": "opt_all_day", "label": "All Day", "start": morning_start, "end": afternoon_end}]
+
+    def test_raw_shift_ids_not_exposed(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        shift = _make_shift(
+            db, td_tournament, "Saturday",
+            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+        )
+        field = _make_field(
+            db, form, field_key="availability", question_type="single_select_radio",
+            config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": False}]},
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert "value" not in options[0]
+
+    def test_archived_option_excluded(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        shift = _make_shift(
+            db, td_tournament, "Saturday",
+            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+        )
+        field = _make_field(
+            db, form, field_key="availability", question_type="single_select_radio",
+            config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": True}]},
+        )
+        db.commit()
+
+        assert resolve_field_options(db, field) == []
+
+    def test_non_availability_field_returns_raw_options(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form)  # default config, field_key="favorite_color"
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options == field.config["options"]
 
 
 # ---------------------------------------------------------------------------
