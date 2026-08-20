@@ -1190,6 +1190,11 @@ export interface FormFieldConfig {
   ranks?:            number
   allow_duplicates?: boolean
   max_length?:       number
+  // single_select_radio and multi_select_checkbox only — long option labels
+  // don't fit ButtonGroup's pill layout well, so the TD can fall back to a
+  // plain radio/checkbox list. single_select_dropdown has no equivalent
+  // (always a closed Dropdown control, not a style choice).
+  display_style?:    "buttons" | "list"
 }
 
 export interface FormField {

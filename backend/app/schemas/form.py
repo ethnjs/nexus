@@ -76,7 +76,23 @@ class AcknowledgmentConfig(BaseModel):
     confirm_label: str = Field(min_length=1)
 
 
-class SingleSelectConfig(BaseModel):
+class SingleSelectRadioConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    required: bool
+    # Client-side render choice — long option labels don't fit ButtonGroup's
+    # pill layout well, so the TD can fall back to a plain radio list.
+    # Dropdown has no equivalent (it's always a closed Dropdown control, not
+    # a style choice), so this doesn't exist on that config.
+    display_style: Literal["buttons", "list"] = "list"
+    options: list[BranchingOption]
+
+    @field_validator("options")
+    @classmethod
+    def _unique_values(cls, options: list[BranchingOption]) -> list[BranchingOption]:
+        return _unique_option_fields(options)
+
+
+class SingleSelectDropdownConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     required: bool
     options: list[BranchingOption]
@@ -90,6 +106,7 @@ class SingleSelectConfig(BaseModel):
 class MultiSelectCheckboxConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     required: bool
+    display_style: Literal["buttons", "list"] = "list"
     options: list[PlainOption]
 
     @field_validator("options")
@@ -125,8 +142,8 @@ class TextConfig(BaseModel):
 
 QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
     "acknowledgment": AcknowledgmentConfig,
-    "single_select_radio": SingleSelectConfig,
-    "single_select_dropdown": SingleSelectConfig,
+    "single_select_radio": SingleSelectRadioConfig,
+    "single_select_dropdown": SingleSelectDropdownConfig,
     "multi_select_checkbox": MultiSelectCheckboxConfig,
     "ranked_choice": RankedChoiceConfig,
     "short_text": TextConfig,
