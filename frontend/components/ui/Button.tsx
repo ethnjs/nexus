@@ -63,10 +63,10 @@ const variantHoverBg: Record<Variant, string> = {
 
 /** Border color applied on hover (null = no change) */
 const variantHoverBorderColor: Record<Variant, string | null> = {
-  primary:   null,
+  primary:   'var(--color-accent-hover)',
   secondary: 'var(--color-border-strong)',
   ghost:     null,
-  danger:    null,
+  danger:    'var(--color-danger-hover)',
 }
 
 const sizeStyles: Record<Size, React.CSSProperties> = {

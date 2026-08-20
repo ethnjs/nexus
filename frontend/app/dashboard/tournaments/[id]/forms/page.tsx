@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/ui/Icons";
+import { SplitButton } from "@/components/ui/SplitButton";
+import { IconForms, IconLock, IconEdit, IconEye, IconPlus, IconArchive, IconTrash } from "@/components/ui/Icons";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
@@ -121,6 +122,7 @@ export default function FormsPage() {
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [stubStatus, setStubStatus] = useState("published"); // stub — SplitButton preview only
 
   useEffect(() => {
     if (!canManageForms) return;
@@ -174,9 +176,24 @@ export default function FormsPage() {
       <PageHeader
         heading="Forms"
         action={
-          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
-            <IconPlus size={14} /> New Form
-          </Button>
+          <div style={{ display: "flex", gap: "10px" }}>
+            {/* stub — just to preview SplitButton styling, not wired up */}
+            <SplitButton
+              value={stubStatus}
+              onSelect={setStubStatus}
+              onConfirm={() => {}}
+              variant="primary"
+              size="md"
+              options={[
+                { value: "published", label: "Published", subtitle: "Accepting responses" },
+                { value: "archived", label: "Archive", subtitle: "Stop accepting responses", icon: <IconArchive size={14} /> },
+                { value: "delete", label: "Delete", subtitle: "Permanently remove this form", icon: <IconTrash size={14} />, danger: true },
+              ]}
+            />
+            <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+              <IconPlus size={14} /> New Form
+            </Button>
+          </div>
         }
       />
 

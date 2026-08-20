@@ -23,6 +23,8 @@ interface PopoverProps<T> {
   isDisabled?: (item: T) => boolean;
   /** Tooltip text for a disabled row. Only consulted when isDisabled(item) is true; a falsy return skips the tooltip. */
   disabledReason?: (item: T) => string | undefined;
+  /** Fires whenever the panel opens/closes — e.g. to rotate a chevron on the trigger. */
+  onOpenChange?: (open: boolean) => void;
 }
 
 // Anchored from the top (below the trigger) normally; flips to bottom
@@ -47,9 +49,14 @@ const PANEL_MAX_HEIGHT = 260;
 // side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
   trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
-  checklist = false, isSelected, isDisabled, disabledReason,
+  checklist = false, isSelected, isDisabled, disabledReason, onOpenChange,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    onOpenChange?.(open);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
   const [pendingKey, setPendingKey] = useState<string | number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
   const [panelPos, setPanelPos] = useState<PanelPos | null>(null);
