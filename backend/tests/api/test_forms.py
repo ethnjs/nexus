@@ -12,8 +12,10 @@ from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.models.models import (
     ChapterMembership,
     Form,
+    FormAnswer,
     FormField,
     FormResponse,
+    FormResponsePendingUpdate,
     TournamentMembership,
     TournamentMembershipAvailability,
     TournamentMembershipLunch,
@@ -66,8 +68,8 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
         config={
             "required": False,
             "options": [
-                {"value": "opt_1", "label": "Red"},
-                {"value": "opt_2", "label": "Blue"},
+                {"option_id": "opt_1", "value": "opt_1", "label": "Red"},
+                {"option_id": "opt_2", "value": "opt_2", "label": "Blue"},
             ],
         },
         is_archived=False,
@@ -250,6 +252,373 @@ class TestUpdateArchiveDeleteForm:
 
 
 # ---------------------------------------------------------------------------
+# PUT /forms/{form_id}/fields/ — bulk field replace (Edit Lifecycle)
+# ---------------------------------------------------------------------------
+
+def _simple_entry(**overrides):
+    entry = {
+        "field_key": "color",
+        "label": "Favorite color",
+        "question_type": "short_text",
+        "config": {"required": False, "max_length": 100},
+    }
+    entry.update(overrides)
+    return entry
+
+
+class TestBulkUpdateFieldsDraft:
+    def test_create_update_delete_apply_directly(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)  # draft by default
+        existing = _make_field(db, form, field_key="to_delete", question_type="short_text", config={"required": False, "max_length": 50})
+        keep = _make_field(db, form, field_key="to_update", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {"id": keep.id, "label": "Updated label", "question_type": "short_text", "config": {"required": False, "max_length": 200}},
+                    _simple_entry(field_key="brand_new"),
+                ]
+            },
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert {f["field_key"] for f in data} == {"to_update", "brand_new"}
+
+        assert db.query(FormField).filter(FormField.id == existing.id).first() is None  # hard-deleted
+        db.refresh(keep)
+        assert keep.label == "Updated label"
+        assert keep.config["max_length"] == 200
+
+    def test_question_type_change_applies_in_place_no_replacement(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+        )
+        assert res.status_code == 200
+        assert res.json()[0]["id"] == field.id
+        assert res.json()[0]["question_type"] == "long_text"
+        assert db.query(FormField).filter(FormField.form_id == form.id).count() == 1
+
+
+class TestBulkUpdateFieldsPublished:
+    def _publish(self, client, form):
+        return client.patch(f"/forms/{form.id}/", json={"status": "published"})
+
+    def test_label_only_edit_applies_in_place(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "New label", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert res.status_code == 200
+        assert res.json()[0]["id"] == field.id
+        assert res.json()[0]["label"] == "New label"
+
+    def test_question_type_change_archives_and_replaces_same_key(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, order=1, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+        )
+        assert res.status_code == 200
+        data = res.json()
+        assert len(data) == 1
+        assert data[0]["id"] != field.id
+        assert data[0]["field_key"] == "color"
+        assert data[0]["question_type"] == "long_text"
+
+        db.refresh(field)
+        assert field.is_archived is True
+        assert field.field_key != "color"
+
+    def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+        assert res.status_code == 200
+        assert res.json() == []
+
+        db.refresh(field)
+        assert field.is_archived is True
+        assert db.query(FormField).filter(FormField.id == field.id).first() is not None
+
+    def test_new_entry_inserts(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {"id": field.id, "label": "Favorite color", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+                    _simple_entry(field_key="brand_new"),
+                ]
+            },
+        )
+        assert res.status_code == 200
+        assert {f["field_key"] for f in res.json()} == {"color", "brand_new"}
+
+    def test_whole_batch_rejected_together_on_dangling_next_field_id(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        branch_field = _make_field(
+            db, form, field_key="branch", question_type="single_select_radio",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 9999}],
+            },
+        )
+        other_field = _make_field(db, form, order=2, field_key="other", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": branch_field.id, "label": "Branch", "question_type": "single_select_radio",
+                        "config": {
+                            "required": False,
+                            "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 9999}],
+                        },
+                    },
+                    {"id": other_field.id, "label": "New label that should not stick", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+                ]
+            },
+        )
+        assert res.status_code == 422
+
+        db.refresh(other_field)
+        assert other_field.label != "New label that should not stick"
+
+    def test_option_removed_archives_not_dropped(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db, form, field_key="color", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_red", "value": "red", "label": "Red"},
+                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        # A response answers with the option we're about to remove.
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        assert res.status_code == 200
+        response_id = res.json()["id"]
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
+                        "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]},
+                    },
+                ]
+            },
+        )
+        assert res.status_code == 200
+        # PUT returns the raw config (the editor's view) — archived options
+        # stay present with is_archived: true, not silently dropped.
+        returned_ids = {o["option_id"]: o["is_archived"] for o in res.json()[0]["config"]["options"]}
+        assert returned_ids == {"opt_blue": False, "opt_red": True}
+
+        db.refresh(field)
+        stored_ids = {o["option_id"]: o["is_archived"] for o in field.config["options"]}
+        assert stored_ids == {"opt_blue": False, "opt_red": True}
+
+        # But GET (the respondent-facing render) filters archived options out.
+        res = client.get(f"/forms/{form.id}/")
+        rendered_ids = {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]}
+        assert rendered_ids == {"opt_blue"}
+
+        # The prior answer referencing opt_red is untouched in storage.
+        answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
+        assert answer.value == ["opt_red"]
+
+        pending = (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_key == "color")
+            .first()
+        )
+        assert pending is not None
+        assert pending.reason == "option_archived"
+
+    def test_pending_update_cleared_on_fresh_submission(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db, form, field_key="color", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_red", "value": "red", "label": "Red"},
+                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        response_id = res.json()["id"]
+
+        client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
+                        "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]},
+                    },
+                ]
+            },
+        )
+        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response_id).count() == 1
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
+        assert res.status_code == 200
+        assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response_id).count() == 0
+
+    def test_field_replaced_flags_pending_update_for_prior_answer(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        response_id = res.json()["id"]
+
+        client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
+        )
+
+        pending = (
+            db.query(FormResponsePendingUpdate)
+            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_key == "color")
+            .first()
+        )
+        assert pending is not None
+        assert pending.reason == "field_replaced"
+
+    def test_option_without_option_id_gets_one_generated(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "label": "Color", "field_key": "color", "question_type": "multi_select_checkbox",
+                        "config": {
+                            "required": False,
+                            "options": [{"value": "red", "label": "Red"}, {"value": "blue", "label": "Blue"}],
+                        },
+                    },
+                ]
+            },
+        )
+        assert res.status_code == 200
+        options = res.json()[0]["config"]["options"]
+        ids = [o["option_id"] for o in options]
+        assert all(ids)
+        assert len(set(ids)) == 2
+
+    def test_option_id_preserved_across_update_when_echoed_back(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db, form, field_key="color", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
+                        "config": {
+                            "required": False,
+                            "options": [
+                                {"option_id": "opt_red", "value": "red", "label": "Red"},
+                                {"value": "blue", "label": "Blue"},
+                            ],
+                        },
+                    },
+                ]
+            },
+        )
+        assert res.status_code == 200
+        options = res.json()[0]["config"]["options"]
+        by_value = {o["value"]: o["option_id"] for o in options}
+        assert by_value["red"] == "opt_red"
+        assert by_value["blue"] != "opt_red"
+        assert by_value["blue"]
+
+    def test_duplicate_option_id_within_field_rejected(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "label": "Color", "field_key": "color", "question_type": "multi_select_checkbox",
+                        "config": {
+                            "required": False,
+                            "options": [
+                                {"option_id": "opt_1", "value": "red", "label": "Red"},
+                                {"option_id": "opt_1", "value": "blue", "label": "Blue"},
+                            ],
+                        },
+                    },
+                ]
+            },
+        )
+        assert res.status_code == 422
+
+
+# ---------------------------------------------------------------------------
 # POST /forms/{form_id}/responses/ — submission and resubmission
 # ---------------------------------------------------------------------------
 
@@ -320,7 +689,7 @@ class TestWriteThroughOnSubmit:
         db.flush()
         field = _make_field(
             db, form, field_key="availability", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"value": str(shift.id), "label": shift.label}]},
+            config={"required": False, "options": [{"option_id": f"opt_{shift.id}", "value": str(shift.id), "label": shift.label}]},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -347,7 +716,10 @@ class TestWriteThroughOnSubmit:
             db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
             config={
                 "required": False,
-                "options": [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
+                "options": [
+                    {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+                    {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
+                ],
             },
         )
         db.commit()
@@ -355,7 +727,7 @@ class TestWriteThroughOnSubmit:
 
         res = client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "chicken"}]},
+            json={"answers": [{"field_id": field.id, "value": "opt_chicken"}]},
         )
         assert res.status_code == 200
 
@@ -377,7 +749,7 @@ class TestWriteThroughOnSubmit:
         form = _make_chapter_form(db, td_user, chapter)
         field = _make_field(
             db, form, field_key="availability", question_type="multi_select_checkbox",
-            config={"required": False, "options": [{"value": "not_a_real_shift_id", "label": "Whenever"}]},
+            config={"required": False, "options": [{"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}]},
         )
         db.commit()
         _chapter_lead(db, chapter)
@@ -395,7 +767,7 @@ class TestWriteThroughOnSubmit:
         form = _make_chapter_form(db, td_user, chapter)
         field = _make_field(
             db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
-            config={"required": False, "options": [{"value": "chicken", "label": "Chicken"}]},
+            config={"required": False, "options": [{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}]},
         )
         db.commit()
         _chapter_lead(db, chapter)
@@ -403,7 +775,7 @@ class TestWriteThroughOnSubmit:
 
         res = client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": field.id, "value": "chicken"}]},
+            json={"answers": [{"field_id": field.id, "value": "opt_chicken"}]},
         )
         assert res.status_code == 200
         assert db.query(TournamentMembershipLunch).count() == 0
@@ -479,8 +851,8 @@ class TestSubmissionReachabilityEnforcement:
             config={
                 "required": True,
                 "options": [
-                    {"value": "yes", "label": "Yes", "next_field_id": target.id},
-                    {"value": "no", "label": "No"},
+                    {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": target.id},
+                    {"option_id": "opt_no", "value": "no", "label": "No"},
                 ],
             },
         )
@@ -489,6 +861,6 @@ class TestSubmissionReachabilityEnforcement:
 
         res = client.post(
             f"/forms/{form.id}/responses/",
-            json={"answers": [{"field_id": branch_field.id, "value": "yes"}]},
+            json={"answers": [{"field_id": branch_field.id, "value": "opt_yes"}]},
         )
         assert res.status_code == 200

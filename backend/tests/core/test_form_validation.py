@@ -65,8 +65,8 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
         config={
             "required": False,
             "options": [
-                {"value": "opt_1", "label": "Red"},
-                {"value": "opt_2", "label": "Blue"},
+                {"option_id": "opt_1", "value": "opt_1", "label": "Red"},
+                {"option_id": "opt_2", "value": "opt_2", "label": "Blue"},
             ],
         },
         is_archived=False,
@@ -125,25 +125,37 @@ class TestValidateFieldConfig:
         with pytest.raises(FormFieldValidationError):
             validate_field_config(
                 "single_select_radio",
-                {"required": True, "options": [{"value": "a", "label": "A"}, {"value": "a", "label": "A2"}]},
+                {
+                    "required": True,
+                    "options": [
+                        {"option_id": "opt_1", "value": "a", "label": "A"},
+                        {"option_id": "opt_2", "value": "a", "label": "A2"},
+                    ],
+                },
             )
 
     def test_single_select_option_missing_value_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_field_config("single_select_dropdown", {"required": True, "options": [{"label": "A"}]})
+            validate_field_config(
+                "single_select_dropdown",
+                {"required": True, "options": [{"option_id": "opt_1", "label": "A"}]},
+            )
 
     def test_multi_select_checkbox_rejects_branching_keys_on_option(self):
         with pytest.raises(FormFieldValidationError):
             validate_field_config(
                 "multi_select_checkbox",
-                {"required": True, "options": [{"value": "a", "label": "A", "next_field_id": 5}]},
+                {
+                    "required": True,
+                    "options": [{"option_id": "opt_1", "value": "a", "label": "A", "next_field_id": 5}],
+                },
             )
 
     def test_ranked_choice_missing_allow_duplicates_rejected(self):
         with pytest.raises(FormFieldValidationError):
             validate_field_config(
                 "ranked_choice",
-                {"required": True, "ranks": 1, "options": [{"value": "a", "label": "A"}]},
+                {"required": True, "ranks": 1, "options": [{"option_id": "opt_1", "value": "a", "label": "A"}]},
             )
 
     def test_ranked_choice_ranks_exceeds_options_rejected(self):
@@ -154,7 +166,7 @@ class TestValidateFieldConfig:
                     "required": True,
                     "ranks": 3,
                     "allow_duplicates": False,
-                    "options": [{"value": "a", "label": "A"}],
+                    "options": [{"option_id": "opt_1", "value": "a", "label": "A"}],
                 },
             )
 
@@ -165,7 +177,10 @@ class TestValidateFieldConfig:
                 "required": True,
                 "ranks": 2,
                 "allow_duplicates": False,
-                "options": [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}],
+                "options": [
+                    {"option_id": "opt_1", "value": "a", "label": "A"},
+                    {"option_id": "opt_2", "value": "b", "label": "B"},
+                ],
             },
         )
         assert normalized["ranks"] == 2
@@ -306,7 +321,10 @@ class TestValidateFormForPublish:
             db,
             form,
             question_type="single_select_radio",
-            config={"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": 9999}]},
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_1", "value": "yes", "label": "Yes", "next_field_id": 9999}],
+            },
         )
         db.commit()
         with pytest.raises(FormFieldValidationError, match="next_field_id"):

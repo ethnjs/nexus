@@ -1,14 +1,35 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent
+from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate
 
-import re # Regular Expressions for searching, matching, and extracting patterns in text strings
+import re
+import secrets
 
 
 def slugify(text: str, max_len: int = 64) -> str:
     """Convert a TD-typed label into a snake_case field_key candidate."""
     slug = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
     return slug[:max_len]
+
+
+def assign_option_ids(config: dict | None) -> dict | None:
+    """The backend is the sole generator of option_id — the durable
+    per-option identifier used for edit-lifecycle archiving, write-through,
+    and branching match (see PlainOption/BranchingOption). Run on a
+    field's raw submitted config before validate_field_config: an option
+    that already carries a non-empty option_id (echoing what a prior GET
+    returned for an option the TD kept) keeps it; an option with none
+    (freshly added in this edit) gets a fresh one assigned here. No-op for
+    configs without an `options` key."""
+    if not config or "options" not in config:
+        return config
+    options = []
+    for option in config["options"]:
+        option = dict(option)
+        if not option.get("option_id"):
+            option["option_id"] = f"opt_{secrets.token_hex(5)}"
+        options.append(option)
+    return {**config, "options": options}
 
 
 def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: str) -> bool:
@@ -184,40 +205,15 @@ def flag_pending_updates_for_archived_options(db: Session, field: FormField, arc
 
 
 def resolve_field_options(db: Session, field: FormField) -> list[dict]:
-    """
-    Resolves option items for a given FormField, filtering out any
-    `is_archived: true` option — archived options stay in `config` for
-    historical answer/branching resolution but are never shown to a new
-    respondent.
-    If the field depends on live DB data (e.g. event_preference), queries the database.
-    Otherwise, returns options stored in field.config.
-    """
-    # 1. Dynamic lookup: Tournament Event Preferences
-    if field.field_key == "event_preference":
-        if not (field.form and field.form.tournament_id):
-            return []
+    """Options for a given FormField, filtering out any `is_archived: true`
+    option — archived options stay in `config` for historical answer/
+    branching resolution but are never shown to a new respondent.
 
-        events = (
-            db.query(TournamentEvent)
-            .filter(TournamentEvent.tournament_id == field.form.tournament_id)
-            .order_by(TournamentEvent.id.asc())
-            .all()
-        )
-        return [
-            {
-                "option_id": f"opt_evt_{event.id}",
-                "value": str(event.id),
-                "label": event.name,
-                "is_archived": False,
-            }
-            for event in events
-        ]
-
-    # 2. Stubbed dynamic lookup: Availability & Lunch
-    elif field.field_key in ("availability", "lunch"):
-        # TODO(temp): wire up in Step 7
-        return []
-
-    # 3. Static fallback: Read options list directly from config
+    Every option type (including reserved keys like event_preference,
+    availability, lunch) is a stored, static list — "auto-load from
+    tournament" conveniences (pulling in events/shifts/etc.) are a
+    TD-editor-side action that populates this array once, same as any
+    manually-authored option list, not a live server-side lookup. See
+    form-question-types-reference.md's "Options-storage rule"."""
     config = dict(field.config or {})
     return [o for o in config.get("options", []) if not o.get("is_archived")]

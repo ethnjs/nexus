@@ -7,6 +7,7 @@ from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
     apply_option_archiving,
+    assign_option_ids,
     field_key_taken_in_tournament,
     flag_pending_updates_for_archived_options,
     flag_pending_updates_for_field,
@@ -287,6 +288,7 @@ def bulk_update_fields(
         # is flushed — next_field_id resolution needs every field (including
         # ones this same request creates) to have a real id first, so that's
         # deferred to the collect_active_field_errors pass below.
+        config = assign_option_ids(config)
         try:
             normalized = validate_field_config(question_type, config)
             validate_reserved_field_key(field_key, question_type)
@@ -434,6 +436,19 @@ def submit_form_response(
     for answer_in in payload.answers:
         db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
 
+    # A fresh answer for a field clears any pending-update flag on it — the
+    # respondent has now seen and re-confirmed whatever changed. Keyed by
+    # field_key (not field_id) since that's what a pending-update row keys
+    # on and what survives an archive+replace (see FormResponsePendingUpdate).
+    answered_field_keys = {
+        field.field_key for field in active_fields if field.id in answers_by_field
+    }
+    if answered_field_keys:
+        db.query(FormResponsePendingUpdate).filter(
+            FormResponsePendingUpdate.response_id == response.id,
+            FormResponsePendingUpdate.field_key.in_(answered_field_keys),
+        ).delete(synchronize_session=False)
+
     if form.owner_type == "tournament":
         _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user)
 
@@ -478,8 +493,15 @@ def _write_through_reserved_fields(
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
             lunch_date, category = parse_lunch_field_key(field.field_key)
-            options_by_value = {opt["value"]: opt["label"] for opt in (field.config or {}).get("options", [])}
-            values = [{"value": v, "label": options_by_value.get(v, v)} for v in selected]
+            # `selected` is now option_id(s) (see branching.py's matching and
+            # PlainOption/BranchingOption's option_id) — resolve each back to
+            # its stored value/label snapshot before write-through.
+            options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+            values = [
+                {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
+                for v in selected
+                if v in options_by_id
+            ]
             sync_lunch(db, membership.id, lunch_date, category, values)
 
 

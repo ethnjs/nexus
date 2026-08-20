@@ -37,15 +37,15 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"value": "yes", "label": "Yes", "next_field_id": 3},
-                        {"value": "no", "label": "No"},
+                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
             ),
             _field(2, 2),  # skipped when the answer is "yes"
             _field(3, 3),
         ]
-        assert compute_reachable_field_ids(fields, {1: "yes"}) == {1, 3}
+        assert compute_reachable_field_ids(fields, {1: "opt_yes"}) == {1, 3}
 
     def test_branch_not_taken_falls_through_in_order(self):
         fields = [
@@ -56,15 +56,15 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"value": "yes", "label": "Yes", "next_field_id": 3},
-                        {"value": "no", "label": "No"},
+                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
             ),
             _field(2, 2),
             _field(3, 3),
         ]
-        assert compute_reachable_field_ids(fields, {1: "no"}) == {1, 2, 3}
+        assert compute_reachable_field_ids(fields, {1: "opt_no"}) == {1, 2, 3}
 
     def test_unanswered_branching_field_falls_through(self):
         fields = [
@@ -72,7 +72,10 @@ class TestComputeReachableFieldIds:
                 1,
                 1,
                 question_type="single_select_radio",
-                config={"required": False, "options": [{"value": "yes", "label": "Yes", "next_field_id": 3}]},
+                config={
+                    "required": False,
+                    "options": [{"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3}],
+                },
             ),
             _field(2, 2),
             _field(3, 3),
@@ -88,14 +91,14 @@ class TestComputeReachableFieldIds:
                 config={
                     "required": True,
                     "options": [
-                        {"value": "no", "label": "No", "action": "submit_form"},
+                        {"option_id": "opt_no", "value": "no", "label": "No", "action": "submit_form"},
                     ],
                 },
             ),
             _field(2, 2),
             _field(3, 3),
         ]
-        assert compute_reachable_field_ids(fields, {1: "no"}) == {1}
+        assert compute_reachable_field_ids(fields, {1: "opt_no"}) == {1}
 
     def test_cycle_terminates_instead_of_hanging(self):
         fields = [
@@ -103,16 +106,22 @@ class TestComputeReachableFieldIds:
                 1,
                 1,
                 question_type="single_select_radio",
-                config={"required": False, "options": [{"value": "a", "label": "A", "next_field_id": 2}]},
+                config={
+                    "required": False,
+                    "options": [{"option_id": "opt_a", "value": "a", "label": "A", "next_field_id": 2}],
+                },
             ),
             _field(
                 2,
                 2,
                 question_type="single_select_radio",
-                config={"required": False, "options": [{"value": "b", "label": "B", "next_field_id": 1}]},
+                config={
+                    "required": False,
+                    "options": [{"option_id": "opt_b", "value": "b", "label": "B", "next_field_id": 1}],
+                },
             ),
         ]
-        assert compute_reachable_field_ids(fields, {1: "a", 2: "b"}) == {1, 2}
+        assert compute_reachable_field_ids(fields, {1: "opt_a", 2: "opt_b"}) == {1, 2}
 
 
 class TestMissingRequiredFieldKeys:
@@ -125,15 +134,15 @@ class TestMissingRequiredFieldKeys:
                 config={
                     "required": True,
                     "options": [
-                        {"value": "yes", "label": "Yes", "next_field_id": 3},
-                        {"value": "no", "label": "No"},
+                        {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": 3},
+                        {"option_id": "opt_no", "value": "no", "label": "No"},
                     ],
                 },
             ),
             _field(2, 2, config={"required": True}),  # branched past — should NOT be enforced
             _field(3, 3, config={"required": False}),
         ]
-        assert missing_required_field_keys(fields, {1: "yes"}) == []
+        assert missing_required_field_keys(fields, {1: "opt_yes"}) == []
 
     def test_reachable_required_field_left_blank_is_reported(self):
         fields = [_field(1, 1, config={"required": True})]
@@ -147,14 +156,14 @@ class TestMissingRequiredFieldKeys:
                 question_type="single_select_radio",
                 config={
                     "required": True,
-                    "options": [{"value": "no", "label": "No", "action": "submit_form"}],
+                    "options": [{"option_id": "opt_no", "value": "no", "label": "No", "action": "submit_form"}],
                 },
             ),
             _field(2, 2, config={"required": True}),
         ]
         # field 2 has an answer even though it was never reachable — not our
         # job to reject that here, just don't let it block the submission
-        assert missing_required_field_keys(fields, {1: "no", 2: "something"}) == []
+        assert missing_required_field_keys(fields, {1: "opt_no", 2: "something"}) == []
 
     def test_blank_values_treated_as_unanswered(self):
         fields = [_field(1, 1, config={"required": True})]

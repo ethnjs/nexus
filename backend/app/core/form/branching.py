@@ -34,7 +34,7 @@ def compute_reachable_field_ids(fields: list[FormField], answers: dict[int, Any]
         if current.question_type in BRANCHING_QUESTION_TYPES:
             answer = answers.get(current.id)
             options = (current.config or {}).get("options", [])
-            matched = next((o for o in options if o.get("value") == answer), None)
+            matched = next((o for o in options if o.get("option_id") == answer), None)
             if matched is not None:
                 if matched.get("action") == "submit_form":
                     return reachable
