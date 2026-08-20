@@ -6,48 +6,49 @@ import { Popover } from '@/components/ui/Popover'
 import { IconChevronDown } from '@/components/ui/Icons'
 
 export interface SplitButtonOption {
-  /** Stable key — matches SplitButtonProps.value to determine the checkmark and, indirectly, the primary segment's label. */
-  value: string
-  /** Shown in the dropdown row, and mirrored onto the primary segment once selected. */
   label: string
   subtitle?: string
-  /** Shown left of the label when this option isn't the current selection — the selection itself always shows a checkmark instead. */
   icon?: ReactNode
+  /** Fires immediately on click — may throw/reject, which the menu shows inline and stays open for. */
+  action: () => void | Promise<void>
   /** Visually distinct destructive style — e.g. Delete next to a plain Archive. */
   danger?: boolean
+  /** Renders inert with a tooltip instead of attempted-then-rejected — e.g. Delete when responses already exist. */
+  disabled?: boolean
+  disabledReason?: string
 }
 
 interface SplitButtonProps {
-  /** The currently-selected option's value — drives the primary segment's label and which dropdown row shows a checkmark. */
-  value: string
+  /** Label shown on the primary left segment */
+  label: string
+  /** Called when the primary left segment is clicked */
+  onClick: () => void
+  /** Dropdown options shown when the chevron is clicked — each fires its own action immediately. */
   options: SplitButtonOption[]
-  /** Picking a different row in the dropdown — just changes the selection, no side effect. Confirm via onConfirm. */
-  onSelect: (value: string) => void
-  /** Clicking the primary segment — the actual action for whatever's currently selected. */
-  onConfirm: () => void
   variant?: 'primary' | 'secondary' | 'ghost'
   size?: 'sm' | 'md'
   loading?: boolean
+  /** Disables both segments — the whole control is unusable. */
   disabled?: boolean
+  /** Disables just the primary segment (e.g. it has no forward action right now) while the chevron menu stays usable. */
+  primaryDisabled?: boolean
 }
 
-// A primary segment (label mirrors the current selection) plus a chevron
-// that opens a menu to change the selection — picking a menu row doesn't
-// act on its own, it just updates what the primary segment will do when
-// clicked. Composed from Button (both segments) and Popover (the menu)
-// rather than reimplementing hover/focus/positioning from scratch.
+// A primary action segment plus a chevron that opens a menu of one-off
+// secondary actions (Archive, Delete, ...) — composed from Button (both
+// segments) and Popover (the menu) rather than reimplementing hover/focus/
+// positioning from scratch.
 export function SplitButton({
-  value,
+  label,
+  onClick,
   options,
-  onSelect,
-  onConfirm,
   variant = 'secondary',
   size = 'sm',
   loading = false,
   disabled = false,
+  primaryDisabled = false,
 }: SplitButtonProps) {
   const [open, setOpen] = useState(false)
-  const selected = options.find((opt) => opt.value === value)
   const dividerColor = variant === 'primary' ? 'rgba(255,255,255,0.24)' : 'var(--color-border)'
 
   return (
@@ -56,11 +57,11 @@ export function SplitButton({
         variant={variant}
         size={size}
         loading={loading}
-        disabled={disabled}
-        onClick={onConfirm}
+        disabled={disabled || primaryDisabled}
+        onClick={onClick}
         style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 }}
       >
-        {selected?.label ?? value}
+        {label}
       </Button>
 
       <div style={{ width: '1px', background: dividerColor, flexShrink: 0 }} />
@@ -79,38 +80,32 @@ export function SplitButton({
           </Button>
         }
         items={options}
-        getKey={(opt) => opt.value}
+        getKey={(opt) => opt.label}
         align="right"
         width={240}
         onOpenChange={setOpen}
-        onSelect={(opt) => onSelect(opt.value)}
-        renderLabel={(opt) => {
-          const isSelected = opt.value === value
-          return (
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-              <span style={{
-                flexShrink: 0, marginTop: '1px', width: '14px', display: 'flex', justifyContent: 'center',
-                color: isSelected ? 'var(--color-accent)' : opt.danger ? 'var(--color-danger)' : 'var(--color-text-secondary)',
-              }}>
-                {isSelected ? (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                ) : opt.icon}
+        onSelect={(opt) => opt.action()}
+        isDisabled={(opt) => opt.disabled ?? false}
+        disabledReason={(opt) => opt.disabledReason}
+        renderLabel={(opt) => (
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+            {opt.icon && (
+              <span style={{ flexShrink: 0, marginTop: '1px', color: opt.danger ? 'var(--color-danger)' : 'var(--color-text-secondary)' }}>
+                {opt.icon}
               </span>
-              <div style={{ overflow: 'hidden' }}>
-                <div style={{ fontWeight: 600, color: opt.danger ? 'var(--color-danger)' : 'var(--color-text-primary)' }}>
-                  {opt.label}
-                </div>
-                {opt.subtitle && (
-                  <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
-                    {opt.subtitle}
-                  </div>
-                )}
+            )}
+            <div style={{ overflow: 'hidden' }}>
+              <div style={{ fontWeight: 600, color: opt.danger ? 'var(--color-danger)' : 'var(--color-text-primary)' }}>
+                {opt.label}
               </div>
+              {opt.subtitle && (
+                <div style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', marginTop: '2px' }}>
+                  {opt.subtitle}
+                </div>
+              )}
             </div>
-          )
-        }}
+          </div>
+        )}
       />
     </div>
   )

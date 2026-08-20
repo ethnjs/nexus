@@ -19,7 +19,7 @@ interface PopoverProps<T> {
   /** Checklist mode: rows render as a checkbox + label (like a picker list), stay open across selections instead of closing after each one. Requires isSelected. */
   checklist?: boolean;
   isSelected?: (item: T) => boolean;
-  /** Checklist mode only: rows for which this returns true show a lock icon instead of a checkbox and can't be toggled (e.g. a role the actor isn't allowed to touch), but stay visible rather than being filtered out. */
+  /** Rows for which this returns true can't be selected (e.g. a role the actor isn't allowed to touch, or a delete blocked by existing data) but stay visible rather than being filtered out. In checklist mode they show a lock icon instead of a checkbox; in list mode they render inert with a tooltip. */
   isDisabled?: (item: T) => boolean;
   /** Tooltip text for a disabled row. Only consulted when isDisabled(item) is true; a falsy return skips the tooltip. */
   disabledReason?: (item: T) => string | undefined;
@@ -178,22 +178,24 @@ export function Popover<T>({
           ) : (
             items.map((item) => {
               const key = getKey(item);
+              const disabled = isDisabled?.(item) ?? false;
+              const reason = disabled ? disabledReason?.(item) : undefined;
               return (
                 <button
                   key={key}
                   type="button"
-                  disabled={busy}
+                  disabled={busy || disabled}
                   onClick={() => handleSelect(item)}
+                  onMouseEnter={(e) => { if (!disabled) e.currentTarget.style.background = "var(--color-bg)"; if (reason) showHoverTip(e, reason); }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; if (reason) setHoverTip(null); }}
                   style={{
                     display: "block", width: "100%", textAlign: "left",
                     padding: "7px 10px", border: "none", background: "transparent",
                     fontFamily: "var(--font-sans)", fontSize: "13px",
                     color: "var(--color-text-primary)", borderRadius: "var(--radius-sm)",
-                    cursor: busy ? "not-allowed" : "pointer",
-                    opacity: busy && pendingKey !== key ? 0.5 : 1,
+                    cursor: busy || disabled ? "not-allowed" : "pointer",
+                    opacity: disabled ? 0.5 : busy && pendingKey !== key ? 0.5 : 1,
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
                 >
                   {renderLabel(item)}
                 </button>
