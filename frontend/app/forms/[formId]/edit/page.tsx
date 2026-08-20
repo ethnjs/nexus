@@ -1,7 +1,14 @@
 "use client";
 
-import { use, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { use, useEffect, useLayoutEffect, useRef, useState, MouseEvent as ReactMouseEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { formsApi, Form, FormField, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -439,6 +446,15 @@ function FieldCard({
   const { wrapperRef, contentRef } = useHeightTransition(expandedOnMount);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
+  // Field-level reordering — separate DndContext from OptionsEditor's own
+  // (scoped to a single field's option rows), so dragging a card doesn't
+  // interfere with dragging an option within it.
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.clientKey });
+  const sortableStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 };
+  // The grip lives inside the collapsed Card, which has its own onClick to
+  // expand — grabbing the grip shouldn't also trigger that.
+  const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
+
   // Cross-fade the swapped-in content alongside the height change. WAAPI
   // rather than a CSS transition because there's nothing to transition *from*
   // — the two branches are different subtrees, and .animate() replays on every
@@ -454,18 +470,20 @@ function FieldCard({
 
   return (
     // Outer box stays untransformed and unclipped so the floating toolbar can
-    // hang off it at left: 100% — do not put overflow/transform here.
+    // hang off it at left: 100% — sortable transform/opacity apply here too,
+    // one level in from that constraint, rather than on this node directly.
     <div style={{ position: "relative" }}>
-      <div ref={wrapperRef}>
-        <div ref={contentRef}>
-          {expanded ? (
-            <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "28px 24px 20px", position: "relative" }}>
-              <div style={{
-                position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-                display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
-              }}>
-                <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
-              </div>
+      <div ref={setNodeRef} style={sortableStyle}>
+        <div ref={wrapperRef}>
+          <div ref={contentRef}>
+            {expanded ? (
+              <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "28px 24px 20px", position: "relative" }}>
+                <div {...gripProps} style={{
+                  position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+                  display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
+                }}>
+                  <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+                </div>
               <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
                 <Input
                   value={field.label}
@@ -612,9 +630,9 @@ function FieldCard({
               onMouseEnter={() => setHovered(true)}
               onMouseLeave={() => setHovered(false)}
             >
-              <div style={{
+              <div {...gripProps} style={{
                 position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-                display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+                display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
                 opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
               }}>
                 <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
@@ -622,6 +640,7 @@ function FieldCard({
               <QuestionRenderer field={field} interactive={false} />
             </Card>
           )}
+          </div>
         </div>
       </div>
 
@@ -724,6 +743,17 @@ function FieldList({ form }: { form: Form }) {
     setExpandedKey((prev) => (prev === clientKey ? null : prev));
   }
 
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  function handleDragEnd(e: DragEndEvent) {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    const oldIndex = fields.findIndex((f) => f.clientKey === active.id);
+    const newIndex = fields.findIndex((f) => f.clientKey === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setFields((prev) => arrayMove(prev, oldIndex, newIndex));
+  }
+
   if (fields.length === 0) {
     return (
       <Card radius="lg" style={{ padding: "8px" }}>
@@ -743,21 +773,25 @@ function FieldList({ form }: { form: Form }) {
 
   return (
     <div ref={listRef} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      {fields.map((field) => (
-        <FieldCard
-          key={field.clientKey}
-          field={field}
-          expanded={expandedKey === field.clientKey}
-          onExpand={() => setExpandedKey(field.clientKey)}
-          onFieldChange={(updates) => updateField(field.clientKey, updates)}
-          onAddFieldBelow={() => addField(field.clientKey)}
-          onDuplicate={() => duplicateField(field.clientKey)}
-          onDelete={() => deleteField(field.clientKey)}
-          tournamentId={form.tournament_id}
-          usedFieldKeys={usedFieldKeys}
-          allFields={fields}
-        />
-      ))}
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
+          {fields.map((field) => (
+            <FieldCard
+              key={field.clientKey}
+              field={field}
+              expanded={expandedKey === field.clientKey}
+              onExpand={() => setExpandedKey(field.clientKey)}
+              onFieldChange={(updates) => updateField(field.clientKey, updates)}
+              onAddFieldBelow={() => addField(field.clientKey)}
+              onDuplicate={() => duplicateField(field.clientKey)}
+              onDelete={() => deleteField(field.clientKey)}
+              tournamentId={form.tournament_id}
+              usedFieldKeys={usedFieldKeys}
+              allFields={fields}
+            />
+          ))}
+        </SortableContext>
+      </DndContext>
     </div>
   );
 }
