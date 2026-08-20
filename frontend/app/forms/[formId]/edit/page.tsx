@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EditableText } from "@/components/ui/EditableText";
@@ -101,6 +103,67 @@ function StatusControl({ form, onUpdated, onDeleted }: {
   );
 }
 
+// Respondent-facing title/description — the first, most prominent card in
+// the field list. Always editable-looking (not click-to-reveal like the
+// sub-header's dashboard-facing name), using the app's standard Input/
+// Textarea rather than an underline-only Google-Forms-style treatment.
+function TitleCard({ form, onUpdated }: {
+  form: Form;
+  onUpdated: (form: Form) => void;
+}) {
+  const [title, setTitle] = useState(form.title ?? "");
+  const [description, setDescription] = useState(form.description ?? "");
+  const [error, setError] = useState<string | undefined>(undefined);
+
+  async function saveTitle() {
+    const trimmed = title.trim();
+    if (trimmed === (form.title ?? "")) return;
+    try {
+      onUpdated(await formsApi.update(form.id, { title: trimmed }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update title.");
+    }
+  }
+
+  async function saveDescription() {
+    const trimmed = description.trim();
+    if (trimmed === (form.description ?? "")) return;
+    try {
+      onUpdated(await formsApi.update(form.id, { description: trimmed }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to update description.");
+    }
+  }
+
+  return (
+    <Card radius="lg" style={{ padding: "24px", marginBottom: "16px", display: "flex", flexDirection: "column", gap: "12px" }}>
+      <Input
+        label="Title"
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        onBlur={saveTitle}
+        font="sans"
+        size="lg"
+        fullWidth
+      />
+      <Textarea
+        label="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        onBlur={saveDescription}
+        font="sans"
+        rows={2}
+        fullWidth
+      />
+      {error && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+          {error}
+        </p>
+      )}
+    </Card>
+  );
+}
+
 function SubHeader({ form, onUpdated, onDeleted }: {
   form: Form;
   onUpdated: (form: Form) => void;
@@ -180,8 +243,9 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
     <div>
       <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
+        <TitleCard form={form} onUpdated={setForm} />
         <p style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-secondary)" }}>
-          Field list and title card land in later steps.
+          Field list lands in a later step.
         </p>
       </div>
     </div>
