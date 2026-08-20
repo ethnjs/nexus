@@ -1235,6 +1235,32 @@ export interface Form {
   fields:          FormField[]
 }
 
+// Matches ChapterMemberResponse — no chapter dashboard exists yet, so this
+// exists only to type FormListItem.creator for chapter-owned forms.
+export interface ChapterMember extends UserSlim {
+  membership_id: number
+  role:          string
+  joined_at:     string
+}
+
+// GET /tournaments/{id}/forms/ and /chapters/{id}/forms/ — a lighter row
+// shape than Form: no fields array, and creator resolved server-side the
+// same way Invite.creator/AuditLogEntry.actor are.
+export interface FormListItem {
+  id:              string
+  name:            string
+  title:           string | null
+  description:     string | null
+  status:          FormStatus
+  owner_type:      FormOwnerType
+  tournament_id:   number | null
+  chapter_id:      number | null
+  creator:         MembershipSlim | ChapterMember | UserSlim
+  created_at:      string
+  updated_at:      string
+  response_count:  number
+}
+
 export interface FormCreateInput {
   name:          string
   title?:        string | null
@@ -1273,9 +1299,9 @@ export interface FormResponse {
 
 export const formsApi = {
   listForTournament: (tournamentId: number) =>
-    api.get<Form[]>(`/tournaments/${tournamentId}/forms/`),
+    api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
   listForChapter: (chapterId: number) =>
-    api.get<Form[]>(`/chapters/${chapterId}/forms/`),
+    api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
   createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
     api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
   createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>

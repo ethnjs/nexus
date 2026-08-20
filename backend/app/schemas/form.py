@@ -1,6 +1,11 @@
-﻿from datetime import datetime
+﻿from __future__ import annotations
+from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.schemas.user import UserSlimResponse
+from app.schemas.tournament.membership import MembershipSlimResponse
+from app.schemas.chapter.membership import ChapterMemberResponse
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
@@ -185,6 +190,31 @@ class FormRead(BaseModel):
     updated_at: datetime
     response_count: int = 0
     fields: list[FormFieldRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+# Forms-list rows (GET /tournaments/{id}/forms/, /chapters/{id}/forms/) don't
+# need each form's full field list — field_count is enough for the list UI,
+# and skipping `fields` avoids serializing every field/option on every form
+# just to render a table row.
+class FormListRead(BaseModel):
+    id: str
+    name: str
+    title: str | None = None
+    description: str | None = None
+    status: Literal["draft", "published", "archived"]
+    owner_type: Literal["tournament", "chapter"]
+    tournament_id: int | None = None
+    chapter_id: int | None = None
+    # Resolved server-side to the creator's membership in the form's own
+    # tournament/chapter, falling back to the bare user when they have none
+    # (e.g. a site admin acting without ever joining) — same pattern as
+    # JoinCodeResponse.creator.
+    creator: MembershipSlimResponse | ChapterMemberResponse | UserSlimResponse
+    created_at: datetime
+    updated_at: datetime
+    response_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -27,9 +27,11 @@ from app.core.form.validation import (
     validate_reserved_field_key,
 )
 from app.core.form.write_through import parse_lunch_field_key, sync_availability, sync_lunch
+from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
+    ChapterMembership,
     Form,
     FormAnswer,
     FormField,
@@ -39,15 +41,19 @@ from app.models.models import (
     User,
     utcnow,
 )
+from app.schemas.chapter.membership import ChapterMemberResponse
 from app.schemas.form import (
     BulkFieldsUpdate,
     FormCreate,
     FormFieldRead,
+    FormListRead,
     FormRead,
     FormResponseCreate,
     FormResponseRead,
     FormUpdate,
 )
+from app.schemas.tournament.membership import MembershipSlimResponse
+from app.schemas.user import UserSlimResponse
 
 router = APIRouter(tags=["forms"])
 
@@ -133,7 +139,7 @@ def create_chapter_form(
 # ---------------------------------------------------------------------------
 @router.get(
     "/tournaments/{tournament_id}/forms/",
-    response_model=list[FormRead],
+    response_model=list[FormListRead],
     tags=["tournaments"],
 )
 def list_tournament_forms(
@@ -141,12 +147,14 @@ def list_tournament_forms(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
-    return (
+    forms = (
         db.query(Form)
         .filter(Form.tournament_id == tournament_id, Form.owner_type == "tournament")
         .order_by(Form.updated_at.desc())
         .all()
     )
+    creators = resolve_memberships_or_users(db, tournament_id, {f.created_by for f in forms})
+    return [_to_list_read(f, creators[f.created_by]) for f in forms]
 
 
 # ---------------------------------------------------------------------------
@@ -154,7 +162,7 @@ def list_tournament_forms(
 # ---------------------------------------------------------------------------
 @router.get(
     "/chapters/{chapter_id}/forms/",
-    response_model=list[FormRead],
+    response_model=list[FormListRead],
     tags=["chapters"],
 )
 def list_chapter_forms(
@@ -163,11 +171,53 @@ def list_chapter_forms(
     current_user: User = Depends(get_current_user),
 ):
     require_officer_or_lead(chapter_id, db, current_user)
-    return (
+    forms = (
         db.query(Form)
         .filter(Form.chapter_id == chapter_id, Form.owner_type == "chapter")
         .order_by(Form.updated_at.desc())
         .all()
+    )
+    creators = _resolve_chapter_creators(db, chapter_id, {f.created_by for f in forms})
+    return [_to_list_read(f, creators[f.created_by]) for f in forms]
+
+
+def _resolve_chapter_creators(
+    db: Session, chapter_id: int, user_ids: set[int],
+) -> dict[int, ChapterMemberResponse | UserSlimResponse]:
+    """Same fallback pattern as resolve_memberships_or_users (tournament side)
+    — resolve to the creator's ChapterMembership in this chapter, falling
+    back to the bare User for ids with no membership row. No shared helper
+    exists for chapters yet (resolve_memberships_or_users is tournament-only),
+    so this mirrors it locally rather than generalizing prematurely."""
+    memberships = (
+        db.query(ChapterMembership)
+        .filter(ChapterMembership.chapter_id == chapter_id, ChapterMembership.user_id.in_(user_ids))
+        .all()
+    )
+    resolved: dict[int, ChapterMemberResponse | UserSlimResponse] = {
+        m.user_id: ChapterMemberResponse.model_validate(m) for m in memberships
+    }
+    missing_ids = user_ids - resolved.keys()
+    if missing_ids:
+        users = db.query(User).filter(User.id.in_(missing_ids)).all()
+        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
+    return resolved
+
+
+def _to_list_read(form: Form, creator: MembershipSlimResponse | ChapterMemberResponse | UserSlimResponse) -> FormListRead:
+    return FormListRead(
+        id=form.id,
+        name=form.name,
+        title=form.title,
+        description=form.description,
+        status=form.status,
+        owner_type=form.owner_type,
+        tournament_id=form.tournament_id,
+        chapter_id=form.chapter_id,
+        creator=creator,
+        created_at=form.created_at,
+        updated_at=form.updated_at,
+        response_count=form.response_count,
     )
 
 
