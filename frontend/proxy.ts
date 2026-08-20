@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { safeRedirectPath } from '@/lib/auth'
 
-const PROTECTED_PREFIXES = ['/dashboard', '/onboarding']
+const PROTECTED_PREFIXES = ['/dashboard', '/onboarding', '/forms']
 const AUTH_ROUTES        = ['/', '/sign-in', '/sign-up']
 
 export function proxy(request: NextRequest) {
