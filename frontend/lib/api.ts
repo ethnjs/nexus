@@ -1307,6 +1307,11 @@ export const formsApi = {
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
   listForChapter: (chapterId: number) =>
     api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
+  // Every field_key already in use across this tournament's forms (archived
+  // included — an archived key isn't released for reuse) — the builder's
+  // field_key Combobox shows these as disabled options.
+  listFieldKeysForTournament: (tournamentId: number) =>
+    api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
   createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
     api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
   createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>

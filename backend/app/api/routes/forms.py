@@ -158,6 +158,34 @@ def list_tournament_forms(
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key
+# already in use across this tournament's forms (archived fields included —
+# an archived key isn't released for reuse, see field_key_taken_in_tournament
+# in app/core/form). Lets the builder's field_key Combobox show these as
+# visible options before Save, rather than only discovering a collision via
+# the 409 that PUT .../fields/ would otherwise return.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/tournaments/{tournament_id}/forms/field-keys/",
+    response_model=list[str],
+    tags=["tournaments"],
+)
+def list_tournament_field_keys(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    rows = (
+        db.query(FormField.field_key)
+        .join(Form, Form.id == FormField.form_id)
+        .filter(Form.tournament_id == tournament_id)
+        .distinct()
+        .all()
+    )
+    return [r[0] for r in rows]
+
+
+# ---------------------------------------------------------------------------
 # GET /chapters/{chapter_id}/forms/ — lead/officer on the chapter.
 # ---------------------------------------------------------------------------
 @router.get(

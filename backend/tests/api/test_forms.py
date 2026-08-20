@@ -216,6 +216,42 @@ class TestListForms:
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/field-keys/
+# ---------------------------------------------------------------------------
+
+class TestListTournamentFieldKeys:
+    def test_lists_distinct_keys_across_forms_including_archived(self, client, db, td_user, td_tournament):
+        form_a = _make_form(db, td_user, td_tournament, name="A")
+        form_b = _make_form(db, td_user, td_tournament, name="B")
+        _make_field(db, form_a, field_key="favorite_color")
+        _make_field(db, form_a, order=2, field_key="shirt_size")
+        _make_field(db, form_b, field_key="favorite_color")
+        _make_field(db, form_b, order=2, field_key="archived_key", is_archived=True)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
+        assert res.status_code == 200
+        assert set(res.json()) == {"favorite_color", "shirt_size", "archived_key"}
+
+    def test_excludes_chapter_forms(self, client, db, td_user, td_tournament, chapter):
+        form_a = _make_form(db, td_user, td_tournament, name="A")
+        _make_field(db, form_a, field_key="favorite_color")
+        chapter_form = _make_chapter_form(db, td_user, chapter, name="Chapter form")
+        _make_field(db, chapter_form, field_key="alumni_only_key")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
+        assert res.status_code == 200
+        assert set(res.json()) == {"favorite_color"}
+
+    def test_member_without_manage_forms_forbidden(self, client, db, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /forms/{form_id}/
 # ---------------------------------------------------------------------------
 
