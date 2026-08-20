@@ -423,6 +423,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
                   <OptionsEditor
                     options={(field.config?.options as EditableOption[] | undefined) ?? []}
                     onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+                    questionType={field.question_type}
                   />
                   {field.question_type === "ranked_choice" && (
                     <div style={{ marginTop: "12px", width: "100px" }}>

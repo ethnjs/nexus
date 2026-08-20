@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -7,9 +8,11 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { FormFieldOption } from '@/lib/api'
+import { FormFieldOption, FormQuestionType } from '@/lib/api'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { RadioCircle } from '@/components/ui/RadioCircle'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { IconGripVertical, IconX, IconPlus } from '@/components/ui/Icons'
 
 // Same option shape the backend expects, plus a client-only stable id for
@@ -22,9 +25,21 @@ export function newOption(): EditableOption {
   return { clientKey: crypto.randomUUID(), option_id: '', value: '', label: '' }
 }
 
+// Which disabled "this is what a respondent sees" bullet to show per row —
+// only single_select_radio/multi_select_checkbox have a real per-option
+// affordance; dropdown and ranked_choice don't render one inline like this.
+type BulletType = 'radio' | 'checkbox' | 'none'
+
+function bulletTypeFor(questionType: FormQuestionType): BulletType {
+  if (questionType === 'single_select_radio') return 'radio'
+  if (questionType === 'multi_select_checkbox') return 'checkbox'
+  return 'none'
+}
+
 interface OptionsEditorProps {
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
+  questionType: FormQuestionType
 }
 
 // Stacked, reorderable option rows for select/ranked question bodies — each
@@ -32,8 +47,9 @@ interface OptionsEditorProps {
 // "Add option" row below. Nested dnd-kit context, scoped to just this
 // field's option list — doesn't conflict with the field-level drag context
 // since a field's own handle is hidden while its card is expanded.
-export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
+export function OptionsEditor({ options, onChange, questionType }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const bulletType = bulletTypeFor(questionType)
 
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -57,46 +73,65 @@ export function OptionsEditor({ options, onChange }: OptionsEditorProps) {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={options.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
           {options.map((option) => (
             <OptionRow
               key={option.clientKey}
               option={option}
+              bulletType={bulletType}
               onChange={(label) => updateOption(option.clientKey, label)}
               onRemove={() => removeOption(option.clientKey)}
             />
           ))}
         </SortableContext>
       </DndContext>
-      <Button type="button" variant="ghost" size="sm" onClick={addOption} style={{ alignSelf: 'flex-start', marginTop: '4px' }}>
+      <Button type="button" variant="ghost" size="sm" onClick={addOption} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
         <IconPlus size={12} /> Add option
       </Button>
     </div>
   )
 }
 
-function OptionRow({ option, onChange, onRemove }: {
+function OptionRow({ option, bulletType, onChange, onRemove }: {
   option: EditableOption
+  bulletType: BulletType
   onChange: (label: string) => void
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
+  const [hovered, setHovered] = useState(false)
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <div ref={setNodeRef} style={{ ...style, display: 'flex', alignItems: 'center', gap: '6px' }} className="group">
+    <div
+      ref={setNodeRef}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        ...style,
+        position: 'relative',
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '4px 0',
+      }}
+    >
+      {/* No padding added for this — it reaches left into the Card's own
+          padding gutter, so the bullet/Input below stay flush with the
+          question label Input above them instead of shifting right. */}
       <span
         {...attributes}
         {...listeners}
         style={{
+          position: 'absolute', left: '-16px', top: '50%', transform: 'translateY(-50%)',
           display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
-          padding: '4px', touchAction: 'none',
+          opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
         }}
       >
         <IconGripVertical size={13} />
       </span>
+      {bulletType === 'radio' && <RadioCircle checked={false} disabled />}
+      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked />}
       <Input
         value={option.label}
         onChange={(e) => onChange(e.target.value)}
