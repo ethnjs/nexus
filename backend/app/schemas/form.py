@@ -15,33 +15,44 @@ def _unique_option_fields(options: list) -> list:
     """option_id and value each need to be unique within a field's option
     list — option_id is the durable identity (edit-lifecycle archiving,
     write-through, branching match), value is the TD-facing stored/matched
-    text. A collision on either would make selection ambiguous."""
+    payload. A collision on either would make selection ambiguous. value is
+    normally a string, but an entity-backed reserved field_key (e.g.
+    availability grouping several TournamentShifts, event_preference
+    grouping several TournamentEvents under one option) may set it to a
+    list[int] instead — hashed as a tuple here since lists aren't hashable."""
     seen_ids, seen_values = set(), set()
     for option in options:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        if option.value in seen_values:
+        value_key = tuple(option.value) if isinstance(option.value, list) else option.value
+        if value_key in seen_values:
             raise ValueError(f"duplicate option value '{option.value}'")
-        seen_values.add(option.value)
+        seen_values.add(value_key)
     return options
 
 
 class PlainOption(BaseModel):
     """An option with no branching — multi_select_checkbox, ranked_choice.
-    extra='forbid' rejects a stray next_field_id/action on these types."""
+    extra='forbid' rejects a stray next_field_id/action on these types.
+    value is usually TD-facing display text, but for an entity-backed
+    reserved field_key it's list[int] instead — the ids of the underlying
+    entities (TournamentShifts, TournamentEvents, ...) this option groups
+    together; the client is responsible for interpreting which shape to
+    expect based on the field's field_key."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str = Field(min_length=1)
+    value: str | list[int] = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
 
 
 class BranchingOption(BaseModel):
-    """An option that may carry branching — single_select_radio/dropdown only."""
+    """An option that may carry branching — single_select_radio/dropdown only.
+    See PlainOption for value's dual str/list[int] shape."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str = Field(min_length=1)
+    value: str | list[int] = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
     next_field_id: int | None = None

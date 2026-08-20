@@ -21,7 +21,7 @@ BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
 # field_key values with a system-defined meaning.
 RESERVED_FIELD_KEY_QUESTION_TYPES = {
-    "availability": {"multi_select_checkbox"},
+    "availability": {"single_select_radio", "multi_select_checkbox"},
     "event_preference": {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"},
 }
 
@@ -157,7 +157,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
-        if field.field_key == "availability" and field.question_type == "multi_select_checkbox":
+        if field.field_key == "availability":
             try:
                 validate_availability_options(db, form.tournament_id, normalized_config)
             except FormFieldValidationError as e:
@@ -184,10 +184,12 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
 
 
 def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:
-    """A `multi_select_checkbox` field with field_key = "availability" must
-    have every option's `value` reference a real TournamentShift belonging
-    to the field's own tournament — validated strictly since a bad value
-    directly corrupts MembershipAvailability write-through.
+    """A field with field_key = "availability" (single_select_radio or
+    multi_select_checkbox) must have every option's `value` be a non-empty
+    list[int] of real TournamentShift ids belonging to the field's own
+    tournament — one option groups one or more shifts under a single
+    TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). Validated strictly
+    since a bad value directly corrupts MembershipAvailability write-through.
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
@@ -199,14 +201,14 @@ def validate_availability_options(db: Session, tournament_id: int | None, config
     if not options:
         return
 
-    shift_ids = set()
+    shift_ids: set[int] = set()
     for option in options:
         value = option.get("value")
         _require(
-            value is not None and str(value).isdigit(),
-            f"availability option value '{value}' must be a TournamentShift id",
+            isinstance(value, list) and len(value) > 0 and all(isinstance(v, int) for v in value),
+            f"availability option value '{value}' must be a non-empty list of TournamentShift ids",
         )
-        shift_ids.add(int(value))
+        shift_ids.update(value)
 
     valid_ids = {
         shift_id

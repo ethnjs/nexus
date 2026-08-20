@@ -203,12 +203,13 @@ class TestValidateFieldConfig:
 # ---------------------------------------------------------------------------
 
 class TestValidateReservedFieldKey:
-    def test_availability_requires_multi_select_checkbox(self):
+    def test_availability_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
             validate_reserved_field_key("availability", "single_select_dropdown")
 
-    def test_availability_with_multi_select_checkbox_passes(self):
-        validate_reserved_field_key("availability", "multi_select_checkbox")  # no raise
+    @pytest.mark.parametrize("question_type", ["single_select_radio", "multi_select_checkbox"])
+    def test_availability_allowed_types_pass(self, question_type):
+        validate_reserved_field_key("availability", question_type)  # no raise
 
     @pytest.mark.parametrize("question_type", ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"])
     def test_event_preference_allowed_types_pass(self, question_type):
@@ -273,24 +274,36 @@ class TestValidateBranchingOptions:
 class TestValidateAvailabilityOptions:
     def test_chapter_owned_form_skips_check(self, db):
         # tournament_id=None (chapter-owned) — no shift catalog to check against
-        config = {"options": [{"value": "not_a_real_shift_id", "label": "Whenever"}]}
+        config = {"options": [{"value": ["not_a_real_shift_id"], "label": "Whenever"}]}
         validate_availability_options(db, None, config)  # no raise
 
     def test_valid_shift_ids_pass(self, db, td_user, td_tournament):
         shift = _make_shift(db, td_tournament)
         db.commit()
-        config = {"options": [{"value": str(shift.id), "label": shift.label}]}
+        config = {"options": [{"value": [shift.id], "label": shift.label}]}
+        validate_availability_options(db, td_tournament.id, config)  # no raise
+
+    def test_grouped_shift_ids_all_validated(self, db, td_user, td_tournament):
+        s1 = _make_shift(db, td_tournament, "Morning")
+        s2 = _make_shift(db, td_tournament, "Afternoon")
+        db.commit()
+        config = {"options": [{"value": [s1.id, s2.id], "label": "All Day"}]}
         validate_availability_options(db, td_tournament.id, config)  # no raise
 
     def test_shift_id_not_on_tournament_rejected(self, db, td_user, td_tournament, other_user, other_tournament):
         shift = _make_shift(db, other_tournament)
         db.commit()
-        config = {"options": [{"value": str(shift.id), "label": shift.label}]}
+        config = {"options": [{"value": [shift.id], "label": shift.label}]}
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
 
-    def test_non_numeric_value_rejected(self, db, td_user, td_tournament):
-        config = {"options": [{"value": "not_a_shift_id", "label": "Whenever"}]}
+    def test_non_list_value_rejected(self, db, td_user, td_tournament):
+        config = {"options": [{"value": "not_a_list", "label": "Whenever"}]}
+        with pytest.raises(FormFieldValidationError):
+            validate_availability_options(db, td_tournament.id, config)
+
+    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "Whenever"}]}
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
 

@@ -293,7 +293,7 @@ def bulk_update_fields(
         try:
             normalized = validate_field_config(question_type, config)
             validate_reserved_field_key(field_key, question_type)
-            if field_key == "availability" and question_type == "multi_select_checkbox":
+            if field_key == "availability":
                 validate_availability_options(db, form.tournament_id, normalized)
         except FormFieldValidationError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
