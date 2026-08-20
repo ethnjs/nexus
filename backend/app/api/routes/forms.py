@@ -13,6 +13,7 @@ from app.core.form import (
     flag_pending_updates_for_field,
     resolve_field_options,
     slugify,
+    snapshot_answer_value,
 )
 from app.core.form.branching import missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
@@ -433,8 +434,10 @@ def submit_form_response(
         db.query(FormAnswer).filter(FormAnswer.response_id == response.id).delete()
         response.updated_at = utcnow()
 
+    field_by_id = {field.id: field for field in active_fields}
     for answer_in in payload.answers:
-        db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=answer_in.value))
+        stored_value = snapshot_answer_value(field_by_id[answer_in.field_id], answer_in.value)
+        db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=stored_value))
 
     # A fresh answer for a field clears any pending-update flag on it — the
     # respondent has now seen and re-confirmed whatever changed. Keyed by

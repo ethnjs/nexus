@@ -464,9 +464,11 @@ class TestBulkUpdateFieldsPublished:
         rendered_ids = {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]}
         assert rendered_ids == {"opt_blue"}
 
-        # The prior answer referencing opt_red is untouched in storage.
+        # The prior answer referencing opt_red is untouched in storage — it
+        # keeps the value/label snapshot from when it was submitted, even
+        # though the option itself is now archived.
         answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
-        assert answer.value == ["opt_red"]
+        assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
 
         pending = (
             db.query(FormResponsePendingUpdate)
@@ -667,6 +669,65 @@ class TestSubmitResponse:
         login(client, "other@test.com", "otherpass")
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert res.status_code == 403
+
+
+class TestAnswerSnapshotting:
+    """A select-type answer stores a {option_id, value, label} snapshot at
+    submission time, not a bare option_id — so a later edit to the option's
+    value/label doesn't retroactively change how a past answer displays."""
+
+    def test_multi_select_answer_stores_value_label_snapshot(self, client, db, td_user, td_tournament):
+        form = _make_form(
+            db, td_user, td_tournament, status="published",
+        )
+        field = _make_field(
+            db, form, field_key="topics", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [
+                    {"option_id": "opt_red", "value": "red", "label": "Red"},
+                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        assert res.status_code == 200
+        assert res.json()["answers"][0]["value"] == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
+
+    def test_snapshot_survives_later_value_rename(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(
+            db, form, field_key="topics", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_red", "value": "red", "label": "Red"}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.patch(f"/forms/{form.id}/", json={"status": "published"})
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        response_id = res.json()["id"]
+
+        client.put(
+            f"/forms/{form.id}/fields/",
+            json={
+                "fields": [
+                    {
+                        "id": field.id, "label": "Topics", "question_type": "multi_select_checkbox",
+                        "config": {
+                            "required": False,
+                            "options": [{"option_id": "opt_red", "value": "crimson", "label": "Crimson"}],
+                        },
+                    },
+                ]
+            },
+        )
+
+        answer = db.query(FormAnswer).filter(FormAnswer.response_id == response_id).one()
+        # Old answer still reads "Red" even though the option is now "Crimson".
+        assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
 
 
 # ---------------------------------------------------------------------------
