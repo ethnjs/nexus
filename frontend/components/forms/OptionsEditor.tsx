@@ -11,6 +11,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { FormFieldOption, FormQuestionType } from '@/lib/api'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
+import { Dropdown, DropdownOption } from '@/components/ui/Dropdown'
 import { RadioCircle } from '@/components/ui/RadioCircle'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { IconGripVertical, IconX, IconPlus } from '@/components/ui/Icons'
@@ -38,10 +39,37 @@ export function bulletTypeFor(questionType: FormQuestionType): BulletType {
   return 'none'
 }
 
+// A field this option could jump to — id is only available once the target
+// field has been saved (a draft field's id is null), so unsaved fields show
+// up disabled with a reason rather than being silently excluded.
+export interface BranchTarget {
+  id: number | null
+  label: string
+}
+
+const CONTINUE_VALUE = '__continue__'
+const SUBMIT_VALUE = '__submit__'
+const JUMP_PREFIX = 'jump:'
+
+function branchValueFor(option: FormFieldOption): string {
+  if (option.action === 'submit_form') return SUBMIT_VALUE
+  if (option.next_field_id != null) return `${JUMP_PREFIX}${option.next_field_id}`
+  return CONTINUE_VALUE
+}
+
+function applyBranchValue(option: EditableOption, value: string): EditableOption {
+  if (value === SUBMIT_VALUE) return { ...option, action: 'submit_form', next_field_id: null }
+  if (value.startsWith(JUMP_PREFIX)) return { ...option, action: null, next_field_id: Number(value.slice(JUMP_PREFIX.length)) }
+  return { ...option, action: null, next_field_id: null }
+}
+
 interface OptionsEditorProps {
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
   questionType: FormQuestionType
+  /** Only meaningful for single_select_radio/dropdown — renders a per-option
+      "where does this lead" Dropdown below each row when set. */
+  branchTargets?: BranchTarget[]
 }
 
 // Stacked, reorderable option rows for select/ranked question bodies — each
@@ -49,7 +77,7 @@ interface OptionsEditorProps {
 // "Add option" row below. Nested dnd-kit context, scoped to just this
 // field's option list — doesn't conflict with the field-level drag context
 // since a field's own handle is hidden while its card is expanded.
-export function OptionsEditor({ options, onChange, questionType }: OptionsEditorProps) {
+export function OptionsEditor({ options, onChange, questionType, branchTargets }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const bulletType = bulletTypeFor(questionType)
 
@@ -64,6 +92,10 @@ export function OptionsEditor({ options, onChange, questionType }: OptionsEditor
 
   function updateOption(clientKey: string, label: string) {
     onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label, value: label } : o)))
+  }
+
+  function updateBranch(clientKey: string, value: string) {
+    onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)))
   }
 
   function removeOption(clientKey: string) {
@@ -83,7 +115,9 @@ export function OptionsEditor({ options, onChange, questionType }: OptionsEditor
               key={option.clientKey}
               option={option}
               bulletType={bulletType}
+              branchTargets={branchTargets}
               onChange={(label) => updateOption(option.clientKey, label)}
+              onBranchChange={(value) => updateBranch(option.clientKey, value)}
               onRemove={() => removeOption(option.clientKey)}
             />
           ))}
@@ -96,15 +130,28 @@ export function OptionsEditor({ options, onChange, questionType }: OptionsEditor
   )
 }
 
-function OptionRow({ option, bulletType, onChange, onRemove }: {
+function OptionRow({ option, bulletType, branchTargets, onChange, onBranchChange, onRemove }: {
   option: EditableOption
   bulletType: BulletType
+  branchTargets?: BranchTarget[]
   onChange: (label: string) => void
+  onBranchChange: (value: string) => void
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
   const [hovered, setHovered] = useState(false)
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+
+  const branchOptions: DropdownOption[] | undefined = branchTargets && [
+    { value: CONTINUE_VALUE, label: 'Continue to next question' },
+    ...branchTargets.map((t): DropdownOption => ({
+      value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
+      label: `Jump to: ${t.label}`,
+      disabled: t.id == null,
+      subtitle: t.id == null ? 'Save the form to enable this target' : undefined,
+    })),
+    { value: SUBMIT_VALUE, label: 'Submit form' },
+  ]
 
   return (
     <div
@@ -114,36 +161,48 @@ function OptionRow({ option, bulletType, onChange, onRemove }: {
       style={{
         ...style,
         position: 'relative',
-        display: 'flex', alignItems: 'center', gap: '8px',
+        display: 'flex', flexDirection: 'column', gap: '6px',
         padding: '4px 0',
       }}
     >
-      {/* No padding added for this — it reaches left into the Card's own
-          padding gutter, so the bullet/Input below stay flush with the
-          question label Input above them instead of shifting right. */}
-      <span
-        {...attributes}
-        {...listeners}
-        style={{
-          position: 'absolute', left: '-16px', top: '50%', transform: 'translateY(-50%)',
-          display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
-          opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
-        }}
-      >
-        <IconGripVertical size={13} />
-      </span>
-      {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
-      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
-      <Input
-        value={option.label}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="Option"
-        size="md"
-        fullWidth
-      />
-      <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
-        <IconX size={12} />
-      </Button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* No padding added for this — it reaches left into the Card's own
+            padding gutter, so the bullet/Input below stay flush with the
+            question label Input above them instead of shifting right. */}
+        <span
+          {...attributes}
+          {...listeners}
+          style={{
+            position: 'absolute', left: '-16px', top: '14px', transform: 'translateY(-50%)',
+            display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
+            opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
+          }}
+        >
+          <IconGripVertical size={13} />
+        </span>
+        {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
+        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
+        <Input
+          value={option.label}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Option"
+          size="md"
+          fullWidth
+        />
+        <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
+          <IconX size={12} />
+        </Button>
+      </div>
+      {branchOptions && (
+        <div style={{ marginLeft: bulletType === 'none' ? 0 : 26, width: 220 }}>
+          <Dropdown
+            value={branchValueFor(option)}
+            onChange={onBranchChange}
+            options={branchOptions}
+            size="sm"
+          />
+        </div>
+      )}
     </div>
   )
 }

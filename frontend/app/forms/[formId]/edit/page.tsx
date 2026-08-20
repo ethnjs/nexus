@@ -15,9 +15,14 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Combobox } from "@/components/ui/Combobox";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
+import { Popover } from "@/components/ui/Popover";
+import { Toggle } from "@/components/ui/Toggle";
+import {
+  IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus,
+  IconDescription, IconInfo, IconCopy, IconDotsVertical,
+} from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { OptionsEditor, EditableOption } from "@/components/forms/OptionsEditor";
+import { OptionsEditor, EditableOption, BranchTarget } from "@/components/forms/OptionsEditor";
 import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
 
 // A field being edited in the builder — same shape as FormField, but `id`
@@ -387,18 +392,38 @@ function useHeightTransition(expandedOnMount: boolean) {
   return { wrapperRef, contentRef };
 }
 
-function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, tournamentId, usedFieldKeys }: {
+// Types whose card body offers per-option branching (Continue / Jump to /
+// Submit form) — matches BranchingOption's scope in
+// backend/app/schemas/form.py. Excludes reserved presets (availability,
+// event_preference) even though they share these question_types — their
+// options are entity-backed and auto-generated, not something a TD
+// hand-builds a branch tree over.
+const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "single_select_dropdown"];
+
+function FieldCard({
+  field, expanded, onExpand, onFieldChange, onAddFieldBelow, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields,
+}: {
   field: EditableField;
   expanded: boolean;
   onExpand: () => void;
   onFieldChange: (updates: Partial<EditableField>) => void;
   onAddFieldBelow: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
   tournamentId: number | null;
   usedFieldKeys: string[];
+  allFields: EditableField[];
 }) {
   const [showDescription, setShowDescription] = useState(!!field.description);
   const [hovered, setHovered] = useState(false);
   const preset = activePreset(field);
+  const supportsBranching = !preset && BRANCHING_TYPES.includes(field.question_type);
+  const [branchingEnabled, setBranchingEnabled] = useState(() =>
+    (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
+  );
+  const branchTargets: BranchTarget[] = allFields
+    .filter((f) => f.clientKey !== field.clientKey && f.label.trim())
+    .map((f) => ({ id: f.id, label: f.label.trim() }));
 
   // Reserved key names are already represented by FIELD_KEY_PRESETS, and a
   // field editing its own already-saved key shouldn't see that key flagged
@@ -517,6 +542,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
                     options={(field.config?.options as EditableOption[] | undefined) ?? []}
                     onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
                     questionType={field.question_type}
+                    branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
                   />
                   {field.question_type === "ranked_choice" && (
                     <div style={{ marginTop: "12px", width: "100px" }}>
@@ -535,6 +561,48 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
               ) : (
                 <QuestionRenderer field={field} interactive={false} showHeader={false} />
               )}
+
+              <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", gap: "2px" }}>
+                  <Button type="button" variant="ghost" size="sm" iconOnly title="Duplicate question" onClick={onDuplicate}>
+                    <IconCopy size={14} />
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" iconOnly title="Delete question" onClick={onDelete}>
+                    <IconTrash size={14} />
+                  </Button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                      Required
+                    </span>
+                    <Toggle
+                      checked={!!field.config?.required}
+                      onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
+                    />
+                  </div>
+                  {supportsBranching && (
+                    <>
+                      <div style={{ width: "1px", height: "20px", background: "var(--color-border)" }} />
+                      <Popover
+                        trigger={
+                          <Button type="button" variant="ghost" size="sm" iconOnly title="More options">
+                            <IconDotsVertical size={15} />
+                          </Button>
+                        }
+                        items={[{ key: "branching", label: "Branching" }]}
+                        getKey={(item) => item.key}
+                        checklist
+                        isSelected={() => branchingEnabled}
+                        onSelect={() => setBranchingEnabled((v) => !v)}
+                        renderLabel={(item) => item.label}
+                        width={160}
+                      />
+                    </>
+                  )}
+                </div>
+              </div>
             </Card>
           ) : (
             <Card
@@ -627,6 +695,35 @@ function FieldList({ form }: { form: Form }) {
     setExpandedKey(field.clientKey);
   }
 
+  // Cleared field_key on the copy — a reserved key (availability, ...) can
+  // only exist once per tournament, and a freeform key the TD chose
+  // deliberately shouldn't silently duplicate either.
+  function duplicateField(clientKey: string) {
+    const source = fields.find((f) => f.clientKey === clientKey);
+    if (!source) return;
+    const insertIndex = fields.findIndex((f) => f.clientKey === clientKey) + 1;
+    const copy: EditableField = {
+      ...source,
+      clientKey: crypto.randomUUID(),
+      id: null,
+      field_key: "",
+      config: source.config?.options
+        ? { ...source.config, options: (source.config.options as EditableOption[]).map((o) => ({ ...o, clientKey: crypto.randomUUID(), option_id: "" })) }
+        : source.config,
+    };
+    setFields((prev) => {
+      const next = [...prev];
+      next.splice(insertIndex, 0, copy);
+      return next;
+    });
+    setExpandedKey(copy.clientKey);
+  }
+
+  function deleteField(clientKey: string) {
+    setFields((prev) => prev.filter((f) => f.clientKey !== clientKey));
+    setExpandedKey((prev) => (prev === clientKey ? null : prev));
+  }
+
   if (fields.length === 0) {
     return (
       <Card radius="lg" style={{ padding: "8px" }}>
@@ -654,8 +751,11 @@ function FieldList({ form }: { form: Form }) {
           onExpand={() => setExpandedKey(field.clientKey)}
           onFieldChange={(updates) => updateField(field.clientKey, updates)}
           onAddFieldBelow={() => addField(field.clientKey)}
+          onDuplicate={() => duplicateField(field.clientKey)}
+          onDelete={() => deleteField(field.clientKey)}
           tournamentId={form.tournament_id}
           usedFieldKeys={usedFieldKeys}
+          allFields={fields}
         />
       ))}
     </div>
