@@ -12,7 +12,6 @@ from tests.api.chapter._helpers import make_chapter, make_university, make_user
 from app.core.form import (
     field_key_taken_in_tournament,
     remove_form_field,
-    remove_option_from_field,
     replace_field_type,
     slugify,
 )
@@ -70,8 +69,8 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
         field_key=field_key,
         config={
             "options": [
-                {"id": "opt_1", "label": "Red", "archived": False, "next_section_id": None, "allow_other": False},
-                {"id": "opt_2", "label": "Blue", "archived": False, "next_section_id": None, "allow_other": False},
+                {"option_id": "opt_1", "value": "red", "label": "Red", "is_archived": False},
+                {"option_id": "opt_2", "value": "blue", "label": "Blue", "is_archived": False},
             ]
         },
         is_archived=False,
@@ -241,24 +240,6 @@ class TestFieldHelpers:
         assert replacement.question_type == "multi_select"
         assert replacement.field_key == "tshirt_size"
         assert replacement.is_archived is False
-
-    def test_remove_option_from_field_keeps_existing_answer_values(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, order=2, field_key="member_role")
-
-        response = FormResponse(form_id=form.id, user_id=td_user.id)
-        db.add(response)
-        db.flush()
-
-        answer = FormAnswer(response_id=response.id, field_id=field.id, value=["opt_1"])
-        db.add(answer)
-        db.flush()
-
-        updated = remove_option_from_field(db, field, "opt_1")
-
-        assert updated is field
-        assert updated.config["options"][0]["archived"] is True
-        assert db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one().value == ["opt_1"]
 
 
 # ---------------------------------------------------------------------------

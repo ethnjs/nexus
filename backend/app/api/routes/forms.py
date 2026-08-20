@@ -1,27 +1,25 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
-    field_has_answers,
+    apply_option_archiving,
     field_key_taken_in_tournament,
-    remove_form_field,
-    reorder_field,
-    replace_field_type,
+    flag_pending_updates_for_archived_options,
+    flag_pending_updates_for_field,
     resolve_field_options,
-    set_field_config,
     slugify,
-    update_field_text,
 )
 from app.core.form.branching import missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
     LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
+    collect_active_field_errors,
     validate_availability_options,
-    validate_branching_options,
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
@@ -34,15 +32,15 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    FormResponsePendingUpdate,
     TournamentMembership,
     User,
     utcnow,
 )
 from app.schemas.form import (
+    BulkFieldsUpdate,
     FormCreate,
-    FormFieldCreate,
     FormFieldRead,
-    FormFieldUpdate,
     FormRead,
     FormResponseCreate,
     FormResponseRead,
@@ -217,144 +215,171 @@ def delete_form(
 
 
 # ---------------------------------------------------------------------------
-# POST /forms/{form_id}/fields/ — field_key is TD-typed (separate from
-# label), normalized server-side via slugify(). For tournament-owned forms
-# the normalized key must be unique across every form that tournament owns
-# (not just this one) since it's a TD-visible dashboard lookup key;
-# collisions 409 rather than auto-suffixing so the TD can pick a more
-# distinct key instead of silently getting a different one than they typed.
-# Chapter-owned forms fall back to the plain per-form uniqueness the DB
-# constraint already enforces.
+# PUT /forms/{form_id}/fields/ — replaces the field list wholesale. Supersedes
+# the old per-field POST/PATCH/DELETE routes: the client owns in-progress
+# edits locally (no server-side draft/staging), and this request is the
+# "go live" action. An entry with `id` updates that field; an entry with no
+# `id` creates one; a currently-live field whose `id` is absent from the
+# payload is removed.
+#
+# draft-status forms apply directly (hard delete/update/insert) — nothing
+# on a draft form has ever been answerable, so there's no history to
+# protect. published-status forms archive instead of hard-deleting/losing
+# data: a removed or question_type-changed field is archived (and, for a
+# type change, replaced by a new field at the same list position inheriting
+# the old field_key); an option dropped from an otherwise-unchanged field's
+# config is archived in place rather than removed from storage. Either way
+# the whole batch is applied inside one transaction, flushed (so newly
+# created fields get real ids), validated as a whole via
+# collect_active_field_errors, and only committed if that validation
+# passes — an invalid next_field_id (including one that would've pointed
+# at a field this same request removes) rolls the whole request back.
 # ---------------------------------------------------------------------------
-@router.post("/forms/{form_id}/fields/", response_model=FormFieldRead, status_code=status.HTTP_201_CREATED)
-def create_form_field(
-    payload: FormFieldCreate,
+@router.put("/forms/{form_id}/fields/", response_model=list[FormFieldRead])
+def bulk_update_fields(
+    payload: BulkFieldsUpdate,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    field_key = slugify(payload.field_key)
+    is_published = form.status == "published"
 
-    if form.owner_type == "tournament":
-        if field_key_taken_in_tournament(db, form.tournament_id, field_key):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"field_key '{field_key}' is already in use elsewhere in this tournament — pick a more distinct label",
-            )
-    else:
-        existing = (
-            db.query(FormField)
-            .filter(FormField.form_id == form.id, FormField.field_key == field_key)
-            .first()
-        )
-        if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"field_key '{field_key}' is already in use on this form — pick a more distinct label",
-            )
-
-    try:
-        normalized_config = validate_field_config(payload.question_type, payload.config)
-        validate_reserved_field_key(field_key, payload.question_type)
-        validate_branching_options(db, form.id, payload.question_type, normalized_config)
-        if field_key == "availability" and payload.question_type == "multi_select_checkbox":
-            validate_availability_options(db, form.tournament_id, normalized_config)
-    except FormFieldValidationError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
-
-    order = payload.order
-    if order is None:
-        max_order = db.query(func.max(FormField.order)).filter(FormField.form_id == form.id).scalar()
-        order = (max_order or 0) + 1
-
-    field = FormField(
-        form_id=form.id,
-        order=order,
-        label=payload.label,
-        description=payload.description,
-        question_type=payload.question_type,
-        field_key=field_key,
-        config=normalized_config,
-        is_archived=False,
+    live_fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .all()
     )
-    db.add(field)
-    db.commit()
-    db.refresh(field)
-    return field
+    live_by_id = {f.id: f for f in live_fields}
 
-
-# ---------------------------------------------------------------------------
-# PATCH /forms/{form_id}/fields/{field_id}/ — locked once the field has any
-# FormAnswer (see field_has_answers): editing label/config/type of an
-# already-answered field would silently invalidate submitted data, so it's
-# a flat reject rather than a partial one. New fields on a published form
-# are unaffected — they start with zero answers.
-# ---------------------------------------------------------------------------
-@router.patch("/forms/{form_id}/fields/{field_id}/", response_model=FormFieldRead)
-def edit_form_field(
-    field_id: int,
-    payload: FormFieldUpdate,
-    db: Session = Depends(get_db),
-    form: Form = Depends(require_form_manage_access),
-):
-    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
-    if not field:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
-
-    if field_has_answers(db, field.id):
+    submitted_ids = {e.id for e in payload.fields if e.id is not None}
+    unknown_ids = submitted_ids - set(live_by_id)
+    if unknown_ids:
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Field has existing answers — it cannot be edited",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"field id(s) not found on this form: {sorted(unknown_ids)}",
         )
 
-    final_question_type = payload.question_type if payload.question_type is not None else field.question_type
-    final_config = payload.config if payload.config is not None else field.config
+    new_entries = [e for e in payload.fields if e.id is None]
+    new_keys = [slugify(e.field_key or "") for e in new_entries]
+    if len(new_keys) != len(set(new_keys)):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="duplicate field_key among the fields being created in this request",
+        )
 
-    try:
-        normalized_config = validate_field_config(final_question_type, final_config)
-        validate_reserved_field_key(field.field_key, final_question_type)
-        validate_branching_options(db, form.id, final_question_type, normalized_config, field_id=field.id)
-        if field.field_key == "availability" and final_question_type == "multi_select_checkbox":
-            validate_availability_options(db, form.tournament_id, normalized_config)
-    except FormFieldValidationError as e:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    def _check_field_key_available(field_key: str) -> None:
+        if form.owner_type == "tournament":
+            taken = field_key_taken_in_tournament(db, form.tournament_id, field_key)
+        else:
+            taken = (
+                db.query(FormField)
+                .filter(FormField.form_id == form.id, FormField.field_key == field_key)
+                .first()
+                is not None
+            )
+        if taken:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"field_key '{field_key}' is already in use — pick a more distinct label",
+            )
 
-    if payload.question_type is not None and payload.question_type != field.question_type:
-        field = replace_field_type(db, field, payload.question_type)
+    def _validate_config(question_type: str, config: dict | None, field_key: str) -> dict:
+        # Only structural/self-contained checks run here, before the batch
+        # is flushed — next_field_id resolution needs every field (including
+        # ones this same request creates) to have a real id first, so that's
+        # deferred to the collect_active_field_errors pass below.
+        try:
+            normalized = validate_field_config(question_type, config)
+            validate_reserved_field_key(field_key, question_type)
+            if field_key == "availability" and question_type == "multi_select_checkbox":
+                validate_availability_options(db, form.tournament_id, normalized)
+        except FormFieldValidationError as e:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+        return normalized
 
-    if payload.label is not None or payload.description is not None:
-        field = update_field_text(db, field, payload.label, payload.description)
+    pending_flags: list[tuple[str, str, int | None, list[str]]] = []
+    # (field_key, reason, field_id_for_answer_lookup, archived_option_ids)
 
-    if payload.order is not None:
-        field = reorder_field(db, field, payload.order)
+    order = 1
+    for entry in payload.fields:
+        if entry.id is not None:
+            field = live_by_id[entry.id]
+            normalized_config = _validate_config(entry.question_type, entry.config, field.field_key)
+            type_changed = entry.question_type != field.question_type
 
-    if payload.config is not None:
-        field = set_field_config(db, field, normalized_config)
+            if type_changed and is_published:
+                field.is_archived = True
+                old_key = field.field_key
+                field.field_key = f"{old_key}_archived_{field.id}"
+                pending_flags.append((old_key, "field_replaced", field.id, []))
 
-    return field
+                new_field = FormField(
+                    form_id=form.id,
+                    order=order,
+                    label=entry.label,
+                    description=entry.description,
+                    question_type=entry.question_type,
+                    field_key=old_key,
+                    config=normalized_config,
+                    is_archived=False,
+                )
+                db.add(new_field)
+            else:
+                if is_published:
+                    normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
+                    if archived_option_ids:
+                        pending_flags.append((field.field_key, "option_archived", field.id, archived_option_ids))
+                field.order = order
+                field.label = entry.label
+                field.description = entry.description
+                field.question_type = entry.question_type
+                field.config = normalized_config
+                flag_modified(field, "config")
+        else:
+            field_key = slugify(entry.field_key or "")
+            _check_field_key_available(field_key)
+            normalized_config = _validate_config(entry.question_type, entry.config, field_key)
+            new_field = FormField(
+                form_id=form.id,
+                order=order,
+                label=entry.label,
+                description=entry.description,
+                question_type=entry.question_type,
+                field_key=field_key,
+                config=normalized_config,
+                is_archived=False,
+            )
+            db.add(new_field)
+        order += 1
 
+    removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
+    for field in removed_fields:
+        if is_published:
+            field.is_archived = True
+            pending_flags.append((field.field_key, "field_replaced", field.id, []))
+        else:
+            db.delete(field)
 
-# ---------------------------------------------------------------------------
-# DELETE /forms/{form_id}/fields/{field_id}/
-# Archives a form field if responses exist. Hard deletes if responses do
-# not exist.
-# ---------------------------------------------------------------------------
-@router.delete("/forms/{form_id}/fields/{field_id}/")
-def delete_or_archive_form_field(
-    field_id: int,
-    db: Session = Depends(get_db),
-    form: Form = Depends(require_form_manage_access),
-):
-    field = db.query(FormField).filter(FormField.id == field_id, FormField.form_id == form.id).first()
-    if not field:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+    db.flush()
 
-    was_archived = remove_form_field(db=db, field=field)
+    errors = collect_active_field_errors(db, form)
+    if errors:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
 
-    return {
-        "success": True,
-        "action": "archived" if was_archived else "deleted",
-        "field_id": field_id,
-    }
+    for field_key, reason, field_id, archived_option_ids in pending_flags:
+        if reason == "field_replaced":
+            flag_pending_updates_for_field(db, field_id, field_key, "field_replaced")
+        else:
+            flag_pending_updates_for_archived_options(db, live_by_id[field_id], archived_option_ids)
+
+    db.commit()
+
+    return (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .order_by(FormField.order)
+        .all()
+    )
 
 
 # ---------------------------------------------------------------------------

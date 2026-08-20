@@ -114,8 +114,22 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_tournament_membership_lunch_id'), 'tournament_membership_lunch', ['id'], unique=False)
 
+    op.create_table('form_response_pending_updates',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('response_id', sa.Integer(), nullable=False),
+    sa.Column('field_key', sa.String(length=64), nullable=False),
+    sa.Column('reason', sa.String(length=32), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
+    sa.ForeignKeyConstraint(['response_id'], ['form_responses.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('response_id', 'field_key', name='uq_pending_update_per_response_field')
+    )
+    op.create_index(op.f('ix_form_response_pending_updates_id'), 'form_response_pending_updates', ['id'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_form_response_pending_updates_id'), table_name='form_response_pending_updates')
+    op.drop_table('form_response_pending_updates')
     op.drop_index(op.f('ix_tournament_membership_lunch_id'), table_name='tournament_membership_lunch')
     op.drop_table('tournament_membership_lunch')
     op.drop_index(op.f('ix_tournament_membership_availability_id'), table_name='tournament_membership_availability')

@@ -765,6 +765,7 @@ class FormResponse(Base):
     form = relationship("Form", back_populates="responses")
     user = relationship("User", back_populates="form_responses")
     answers = relationship("FormAnswer", back_populates="response", cascade="all, delete-orphan")
+    pending_updates = relationship("FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),
@@ -788,6 +789,31 @@ class FormAnswer(Base):
 
     __table_args__ = (
         UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# FormResponsePendingUpdate — flags that a response answered a field/option
+# which a republish later archived out from under it, so a TD/respondent
+# can be shown "this answer needs another look". One row per
+# (response, field_key); reason only ever escalates option_archived ->
+# field_replaced (never the reverse) on upsert, and the row is deleted once
+# that response next submits an answer for whichever field currently holds
+# that field_key — see _apply_published_field_changes in api/routes/forms.py.
+# ---------------------------------------------------------------------------
+class FormResponsePendingUpdate(Base):
+    __tablename__ = "form_response_pending_updates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(Integer, ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    field_key = Column(String(64), nullable=False)
+    reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    response = relationship("FormResponse", back_populates="pending_updates")
+
+    __table_args__ = (
+        UniqueConstraint("response_id", "field_key", name="uq_pending_update_per_response_field"),
     )
 
 

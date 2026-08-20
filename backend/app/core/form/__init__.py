@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import Form, FormAnswer, FormField, TournamentEvent
+from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent
 
 import re # Regular Expressions for searching, matching, and extracting patterns in text strings
 
@@ -110,88 +110,85 @@ def replace_field_type(
     db.refresh(new_field)
     return new_field
 
-def add_option(
-        db: Session,
-        field: FormField,
-        label: str | None = None,
-) -> FormField:
+def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[dict, list[str]]:
+    """For an in-place field update on a published form: an option_id
+    present in the old config but absent from the submitted config is kept
+    in storage with `is_archived: true` added, rather than dropped — a
+    response referencing it must keep resolving. Returns the merged config
+    and the option_ids newly archived by this call (empty if none, or if
+    `old_config`/`new_config` isn't an options-bearing shape) — the caller
+    uses that list to flag affected responses (see
+    flag_pending_updates_for_archived_options)."""
+    old_options = (old_config or {}).get("options")
+    if old_options is None or "options" not in new_config:
+        return new_config, []
 
-    config = dict(field.config or {})
-    options = config.get("options", [])
+    new_ids = {o["option_id"] for o in new_config["options"]}
+    newly_archived_ids: list[str] = []
+    archived_options: list[dict] = []
+    for option in old_options:
+        if option["option_id"] not in new_ids:
+            archived_options.append({**option, "is_archived": True})
+            if not option.get("is_archived"):
+                newly_archived_ids.append(option["option_id"])
 
-    max_id = 0
-    for option in options:
-        match = re.search(r"^opt_(\d+)$", option.get("id", ""))
-        if match:
-            num = int(match.group(1))
-            if num > max_id:
-                max_id = num
+    merged = dict(new_config)
+    merged["options"] = [*new_config["options"], *archived_options]
+    return merged, newly_archived_ids
 
-    new_option = {
-        "id": f"opt_{max_id + 1}",
-        "label": label,
-        "archived": False,
-        "next_section_id": None,
-        "allow_other": False
+
+def _upsert_pending_update(db: Session, response_id: int, field_key: str, reason: str) -> None:
+    existing = (
+        db.query(FormResponsePendingUpdate)
+        .filter(
+            FormResponsePendingUpdate.response_id == response_id,
+            FormResponsePendingUpdate.field_key == field_key,
+        )
+        .first()
+    )
+    if existing is None:
+        db.add(FormResponsePendingUpdate(response_id=response_id, field_key=field_key, reason=reason))
+    elif existing.reason == "option_archived" and reason == "field_replaced":
+        # Escalate only in this direction — see FormResponsePendingUpdate.
+        existing.reason = "field_replaced"
+
+
+def flag_pending_updates_for_field(db: Session, field_id: int, field_key: str, reason: str) -> None:
+    """Upserts a pending-update row for every response that answered
+    `field_id` — used when that field was archived (removed, or archived
+    +replaced by a question_type change). Keyed on `field_key`, not
+    `field_id`, since field_key is what a respondent/TD recognizes and
+    what survives an archive+replace."""
+    response_ids = {
+        rid for (rid,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field_id).all()
     }
-
-    options.append(new_option)
-    config["options"] = options
-
-    field.config = config
-    flag_modified(field, "config")
-
-    db.commit()
-    db.refresh(field)
-
-    return field
+    for response_id in response_ids:
+        _upsert_pending_update(db, response_id, field_key, reason)
 
 
-def change_option_label(
-        db: Session,
-        field: FormField,
-        option_id: str,
-        label: str,
-) -> FormField:
-    
-    config = dict(field.config or {})
-    options = config.get("options", [])
+def flag_pending_updates_for_archived_options(db: Session, field: FormField, archived_option_ids: list[str]) -> None:
+    """Upserts option_archived for every response whose stored answer on
+    `field` (still live, unchanged type) selected one of `archived_option_ids`.
+    FormAnswer.value is a plain JSON column (not JSONB), so this is a
+    Python-side scan rather than a DB-side containment query — same
+    reasoning as the TournamentShift deletion guard's scan."""
+    if not archived_option_ids:
+        return
+    archived_ids = set(archived_option_ids)
+    answers = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all()
+    for answer in answers:
+        value = answer.value
+        selected = value if isinstance(value, list) else ([value] if value else [])
+        if archived_ids & set(selected):
+            _upsert_pending_update(db, answer.response_id, field.field_key, "option_archived")
 
-    for option in options:
-        if option.get("id") == option_id:
-            option["label"] = label
-            break
-
-    field.config = config
-    flag_modified(field, "config")
-
-    db.commit()
-    db.refresh(field)
-    return field
-
-def remove_option_from_field(
-        db: Session,
-        field: FormField,
-        option_id: str,
-) -> FormField:
-    config = dict(field.config or {})
-    options = config.get("options", [])
-
-    for option in options:
-        if option.get("id") == option_id:
-            option["archived"] = True
-            break
-
-    field.config = config
-    flag_modified(field, "config")
-
-    db.commit()
-    db.refresh(field)
-    return field
 
 def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     """
-    Resolves option items for a given FormField.
+    Resolves option items for a given FormField, filtering out any
+    `is_archived: true` option — archived options stay in `config` for
+    historical answer/branching resolution but are never shown to a new
+    respondent.
     If the field depends on live DB data (e.g. event_preference), queries the database.
     Otherwise, returns options stored in field.config.
     """
@@ -208,11 +205,10 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
         )
         return [
             {
-                "id": f"opt_{event.id}",
+                "option_id": f"opt_evt_{event.id}",
+                "value": str(event.id),
                 "label": event.name,
-                "archived": False,
-                "next_section_id": None,
-                "allow_other": False,
+                "is_archived": False,
             }
             for event in events
         ]
@@ -224,4 +220,4 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
 
     # 3. Static fallback: Read options list directly from config
     config = dict(field.config or {})
-    return config.get("options", [])
+    return [o for o in config.get("options", []) if not o.get("is_archived")]

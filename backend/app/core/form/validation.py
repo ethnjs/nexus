@@ -121,13 +121,16 @@ def validate_branching_options(
     )
 
 
-def validate_form_for_publish(db: Session, form: Form) -> None:
-    """Aggregate pass run on every draft->published transition and every
-    explicit republish while already published. Per-field validation on
-    create/update can't catch problems that only exist in aggregate — a
-    form with zero fields, or a next_field_id left dangling after some
-    other field got archived later — so this re-runs every check across
-    the whole active field set. Collects every problem found instead of
+def collect_active_field_errors(db: Session, form: Form) -> list[str]:
+    """Aggregate, non-raising pass over every non-archived field on `form`,
+    re-run in full rather than per-field: per-field validation on create/
+    update can't catch problems that only exist in aggregate (e.g. a
+    next_field_id left dangling after some other field got archived/
+    replaced later). Used both by the publish-transition gate (below,
+    which additionally requires >=1 field) and by the bulk field-replace
+    route in api/routes/forms.py (which runs this straight after flushing
+    a proposed field set, so newly-created fields already have real ids to
+    validate next_field_id against). Collects every problem instead of
     stopping at the first, so a TD sees the full list in one pass."""
     fields = (
         db.query(FormField)
@@ -136,9 +139,6 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
     )
 
     errors: list[str] = []
-    if not fields:
-        errors.append("form has no fields")
-
     for field in fields:
         try:
             normalized_config = validate_field_config(field.question_type, field.config)
@@ -162,6 +162,23 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
                 validate_availability_options(db, form.tournament_id, normalized_config)
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
+
+    return errors
+
+
+def validate_form_for_publish(db: Session, form: Form) -> None:
+    """Run on every draft->published transition and every explicit
+    republish while already published — same as collect_active_field_errors
+    plus the publish-only "must have at least one field" requirement."""
+    has_fields = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .first()
+        is not None
+    )
+
+    errors: list[str] = [] if has_fields else ["form has no fields"]
+    errors += collect_active_field_errors(db, form)
 
     _require(not errors, "; ".join(errors))
 

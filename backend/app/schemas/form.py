@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -11,12 +11,19 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # app/core/form/validation.py since they need a Session, not just the dict.
 # ---------------------------------------------------------------------------
 
-def _unique_option_values(options: list) -> list:
-    seen = set()
+def _unique_option_fields(options: list) -> list:
+    """option_id and value each need to be unique within a field's option
+    list — option_id is the durable identity (edit-lifecycle archiving,
+    write-through, branching match), value is the TD-facing stored/matched
+    text. A collision on either would make selection ambiguous."""
+    seen_ids, seen_values = set(), set()
     for option in options:
-        if option.value in seen:
+        if option.option_id in seen_ids:
+            raise ValueError(f"duplicate option_id '{option.option_id}'")
+        seen_ids.add(option.option_id)
+        if option.value in seen_values:
             raise ValueError(f"duplicate option value '{option.value}'")
-        seen.add(option.value)
+        seen_values.add(option.value)
     return options
 
 
@@ -24,15 +31,19 @@ class PlainOption(BaseModel):
     """An option with no branching — multi_select_checkbox, ranked_choice.
     extra='forbid' rejects a stray next_field_id/action on these types."""
     model_config = ConfigDict(extra="forbid")
+    option_id: str = Field(min_length=1)
     value: str = Field(min_length=1)
     label: str = Field(min_length=1)
+    is_archived: bool = False
 
 
 class BranchingOption(BaseModel):
     """An option that may carry branching — single_select_radio/dropdown only."""
     model_config = ConfigDict(extra="forbid")
+    option_id: str = Field(min_length=1)
     value: str = Field(min_length=1)
     label: str = Field(min_length=1)
+    is_archived: bool = False
     next_field_id: int | None = None
     action: Literal["submit_form"] | None = None
 
@@ -57,7 +68,7 @@ class SingleSelectConfig(BaseModel):
     @field_validator("options")
     @classmethod
     def _unique_values(cls, options: list[BranchingOption]) -> list[BranchingOption]:
-        return _unique_option_values(options)
+        return _unique_option_fields(options)
 
 
 class MultiSelectCheckboxConfig(BaseModel):
@@ -68,7 +79,7 @@ class MultiSelectCheckboxConfig(BaseModel):
     @field_validator("options")
     @classmethod
     def _unique_values(cls, options: list[PlainOption]) -> list[PlainOption]:
-        return _unique_option_values(options)
+        return _unique_option_fields(options)
 
 
 class RankedChoiceConfig(BaseModel):
@@ -81,7 +92,7 @@ class RankedChoiceConfig(BaseModel):
     @field_validator("options")
     @classmethod
     def _unique_values(cls, options: list[PlainOption]) -> list[PlainOption]:
-        return _unique_option_values(options)
+        return _unique_option_fields(options)
 
     @model_validator(mode="after")
     def _ranks_within_options(self):
@@ -127,26 +138,22 @@ class FormFieldRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class FormFieldCreate(BaseModel):
-    # field_key is TD-typed, separate from `label` — the TD's own name for
-    # the dashboard lookup key. Server-side slugify() normalizes it (see
-    # app/core/form.slugify)
+class BulkFieldEntry(BaseModel):
+    """One entry in a PUT /forms/{form_id}/fields/ payload. `id` absent
+    means "create"; `id` present must match a currently-live field on this
+    form. `field_key` is only meaningful (and required) on create — on an
+    update it's server-controlled (immutable, or carried over onto a
+    question_type-change replacement) and any value sent here is ignored."""
+    id: int | None = None
+    field_key: str | None = None
     label: str
-    field_key: str
-    question_type: str
     description: str | None = None
-    order: int | None = None
+    question_type: str
     config: dict[str, Any] | None = None
 
 
-class FormFieldUpdate(BaseModel):
-    label: str | None = None
-    description: str | None = None
-    question_type: str | None = None
-    order: int | None = None
-    config: dict | None = None
-
-    model_config = ConfigDict(from_attributes=True)
+class BulkFieldsUpdate(BaseModel):
+    fields: list[BulkFieldEntry]
 
 
 # ---------------------------------------------------------------------------
