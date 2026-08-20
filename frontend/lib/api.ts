@@ -748,9 +748,10 @@ export type Permission =
   | 'manage_members'
   | 'manage_events'
   | 'manage_invites'
+  | 'manage_forms'
 
 export const ALL_PERMISSIONS: Permission[] = [
-  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites',
+  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites', 'manage_forms',
 ]
 
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
@@ -773,6 +774,10 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   manage_invites: {
     label: 'Manage Invites',
     description: 'Create invite links to the tournament and manage existing ones.',
+  },
+  manage_forms: {
+    label: 'Manage Forms',
+    description: 'Create and edit forms, and manage their published state.',
   },
 }
 
