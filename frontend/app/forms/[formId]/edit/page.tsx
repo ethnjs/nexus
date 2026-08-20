@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useRef, useState } from "react";
+import { use, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formsApi, Form, FormField, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -17,7 +17,6 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { FadeIn } from "@/components/ui/FadeIn";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -242,6 +241,62 @@ function fieldToComboboxValue(field: EditableField): string {
   return activePreset(field)?.label ?? field.field_key;
 }
 
+const EXPAND_MS = 200;
+const EXPAND_EASING = "ease-out";
+
+// Animates a card between its collapsed and expanded heights, Google-Forms
+// style, so the cards below reflow smoothly instead of snapping.
+//
+// Why this is imperative rather than a `height` prop driven by state: React
+// reuses the same DOM nodes across the collapsed/expanded branches, so a
+// mount-triggered effect never re-fires on a *prop* flip — it would only
+// animate brand-new cards. Measuring with a ResizeObserver sidesteps mounting —
+// swapping the branch changes the content's natural height, the observer sees
+// it, and we write the new height onto the clipping wrapper, which transitions.
+// It also gets height animation on any *other* content change for free (e.g.
+// toggling the description input) with no extra wiring.
+function useHeightTransition(expandedOnMount: boolean) {
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const wrapper = wrapperRef.current;
+    const content = contentRef.current;
+    if (!wrapper || !content) return;
+
+    // `overflow: hidden` is what makes the height animation read as a reveal
+    // rather than a clip-free resize — but it would also clip the Combobox /
+    // Tooltip popups that hang outside the card, so it's only on while a
+    // transition is actually running.
+    let settle: ReturnType<typeof setTimeout> | undefined;
+    const clipDuring = (ms: number) => {
+      wrapper.style.overflow = "hidden";
+      clearTimeout(settle);
+      settle = setTimeout(() => { wrapper.style.overflow = "visible"; }, ms);
+    };
+
+    // Pin an explicit start height before the first paint. A card that mounts
+    // already expanded is a just-added field, so it grows in from 0; every
+    // other card just sits at its natural height with nothing to animate.
+    wrapper.style.transition = "none";
+    wrapper.style.height = expandedOnMount ? "0px" : `${content.offsetHeight}px`;
+    if (expandedOnMount) clipDuring(EXPAND_MS);
+    wrapper.getBoundingClientRect(); // forces a style flush, so the start height is a real computed value to transition from
+    wrapper.style.transition = `height ${EXPAND_MS}ms ${EXPAND_EASING}`;
+
+    const observer = new ResizeObserver(() => {
+      const next = `${content.offsetHeight}px`;
+      if (next === wrapper.style.height) return;
+      clipDuring(EXPAND_MS);
+      wrapper.style.height = next;
+    });
+    observer.observe(content);
+    return () => { observer.disconnect(); clearTimeout(settle); };
+  }, [expandedOnMount]);
+
+  return { wrapperRef, contentRef };
+}
+
 function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }: {
   field: EditableField;
   expanded: boolean;
@@ -253,100 +308,119 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
   const [hovered, setHovered] = useState(false);
   const preset = activePreset(field);
 
-  if (!expanded) {
-    return (
-      <FadeIn>
-        <Card
-          radius="lg"
-          style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
-          onClick={onExpand}
-          onMouseEnter={() => setHovered(true)}
-          onMouseLeave={() => setHovered(false)}
-        >
-          <div style={{
-            position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-            display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
-            opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
-          }}>
-            <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
-          </div>
-          <QuestionRenderer field={field} interactive={false} />
-        </Card>
-      </FadeIn>
+  const expandedOnMount = useRef(expanded).current;
+  const { wrapperRef, contentRef } = useHeightTransition(expandedOnMount);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  // Cross-fade the swapped-in content alongside the height change. WAAPI
+  // rather than a CSS transition because there's nothing to transition *from*
+  // — the two branches are different subtrees, and .animate() replays on every
+  // call, so unlike a mount effect it fires on each expand/collapse.
+  useLayoutEffect(() => {
+    const timing = { duration: EXPAND_MS, easing: EXPAND_EASING };
+    contentRef.current?.animate([{ opacity: 0 }, { opacity: 1 }], timing);
+    toolbarRef.current?.animate(
+      [{ opacity: 0, transform: "translateX(-6px)" }, { opacity: 1, transform: "none" }],
+      timing,
     );
-  }
+  }, [expanded, contentRef]);
 
   return (
-    <FadeIn>
-      <div style={{ position: "relative" }}>
-        <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
-          <div style={{
-            position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-            display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
-          }}>
-            <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-            <Input
-              value={field.label}
-              onChange={(e) => onFieldChange({ label: e.target.value })}
-              placeholder="Question"
-              fullWidth
-            />
-            <Dropdown
-              value={field.question_type}
-              onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
-              options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
-              width={220}
-            />
-          </div>
-          <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
-            <Combobox
-              label="Field Key"
-              labelExtra={
-                <Tooltip
-                  variant="info"
-                  maxWidth={400}
-                  message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
-                >
-                  <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
-                </Tooltip>
-              }
-              value={fieldToComboboxValue(field)}
-              onChange={(text, matched) => {
-                if (matched) {
-                  onFieldChange({
-                    field_key: matched.field_key,
-                    question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
-                  });
-                } else {
-                  onFieldChange({ field_key: text });
-                }
-              }}
-              options={FIELD_KEY_PRESETS}
-              getId={(p) => p.key}
-              getLabel={(p) => p.label}
-              placeholder="e.g. volunteer_availability"
-              allowFreeText
-              size="md"
-            />
-          </div>
-          {showDescription && (
-            <div style={{ marginBottom: "16px" }}>
-              <Input
-                value={field.description ?? ""}
-                onChange={(e) => onFieldChange({ description: e.target.value })}
-                placeholder="Description (optional)"
-                size="sm"
-                fullWidth
-              />
-            </div>
+    // Outer box stays untransformed and unclipped so the floating toolbar can
+    // hang off it at left: 100% — do not put overflow/transform here.
+    <div style={{ position: "relative" }}>
+      <div ref={wrapperRef}>
+        <div ref={contentRef}>
+          {expanded ? (
+            <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
+              <div style={{
+                position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+                display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+              }}>
+                <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+                <Input
+                  value={field.label}
+                  onChange={(e) => onFieldChange({ label: e.target.value })}
+                  placeholder="Question"
+                  fullWidth
+                />
+                <Dropdown
+                  value={field.question_type}
+                  onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
+                  options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
+                  width={220}
+                />
+              </div>
+              <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
+                <Combobox
+                  label="Field Key"
+                  labelExtra={
+                    <Tooltip
+                      variant="info"
+                      maxWidth={400}
+                      message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
+                    >
+                      <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
+                    </Tooltip>
+                  }
+                  value={fieldToComboboxValue(field)}
+                  onChange={(text, matched) => {
+                    if (matched) {
+                      onFieldChange({
+                        field_key: matched.field_key,
+                        question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
+                      });
+                    } else {
+                      onFieldChange({ field_key: text });
+                    }
+                  }}
+                  options={FIELD_KEY_PRESETS}
+                  getId={(p) => p.key}
+                  getLabel={(p) => p.label}
+                  placeholder="e.g. volunteer_availability"
+                  allowFreeText
+                  size="md"
+                />
+              </div>
+              {showDescription && (
+                <div style={{ marginBottom: "16px" }}>
+                  <Input
+                    value={field.description ?? ""}
+                    onChange={(e) => onFieldChange({ description: e.target.value })}
+                    placeholder="Description (optional)"
+                    size="sm"
+                    fullWidth
+                  />
+                </div>
+              )}
+              <QuestionRenderer field={field} interactive={false} showHeader={false} />
+            </Card>
+          ) : (
+            <Card
+              radius="lg"
+              style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
+              onClick={onExpand}
+              onMouseEnter={() => setHovered(true)}
+              onMouseLeave={() => setHovered(false)}
+            >
+              <div style={{
+                position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+                display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+                opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
+              }}>
+                <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+              </div>
+              <QuestionRenderer field={field} interactive={false} />
+            </Card>
           )}
-          <QuestionRenderer field={field} interactive={false} showHeader={false} />
-        </Card>
+        </div>
+      </div>
 
-        {/* Floating toolbar — add a field below, toggle this field's description input. */}
-        <div style={{
+      {/* Floating toolbar — add a field below, toggle this field's description input. */}
+      {expanded && (
+        <div ref={toolbarRef} style={{
           position: "absolute", top: 0, left: "100%", marginLeft: "10px",
           display: "flex", flexDirection: "column", gap: "6px",
         }}>
@@ -361,8 +435,8 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
             <IconDescription size={14} />
           </Button>
         </div>
-      </div>
-    </FadeIn>
+      )}
+    </div>
   );
 }
 
