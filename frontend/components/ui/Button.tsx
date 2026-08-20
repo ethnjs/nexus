@@ -24,11 +24,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 // borderColor without conflicting with the shorthand `border` property.
 const variantStyles: Record<Variant, React.CSSProperties> = {
   primary: {
-    background:   '#0A0A0A',
-    color:        '#FFFFFF',
+    background:   'var(--color-accent)',
+    color:        'var(--color-text-inverse)',
     borderWidth:  '1px',
     borderStyle:  'solid',
-    borderColor:  '#0A0A0A',
+    borderColor:  'var(--color-accent)',
   },
   secondary: {
     background:   'var(--color-surface)',
@@ -46,7 +46,7 @@ const variantStyles: Record<Variant, React.CSSProperties> = {
   },
   danger: {
     background:   'var(--color-danger)',
-    color:        '#FFFFFF',
+    color:        'var(--color-text-inverse)',
     borderWidth:  '1px',
     borderStyle:  'solid',
     borderColor:  'var(--color-danger)',
@@ -55,10 +55,10 @@ const variantStyles: Record<Variant, React.CSSProperties> = {
 
 /** Background applied on hover per variant */
 const variantHoverBg: Record<Variant, string> = {
-  primary:   '#2A2A2A',
+  primary:   'var(--color-accent-hover)',
   secondary: 'var(--color-accent-subtle)',
   ghost:     'var(--color-accent-subtle)',
-  danger:    '#C53030',
+  danger:    'var(--color-danger-hover)',
 }
 
 /** Border color applied on hover (null = no change) */
@@ -150,7 +150,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             width:          '14px',
             height:         '14px',
             border:         '2px solid rgba(255,255,255,0.4)',
-            borderTopColor: variant === 'primary' || variant === 'danger' ? '#fff' : 'var(--color-text-primary)',
+            borderTopColor: variant === 'primary' || variant === 'danger' ? 'var(--color-text-inverse)' : 'var(--color-text-primary)',
             borderRadius:   '50%',
             display:        'inline-block',
             animation:      'btn-spin 600ms linear infinite',
