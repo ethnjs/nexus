@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from tests.conftest import grant_role, login
 
-from app.models.models import TournamentMembership, TournamentMembershipAvailability
+from app.models.models import Form, FormField, TournamentMembership, TournamentMembershipAvailability
 
 # td_tournament spans [today, today + 1 day] — event/shift times must fall
 # within that window now that tournament-bounds validation exists.
@@ -156,6 +156,49 @@ def test_delete_shift_blocked_when_referenced_by_availability(client, db, td_use
     # Not deleted.
     listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
     assert any(s["id"] == shift["id"] for s in listed)
+
+
+def test_delete_shift_blocked_when_referenced_by_live_field_option(client, db, td_user, td_tournament):
+    """Guard fires even with zero answers — a shift grouped into a live
+    availability option can't be pulled out from under it, independent of
+    the separate MembershipAvailability guard above."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+
+    form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Volunteer form", created_by=td_user.id)
+    db.add(form)
+    db.flush()
+    db.add(FormField(
+        form_id=form.id, order=1, label="Availability", field_key="availability",
+        question_type="multi_select_checkbox",
+        config={"options": [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}]},
+        is_archived=False,
+    ))
+    db.commit()
+
+    response = client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
+    assert response.status_code == 409
+
+    listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
+    assert any(s["id"] == shift["id"] for s in listed)
+
+
+def test_delete_shift_allowed_when_only_referenced_by_archived_field(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+
+    form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Old form", created_by=td_user.id)
+    db.add(form)
+    db.flush()
+    db.add(FormField(
+        form_id=form.id, order=1, label="Availability", field_key="availability_archived_1",
+        question_type="multi_select_checkbox",
+        config={"options": [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}]},
+        is_archived=True,
+    ))
+    db.commit()
+
+    assert client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
 
 
 def test_shift_routes_require_manage_events(client, td_user, other_tournament, db):

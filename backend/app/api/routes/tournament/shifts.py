@@ -2,6 +2,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.form import shift_referenced_by_live_field
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
@@ -104,6 +105,10 @@ def update_shift(
 # member-submitted data (write-through from a form response, see
 # app/core/form/write_through.py), not planning structure a TD can just
 # re-derive, so silently cascading it away on a shift edit isn't acceptable.
+#
+# A live (non-archived) availability field's option grouping is the same
+# kind of guard, even before anyone's answered: a shift that's part of a
+# published question's choices can't be silently pulled out from under it.
 # ---------------------------------------------------------------------------
 @router.delete("/{shift_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_shift(
@@ -121,6 +126,12 @@ def delete_shift(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Shift has {shift.availability_count} membership availability selection(s) — cannot delete",
+        )
+
+    if shift_referenced_by_live_field(db, tournament_id, shift_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Shift is referenced by a live form field's availability option — cannot delete",
         )
 
     db.delete(shift)

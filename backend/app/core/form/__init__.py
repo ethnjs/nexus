@@ -106,6 +106,34 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
     )
 
 
+def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
+    """True if `shift_id` appears inside any non-archived availability
+    field's option `value` (the list of grouped TournamentShift ids) on
+    any form owned by `tournament_id` — used by the shift deletion guard
+    so a shift can't be pulled out from under a live option's grouping,
+    independent of whether anyone's answered yet (that's the separate,
+    pre-existing MembershipAvailability guard). `FormField.config` is a
+    plain JSON column (not JSONB) and tests run on SQLite, which has no
+    JSON operators at all, so this is a Python-side scan rather than a
+    DB-side containment query — same reasoning as the pending-updates scan
+    over FormAnswer.value."""
+    fields = (
+        db.query(FormField)
+        .join(Form, Form.id == FormField.form_id)
+        .filter(
+            Form.tournament_id == tournament_id,
+            FormField.field_key == "availability",
+            FormField.is_archived == False,
+        )
+        .all()
+    )
+    for field in fields:
+        for option in (field.config or {}).get("options", []):
+            if not option.get("is_archived") and shift_id in (option.get("value") or []):
+                return True
+    return False
+
+
 def field_has_answers(db: Session, field_id: int) -> bool:
     """True if any FormAnswer exists for this field — locks it against
     edit (see forms.py's edit_form_field) and hard delete (below)."""
