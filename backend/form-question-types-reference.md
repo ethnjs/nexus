@@ -144,6 +144,13 @@ Reserved keys are valid on both tournament- and chapter-owned forms — the key 
 
 ---
 
+## `Form.status`
+
+`Form.status` is `"draft"` | `"published"` | `"archived"`, set/transitioned via `PATCH /forms/{form_id}/`:
+- **Only a `published` form accepts responses.** `POST /forms/{form_id}/responses/` rejects with `409` on a `draft` or `archived` form, regardless of the requester's access level.
+- **A `published` form can't be reverted to `draft`.** `PATCH .../status: "draft"` on a currently-`published` form is rejected with `409` — archive it instead if it should stop accepting responses. This exists because `draft`-status editing is a hard-delete/direct-apply path (see Edit Lifecycle below); allowing published → draft would let a TD silently destroy already-answered fields/options through a path that was never meant to touch live data.
+- Publishing (`draft` → `published`, or an explicit republish while already `published`) runs a whole-form validation pass (`validate_form_for_publish`): the form must have at least one active field, and every field's `config`/branching/`next_field_id` resolution must be valid in aggregate — not just individually — before the transition/republish is allowed.
+
 ## Edit Lifecycle
 
 Once a form is `published`, someone may have already answered it, so editing its fields doesn't work the way it does on a `draft` form. There's no server-side draft/staging table — the client holds an in-progress edit locally and sends the complete target field list in one request, which the server treats as "go live now."
