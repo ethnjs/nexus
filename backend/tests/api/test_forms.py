@@ -167,6 +167,55 @@ class TestCreateForm:
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/ and GET /chapters/{chapter_id}/forms/
+# ---------------------------------------------------------------------------
+
+class TestListForms:
+    def test_manager_lists_tournament_forms(self, client, db, td_user, td_tournament):
+        _make_form(db, td_user, td_tournament, name="First")
+        _make_form(db, td_user, td_tournament, name="Second")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/")
+        assert res.status_code == 200
+        names = {f["name"] for f in res.json()}
+        assert names == {"First", "Second"}
+
+    def test_list_excludes_other_tournaments_and_chapter_forms(self, client, db, td_user, td_tournament, chapter):
+        _make_form(db, td_user, td_tournament, name="Mine")
+        _make_chapter_form(db, td_user, chapter, name="Not mine")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/")
+        assert res.status_code == 200
+        names = [f["name"] for f in res.json()]
+        assert names == ["Mine"]
+
+    def test_member_without_manage_forms_forbidden(self, client, db, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/")
+        assert res.status_code == 403
+
+    def test_chapter_lead_lists_chapter_forms(self, client, db, chapter, td_user):
+        lead = _chapter_lead(db, chapter)
+        _make_chapter_form(db, lead, chapter, name="Alumni interest")
+        db.commit()
+        login(client, "chapterlead@test.com", "LeadPass123!")
+        res = client.get(f"/chapters/{chapter.id}/forms/")
+        assert res.status_code == 200
+        assert [f["name"] for f in res.json()] == ["Alumni interest"]
+
+    def test_chapter_plain_member_forbidden(self, client, db, chapter):
+        member = make_user(db, "plainmember@test.com", password="MemberPass123!")
+        db.add(ChapterMembership(chapter_id=chapter.id, user_id=member.id, role="member"))
+        db.commit()
+        login(client, "plainmember@test.com", "MemberPass123!")
+        res = client.get(f"/chapters/{chapter.id}/forms/")
+        assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # GET /forms/{form_id}/
 # ---------------------------------------------------------------------------
 

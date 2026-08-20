@@ -127,6 +127,51 @@ def create_chapter_form(
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/ — MANAGE_FORMS on the tournament.
+# Listing is a manage action (draft forms shouldn't be visible to just any
+# member), unlike GET /forms/{form_id}/ below which is view-access.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/tournaments/{tournament_id}/forms/",
+    response_model=list[FormRead],
+    tags=["tournaments"],
+)
+def list_tournament_forms(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    return (
+        db.query(Form)
+        .filter(Form.tournament_id == tournament_id, Form.owner_type == "tournament")
+        .order_by(Form.updated_at.desc())
+        .all()
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /chapters/{chapter_id}/forms/ — lead/officer on the chapter.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/chapters/{chapter_id}/forms/",
+    response_model=list[FormRead],
+    tags=["chapters"],
+)
+def list_chapter_forms(
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    require_officer_or_lead(chapter_id, db, current_user)
+    return (
+        db.query(Form)
+        .filter(Form.chapter_id == chapter_id, Form.owner_type == "chapter")
+        .order_by(Form.updated_at.desc())
+        .all()
+    )
+
+
+# ---------------------------------------------------------------------------
 # GET /forms/{form_id}/ — view/render. Any member of a linked
 # tournament/chapter can view (not just managers) — this is what the form
 # renderer for people filling it out calls.
