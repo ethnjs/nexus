@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { ReactNode, useState } from "react"
 import { Input } from "@/components/ui/Input"
 
 type ComboboxSize = 'sm' | 'md'
@@ -18,6 +18,8 @@ interface ComboboxProps<T> {
   allowFreeText?: boolean
   placeholder?:   string
   label?:         string
+  /** Rendered inline next to the label — e.g. an info icon + Tooltip. Ignored when label isn't set. */
+  labelExtra?: ReactNode
   required?:      boolean
   maxResults?:    number
   error?: string
@@ -38,6 +40,7 @@ export function Combobox<T>({
   allowFreeText = true,
   placeholder,
   label,
+  labelExtra,
   required,
   maxResults = 8,
   error,
@@ -48,9 +51,11 @@ export function Combobox<T>({
   const [open, setOpen] = useState(false)
 
   const query = value.trim().toLowerCase()
+  // Focusing an empty field shows every option (up to maxResults) rather
+  // than nothing — lets the TD see what's available before typing anything.
   const matches = query
     ? options.filter(o => getSearchText(o).toLowerCase().includes(query)).slice(0, maxResults)
-    : []
+    : open ? options.slice(0, maxResults) : []
 
   const exactMatch = matches.some(o => getLabel(o).toLowerCase() === query)
   const showCustomRow = allowFreeText && query.length > 0 && !exactMatch && matches.length < CUSTOM_THRESHOLD
@@ -80,6 +85,7 @@ export function Combobox<T>({
     <div style={{ position: 'relative' }}>
       <Input
         label={label}
+        labelExtra={labelExtra}
         required={required}
         type="text"
         value={value}

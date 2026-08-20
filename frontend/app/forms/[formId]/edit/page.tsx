@@ -13,8 +13,9 @@ import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Combobox } from "@/components/ui/Combobox";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription } from "@/components/ui/Icons";
+import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 
 // A field being edited in the builder — same shape as FormField, but `id`
@@ -203,32 +204,41 @@ const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
 ];
 
 // Reserved field_key presets, picked from the field_key Combobox rather than
-// the question_type Dropdown — selecting one sets question_type and
-// field_key together. Lunch's field_key is a "lunch_" sentinel (not a real
-// key yet) since the real key is server-derived from a date+category picker
-// that lands in a later step (the card body swap for reserved types generally).
+// the question_type Dropdown — selecting one sets field_key, and constrains
+// question_type to whichever of allowedQuestionTypes fits (switching to
+// defaultQuestionType if the current type isn't one of them). Matches
+// RESERVED_FIELD_KEY_QUESTION_TYPES / LUNCH_QUESTION_TYPES in
+// backend/app/core/form/validation.py — keep in sync if those change.
+// Lunch's field_key is a "lunch_" sentinel (not a real key yet) since the
+// real key is server-derived from a date+category picker that lands in a
+// later step (the card body swap for reserved types generally).
 interface FieldKeyPreset {
   key: string;
   field_key: string;
-  question_type: FormQuestionType;
   label: string;
+  allowedQuestionTypes: FormQuestionType[];
+  defaultQuestionType: FormQuestionType;
 }
 
 const FIELD_KEY_PRESETS: FieldKeyPreset[] = [
-  { key: "availability_single", field_key: "availability", question_type: "single_select_radio", label: "Availability (single choice)" },
-  { key: "availability_multi", field_key: "availability", question_type: "multi_select_checkbox", label: "Availability (multiple choice)" },
-  { key: "event_preference", field_key: "event_preference", question_type: "ranked_choice", label: "Event Preference" },
-  { key: "lunch", field_key: "lunch_", question_type: "single_select_radio", label: "Lunch" },
+  { key: "availability", field_key: "availability", label: "Availability", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
+  { key: "event_preference", field_key: "event_preference", label: "Event Preference", allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"], defaultQuestionType: "ranked_choice" },
+  { key: "lunch", field_key: "lunch_", label: "Lunch", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
 ];
 
-// Reflects a field's current field_key/question_type back onto the Combobox
-// — shows the preset's descriptive label when both match, the raw field_key
-// otherwise (a custom TD-typed key).
-function fieldToComboboxValue(field: EditableField): string {
-  const preset = FIELD_KEY_PRESETS.find((p) =>
-    p.key === "lunch" ? field.field_key.startsWith("lunch_") : p.field_key === field.field_key && p.question_type === field.question_type
+// The preset currently active on a field, if any — its field_key (or, for
+// Lunch, the "lunch_" sentinel prefix) matches what's stored.
+function activePreset(field: EditableField): FieldKeyPreset | undefined {
+  return FIELD_KEY_PRESETS.find((p) =>
+    p.key === "lunch" ? field.field_key.startsWith("lunch_") : p.field_key === field.field_key
   );
-  return preset ? preset.label : field.field_key;
+}
+
+// Reflects a field's current field_key back onto the Combobox — shows the
+// preset's descriptive label when active, the raw field_key otherwise (a
+// custom TD-typed key).
+function fieldToComboboxValue(field: EditableField): string {
+  return activePreset(field)?.label ?? field.field_key;
 }
 
 function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }: {
@@ -240,6 +250,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
 }) {
   const [showDescription, setShowDescription] = useState(!!field.description);
   const [hovered, setHovered] = useState(false);
+  const preset = activePreset(field);
 
   if (!expanded) {
     return (
@@ -281,17 +292,32 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
           <Dropdown
             value={field.question_type}
             onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
-            options={QUESTION_TYPE_OPTIONS}
+            options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
             width={220}
           />
         </div>
         <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
           <Combobox
             label="Field Key"
+            labelExtra={
+              <Tooltip
+                variant="info"
+                maxWidth={400}
+                message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
+              >
+                <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
+              </Tooltip>
+            }
             value={fieldToComboboxValue(field)}
             onChange={(text, matched) => {
-              if (matched) onFieldChange({ field_key: matched.field_key, question_type: matched.question_type });
-              else onFieldChange({ field_key: text });
+              if (matched) {
+                onFieldChange({
+                  field_key: matched.field_key,
+                  question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
+                });
+              } else {
+                onFieldChange({ field_key: text });
+              }
             }}
             options={FIELD_KEY_PRESETS}
             getId={(p) => p.key}
