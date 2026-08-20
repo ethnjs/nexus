@@ -626,7 +626,7 @@ class TestBulkUpdateFieldsPublished:
 
 class TestSubmitResponse:
     def test_first_submission_creates_response(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(db, form, field_key="color")
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -642,7 +642,7 @@ class TestSubmitResponse:
         assert data["answers"][0]["value"] == ["opt_1"]
 
     def test_resubmission_overwrites_in_place(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(db, form, field_key="color")
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -656,7 +656,7 @@ class TestSubmitResponse:
         assert db.query(FormResponse).filter(FormResponse.form_id == form.id, FormResponse.user_id == td_user.id).count() == 1
 
     def test_invalid_field_id_rejected(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         db.commit()
         login(client, "td@test.com", "tdpass")
 
@@ -664,11 +664,29 @@ class TestSubmitResponse:
         assert res.status_code == 400
 
     def test_non_member_forbidden(self, client, db, td_user, td_tournament, other_user):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         db.commit()
         login(client, "other@test.com", "otherpass")
         res = client.post(f"/forms/{form.id}/responses/", json={"answers": []})
         assert res.status_code == 403
+
+    def test_draft_form_rejects_submission(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)  # draft by default
+        field = _make_field(db, form, field_key="color")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
+        assert res.status_code == 409
+
+    def test_archived_form_rejects_submission(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        field = _make_field(db, form, field_key="color")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]})
+        assert res.status_code == 409
 
 
 class TestAnswerSnapshotting:
@@ -739,7 +757,7 @@ class TestAnswerSnapshotting:
 
 class TestWriteThroughOnSubmit:
     def test_availability_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         shift = TournamentShift(
             tournament_id=td_tournament.id,
             label="Saturday",
@@ -788,7 +806,7 @@ class TestWriteThroughOnSubmit:
         )
 
     def test_grouped_availability_option_writes_one_row_per_shift(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
         afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
@@ -807,7 +825,7 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
 
     def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
         afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
@@ -835,7 +853,7 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
 
     def test_deselecting_option_keeps_shift_still_covered_by_another(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime.now(timezone.utc), end=datetime.now(timezone.utc) + timedelta(hours=4))
         afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime.now(timezone.utc) + timedelta(hours=4), end=datetime.now(timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
@@ -862,7 +880,7 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {morning.id}
 
     def test_lunch_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
             db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
             config={
@@ -897,7 +915,7 @@ class TestWriteThroughOnSubmit:
         assert rows[0].date == date(2027, 2, 13)
 
     def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
-        form = _make_chapter_form(db, td_user, chapter)
+        form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
             db, form, field_key="availability", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}]},
@@ -915,7 +933,7 @@ class TestWriteThroughOnSubmit:
         assert db.query(TournamentMembershipAvailability).count() == 0
 
     def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
-        form = _make_chapter_form(db, td_user, chapter)
+        form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
             db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
             config={"required": False, "options": [{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}]},
@@ -978,7 +996,7 @@ class TestListAndMyResponses:
 
 class TestSubmissionReachabilityEnforcement:
     def test_submission_rejected_when_reachable_required_field_missing(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         required_field = _make_field(
             db, form, order=1, field_key="required_field", question_type="short_text",
             config={"required": True, "max_length": 100},
@@ -990,7 +1008,7 @@ class TestSubmissionReachabilityEnforcement:
         assert res.status_code == 400
 
     def test_submission_accepted_when_branch_skips_required_field(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
         skipped = _make_field(
             db, form, order=2, field_key="skipped", question_type="short_text",
             config={"required": True, "max_length": 100},

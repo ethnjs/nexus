@@ -161,6 +161,12 @@ def update_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    if payload.status == "draft" and form.status == "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A published form cannot be reverted to draft — archive it instead if it should stop accepting responses",
+        )
+
     if payload.status == "published":
         try:
             validate_form_for_publish(db, form)
@@ -398,6 +404,12 @@ def submit_form_response(
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
+    if form.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Form is '{form.status}', not published — responses aren't accepted",
+        )
+
     active_fields = (
         db.query(FormField)
         .filter(FormField.form_id == form.id, FormField.is_archived == False)
