@@ -1,9 +1,14 @@
 'use client'
 
-import { FormField } from '@/lib/api'
+import { FormField, FormFieldOption } from '@/lib/api'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Checkbox } from '@/components/ui/Checkbox'
+import { Dropdown } from '@/components/ui/Dropdown'
+import { ButtonGroup } from '@/components/ui/ButtonGroup'
+import { RankedList } from '@/components/ui/RankedList'
+import { RadioList } from '@/components/ui/RadioList'
+import { CheckboxList } from '@/components/ui/CheckboxList'
 
 interface QuestionRendererProps {
   field: FormField
@@ -18,8 +23,9 @@ interface QuestionRendererProps {
 // and the eventual /preview and /view pages (interactive=true) — one place
 // that knows how each question_type actually renders, so the builder's
 // "read-only preview of the real question" doesn't drift from what a
-// respondent sees. Only short_text/long_text/acknowledgment are wired up so
-// far; select/ranked/reserved types land in a later step.
+// respondent sees. Reserved-key entity grouping (availability/event_preference)
+// doesn't affect this component — it only ever reads an option's `label`,
+// never its `value`, which is the only field whose shape differs for those.
 export function QuestionRenderer({ field, interactive, value, onChange }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -83,8 +89,91 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
         </label>
       )
 
+    case 'single_select_radio': {
+      const options: FormFieldOption[] = config.options ?? []
+      const selected = interactive ? (value as string | undefined) ?? '' : ''
+
+      if (config.display_style === 'buttons') {
+        return (
+          <ButtonGroup
+            options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+            value={selected}
+            onChange={(v) => interactive && onChange?.(v)}
+            locked={!interactive}
+          />
+        )
+      }
+
+      return (
+        <RadioList
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          value={selected}
+          onChange={(v) => interactive && onChange?.(v)}
+          locked={!interactive}
+        />
+      )
+    }
+
+    case 'single_select_dropdown': {
+      const options: FormFieldOption[] = config.options ?? []
+      return (
+        <Dropdown
+          value={interactive ? (value as string | undefined) ?? '' : ''}
+          onChange={(v) => onChange?.(v)}
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          placeholder="Choose"
+          locked={!interactive}
+          fullWidth
+        />
+      )
+    }
+
+    case 'multi_select_checkbox': {
+      const options: FormFieldOption[] = config.options ?? []
+      const selected = interactive ? ((value as string[] | undefined) ?? []) : []
+
+      function toggle(optionId: string) {
+        if (!interactive) return
+        onChange?.(selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId])
+      }
+
+      if (config.display_style === 'buttons') {
+        return (
+          <ButtonGroup
+            options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+            value={selected}
+            onChange={toggle}
+            locked={!interactive}
+          />
+        )
+      }
+
+      return (
+        <CheckboxList
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          value={selected}
+          onChange={toggle}
+          locked={!interactive}
+        />
+      )
+    }
+
+    case 'ranked_choice': {
+      const options: FormFieldOption[] = config.options ?? []
+      const ranks = config.ranks ?? options.length
+      return (
+        <RankedList
+          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          ranks={ranks}
+          value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
+          onChange={(next) => interactive && onChange?.(next)}
+          locked={!interactive}
+        />
+      )
+    }
+
     default:
-      // select/ranked/reserved types — not wired up yet.
+      // reserved lunch_* config bodies (date + category picker) — not wired up yet.
       return (
         <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', fontStyle: 'italic' }}>
           Preview not available for &ldquo;{field.question_type}&rdquo; yet.
