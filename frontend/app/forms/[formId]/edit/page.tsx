@@ -10,8 +10,10 @@ import { Textarea } from "@/components/ui/Textarea";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EditableText } from "@/components/ui/EditableText";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash } from "@/components/ui/Icons";
+import { IconArrowLeft, IconArchive, IconTrash, IconForms } from "@/components/ui/Icons";
+import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 
 // Matches the eventual centered content column (title card, field list) —
 // the sub-header's content is constrained the same way, Google-Forms-style,
@@ -164,6 +166,37 @@ function TitleCard({ form, onUpdated }: {
   );
 }
 
+// Strict-accordion expand/collapse and the expanded editing card land in a
+// later step — this is the collapsed-only state, each field rendered as a
+// read-only preview of the actual question via QuestionRenderer.
+function FieldList({ form }: { form: Form }) {
+  const activeFields = form.fields
+    .filter((f) => !f.is_archived)
+    .sort((a, b) => a.order - b.order);
+
+  if (activeFields.length === 0) {
+    return (
+      <Card radius="lg" style={{ padding: "8px" }}>
+        <EmptyState
+          icon={<IconForms size={28} />}
+          title="No fields yet"
+          description="Add a field to start building this form."
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+      {activeFields.map((field) => (
+        <Card key={field.id} radius="lg" style={{ padding: "20px 24px" }}>
+          <QuestionRenderer field={field} interactive={false} />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 function SubHeader({ form, onUpdated, onDeleted }: {
   form: Form;
   onUpdated: (form: Form) => void;
@@ -244,9 +277,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
       <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
         <TitleCard form={form} onUpdated={setForm} />
-        <p style={{ fontFamily: "var(--font-sans)", color: "var(--color-text-secondary)" }}>
-          Field list lands in a later step.
-        </p>
+        <FieldList form={form} />
       </div>
     </div>
   );
