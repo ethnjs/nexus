@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock, IconEdit, IconEye } from "@/components/ui/Icons";
+import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/ui/Icons";
 import { formatRelativeTime } from "@/lib/timeFormat";
+import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
 
 // Name / Status / Fields / Updated / Actions
 const FORM_ROW_COLUMNS = "1.6fr 110px 90px 110px 76px";
@@ -104,6 +105,7 @@ function FormTable({ forms }: { forms: Form[] }) {
 
 export default function FormsPage() {
   const params = useParams();
+  const router = useRouter();
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
@@ -112,6 +114,7 @@ export default function FormsPage() {
 
   const [forms, setForms] = useState<Form[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!canManageForms) return;
@@ -154,9 +157,22 @@ export default function FormsPage() {
     );
   }
 
+  // Submit -> POST -> redirect straight into the builder. title/description
+  // are set later, inside the builder — not part of this modal.
+  function handleCreated(form: Form) {
+    router.push(`/forms/${form.id}/edit`);
+  }
+
   return (
     <div>
-      <PageHeader heading="Forms" />
+      <PageHeader
+        heading="Forms"
+        action={
+          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+            <IconPlus size={14} /> New Form
+          </Button>
+        }
+      />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -170,10 +186,23 @@ export default function FormsPage() {
             icon={<IconForms size={28} />}
             title="No forms yet"
             description="Create a form to start collecting responses from members."
+            action={
+              <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
+                <IconPlus size={14} /> New Form
+              </Button>
+            }
           />
         </Card>
       ) : (
         <FormTable forms={forms} />
+      )}
+
+      {creating && (
+        <NewFormModal
+          tournamentId={tournamentId}
+          onClose={() => setCreating(false)}
+          onCreated={handleCreated}
+        />
       )}
     </div>
   );
