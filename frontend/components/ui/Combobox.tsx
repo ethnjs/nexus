@@ -26,6 +26,10 @@ interface ComboboxProps<T> {
   size?: ComboboxSize
   variant?: ComboboxVariant
   locked?: boolean
+  /** Rows for which this returns true render inert (dimmed, unselectable) instead of being filtered out — e.g. a field_key already in use elsewhere. */
+  getDisabled?: (option: T) => boolean
+  /** Short suffix shown after the label on a disabled row, e.g. "already in use". Only consulted when getDisabled(option) is true. */
+  getDisabledReason?: (option: T) => string | undefined
 }
 
 const CUSTOM_THRESHOLD = 3
@@ -47,6 +51,8 @@ export function Combobox<T>({
   size = 'md',
   variant = 'primary',
   locked = false,
+  getDisabled,
+  getDisabledReason,
 }: ComboboxProps<T>) {
   const [open, setOpen] = useState(false)
 
@@ -64,12 +70,14 @@ export function Combobox<T>({
   function handleTextChange(text: string) {
     if (locked) return
     const t = text.trim().toLowerCase()
-    const match = t ? options.find(o => getLabel(o).toLowerCase() === t) ?? null : null
+    let match = t ? options.find(o => getLabel(o).toLowerCase() === t) ?? null : null
+    if (match && getDisabled?.(match)) match = null
     onChange(text, match)
     setOpen(true)
   }
 
   function handleSelect(option: T) {
+    if (getDisabled?.(option)) return
     onChange(getLabel(option), option)
     setOpen(false)
   }
@@ -109,15 +117,30 @@ export function Combobox<T>({
           maxHeight: '180px', overflowY: 'auto',
           boxShadow: 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.12))',
         }}>
-          {matches.map(option => (
-            <div
-              key={getId(option)}
-              onMouseDown={() => handleSelect(option)}
-              style={{ padding: '8px 10px', cursor: 'pointer', fontFamily: 'var(--font-sans)', fontSize: '14px' }}
-            >
-              {getLabel(option)}
-            </div>
-          ))}
+          {matches.map(option => {
+            const disabled = getDisabled?.(option) ?? false
+            const reason = disabled ? getDisabledReason?.(option) : undefined
+            return (
+              <div
+                key={getId(option)}
+                onMouseDown={() => handleSelect(option)}
+                title={reason}
+                style={{
+                  padding: '8px 10px', fontFamily: 'var(--font-sans)', fontSize: '14px',
+                  cursor: disabled ? 'not-allowed' : 'pointer',
+                  color: disabled ? 'var(--color-text-tertiary)' : undefined,
+                  display: 'flex', justifyContent: 'space-between', gap: '8px',
+                }}
+              >
+                <span>{getLabel(option)}</span>
+                {reason && (
+                  <span style={{ fontSize: '11px', color: 'var(--color-text-tertiary)', fontStyle: 'italic', flexShrink: 0 }}>
+                    {reason}
+                  </span>
+                )}
+              </div>
+            )
+          })}
           {showCustomRow && (
             <div
               onMouseDown={handleSelectCustom}

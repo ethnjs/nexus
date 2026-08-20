@@ -237,6 +237,7 @@ const OPTION_BEARING_TYPES: FormQuestionType[] = [
 // real key is server-derived from a date+category picker that lands in a
 // later step (the card body swap for reserved types generally).
 interface FieldKeyPreset {
+  kind: "preset";
   key: string;
   field_key: string;
   label: string;
@@ -245,10 +246,23 @@ interface FieldKeyPreset {
 }
 
 const FIELD_KEY_PRESETS: FieldKeyPreset[] = [
-  { key: "availability", field_key: "availability", label: "Availability", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
-  { key: "event_preference", field_key: "event_preference", label: "Event Preference", allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"], defaultQuestionType: "ranked_choice" },
-  { key: "lunch", field_key: "lunch_", label: "Lunch", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
+  { kind: "preset", key: "availability", field_key: "availability", label: "Availability", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
+  { kind: "preset", key: "event_preference", field_key: "event_preference", label: "Event Preference", allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"], defaultQuestionType: "ranked_choice" },
+  { kind: "preset", key: "lunch", field_key: "lunch_", label: "Lunch", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
 ];
+
+// A field_key already used elsewhere in this tournament — shown in the
+// Combobox as a visibly disabled row (not selectable, not hidden) rather
+// than letting the TD type it and only discover the collision from the
+// 409 PUT .../fields/ would otherwise return.
+interface UsedFieldKeyOption {
+  kind: "used";
+  key: string;
+  field_key: string;
+  label: string;
+}
+
+type FieldKeyComboOption = FieldKeyPreset | UsedFieldKeyOption;
 
 // The preset currently active on a field, if any — its field_key (or, for
 // Lunch, the "lunch_" sentinel prefix) matches what's stored.
@@ -373,17 +387,28 @@ function useHeightTransition(expandedOnMount: boolean) {
   return { wrapperRef, contentRef };
 }
 
-function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, tournamentId }: {
+function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, tournamentId, usedFieldKeys }: {
   field: EditableField;
   expanded: boolean;
   onExpand: () => void;
   onFieldChange: (updates: Partial<EditableField>) => void;
   onAddFieldBelow: () => void;
   tournamentId: number | null;
+  usedFieldKeys: string[];
 }) {
   const [showDescription, setShowDescription] = useState(!!field.description);
   const [hovered, setHovered] = useState(false);
   const preset = activePreset(field);
+
+  // Reserved key names are already represented by FIELD_KEY_PRESETS, and a
+  // field editing its own already-saved key shouldn't see that key flagged
+  // as "taken" by itself.
+  const comboOptions: FieldKeyComboOption[] = [
+    ...FIELD_KEY_PRESETS,
+    ...usedFieldKeys
+      .filter((k) => k !== field.field_key && !FIELD_KEY_PRESETS.some((p) => p.field_key === k) && !k.startsWith("lunch_"))
+      .map((k): UsedFieldKeyOption => ({ kind: "used", key: `used:${k}`, field_key: k, label: k })),
+  ];
 
   const expandedOnMount = useRef(expanded).current;
   const { wrapperRef, contentRef } = useHeightTransition(expandedOnMount);
@@ -444,7 +469,9 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
                   }
                   value={fieldToComboboxValue(field)}
                   onChange={(text, matched) => {
-                    if (matched) {
+                    // A "used" row is always disabled (see getDisabled below), so Combobox
+                    // never surfaces it here as matched — only a real preset can be.
+                    if (matched?.kind === "preset") {
                       onFieldChange({
                         field_key: matched.field_key,
                         question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
@@ -453,9 +480,11 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
                       onFieldChange({ field_key: text });
                     }
                   }}
-                  options={FIELD_KEY_PRESETS}
+                  options={comboOptions}
                   getId={(p) => p.key}
                   getLabel={(p) => p.label}
+                  getDisabled={(p) => p.kind === "used"}
+                  getDisabledReason={(p) => (p.kind === "used" ? "already in use" : undefined)}
                   placeholder="e.g. volunteer_availability"
                   allowFreeText
                   size="md"
@@ -562,7 +591,15 @@ function FieldList({ form }: { form: Form }) {
       .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id) }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
   const listRef = useRef<HTMLDivElement>(null);
+
+  // Fetched once per form-editing session (not per field card) — every
+  // field's Combobox shares this list to flag already-used keys.
+  useEffect(() => {
+    if (form.tournament_id == null) return;
+    formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
+  }, [form.tournament_id]);
 
   // Clicking outside every field card collapses whatever's expanded — an
   // expanded card isn't a required state, unlike a strict radio group.
@@ -618,6 +655,7 @@ function FieldList({ form }: { form: Form }) {
           onFieldChange={(updates) => updateField(field.clientKey, updates)}
           onAddFieldBelow={() => addField(field.clientKey)}
           tournamentId={form.tournament_id}
+          usedFieldKeys={usedFieldKeys}
         />
       ))}
     </div>
