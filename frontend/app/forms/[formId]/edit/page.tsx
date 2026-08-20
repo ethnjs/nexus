@@ -17,12 +17,27 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { OptionsEditor, EditableOption } from "@/components/forms/OptionsEditor";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
 // per the Edit Lifecycle: an entry with no id means "create"). clientKey is
 // the stable React/accordion identity regardless of whether id exists yet.
 type EditableField = Omit<FormField, "id"> & { id: number | null; clientKey: string };
+
+// Attaches a stable clientKey to every option in a loaded field's config —
+// options fetched from the server have a real option_id (usable as the key)
+// but no clientKey, which OptionsEditor's rows and dnd-kit both need.
+function withOptionClientKeys(field: FormField): FormField {
+  if (!field.config?.options?.length) return field;
+  return {
+    ...field,
+    config: {
+      ...field.config,
+      options: field.config.options.map((opt) => ({ ...opt, clientKey: opt.option_id } as EditableOption)),
+    },
+  };
+}
 
 function newField(order: number): EditableField {
   return {
@@ -201,6 +216,14 @@ const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
   { value: "multi_select_checkbox", label: "Checkboxes" },
   { value: "ranked_choice", label: "Ranked Choice" },
   { value: "acknowledgment", label: "Acknowledgment" },
+];
+
+// Types whose card body is a freeform options editor rather than a plain
+// preview. Excludes availability/event_preference (entity-backed options
+// sourced from real tournament data, not freeform rows — a later step) even
+// though they reuse these same question_types; gated on !activePreset(field).
+const OPTION_BEARING_TYPES: FormQuestionType[] = [
+  "single_select_radio", "single_select_dropdown", "multi_select_checkbox", "ranked_choice",
 ];
 
 // Reserved field_key presets, picked from the field_key Combobox rather than
@@ -395,7 +418,29 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
                   />
                 </div>
               )}
-              <QuestionRenderer field={field} interactive={false} showHeader={false} />
+              {!preset && OPTION_BEARING_TYPES.includes(field.question_type) ? (
+                <>
+                  <OptionsEditor
+                    options={(field.config?.options as EditableOption[] | undefined) ?? []}
+                    onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+                  />
+                  {field.question_type === "ranked_choice" && (
+                    <div style={{ marginTop: "12px", width: "100px" }}>
+                      <Input
+                        label="Ranks"
+                        type="number"
+                        min={1}
+                        value={String(field.config?.ranks ?? 1)}
+                        onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
+                        size="sm"
+                        fullWidth
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <QuestionRenderer field={field} interactive={false} showHeader={false} />
+              )}
             </Card>
           ) : (
             <Card
@@ -449,7 +494,7 @@ function FieldList({ form }: { form: Form }) {
     form.fields
       .filter((f) => !f.is_archived)
       .sort((a, b) => a.order - b.order)
-      .map((f) => ({ ...f, clientKey: String(f.id) }))
+      .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id) }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
