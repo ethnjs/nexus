@@ -42,15 +42,15 @@ export function QuestionRenderer({ field, interactive, value, onChange, showHead
   const config = field.config ?? {}
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {showHeader && (
         <div>
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
             {field.label || 'Untitled question'}
             {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </span>
           {field.description && (
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-secondary)', marginTop: '2px' }}>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '15px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
               {field.description}
             </p>
           )}
@@ -91,13 +91,14 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
 
     case 'acknowledgment':
       return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: interactive ? 'pointer' : 'default' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: interactive ? 'pointer' : 'default' }}>
           <Checkbox
             checked={interactive ? Boolean(value) : false}
             onChange={(checked) => onChange?.(checked)}
             locked={!interactive}
+            size={20}
           />
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-secondary)' }}>
             {config.confirm_label || 'I understand'}
           </span>
         </label>
@@ -124,6 +125,9 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
           value={selected}
           onChange={(v) => interactive && onChange?.(v)}
           locked={!interactive}
+          size={20}
+          fontSize="16px"
+          gap="12px"
         />
       )
     }
@@ -168,6 +172,9 @@ function QuestionBody({ field, interactive, value, onChange }: QuestionRendererP
           value={selected}
           onChange={toggle}
           locked={!interactive}
+          size={20}
+          fontSize="16px"
+          gap="12px"
         />
       )
     }

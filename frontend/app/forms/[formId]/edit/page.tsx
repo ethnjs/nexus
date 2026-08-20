@@ -409,7 +409,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
       <div ref={wrapperRef}>
         <div ref={contentRef}>
           {expanded ? (
-            <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
+            <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "28px 24px 20px", position: "relative" }}>
               <div style={{
                 position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
                 display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
@@ -476,6 +476,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
                 <EntityOptionsEditor
                   fieldKey={preset.key}
                   tournamentId={tournamentId}
+                  questionType={field.question_type}
                   options={(field.config?.options as EditableOption[] | undefined) ?? []}
                   onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
                 />
@@ -509,7 +510,7 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow, 
           ) : (
             <Card
               radius="lg"
-              style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
+              style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
               onClick={onExpand}
               onMouseEnter={() => setHovered(true)}
               onMouseLeave={() => setHovered(false)}

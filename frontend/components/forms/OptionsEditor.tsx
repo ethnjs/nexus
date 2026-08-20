@@ -28,9 +28,11 @@ export function newOption(): EditableOption {
 // Which disabled "this is what a respondent sees" bullet to show per row —
 // only single_select_radio/multi_select_checkbox have a real per-option
 // affordance; dropdown and ranked_choice don't render one inline like this.
-type BulletType = 'radio' | 'checkbox' | 'none'
+// Shared with EntityOptionsEditor (availability/event_preference reuse the
+// same question_types, just with entity-backed options).
+export type BulletType = 'radio' | 'checkbox' | 'none'
 
-function bulletTypeFor(questionType: FormQuestionType): BulletType {
+export function bulletTypeFor(questionType: FormQuestionType): BulletType {
   if (questionType === 'single_select_radio') return 'radio'
   if (questionType === 'multi_select_checkbox') return 'checkbox'
   return 'none'

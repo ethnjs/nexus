@@ -9,7 +9,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, ApiError,
+  tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, FormQuestionType, ApiError,
 } from '@/lib/api'
 import { eventNameWithDivision } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
@@ -17,8 +17,10 @@ import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Popover } from '@/components/ui/Popover'
+import { RadioCircle } from '@/components/ui/RadioCircle'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { IconGripVertical, IconX, IconPlus } from '@/components/ui/Icons'
-import { EditableOption, newOption } from '@/components/forms/OptionsEditor'
+import { EditableOption, newOption, BulletType, bulletTypeFor } from '@/components/forms/OptionsEditor'
 
 type EntityFieldKey = 'availability' | 'event_preference'
 type Entity = TournamentShift | TournamentEvent
@@ -26,6 +28,7 @@ type Entity = TournamentShift | TournamentEvent
 interface EntityOptionsEditorProps {
   fieldKey: EntityFieldKey
   tournamentId: number
+  questionType: FormQuestionType
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
 }
@@ -44,10 +47,11 @@ function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
 // [shift 1, shift 2]), stored raw as option.value: number[], rather than
 // freeform text. Reuses Popover's checklist mode — the same pattern
 // EventPanel uses for shift attach/detach — instead of a new picker.
-export function EntityOptionsEditor({ fieldKey, tournamentId, options, onChange }: EntityOptionsEditorProps) {
+export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const bulletType = bulletTypeFor(questionType)
 
   useEffect(() => {
     setEntities(null);
@@ -118,6 +122,7 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, options, onChange 
               option={option}
               entities={entities}
               fieldKey={fieldKey}
+              bulletType={bulletType}
               emptyMessage={emptyMessage}
               onLabelChange={(label) => updateLabel(option.clientKey, label)}
               onToggleEntity={(id) => toggleEntity(option.clientKey, id)}
@@ -133,10 +138,11 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, options, onChange 
   )
 }
 
-function EntityOptionRow({ option, entities, fieldKey, emptyMessage, onLabelChange, onToggleEntity, onRemove }: {
+function EntityOptionRow({ option, entities, fieldKey, bulletType, emptyMessage, onLabelChange, onToggleEntity, onRemove }: {
   option: EditableOption
   entities: Entity[]
   fieldKey: EntityFieldKey
+  bulletType: BulletType
   emptyMessage: string
   onLabelChange: (label: string) => void
   onToggleEntity: (id: number) => void
@@ -167,6 +173,8 @@ function EntityOptionRow({ option, entities, fieldKey, emptyMessage, onLabelChan
         <IconGripVertical size={13} />
       </span>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {bulletType === 'radio' && <RadioCircle checked={false} disabled />}
+        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked />}
         <Input
           value={option.label}
           onChange={(e) => onLabelChange(e.target.value)}
