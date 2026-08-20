@@ -2,7 +2,7 @@
 
 import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
+import { formsApi, Form, FormField, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -11,8 +11,9 @@ import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash, IconForms } from "@/components/ui/Icons";
+import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconX } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 
 // Matches the eventual centered content column (title card, field list) —
@@ -166,15 +167,110 @@ function TitleCard({ form, onUpdated }: {
   );
 }
 
-// Strict-accordion expand/collapse and the expanded editing card land in a
-// later step — this is the collapsed-only state, each field rendered as a
-// read-only preview of the actual question via QuestionRenderer.
-function FieldList({ form }: { form: Form }) {
-  const activeFields = form.fields
-    .filter((f) => !f.is_archived)
-    .sort((a, b) => a.order - b.order);
+// Real question_type options + reserved presets below a separator. Picking
+// a preset sets question_type and field_key together — no separate
+// creation-time picker, it's all one dropdown. Lunch's field_key is left
+// unset here since it's server-derived from a date+category picker that
+// lands in a later step (the card body swap for reserved types generally).
+const QUESTION_TYPE_OPTIONS: { value: FormQuestionType; label: string }[] = [
+  { value: "short_text", label: "Short Answer" },
+  { value: "long_text", label: "Paragraph" },
+  { value: "single_select_radio", label: "Multiple Choice" },
+  { value: "single_select_dropdown", label: "Dropdown" },
+  { value: "multi_select_checkbox", label: "Checkboxes" },
+  { value: "ranked_choice", label: "Ranked Choice" },
+  { value: "acknowledgment", label: "Acknowledgment" },
+];
 
-  if (activeFields.length === 0) {
+const RESERVED_PRESETS: Record<string, { question_type: FormQuestionType; field_key: string; label: string }> = {
+  "preset:availability_single": { question_type: "single_select_radio", field_key: "availability", label: "Availability (single choice)" },
+  "preset:availability_multi": { question_type: "multi_select_checkbox", field_key: "availability", label: "Availability (multiple choice)" },
+  "preset:event_preference": { question_type: "ranked_choice", field_key: "event_preference", label: "Event Preference" },
+  "preset:lunch": { question_type: "single_select_radio", field_key: "", label: "Lunch" },
+};
+
+const QUESTION_TYPE_DROPDOWN_ITEMS: DropdownItem[] = [
+  ...QUESTION_TYPE_OPTIONS,
+  {
+    group: "Reserved",
+    options: Object.entries(RESERVED_PRESETS).map(([value, preset]) => ({ value, label: preset.label })),
+  },
+];
+
+// Reflects a field's current question_type/field_key back onto the dropdown
+// — a reserved preset and its underlying question_type share the same
+// question_type value, so the dropdown must key off field_key first to show
+// the preset (not the plain type) as selected.
+function fieldToDropdownValue(field: FormField): string {
+  const presetEntry = Object.entries(RESERVED_PRESETS).find(
+    ([, preset]) => preset.field_key && preset.field_key === field.field_key && preset.question_type === field.question_type
+  );
+  if (presetEntry) return presetEntry[0];
+  if (field.field_key?.startsWith("lunch_") && field.question_type === "single_select_radio") return "preset:lunch";
+  return field.question_type;
+}
+
+function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange }: {
+  field: FormField;
+  expanded: boolean;
+  onExpand: () => void;
+  onCollapse: () => void;
+  onFieldChange: (updates: Partial<FormField>) => void;
+}) {
+  if (!expanded) {
+    return (
+      <Card radius="lg" style={{ padding: "16px 20px", cursor: "pointer" }} onClick={onExpand}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: "10px", color: "var(--color-text-tertiary)" }}>
+          <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+        </div>
+        <QuestionRenderer field={field} interactive={false} />
+      </Card>
+    );
+  }
+
+  return (
+    <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+        <Input
+          value={field.label}
+          onChange={(e) => onFieldChange({ label: e.target.value })}
+          placeholder="Question"
+          fullWidth
+        />
+        <Dropdown
+          value={fieldToDropdownValue(field)}
+          onChange={(v) => {
+            const preset = RESERVED_PRESETS[v];
+            if (preset) onFieldChange({ question_type: preset.question_type, field_key: preset.field_key });
+            else onFieldChange({ question_type: v as FormQuestionType });
+          }}
+          options={QUESTION_TYPE_DROPDOWN_ITEMS}
+          width={220}
+        />
+        <Button type="button" variant="ghost" size="sm" iconOnly title="Collapse" onClick={onCollapse}>
+          <IconX size={14} />
+        </Button>
+      </div>
+      <QuestionRenderer field={field} interactive={false} />
+    </Card>
+  );
+}
+
+// Strict accordion — expanding a card collapses whatever was previously
+// expanded; only one card is ever in edit mode at a time. Field edits are
+// staged in local state only for now — persisting via PUT .../fields/ and
+// the option_id echo-back requirement land in a later step.
+function FieldList({ form }: { form: Form }) {
+  const [fields, setFields] = useState<FormField[]>(() =>
+    form.fields.filter((f) => !f.is_archived).sort((a, b) => a.order - b.order)
+  );
+  const [expandedId, setExpandedId] = useState<number | null>(null);
+
+  function updateField(id: number, updates: Partial<FormField>) {
+    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
+  }
+
+  if (fields.length === 0) {
     return (
       <Card radius="lg" style={{ padding: "8px" }}>
         <EmptyState
@@ -188,10 +284,15 @@ function FieldList({ form }: { form: Form }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-      {activeFields.map((field) => (
-        <Card key={field.id} radius="lg" style={{ padding: "20px 24px" }}>
-          <QuestionRenderer field={field} interactive={false} />
-        </Card>
+      {fields.map((field) => (
+        <FieldCard
+          key={field.id}
+          field={field}
+          expanded={expandedId === field.id}
+          onExpand={() => setExpandedId(field.id)}
+          onCollapse={() => setExpandedId(null)}
+          onFieldChange={(updates) => updateField(field.id, updates)}
+        />
       ))}
     </div>
   );
