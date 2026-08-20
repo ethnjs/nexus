@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
-from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentShift
+from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent, TournamentShift
 
 import re
 import secrets
@@ -285,6 +285,32 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
     }
 
 
+def _resolve_event_preference_option(db: Session, option: dict) -> dict:
+    """Responder-facing view of one event_preference option: its label
+    plus the actual TournamentEvents its `value` groups together, instead
+    of raw ids — same "resolve, don't expose ids" treatment as availability.
+    A `value` that's still a plain string (a single legacy id, per the
+    Branching/Config-Validation issue's not-yet-strict event_preference
+    validation) passes through unchanged rather than being resolved."""
+    value = option.get("value")
+    if not isinstance(value, list):
+        return option
+
+    events = (
+        db.query(TournamentEvent.id, TournamentEvent.name, TournamentEvent.division)
+        .filter(TournamentEvent.id.in_(value))
+        .all()
+    )
+    return {
+        "option_id": option["option_id"],
+        "label": option["label"],
+        "events": [
+            {"id": event_id, "name": name, "division": division}
+            for event_id, name, division in events
+        ],
+    }
+
+
 def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     """Options for a given FormField, filtering out any `is_archived: true`
     option — archived options stay in `config` for historical answer/
@@ -296,13 +322,16 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     TD-editor-side action that populates this array once, same as any
     manually-authored option list, not a live server-side lookup. See
     form-question-types-reference.md's "Options-storage rule". availability
-    is the one exception to "just return config as-is": its `value` is
-    internal (real TournamentShift ids), so rendering resolves it into a
-    combined start/end range instead of exposing the raw shift list."""
+    and event_preference are the exceptions to "just return config as-is":
+    when their `value` groups real entity ids (TournamentShifts,
+    TournamentEvents), rendering resolves it into the actual entities
+    instead of exposing raw ids."""
     config = dict(field.config or {})
     options = [o for o in config.get("options", []) if not o.get("is_archived")]
 
     if field.field_key == "availability":
         return [_resolve_availability_option(db, o) for o in options]
+    if field.field_key == "event_preference":
+        return [_resolve_event_preference_option(db, o) for o in options]
 
     return options

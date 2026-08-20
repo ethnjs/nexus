@@ -25,6 +25,7 @@ from app.models.models import (
     FormAnswer,
     FormField,
     FormResponse,
+    TournamentEvent,
     TournamentShift,
 )
 
@@ -104,6 +105,13 @@ def _make_shift(db, tournament, label, start, end):
     db.add(shift)
     db.flush()
     return shift
+
+
+def _make_event(db, tournament, name, division=None):
+    event = TournamentEvent(tournament_id=tournament.id, name=name, division=division)
+    db.add(event)
+    db.flush()
+    return event
 
 
 # ---------------------------------------------------------------------------
@@ -329,6 +337,61 @@ class TestResolveAvailabilityOptions:
 
         options = resolve_field_options(db, field)
         assert options == field.config["options"]
+
+
+# ---------------------------------------------------------------------------
+# resolve_field_options — event_preference resolved entities
+# ---------------------------------------------------------------------------
+
+class TestResolveEventPreferenceOptions:
+    def test_grouped_events_resolve_to_id_name_and_division(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        anat = _make_event(db, td_tournament, "Anatomy and Physiology", division="B")
+        disease = _make_event(db, td_tournament, "Disease Detectives", division="C")
+        field = _make_field(
+            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            config={
+                "options": [
+                    {"option_id": "opt_life_science", "value": [anat.id, disease.id], "label": "Life Science", "is_archived": False},
+                ],
+            },
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options == [
+            {
+                "option_id": "opt_life_science",
+                "label": "Life Science",
+                "events": [
+                    {"id": anat.id, "name": "Anatomy and Physiology", "division": "B"},
+                    {"id": disease.id, "name": "Disease Detectives", "division": "C"},
+                ],
+            }
+        ]
+
+    def test_legacy_string_value_passes_through_unresolved(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        event = _make_event(db, td_tournament, "Anatomy and Physiology")
+        field = _make_field(
+            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            config={"options": [{"option_id": "opt_1", "value": str(event.id), "label": "Anatomy and Physiology", "is_archived": False}]},
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options == field.config["options"]
+
+    def test_archived_option_excluded(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        event = _make_event(db, td_tournament, "Anatomy and Physiology")
+        field = _make_field(
+            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            config={"options": [{"option_id": "opt_1", "value": [event.id], "label": "Anatomy and Physiology", "is_archived": True}]},
+        )
+        db.commit()
+
+        assert resolve_field_options(db, field) == []
 
 
 # ---------------------------------------------------------------------------
