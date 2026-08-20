@@ -145,6 +145,15 @@ export function IconPlus({ size = 16, ...props }: IconProps) {
   );
 }
 
+// Toggle a description input on/below a field.
+export function IconDescription({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M256 64L512 64C529.7 64 544 78.3 544 96C544 113.7 529.7 128 512 128L480 128L480 544C480 561.7 465.7 576 448 576C430.3 576 416 561.7 416 544L416 128L368 128L368 544C368 561.7 353.7 576 336 576C318.3 576 304 561.7 304 544L304 384L256 384C167.6 384 96 312.4 96 224C96 135.6 167.6 64 256 64z" />
+    </svg>
+  );
+}
+
 export function IconMinus({ size = 16, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>

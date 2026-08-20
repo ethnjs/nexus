@@ -13,8 +13,31 @@ import { EditableText } from "@/components/ui/EditableText";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Dropdown, DropdownItem } from "@/components/ui/Dropdown";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconX } from "@/components/ui/Icons";
+import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconX, IconPlus, IconDescription } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+
+// A field being edited in the builder — same shape as FormField, but `id`
+// is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
+// per the Edit Lifecycle: an entry with no id means "create"). clientKey is
+// the stable React/accordion identity regardless of whether id exists yet.
+type EditableField = Omit<FormField, "id"> & { id: number | null; clientKey: string };
+
+function newField(order: number): EditableField {
+  return {
+    clientKey: crypto.randomUUID(),
+    id: null,
+    form_id: "",
+    field_key: "",
+    order,
+    label: "",
+    description: null,
+    question_type: "short_text",
+    is_archived: false,
+    config: { required: false, max_length: 500 },
+    created_at: "",
+    updated_at: "",
+  };
+}
 
 // Matches the eventual centered content column (title card, field list) —
 // the sub-header's content is constrained the same way, Google-Forms-style,
@@ -201,7 +224,7 @@ const QUESTION_TYPE_DROPDOWN_ITEMS: DropdownItem[] = [
 // — a reserved preset and its underlying question_type share the same
 // question_type value, so the dropdown must key off field_key first to show
 // the preset (not the plain type) as selected.
-function fieldToDropdownValue(field: FormField): string {
+function fieldToDropdownValue(field: EditableField): string {
   const presetEntry = Object.entries(RESERVED_PRESETS).find(
     ([, preset]) => preset.field_key && preset.field_key === field.field_key && preset.question_type === field.question_type
   );
@@ -210,13 +233,16 @@ function fieldToDropdownValue(field: FormField): string {
   return field.question_type;
 }
 
-function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange }: {
-  field: FormField;
+function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange, onAddFieldBelow }: {
+  field: EditableField;
   expanded: boolean;
   onExpand: () => void;
   onCollapse: () => void;
-  onFieldChange: (updates: Partial<FormField>) => void;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  onAddFieldBelow: () => void;
 }) {
+  const [showDescription, setShowDescription] = useState(!!field.description);
+
   if (!expanded) {
     return (
       <Card radius="lg" style={{ padding: "16px 20px", cursor: "pointer" }} onClick={onExpand}>
@@ -229,30 +255,60 @@ function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange }: {
   }
 
   return (
-    <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "16px 20px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
-        <Input
-          value={field.label}
-          onChange={(e) => onFieldChange({ label: e.target.value })}
-          placeholder="Question"
-          fullWidth
-        />
-        <Dropdown
-          value={fieldToDropdownValue(field)}
-          onChange={(v) => {
-            const preset = RESERVED_PRESETS[v];
-            if (preset) onFieldChange({ question_type: preset.question_type, field_key: preset.field_key });
-            else onFieldChange({ question_type: v as FormQuestionType });
-          }}
-          options={QUESTION_TYPE_DROPDOWN_ITEMS}
-          width={220}
-        />
-        <Button type="button" variant="ghost" size="sm" iconOnly title="Collapse" onClick={onCollapse}>
-          <IconX size={14} />
+    <div style={{ position: "relative" }}>
+      <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "16px 20px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: showDescription ? "10px" : "16px" }}>
+          <Input
+            value={field.label}
+            onChange={(e) => onFieldChange({ label: e.target.value })}
+            placeholder="Question"
+            fullWidth
+          />
+          <Dropdown
+            value={fieldToDropdownValue(field)}
+            onChange={(v) => {
+              const preset = RESERVED_PRESETS[v];
+              if (preset) onFieldChange({ question_type: preset.question_type, field_key: preset.field_key });
+              else onFieldChange({ question_type: v as FormQuestionType });
+            }}
+            options={QUESTION_TYPE_DROPDOWN_ITEMS}
+            width={220}
+          />
+          <Button type="button" variant="ghost" size="sm" iconOnly title="Collapse" onClick={onCollapse}>
+            <IconX size={14} />
+          </Button>
+        </div>
+        {showDescription && (
+          <div style={{ marginBottom: "16px" }}>
+            <Input
+              value={field.description ?? ""}
+              onChange={(e) => onFieldChange({ description: e.target.value })}
+              placeholder="Description (optional)"
+              size="sm"
+              fullWidth
+            />
+          </div>
+        )}
+        <QuestionRenderer field={field} interactive={false} />
+      </Card>
+
+      {/* Floating toolbar — add a field below, toggle this field's description input. */}
+      <div style={{
+        position: "absolute", top: 0, left: "100%", marginLeft: "10px",
+        display: "flex", flexDirection: "column", gap: "6px",
+      }}>
+        <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
+          <IconPlus size={14} />
+        </Button>
+        <Button
+          type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
+          title="Toggle description"
+          onClick={() => setShowDescription((v) => !v)}
+        >
+          <IconDescription size={14} />
         </Button>
       </div>
-      <QuestionRenderer field={field} interactive={false} />
-    </Card>
+    </div>
   );
 }
 
@@ -261,13 +317,27 @@ function FieldCard({ field, expanded, onExpand, onCollapse, onFieldChange }: {
 // staged in local state only for now — persisting via PUT .../fields/ and
 // the option_id echo-back requirement land in a later step.
 function FieldList({ form }: { form: Form }) {
-  const [fields, setFields] = useState<FormField[]>(() =>
-    form.fields.filter((f) => !f.is_archived).sort((a, b) => a.order - b.order)
+  const [fields, setFields] = useState<EditableField[]>(() =>
+    form.fields
+      .filter((f) => !f.is_archived)
+      .sort((a, b) => a.order - b.order)
+      .map((f) => ({ ...f, clientKey: String(f.id) }))
   );
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
-  function updateField(id: number, updates: Partial<FormField>) {
-    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...updates } : f)));
+  function updateField(clientKey: string, updates: Partial<EditableField>) {
+    setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
+  }
+
+  function addField(afterClientKey?: string) {
+    const insertIndex = afterClientKey ? fields.findIndex((f) => f.clientKey === afterClientKey) + 1 : fields.length;
+    const field = newField(insertIndex + 1);
+    setFields((prev) => {
+      const next = [...prev];
+      next.splice(insertIndex, 0, field);
+      return next;
+    });
+    setExpandedKey(field.clientKey);
   }
 
   if (fields.length === 0) {
@@ -277,6 +347,11 @@ function FieldList({ form }: { form: Form }) {
           icon={<IconForms size={28} />}
           title="No fields yet"
           description="Add a field to start building this form."
+          action={
+            <Button type="button" variant="primary" size="sm" onClick={() => addField()}>
+              <IconPlus size={14} /> Add field
+            </Button>
+          }
         />
       </Card>
     );
@@ -286,12 +361,13 @@ function FieldList({ form }: { form: Form }) {
     <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {fields.map((field) => (
         <FieldCard
-          key={field.id}
+          key={field.clientKey}
           field={field}
-          expanded={expandedId === field.id}
-          onExpand={() => setExpandedId(field.id)}
-          onCollapse={() => setExpandedId(null)}
-          onFieldChange={(updates) => updateField(field.id, updates)}
+          expanded={expandedKey === field.clientKey}
+          onExpand={() => setExpandedKey(field.clientKey)}
+          onCollapse={() => setExpandedKey(null)}
+          onFieldChange={(updates) => updateField(field.clientKey, updates)}
+          onAddFieldBelow={() => addField(field.clientKey)}
         />
       ))}
     </div>

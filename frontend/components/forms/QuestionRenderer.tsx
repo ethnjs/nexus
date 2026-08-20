@@ -1,6 +1,6 @@
 'use client'
 
-import { FormField, FormFieldOption } from '@/lib/api'
+import { FormFieldOption, FormFieldConfig, FormQuestionType } from '@/lib/api'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -10,8 +10,18 @@ import { RankedList } from '@/components/ui/RankedList'
 import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
 
+// Only what rendering actually needs — not the full persisted FormField
+// (id, form_id, timestamps, ...), so an in-progress/unsaved draft field in
+// the builder (no id yet) can be rendered without a fake id to satisfy the type.
+export interface QuestionFieldData {
+  label: string
+  description: string | null
+  question_type: FormQuestionType
+  config: FormFieldConfig | null
+}
+
 interface QuestionRendererProps {
-  field: FormField
+  field: QuestionFieldData
   /** false = read-only preview (the builder's collapsed card state); true = a real respondent can answer. */
   interactive: boolean
   /** Only consulted when interactive. Shape depends on question_type (string for text types, boolean for acknowledgment, ...). */
