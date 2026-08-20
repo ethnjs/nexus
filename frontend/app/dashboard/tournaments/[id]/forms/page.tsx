@@ -1,15 +1,106 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
-import { formsApi, Form, ApiError } from "@/lib/api";
+import { useParams, useRouter } from "next/navigation";
+import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { IconForms, IconLock } from "@/components/ui/Icons";
+import { IconForms, IconLock, IconEdit, IconEye } from "@/components/ui/Icons";
+import { formatRelativeTime } from "@/lib/timeFormat";
+
+// Name / Status / Fields / Updated / Actions
+const FORM_ROW_COLUMNS = "1.6fr 110px 90px 110px 76px";
+
+const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
+  draft: "default",
+  published: "confirmed",
+  archived: "removed",
+};
+
+function FormRow({ form, isLast }: {
+  form: Form;
+  isLast: boolean;
+}) {
+  const router = useRouter();
+  const [hovered, setHovered] = useState(false);
+  const fieldCount = form.fields.filter((f) => !f.is_archived).length;
+
+  return (
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onClick={() => router.push(`/forms/${form.id}/edit`)}
+      style={{
+        display: "grid", gridTemplateColumns: FORM_ROW_COLUMNS, alignItems: "center",
+        gap: "8px", padding: "10px 12px", cursor: "pointer",
+        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        transition: "background 100ms ease",
+      }}
+    >
+      <span style={{
+        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {form.name}
+      </span>
+      <Badge variant={STATUS_BADGE_VARIANT[form.status]} style={{ justifySelf: "center" }}>
+        {form.status}
+      </Badge>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        {fieldCount}
+      </span>
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
+        {formatRelativeTime(form.updated_at)}
+      </span>
+      <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Edit"
+          onClick={(e) => { e.stopPropagation(); router.push(`/forms/${form.id}/edit`); }}
+        >
+          <IconEdit size={14} />
+        </Button>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Preview"
+          onClick={(e) => { e.stopPropagation(); router.push(`/forms/${form.id}/preview`); }}
+        >
+          <IconEye size={14} />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function FormTable({ forms }: { forms: Form[] }) {
+  return (
+    <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
+      <div style={{
+        display: "grid", gridTemplateColumns: FORM_ROW_COLUMNS, gap: "8px",
+        padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
+        fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+        color: "var(--color-text-tertiary)",
+      }}>
+        <span>Forms — {forms.length}</span>
+        <span style={{ textAlign: "center" }}>Status</span>
+        <span style={{ textAlign: "center" }}>Fields</span>
+        <span style={{ textAlign: "center" }}>Updated</span>
+        <span />
+      </div>
+
+      {forms.map((form, i) => (
+        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} />
+      ))}
+    </Card>
+  );
+}
 
 export default function FormsPage() {
   const params = useParams();
@@ -82,13 +173,7 @@ export default function FormsPage() {
           />
         </Card>
       ) : (
-        <Card radius="lg" style={{ padding: "8px 12px" }}>
-          {forms.map((form) => (
-            <p key={form.id} style={{ fontFamily: "var(--font-sans)", fontSize: "13px", padding: "8px 4px" }}>
-              {form.name}
-            </p>
-          ))}
-        </Card>
+        <FormTable forms={forms} />
       )}
     </div>
   );
