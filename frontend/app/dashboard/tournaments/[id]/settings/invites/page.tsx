@@ -13,12 +13,10 @@ import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { HoverCard } from "@/components/ui/HoverCard";
 import { IconArchive, IconInvite, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
 import { CreateInviteModal } from "@/components/tournament/settings/CreateInviteModal";
 import { AddTimePopover } from "@/components/tournament/settings/AddTimePopover";
-import { personUser, personName, personRoles } from "@/lib/personDisplay";
+import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { formatCountdown } from "@/lib/timeFormat";
 
 // Label / Code / Creator / Expiry / Uses / Actions
@@ -110,7 +108,6 @@ function InviteRow({
 }) {
   const [deactivating, setDeactivating] = useState(false);
   const [hovered, setHovered] = useState(false);
-  const user = personUser(invite.creator);
   const expiry = invite.expires_at === null
     ? "∞"
     : formatCountdown(new Date(invite.expires_at).getTime() - now);
@@ -146,55 +143,11 @@ function InviteRow({
       >
         {invite.code}
       </Badge>
-      <HoverCard
+      <CreatorHoverCard
+        creator={invite.creator}
+        noMembershipLabel="No membership in this tournament"
         style={{ justifyContent: "center", justifySelf: "center", width: "100%" }}
-        content={
-          <>
-            <p style={{
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-            }}>
-              {personName(invite.creator)}
-            </p>
-            <p style={{
-              fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: "2px",
-            }}>
-              {user.email}
-            </p>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", marginTop: "8px" }}>
-              {(() => {
-                const roles = personRoles(invite.creator);
-                if (roles === null) {
-                  return (
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-                      No membership in this tournament
-                    </span>
-                  );
-                }
-                if (roles.length === 0) {
-                  return (
-                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
-                      No roles
-                    </span>
-                  );
-                }
-                return roles.map((role) => <Badge key={role.id} variant="default">{role.label}</Badge>);
-              })()}
-            </div>
-          </>
-        }
-      >
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", minWidth: 0, cursor: "default" }}>
-          <AvatarCircle user={user} size="xs" />
-          <span style={{
-            fontFamily: "var(--font-sans)", fontSize: "13px",
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          }}>
-            {personName(invite.creator)}
-          </span>
-        </div>
-      </HoverCard>
+      />
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {expiry}
       </span>

@@ -1,9 +1,12 @@
-import { MembershipSlim, UserSlim } from "@/lib/api";
+import { ChapterMember, MembershipSlim, UserSlim } from "@/lib/api";
 
 // Shared shape for anything the backend resolves to "membership if they have
-// one in this tournament, bare user otherwise" — Invite.creator and
-// AuditLogEntry.actor both use it.
-export type PersonRef = MembershipSlim | UserSlim;
+// one in this tournament/chapter, bare user otherwise" — Invite.creator,
+// AuditLogEntry.actor, and FormListItem.creator all use it. ChapterMember
+// has no nested `user` (its UserSlim fields are flattened onto it directly),
+// so it falls through personUser's "user" in ref check the same way a bare
+// UserSlim does.
+export type PersonRef = MembershipSlim | ChapterMember | UserSlim;
 
 export function personUser(ref: PersonRef): UserSlim {
   return "user" in ref ? ref.user : ref;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
+import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -13,10 +13,11 @@ import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/ui/Icons";
 import { formatRelativeTime } from "@/lib/timeFormat";
+import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
 
-// Name / Status / Fields / Responses / Updated / Actions
-const FORM_ROW_COLUMNS = "1.6fr 110px 80px 100px 110px 76px";
+// Name / Status / Creator / Responses / Updated / Actions
+const FORM_ROW_COLUMNS = "1.4fr 110px 0.275fr 100px 110px 76px";
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
@@ -25,12 +26,11 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
 };
 
 function FormRow({ form, isLast }: {
-  form: Form;
+  form: FormListItem;
   isLast: boolean;
 }) {
   const router = useRouter();
   const [hovered, setHovered] = useState(false);
-  const fieldCount = form.fields.filter((f) => !f.is_archived).length;
 
   return (
     <div
@@ -54,9 +54,11 @@ function FormRow({ form, isLast }: {
       <Badge variant={STATUS_BADGE_VARIANT[form.status]} style={{ justifySelf: "center" }}>
         {form.status}
       </Badge>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {fieldCount}
-      </span>
+      <CreatorHoverCard
+        creator={form.creator}
+        noMembershipLabel={form.owner_type === "tournament" ? "No membership in this tournament" : "No membership in this chapter"}
+        style={{ justifyContent: "flex-start", justifySelf: "start", width: "100%" }}
+      />
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {form.response_count}
       </span>
@@ -83,7 +85,7 @@ function FormRow({ form, isLast }: {
   );
 }
 
-function FormTable({ forms }: { forms: Form[] }) {
+function FormTable({ forms }: { forms: FormListItem[] }) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div style={{
@@ -94,7 +96,7 @@ function FormTable({ forms }: { forms: Form[] }) {
       }}>
         <span>Forms — {forms.length}</span>
         <span style={{ textAlign: "center" }}>Status</span>
-        <span style={{ textAlign: "center" }}>Fields</span>
+        <span>Creator</span>
         <span style={{ textAlign: "center" }}>Responses</span>
         <span style={{ textAlign: "center" }}>Updated</span>
         <span />
@@ -116,7 +118,7 @@ export default function FormsPage() {
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
 
-  const [forms, setForms] = useState<Form[] | null>(null);
+  const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
 
