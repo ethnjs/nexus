@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useState } from "react";
+import { use, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formsApi, Form, FormField, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus, IconDescription, IconInfo } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { FadeIn } from "@/components/ui/FadeIn";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -254,110 +255,114 @@ function FieldCard({ field, expanded, onExpand, onFieldChange, onAddFieldBelow }
 
   if (!expanded) {
     return (
-      <Card
-        radius="lg"
-        style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
-        onClick={onExpand}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-      >
-        <div style={{
-          position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-          display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
-          opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
-        }}>
-          <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
-        </div>
-        <QuestionRenderer field={field} interactive={false} />
-      </Card>
+      <FadeIn>
+        <Card
+          radius="lg"
+          style={{ padding: "16px 20px", cursor: "pointer", position: "relative" }}
+          onClick={onExpand}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+        >
+          <div style={{
+            position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+            display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+            opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
+          }}>
+            <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+          </div>
+          <QuestionRenderer field={field} interactive={false} />
+        </Card>
+      </FadeIn>
     );
   }
 
   return (
-    <div style={{ position: "relative" }}>
-      <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
-        <div style={{
-          position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
-          display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
-        }}>
-          <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-          <Input
-            value={field.label}
-            onChange={(e) => onFieldChange({ label: e.target.value })}
-            placeholder="Question"
-            fullWidth
-          />
-          <Dropdown
-            value={field.question_type}
-            onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
-            options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
-            width={220}
-          />
-        </div>
-        <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
-          <Combobox
-            label="Field Key"
-            labelExtra={
-              <Tooltip
-                variant="info"
-                maxWidth={400}
-                message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
-              >
-                <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
-              </Tooltip>
-            }
-            value={fieldToComboboxValue(field)}
-            onChange={(text, matched) => {
-              if (matched) {
-                onFieldChange({
-                  field_key: matched.field_key,
-                  question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
-                });
-              } else {
-                onFieldChange({ field_key: text });
-              }
-            }}
-            options={FIELD_KEY_PRESETS}
-            getId={(p) => p.key}
-            getLabel={(p) => p.label}
-            placeholder="e.g. volunteer_availability"
-            allowFreeText
-            size="md"
-          />
-        </div>
-        {showDescription && (
-          <div style={{ marginBottom: "16px" }}>
+    <FadeIn>
+      <div style={{ position: "relative" }}>
+        <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "24px 20px 16px", position: "relative" }}>
+          <div style={{
+            position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+            display: "flex", color: "var(--color-text-tertiary)", cursor: "grab",
+          }}>
+            <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
             <Input
-              value={field.description ?? ""}
-              onChange={(e) => onFieldChange({ description: e.target.value })}
-              placeholder="Description (optional)"
-              size="sm"
+              value={field.label}
+              onChange={(e) => onFieldChange({ label: e.target.value })}
+              placeholder="Question"
               fullWidth
             />
+            <Dropdown
+              value={field.question_type}
+              onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
+              options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
+              width={220}
+            />
           </div>
-        )}
-        <QuestionRenderer field={field} interactive={false} showHeader={false} />
-      </Card>
+          <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
+            <Combobox
+              label="Field Key"
+              labelExtra={
+                <Tooltip
+                  variant="info"
+                  maxWidth={400}
+                  message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
+                >
+                  <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
+                </Tooltip>
+              }
+              value={fieldToComboboxValue(field)}
+              onChange={(text, matched) => {
+                if (matched) {
+                  onFieldChange({
+                    field_key: matched.field_key,
+                    question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
+                  });
+                } else {
+                  onFieldChange({ field_key: text });
+                }
+              }}
+              options={FIELD_KEY_PRESETS}
+              getId={(p) => p.key}
+              getLabel={(p) => p.label}
+              placeholder="e.g. volunteer_availability"
+              allowFreeText
+              size="md"
+            />
+          </div>
+          {showDescription && (
+            <div style={{ marginBottom: "16px" }}>
+              <Input
+                value={field.description ?? ""}
+                onChange={(e) => onFieldChange({ description: e.target.value })}
+                placeholder="Description (optional)"
+                size="sm"
+                fullWidth
+              />
+            </div>
+          )}
+          <QuestionRenderer field={field} interactive={false} showHeader={false} />
+        </Card>
 
-      {/* Floating toolbar — add a field below, toggle this field's description input. */}
-      <div style={{
-        position: "absolute", top: 0, left: "100%", marginLeft: "10px",
-        display: "flex", flexDirection: "column", gap: "6px",
-      }}>
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
-          <IconPlus size={14} />
-        </Button>
-        <Button
-          type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
-          title="Toggle description"
-          onClick={() => setShowDescription((v) => !v)}
-        >
-          <IconDescription size={14} />
-        </Button>
+        {/* Floating toolbar — add a field below, toggle this field's description input. */}
+        <div style={{
+          position: "absolute", top: 0, left: "100%", marginLeft: "10px",
+          display: "flex", flexDirection: "column", gap: "6px",
+        }}>
+          <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
+            <IconPlus size={14} />
+          </Button>
+          <Button
+            type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
+            title="Toggle description"
+            onClick={() => setShowDescription((v) => !v)}
+          >
+            <IconDescription size={14} />
+          </Button>
+        </div>
       </div>
-    </div>
+    </FadeIn>
   );
 }
 
@@ -373,6 +378,18 @@ function FieldList({ form }: { form: Form }) {
       .map((f) => ({ ...f, clientKey: String(f.id) }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  // Clicking outside every field card collapses whatever's expanded — an
+  // expanded card isn't a required state, unlike a strict radio group.
+  useEffect(() => {
+    if (!expandedKey) return;
+    function handleClick(e: MouseEvent) {
+      if (listRef.current && !listRef.current.contains(e.target as Node)) setExpandedKey(null);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [expandedKey]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
@@ -407,7 +424,7 @@ function FieldList({ form }: { form: Form }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    <div ref={listRef} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
       {fields.map((field) => (
         <FieldCard
           key={field.clientKey}
