@@ -70,8 +70,7 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
     <FormPopover
       trigger={
         <Button
-          type="button" variant={open ? "primary" : "secondary"} size="sm" iconOnly title="Field key"
-          style={localError ? { color: "var(--color-danger)", borderColor: "var(--color-danger)" } : undefined}
+          type="button" variant={localError ? "danger" : open ? "primary" : "secondary"} size="sm" iconOnly title="Field key"
         >
           <IconKey size={14} />
         </Button>

@@ -93,8 +93,7 @@ export function PresetPopover({
     <FormPopover
       trigger={
         <Button
-          type="button" variant={open ? "primary" : "secondary"} size="sm" iconOnly title="Presets"
-          style={presetError ? { color: "var(--color-danger)", borderColor: "var(--color-danger)" } : undefined}
+          type="button" variant={presetError ? "danger" : open ? "primary" : "secondary"} size="sm" iconOnly title="Presets"
         >
           <IconPresets size={14} />
         </Button>
