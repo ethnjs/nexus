@@ -12,7 +12,7 @@ import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
 import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
 import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
-import { activePresetKind } from '@/lib/forms/fieldKeyPresets'
+import { activePresetKind, isEntityBackedPreset } from '@/lib/forms/fieldKeyPresets'
 import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -258,6 +258,11 @@ function QuestionBody({ field, interactive, value, onChange }: {
 // data via EntityOptionsEditor) — lunch's options are freeform food choices,
 // so it shares the same OptionsEditor as any other select/checkbox field
 // (its date+category key derivation lives in PresetPopover, not here).
+// Branching/display_style support is purely a question_type property
+// (BRANCHING_TYPES/DISPLAY_STYLE_TYPES), not tied to whether the options
+// happen to be entity-backed — an availability field is still real,
+// addressable rows a TD can jump from or lay out as buttons, same as any
+// other single_select_radio/dropdown field.
 function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
@@ -266,9 +271,9 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   branchingEnabled?: boolean
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
-  const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type)
+  const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
 
-  if ((presetKind === 'availability' || presetKind === 'event_preference') && tournamentId) {
+  if (isEntityBackedPreset(presetKind) && tournamentId) {
     return (
       <EntityOptionsEditor
         fieldKey={presetKind}
@@ -276,6 +281,8 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
         questionType={field.question_type}
         options={(field.config?.options as EditableOption[] | undefined) ?? []}
         onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+        displayStyle={field.config?.display_style}
+        branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
       />
     )
   }

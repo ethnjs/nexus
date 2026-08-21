@@ -7,14 +7,15 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
 import { IconPresets } from "@/components/ui/Icons";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
+import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
 import {
-  PresetKind, PRESETS, activePresetKind, slugifyFieldKey, isPresetError,
+  PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError,
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
   parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
   parseLunchFieldKey, buildLunchFieldKey,
 } from "@/lib/forms/fieldKeyPresets";
-import { sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
@@ -65,9 +66,10 @@ export function PresetPopover({
 
   function applyPresetKind(kind: PresetKind | null) {
     if (kind === null) {
+      const options = OPTION_BEARING_TYPES.includes(field.question_type) ? [newOption()] : [];
       onFieldChange({
         field_key: slugifyFieldKey(field.label),
-        config: { ...sanitizeConfigForType(field.config, field.question_type), options: [] },
+        config: { ...sanitizeConfigForType(field.config, field.question_type), options },
       });
       return;
     }
@@ -81,10 +83,16 @@ export function PresetPopover({
       kind === "availability" ? buildAvailabilityFieldKey(soleDay ?? "")
       : kind === "lunch" ? buildLunchFieldKey(soleDay ?? "", "")
       : "event_preference_";
+    // Every preset's allowedQuestionTypes is option-bearing, so there's
+    // always exactly one starter row to seed here — entity-shaped (an empty
+    // id array to fill in via the picker) for availability/event_preference,
+    // plain freeform for lunch — rather than leaving the TD looking at an
+    // empty list with nothing to click but "Add option."
+    const starterOption = isEntityBackedPreset(kind) ? newEntityOption() : newOption();
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
-      config: { ...sanitizeConfigForType(field.config, questionType), options: [] },
+      config: { ...sanitizeConfigForType(field.config, questionType), options: [starterOption] },
     });
   }
 

@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Popover } from '@/components/ui/Popover'
 import { IconPlus } from '@/components/ui/Icons'
-import { EditableOption, newOption, OptionsEditor } from '@/components/forms/OptionsEditor'
+import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
 
 type EntityFieldKey = 'availability' | 'event_preference'
 type Entity = TournamentShift | TournamentEvent
@@ -21,6 +21,14 @@ interface EntityOptionsEditorProps {
   questionType: FormQuestionType
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
+  /** single_select_radio/multi_select_checkbox only — same ButtonGroup-style
+      row toggle OptionsEditor offers for freeform options. */
+  displayStyle?: 'list' | 'buttons'
+  /** single_select_radio/single_select_dropdown only — same per-option
+      "where does this lead" dropdown OptionsEditor offers for freeform
+      options; entity-backed options are still real, addressable rows, so
+      there's no reason branching should be freeform-only. */
+  branchTargets?: BranchTarget[]
 }
 
 function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
@@ -36,11 +44,12 @@ function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
 // TournamentEvent) under a single TD-labeled choice (e.g. "All Day" ->
 // [shift 1, shift 2]), stored raw as option.value: number[], rather than
 // freeform text. Built directly on OptionsEditor's row shell (grip/bullet/
-// label/delete/DnD) via renderExtra, rather than a parallel implementation —
-// the only thing that's actually different here is what goes below the row:
-// a Badge list + Popover checklist (reusing the same pattern EventPanel uses
-// for shift attach/detach) instead of the branch dropdown.
-export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange }: EntityOptionsEditorProps) {
+// label/delete/DnD/displayStyle/branch dropdown) via renderExtra, rather
+// than a parallel implementation — the only thing actually different here is
+// an *additional* block below the row: a Badge list + Popover checklist
+// (reusing the same pattern EventPanel uses for shift attach/detach) sitting
+// alongside whatever OptionsEditor already renders for that row.
+export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange, displayStyle, branchTargets }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -88,8 +97,10 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
       onChange={onChange}
       questionType={questionType}
       placeholder="e.g. All Day"
-      createOption={() => ({ ...newOption(), value: [] })}
+      createOption={newEntityOption}
       syncValueWithLabel={false}
+      displayStyle={displayStyle}
+      branchTargets={branchTargets}
       renderExtra={(option) => (
         <EntityPicker
           option={option}

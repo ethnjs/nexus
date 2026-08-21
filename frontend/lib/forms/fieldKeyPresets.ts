@@ -11,6 +11,15 @@ import { FormQuestionType } from "@/lib/api";
 // merges into one centralized pool while event_preference/lunch don't.
 export type PresetKind = "availability" | "event_preference" | "lunch";
 
+// availability/event_preference draw their options from real tournament
+// entities (shifts/events) via EntityOptionsEditor — their option.value is
+// an id array, not freeform text. lunch looks like a preset (a reserved
+// field_key) but its options are TD-typed food choices just like a plain
+// question's, so it shares OptionsEditor's freeform path instead.
+export function isEntityBackedPreset(kind: PresetKind | null): kind is "availability" | "event_preference" {
+  return kind === "availability" || kind === "event_preference";
+}
+
 interface PresetMeta {
   kind: PresetKind;
   label: string;

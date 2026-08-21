@@ -14,9 +14,9 @@ import {
   IconGripVertical, IconCopy, IconTrash, IconDotsVertical,
 } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { BranchTarget, newOption } from "@/components/forms/OptionsEditor";
+import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
-import { activePresetKind, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 // One card in the field list — collapsed, it's a read-only preview of the
@@ -47,7 +47,10 @@ export function FieldCard({
   // longer shows the key or flags it, so it shouldn't double-report the
   // same problem in its own border/error list either.
   const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
-  const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type);
+  // Purely a question_type property — an entity-backed preset's options are
+  // still real, addressable rows a TD can branch from just like a plain
+  // question's (see QuestionRenderer's identical calc).
+  const supportsBranching = BRANCHING_TYPES.includes(field.question_type);
   const [branchingEnabled, setBranchingEnabled] = useState(() =>
     (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
   );
@@ -74,18 +77,19 @@ export function FieldCard({
   // *previous* type — e.g. short_text's max_length has nowhere to go on
   // multi_select_checkbox, and the backend's extra="forbid" config schemas
   // reject it outright rather than ignoring it. Landing on an option-bearing
-  // type with no options yet (a fresh field, or one switched over from a
-  // non-option type) also gets one starter row so there's always something
-  // ready to edit rather than an empty list the TD has to click "Add option"
-  // to even start on. Preset types (availability/event_preference/lunch)
-  // aren't seeded here — their options come from EntityOptionsEditor/the
-  // lunch picker, not a freeform starter row.
+  // type with no options yet (a fresh field, one switched over from a
+  // non-option type, or a preset whose kind was just picked/changed) also
+  // gets one starter row so there's always something ready to edit rather
+  // than an empty list the TD has to click "Add option" to even start on —
+  // entity-backed presets get the entity-shaped starter (an empty id array
+  // to fill in via the picker), everything else gets the plain freeform one.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
-    const needsStarterOption = !presetKind && OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
+    const needsStarterOption = OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
+    const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
     onFieldChange({
       question_type: questionType,
-      config: needsStarterOption ? { ...config, options: [newOption()] } : config,
+      config: needsStarterOption ? { ...config, options: [starterOption] } : config,
     });
   }
 

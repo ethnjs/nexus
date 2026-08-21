@@ -26,6 +26,12 @@ export function newOption(): EditableOption {
   return { clientKey: crypto.randomUUID(), option_id: '', value: '', label: '' }
 }
 
+// EntityOptionsEditor's option shape — value is a to-be-filled entity id
+// array, not freeform text (see isEntityBackedPreset).
+export function newEntityOption(): EditableOption {
+  return { ...newOption(), value: [] }
+}
+
 // Which disabled "this is what a respondent sees" bullet to show per row —
 // radio/checkbox have a real per-option affordance; dropdown has no bullet
 // of its own once picked, but a numbered list reads better while editing
