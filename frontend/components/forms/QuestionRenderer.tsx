@@ -272,35 +272,44 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
+  const isEntityBackedKind = isEntityBackedPreset(presetKind)
+  // tournamentId null/undefined means the entity-backed editor has no scope
+  // to fetch shifts/events from — falls through to the read-only preview at
+  // the bottom instead (see the tournamentId prop doc on QuestionRenderer),
+  // never the plain freeform OptionsEditor: an availability/event_preference
+  // field's options are never TD-typed text, tournamentId or not.
+  const isEntity = isEntityBackedKind && !!tournamentId
 
-  if (isEntityBackedPreset(presetKind) && tournamentId) {
-    return (
-      <EntityOptionsEditor
-        fieldKey={presetKind}
-        tournamentId={tournamentId}
-        questionType={field.question_type}
-        options={(field.config?.options as EditableOption[] | undefined) ?? []}
-        onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
-        displayStyle={field.config?.display_style}
-        branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
-      />
-    )
-  }
-
-  if (field.question_type === 'acknowledgment') {
+  if (!isEntityBackedKind && field.question_type === 'acknowledgment') {
     return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} />
   }
 
-  if (presetKind !== 'availability' && presetKind !== 'event_preference' && OPTION_BEARING_TYPES.includes(field.question_type)) {
+  if (isEntity || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
     return (
       <>
-        <OptionsEditor
-          options={(field.config?.options as EditableOption[] | undefined) ?? []}
-          onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
-          questionType={field.question_type}
-          displayStyle={field.config?.display_style}
-          branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
-        />
+        {isEntity ? (
+          <EntityOptionsEditor
+            fieldKey={presetKind as 'availability' | 'event_preference'}
+            tournamentId={tournamentId!}
+            questionType={field.question_type}
+            options={(field.config?.options as EditableOption[] | undefined) ?? []}
+            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            displayStyle={field.config?.display_style}
+            branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
+          />
+        ) : (
+          <OptionsEditor
+            options={(field.config?.options as EditableOption[] | undefined) ?? []}
+            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            questionType={field.question_type}
+            displayStyle={field.config?.display_style}
+            branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
+          />
+        )}
+        {/* Ranks/duplicates apply to ranked_choice regardless of whether its
+            options are entity-backed (event_preference) or freeform — the
+            rank mechanics are a property of the question type, not of where
+            the option rows come from. */}
         {field.question_type === 'ranked_choice' && (
           <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-end', gap: '20px' }}>
             <div style={{ width: '100px' }}>

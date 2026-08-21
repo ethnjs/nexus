@@ -33,17 +33,18 @@ export function newEntityOption(): EditableOption {
 }
 
 // Which disabled "this is what a respondent sees" bullet to show per row —
-// radio/checkbox have a real per-option affordance; dropdown has no bullet
-// of its own once picked, but a numbered list reads better while editing
-// than nothing at all (it's the order the closed Dropdown's panel lists
-// them in); ranked_choice doesn't render one inline like this (RankedList
-// has its own rank-number UI on the respondent side).
+// radio/checkbox have a real per-option affordance; dropdown and
+// ranked_choice have no bullet of their own while editing (a closed
+// Dropdown's panel just lists them in order; RankedList's own rank-number UI
+// only shows up on the respondent side), but a numbered list reads better
+// here than nothing at all — for ranked_choice it doubles as a preview of
+// the rank order options start in before a respondent reorders them.
 export type BulletType = 'radio' | 'checkbox' | 'number' | 'none'
 
 export function bulletTypeFor(questionType: FormQuestionType): BulletType {
   if (questionType === 'single_select_radio') return 'radio'
   if (questionType === 'multi_select_checkbox') return 'checkbox'
-  if (questionType === 'single_select_dropdown') return 'number'
+  if (questionType === 'single_select_dropdown' || questionType === 'ranked_choice') return 'number'
   return 'none'
 }
 
@@ -251,11 +252,11 @@ export function OptionsEditor({
   )
 }
 
-// Radio/checkbox/dropdown questions get a bullet matching the option rows
-// above it (Google-Forms-style — it reads as "the next option," not a
-// detached toolbar button, and for dropdown previews the number the next
-// option will get); ranked_choice has no per-option bullet to echo, so it
-// keeps the plain "+ Add option" button.
+// Radio/checkbox/dropdown/ranked_choice questions get a bullet matching the
+// option rows above it (Google-Forms-style — it reads as "the next option,"
+// not a detached toolbar button, and for dropdown/ranked_choice previews the
+// number the next option will get); other types have no per-option bullet to
+// echo, so they keep the plain "+ Add option" button.
 function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
   bulletType: BulletType; number: number; displayStyle?: 'list' | 'buttons'; onClick: () => void
 }) {
