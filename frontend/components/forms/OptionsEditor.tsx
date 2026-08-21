@@ -364,7 +364,12 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
         )}
         {trailing}
       </div>
-      {extra}
+      {/* Indented to match the Input's left edge above, not the row's own —
+          otherwise it lines up with the bullet instead (EntityOptionsEditor's
+          badge/picker block, offset by the same 18px bullet + 8px flex gap
+          the row above spends before reaching the Input). No offset when
+          there's no bullet to line up past. */}
+      {extra && <div style={{ marginLeft: bulletType === 'none' ? 0 : '26px' }}>{extra}</div>}
     </div>
   )
 }
