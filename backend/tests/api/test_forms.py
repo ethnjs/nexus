@@ -1099,7 +1099,7 @@ class TestWriteThroughOnSubmit:
     def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="availability", question_type="multi_select_checkbox",
+            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}]},
         )
         db.commit()
