@@ -164,27 +164,25 @@ export function FieldCard({
 
             <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div style={{ display: "flex", gap: "2px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                  Required
+                </span>
+                <Toggle
+                  checked={!!field.config?.required}
+                  onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
+                />
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
                 <Button type="button" variant="ghost" size="sm" iconOnly title="Duplicate question" onClick={onDuplicate}>
                   <IconCopy size={14} />
                 </Button>
-                <Button type="button" variant="ghost" size="sm" iconOnly title="Delete question" onClick={onDelete}>
+                <Button type="button" variant="ghost" size="sm" iconOnly title="Delete question" onClick={onDelete} style={{ color: "var(--color-danger)" }}>
                   <IconTrash size={14} />
                 </Button>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                    Required
-                  </span>
-                  <Toggle
-                    checked={!!field.config?.required}
-                    onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
-                  />
-                </div>
                 {supportsBranching && (
                   <>
-                    <div style={{ width: "1px", height: "20px", background: "var(--color-border)" }} />
+                    <div style={{ width: "1px", height: "20px", background: "var(--color-border)", margin: "0 4px" }} />
                     <Popover
                       trigger={
                         <Button type="button" variant="ghost" size="sm" iconOnly title="More options">
