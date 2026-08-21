@@ -1,0 +1,55 @@
+"use client";
+
+import { Button } from "@/components/ui/Button";
+import { IconPlus, IconDescription, IconMenu } from "@/components/ui/Icons";
+import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+
+// The one toolbar shared by every field card (add a field below, toggle the
+// description input). It's absolutely positioned over the expanded card's
+// vertical span and sticky *inside* that span, so on a tall card it rides the
+// scroll but can never drift onto a neighbouring card. FieldList measures the
+// card and writes top/height onto boxRef — imperatively, since re-rendering
+// on every observed resize frame would be waste.
+export function FieldToolbar({
+  boxRef, showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
+}: {
+  boxRef: React.RefObject<HTMLDivElement | null>;
+  showDescription: boolean;
+  onAddFieldBelow: () => void;
+  onToggleDescription: () => void;
+  /** undefined = the expanded field's question_type doesn't support display_style — hides the button. */
+  displayStyle: "list" | "buttons" | undefined;
+  onToggleDisplayStyle: () => void;
+}) {
+  return (
+    <div ref={boxRef} style={{
+      position: "absolute", left: "100%", marginLeft: "10px",
+      visibility: "hidden", pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "sticky", top: `${TOPBAR_HEIGHT + 12}px`,
+        display: "flex", flexDirection: "column", gap: "6px", pointerEvents: "auto",
+      }}>
+        <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
+          <IconPlus size={14} />
+        </Button>
+        <Button
+          type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
+          title="Toggle description"
+          onClick={onToggleDescription}
+        >
+          <IconDescription size={14} />
+        </Button>
+        {displayStyle && (
+          <Button
+            type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly
+            title={displayStyle === "buttons" ? "Show as list" : "Show as buttons"}
+            onClick={onToggleDisplayStyle}
+          >
+            <IconMenu size={14} />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

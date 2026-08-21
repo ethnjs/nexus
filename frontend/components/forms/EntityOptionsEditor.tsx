@@ -2,25 +2,15 @@
 
 import { useEffect, useState } from 'react'
 import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
-} from '@dnd-kit/core'
-import {
-  SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
-} from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
-import {
   tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, FormQuestionType, ApiError,
 } from '@/lib/api'
 import { eventNameWithDivision } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
-import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Badge } from '@/components/ui/Badge'
 import { Popover } from '@/components/ui/Popover'
-import { RadioCircle } from '@/components/ui/RadioCircle'
-import { Checkbox } from '@/components/ui/Checkbox'
-import { IconGripVertical, IconX, IconPlus } from '@/components/ui/Icons'
-import { EditableOption, newOption, BulletType, bulletTypeFor } from '@/components/forms/OptionsEditor'
+import { IconPlus } from '@/components/ui/Icons'
+import { EditableOption, newOption, OptionsEditor } from '@/components/forms/OptionsEditor'
 
 type EntityFieldKey = 'availability' | 'event_preference'
 type Entity = TournamentShift | TournamentEvent
@@ -45,13 +35,14 @@ function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
 // groups one or more real tournament entities (TournamentShift or
 // TournamentEvent) under a single TD-labeled choice (e.g. "All Day" ->
 // [shift 1, shift 2]), stored raw as option.value: number[], rather than
-// freeform text. Reuses Popover's checklist mode — the same pattern
-// EventPanel uses for shift attach/detach — instead of a new picker.
+// freeform text. Built directly on OptionsEditor's row shell (grip/bullet/
+// label/delete/DnD) via renderExtra, rather than a parallel implementation —
+// the only thing that's actually different here is what goes below the row:
+// a Badge list + Popover checklist (reusing the same pattern EventPanel uses
+// for shift attach/detach) instead of the branch dropdown.
 export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
-  const bulletType = bulletTypeFor(questionType)
 
   useEffect(() => {
     setEntities(null);
@@ -62,19 +53,6 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : `Failed to load ${fieldKey === 'availability' ? 'shifts' : 'events'}.`))
   }, [fieldKey, tournamentId])
 
-  function handleDragEnd(e: DragEndEvent) {
-    const { active, over } = e
-    if (!over || active.id === over.id) return
-    const oldIndex = options.findIndex((o) => o.clientKey === active.id)
-    const newIndex = options.findIndex((o) => o.clientKey === over.id)
-    if (oldIndex === -1 || newIndex === -1) return
-    onChange(arrayMove(options, oldIndex, newIndex))
-  }
-
-  function updateLabel(clientKey: string, label: string) {
-    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label } : o)))
-  }
-
   function toggleEntity(clientKey: string, entityId: number) {
     onChange(options.map((o) => {
       if (o.clientKey !== clientKey) return o
@@ -82,14 +60,6 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
       const next = ids.includes(entityId) ? ids.filter((id) => id !== entityId) : [...ids, entityId]
       return { ...o, value: next }
     }))
-  }
-
-  function removeOption(clientKey: string) {
-    onChange(options.filter((o) => o.clientKey !== clientKey))
-  }
-
-  function addOption() {
-    onChange([...options, { ...newOption(), value: [] }])
   }
 
   if (loadError) {
@@ -113,101 +83,58 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
     : 'No events on this tournament yet — add some under Events.'
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={options.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
-          {options.map((option) => (
-            <EntityOptionRow
-              key={option.clientKey}
-              option={option}
-              entities={entities}
-              fieldKey={fieldKey}
-              bulletType={bulletType}
-              emptyMessage={emptyMessage}
-              onLabelChange={(label) => updateLabel(option.clientKey, label)}
-              onToggleEntity={(id) => toggleEntity(option.clientKey, id)}
-              onRemove={() => removeOption(option.clientKey)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
-      <Button type="button" variant="ghost" size="sm" onClick={addOption} style={{ alignSelf: 'flex-start' }}>
-        <IconPlus size={12} /> Add option
-      </Button>
-    </div>
+    <OptionsEditor
+      options={options}
+      onChange={onChange}
+      questionType={questionType}
+      placeholder="e.g. All Day"
+      createOption={() => ({ ...newOption(), value: [] })}
+      syncValueWithLabel={false}
+      renderExtra={(option) => (
+        <EntityPicker
+          option={option}
+          entities={entities}
+          fieldKey={fieldKey}
+          emptyMessage={emptyMessage}
+          onToggle={(id) => toggleEntity(option.clientKey, id)}
+        />
+      )}
+    />
   )
 }
 
-function EntityOptionRow({ option, entities, fieldKey, bulletType, emptyMessage, onLabelChange, onToggleEntity, onRemove }: {
+function EntityPicker({ option, entities, fieldKey, emptyMessage, onToggle }: {
   option: EditableOption
   entities: Entity[]
   fieldKey: EntityFieldKey
-  bulletType: BulletType
   emptyMessage: string
-  onLabelChange: (label: string) => void
-  onToggleEntity: (id: number) => void
-  onRemove: () => void
+  onToggle: (id: number) => void
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
-  const [hovered, setHovered] = useState(false)
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
   const selectedIds = Array.isArray(option.value) ? (option.value as number[]) : []
   const selectedEntities = entities.filter((e) => selectedIds.includes(e.id))
 
   return (
-    <div
-      ref={setNodeRef}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{ ...style, position: 'relative', padding: '6px 0' }}
-    >
-      <span
-        {...attributes}
-        {...listeners}
-        style={{
-          position: 'absolute', left: '-16px', top: '10px',
-          display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
-          opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
-        }}
-      >
-        <IconGripVertical size={13} />
-      </span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
-        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
-        <Input
-          value={option.label}
-          onChange={(e) => onLabelChange(e.target.value)}
-          placeholder="e.g. All Day"
-          size="md"
-          fullWidth
-        />
-        <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
-          <IconX size={12} />
-        </Button>
-      </div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
-        {selectedEntities.map((entity) => (
-          <Badge key={entity.id} variant="default">
-            {entityLabel(fieldKey, entity)}
-          </Badge>
-        ))}
-        <Popover
-          trigger={
-            <Button type="button" variant="secondary" size="xs">
-              <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
-            </Button>
-          }
-          items={entities}
-          getKey={(e) => e.id}
-          renderLabel={(e) => entityLabel(fieldKey, e)}
-          onSelect={(e) => onToggleEntity(e.id)}
-          checklist
-          isSelected={(e) => selectedIds.includes(e.id)}
-          emptyMessage={emptyMessage}
-          width={280}
-        />
-      </div>
+    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
+      {selectedEntities.map((entity) => (
+        <Badge key={entity.id} variant="default">
+          {entityLabel(fieldKey, entity)}
+        </Badge>
+      ))}
+      <Popover
+        trigger={
+          <Button type="button" variant="secondary" size="xs">
+            <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
+          </Button>
+        }
+        items={entities}
+        getKey={(e) => e.id}
+        renderLabel={(e) => entityLabel(fieldKey, e)}
+        onSelect={(e) => onToggle(e.id)}
+        checklist
+        isSelected={(e) => selectedIds.includes(e.id)}
+        emptyMessage={emptyMessage}
+        width={280}
+      />
     </div>
   )
 }

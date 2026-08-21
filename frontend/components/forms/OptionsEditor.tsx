@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { ReactNode, useState } from 'react'
 import {
   DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -29,8 +29,6 @@ export function newOption(): EditableOption {
 // Which disabled "this is what a respondent sees" bullet to show per row —
 // only single_select_radio/multi_select_checkbox have a real per-option
 // affordance; dropdown and ranked_choice don't render one inline like this.
-// Shared with EntityOptionsEditor (availability/event_preference reuse the
-// same question_types, just with entity-backed options).
 export type BulletType = 'radio' | 'checkbox' | 'none'
 
 export function bulletTypeFor(questionType: FormQuestionType): BulletType {
@@ -63,21 +61,62 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
   return { ...option, action: null, next_field_id: null }
 }
 
+// Inline, right-aligned in the option's own row (Google-Forms-style — a
+// jump target reads as part of the option, not a separate settings block
+// hanging underneath it), rather than a full-width Dropdown on its own line.
+function BranchDropdown({ option, branchTargets, onChange }: {
+  option: EditableOption
+  branchTargets: BranchTarget[]
+  onChange: (value: string) => void
+}) {
+  const branchOptions: DropdownOption[] = [
+    { value: CONTINUE_VALUE, label: 'Continue to next question' },
+    ...branchTargets.map((t): DropdownOption => ({
+      value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
+      label: `Jump to: ${t.label}`,
+      disabled: t.id == null,
+      subtitle: t.id == null ? 'Save the form to enable this target' : undefined,
+    })),
+    { value: SUBMIT_VALUE, label: 'Submit form' },
+  ]
+
+  return <Dropdown value={branchValueFor(option)} onChange={onChange} options={branchOptions} size="sm" width={190} variant="secondary" />
+}
+
 interface OptionsEditorProps {
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
   questionType: FormQuestionType
   /** Only meaningful for single_select_radio/dropdown — renders a per-option
-      "where does this lead" Dropdown below each row when set. */
+      "where does this lead" Dropdown inline at the right edge of the row
+      when set. */
   branchTargets?: BranchTarget[]
+  /** Escape hatch for a variant that needs different below-row content than
+      the branch dropdown — e.g. EntityOptionsEditor's entity picker. */
+  renderExtra?: (option: EditableOption) => ReactNode
+  /** Row label placeholder — "Option" for freeform choices, something more
+      specific (e.g. "e.g. All Day") for entity-backed variants. */
+  placeholder?: string
+  /** How a new row is seeded — plain freeform options default to `newOption()`;
+      entity-backed variants start `value` as an id array instead of "". */
+  createOption?: () => EditableOption
+  /** Freeform options store their respondent-facing text in both `label` and
+      `value` — entity-backed variants keep `value` as the selected id array,
+      so editing the label shouldn't touch it. */
+  syncValueWithLabel?: boolean
 }
 
 // Stacked, reorderable option rows for select/ranked question bodies — each
-// with its own drag grip (left edge, hover-visible) and delete ×, plus an
-// "Add option" row below. Nested dnd-kit context, scoped to just this
-// field's option list — doesn't conflict with the field-level drag context
-// since a field's own handle is hidden while its card is expanded.
-export function OptionsEditor({ options, onChange, questionType, branchTargets }: OptionsEditorProps) {
+// with its own drag grip (left edge, hover-visible), delete ×, and an
+// optional per-row "extra" slot below (branch dropdown by default; entity
+// picker for EntityOptionsEditor), plus an "Add option" row below all of
+// them. Nested dnd-kit context, scoped to just this field's option list —
+// doesn't conflict with the field-level drag context since a field's own
+// handle is hidden while its card is expanded.
+export function OptionsEditor({
+  options, onChange, questionType, branchTargets, renderExtra, placeholder = 'Option',
+  createOption = newOption, syncValueWithLabel = true,
+}: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const bulletType = bulletTypeFor(questionType)
 
@@ -91,7 +130,7 @@ export function OptionsEditor({ options, onChange, questionType, branchTargets }
   }
 
   function updateOption(clientKey: string, label: string) {
-    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label, value: label } : o)))
+    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label, ...(syncValueWithLabel ? { value: label } : {}) } : o)))
   }
 
   function updateBranch(clientKey: string, value: string) {
@@ -103,8 +142,14 @@ export function OptionsEditor({ options, onChange, questionType, branchTargets }
   }
 
   function addOption() {
-    onChange([...options, newOption()])
+    onChange([...options, createOption()])
   }
+
+  const trailing = branchTargets
+    ? (option: EditableOption) => (
+      <BranchDropdown option={option} branchTargets={branchTargets} onChange={(v) => updateBranch(option.clientKey, v)} />
+    )
+    : undefined
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
@@ -115,9 +160,10 @@ export function OptionsEditor({ options, onChange, questionType, branchTargets }
               key={option.clientKey}
               option={option}
               bulletType={bulletType}
-              branchTargets={branchTargets}
+              placeholder={placeholder}
+              trailing={trailing?.(option)}
+              extra={renderExtra?.(option)}
               onChange={(label) => updateOption(option.clientKey, label)}
-              onBranchChange={(value) => updateBranch(option.clientKey, value)}
               onRemove={() => removeOption(option.clientKey)}
             />
           ))}
@@ -130,28 +176,24 @@ export function OptionsEditor({ options, onChange, questionType, branchTargets }
   )
 }
 
-function OptionRow({ option, bulletType, branchTargets, onChange, onBranchChange, onRemove }: {
+// The shared row shell — grip, bullet, label input, delete, an optional
+// inline `trailing` slot at the row's right edge (the branch dropdown), and
+// an optional `extra` block below the row (EntityOptionsEditor's picker).
+// This is "the general look" every options list shares; EntityOptionsEditor
+// builds on it purely through OptionsEditor's renderExtra/placeholder/
+// createOption/syncValueWithLabel props rather than rendering its own rows.
+function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange, onRemove }: {
   option: EditableOption
   bulletType: BulletType
-  branchTargets?: BranchTarget[]
+  placeholder: string
+  trailing?: ReactNode
+  extra?: ReactNode
   onChange: (label: string) => void
-  onBranchChange: (value: string) => void
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
   const [hovered, setHovered] = useState(false)
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
-
-  const branchOptions: DropdownOption[] | undefined = branchTargets && [
-    { value: CONTINUE_VALUE, label: 'Continue to next question' },
-    ...branchTargets.map((t): DropdownOption => ({
-      value: t.id != null ? `${JUMP_PREFIX}${t.id}` : `${JUMP_PREFIX}unsaved:${t.label}`,
-      label: `Jump to: ${t.label}`,
-      disabled: t.id == null,
-      subtitle: t.id == null ? 'Save the form to enable this target' : undefined,
-    })),
-    { value: SUBMIT_VALUE, label: 'Submit form' },
-  ]
 
   return (
     <div
@@ -185,24 +227,16 @@ function OptionRow({ option, bulletType, branchTargets, onChange, onBranchChange
         <Input
           value={option.label}
           onChange={(e) => onChange(e.target.value)}
-          placeholder="Option"
+          placeholder={placeholder}
           size="md"
           fullWidth
         />
         <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
           <IconX size={12} />
         </Button>
+        {trailing}
       </div>
-      {branchOptions && (
-        <div style={{ marginLeft: bulletType === 'none' ? 0 : 26, width: 220 }}>
-          <Dropdown
-            value={branchValueFor(option)}
-            onChange={onBranchChange}
-            options={branchOptions}
-            size="sm"
-          />
-        </div>
-      )}
+      {extra}
     </div>
   )
 }
