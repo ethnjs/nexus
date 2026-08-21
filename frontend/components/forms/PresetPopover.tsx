@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
 import { IconPresets } from "@/components/ui/Icons";
+import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { EditableField } from "@/lib/forms/editableField";
-import { formatDayLabel } from "@/lib/timeFormat";
 import {
   PresetKind, PRESETS, activePresetKind, slugifyFieldKey, isPresetError,
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
@@ -148,32 +147,22 @@ function DayPicker({ label, date, tournamentDates, onChange, error }: {
   // (see applyPresetKind), but that can race the tournamentDates fetch — if
   // it resolves *after* the preset was already chosen, retroactively fill
   // it in here too rather than leaving the field stuck on the sentinel with
-  // a picker that has nothing left to pick.
+  // a picker that has nothing left to pick. Only PresetPopover has this
+  // race (tournamentDates is fetched separately from the rest of the forms
+  // builder), so it stays local here rather than in TournamentDayPicker
+  // itself — there's also never really a missing-date error to show while
+  // it's unresolved.
   useEffect(() => {
     if (!date && tournamentDates.length === 1) onChange(tournamentDates[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentDates]);
 
-  if (tournamentDates.length <= 1) {
-    // Nothing to actually pick — either there's exactly one tournament day
-    // (auto-filled by the effect above) or none loaded yet — so there's
-    // never really a missing-date error to show here.
-    return (
-      <Input
-        label={label}
-        value={tournamentDates.length === 1 ? formatDayLabel(tournamentDates[0]) : "Loading tournament dates…"}
-        locked
-        size="sm"
-        fullWidth
-      />
-    );
-  }
   return (
-    <Dropdown
+    <TournamentDayPicker
       label={label}
       value={date}
       onChange={onChange}
-      options={tournamentDates.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+      days={tournamentDates}
       placeholder="Select a date"
       size="sm"
       fullWidth

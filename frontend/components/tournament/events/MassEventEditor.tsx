@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   tournamentEventsApi, tournamentShiftsApi, ApiError, TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift,
 } from "@/lib/api";
-import { toDateInput, fromDayAndTime, formatDayLabel, formatTime } from "@/lib/timeFormat";
+import { toDateInput, fromDayAndTime, formatTime } from "@/lib/timeFormat";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -13,11 +13,11 @@ import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
@@ -123,7 +123,6 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   // different days can't default to "each event's own" the way attaching
   // an existing shift can (that's per-event bounds-checked on the backend
   // instead, hence no day needed there).
-  const shiftDayOptions = isMultiDay ? days.map((d) => ({ value: d, label: formatDayLabel(d) })) : undefined;
   const shiftDefaultDay = isMultiDay ? (days[0] ?? "") : (days[0] ?? toDateInput(events[0]?.start_time ?? events[0]?.end_time ?? null));
 
   // Every shift currently attached to at least one selected event — the
@@ -269,10 +268,10 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
 
           {touchesTime && isMultiDay && (
             <SettingsRow label="Day" helper="Needed to apply a time change — events keep their own day otherwise.">
-              <Dropdown
+              <TournamentDayPicker
                 value={draft.day ?? ""}
                 onChange={(v) => setDraft((d) => ({ ...d, day: v || undefined }))}
-                options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+                days={days}
               />
             </SettingsRow>
           )}
@@ -335,7 +334,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
                   <CreateShiftForm
                     tournamentId={tournamentId}
                     day={shiftDefaultDay}
-                    dayOptions={shiftDayOptions}
+                    days={isMultiDay ? days : undefined}
                     onCreated={(shift) => {
                       setAllShifts((prev) => [...(prev ?? []), shift]);
                       addShift(shift);
