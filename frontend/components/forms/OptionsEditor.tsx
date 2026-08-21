@@ -173,8 +173,30 @@ export function OptionsEditor({
           ))}
         </SortableContext>
       </DndContext>
-      <Button type="button" variant="ghost" size="sm" onClick={addOption} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
+      <AddOptionRow bulletType={bulletType} onClick={addOption} />
+    </div>
+  )
+}
+
+// Radio/checkbox questions get an unchecked bullet matching the option rows
+// above it (Google-Forms-style — it reads as "the next option," not a
+// detached toolbar button); dropdown/ranked_choice have no per-option bullet
+// to echo, so they keep the plain "+ Add option" button.
+function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick: () => void }) {
+  if (bulletType === 'none') {
+    return (
+      <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
         <IconPlus size={12} /> Add option
+      </Button>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+      {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
+      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
+      <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ color: 'var(--color-text-tertiary)' }}>
+        Add option
       </Button>
     </div>
   )
