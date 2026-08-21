@@ -6,8 +6,9 @@ import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EditableText } from "@/components/ui/EditableText";
-import { IconArrowLeft } from "@/components/ui/Icons";
+import { IconArrowLeft, IconEye } from "@/components/ui/Icons";
 import { StatusControl } from "@/components/forms/StatusControl";
+import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
 
 // Matches the centered content column (title card, field list) below it —
 // the sub-header's content is constrained the same way, Google-Forms-style,
@@ -50,7 +51,13 @@ export function SubHeader({ form, onUpdated, onDeleted }: {
           />
           <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
         </div>
-        <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
+        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+          <Button type="button" variant="secondary" size="md" onClick={() => router.push(`/forms/${form.id}/preview`)}>
+            <IconEye size={14} /> Preview
+          </Button>
+          <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
+          <FormActionsMenu formId={form.id} />
+        </div>
       </Card>
     </div>
   );
