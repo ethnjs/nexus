@@ -55,6 +55,11 @@ export function FieldList({ form }: { form: Form }) {
   // when a validation/save error wraps to a second line) — applied as
   // bottom padding so the bar never covers the last question(s) in the list.
   const [saveBarHeight, setSaveBarHeight] = useState(0);
+  // Bumped on every *failed* Save — FieldKeyPopover uses this as an
+  // edge-trigger to auto-open when Save surfaces a key error on its field,
+  // since the errors array alone can't tell "just failed again" from "this
+  // stale error is still sitting there."
+  const [saveAttempt, setSaveAttempt] = useState(0);
   // Baseline snapshot to diff against — set once on mount, then again after
   // every successful Save (the server's response, not what was submitted,
   // becomes the new baseline: it's the source of truth for server-assigned
@@ -171,6 +176,7 @@ export function FieldList({ form }: { form: Form }) {
       // message true by construction instead of rewording around it.
       setExpandedKey(issues[0].clientKey);
       setPendingScrollKey(issues[0].clientKey);
+      setSaveAttempt((n) => n + 1);
       return;
     }
     setSaving(true);
@@ -275,7 +281,6 @@ export function FieldList({ form }: { form: Form }) {
                 onDuplicate={() => duplicateField(field.clientKey)}
                 onDelete={() => deleteField(field.clientKey)}
                 tournamentId={form.tournament_id}
-                usedFieldKeys={usedFieldKeys}
                 allFields={fields}
                 errors={validation.errorsFor(field.clientKey)}
               />
@@ -301,6 +306,12 @@ export function FieldList({ form }: { form: Form }) {
       {expandedField && (
         <FieldToolbar
           boxRef={toolbarRef}
+          field={expandedField}
+          onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
+          usedFieldKeys={usedFieldKeys}
+          allFields={fields}
+          errors={validation.errorsFor(expandedField.clientKey)}
+          saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}
           onAddFieldBelow={() => addField(expandedField.clientKey)}
           onToggleDescription={() =>

@@ -12,7 +12,7 @@ import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
 import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
 import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
-import { activePreset, parseLunchFieldKey, buildLunchFieldKey } from '@/lib/forms/fieldKeyPresets'
+import { activePresetKind } from '@/lib/forms/fieldKeyPresets'
 import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -253,9 +253,11 @@ function QuestionBody({ field, interactive, value, onChange }: {
 
 // The TD-facing counterpart to QuestionBody — same question_type switch, but
 // each branch renders that type's config editor instead of an answer widget.
-// Reserved presets (availability/event_preference/lunch) override the plain
-// option-bearing-type editor since their options come from real tournament
-// data or a derived field_key rather than freeform rows.
+// Reserved presets override the plain option-bearing-type editor only when
+// they're entity-backed (availability/event_preference, real tournament
+// data via EntityOptionsEditor) — lunch's options are freeform food choices,
+// so it shares the same OptionsEditor as any other select/checkbox field
+// (its date+category key derivation lives in PresetPopover, not here).
 function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
@@ -263,13 +265,13 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   branchTargets?: BranchTarget[]
   branchingEnabled?: boolean
 }) {
-  const preset = activePreset(field.field_key ?? '')
-  const supportsBranching = !preset && BRANCHING_TYPES.includes(field.question_type)
+  const presetKind = activePresetKind(field.field_key ?? '')
+  const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type)
 
-  if ((preset?.key === 'availability' || preset?.key === 'event_preference') && tournamentId) {
+  if ((presetKind === 'availability' || presetKind === 'event_preference') && tournamentId) {
     return (
       <EntityOptionsEditor
-        fieldKey={preset.key}
+        fieldKey={presetKind}
         tournamentId={tournamentId}
         questionType={field.question_type}
         options={(field.config?.options as EditableOption[] | undefined) ?? []}
@@ -278,15 +280,11 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
     )
   }
 
-  if (preset?.key === 'lunch') {
-    return <LunchFieldBody field={field} onFieldChange={onFieldChange} />
-  }
-
   if (field.question_type === 'acknowledgment') {
     return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} />
   }
 
-  if (!preset && OPTION_BEARING_TYPES.includes(field.question_type)) {
+  if (presetKind !== 'availability' && presetKind !== 'event_preference' && OPTION_BEARING_TYPES.includes(field.question_type)) {
     return (
       <>
         <OptionsEditor
@@ -325,44 +323,6 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   }
 
   return <QuestionBody field={field} interactive={false} />
-}
-
-// Lunch's edit body: a date + category picker (the field-level key
-// derivation), not a per-option picker — the options below are just that
-// lunch's food choices, edited with the same freeform OptionsEditor as any
-// other select/checkbox field.
-function LunchFieldBody({ field, onFieldChange }: {
-  field: QuestionFieldData
-  onFieldChange: (updates: FieldUpdate) => void
-}) {
-  const fieldKey = field.field_key ?? 'lunch_'
-  const { date, category } = parseLunchFieldKey(fieldKey)
-
-  function setDate(newDate: string) {
-    onFieldChange({ field_key: buildLunchFieldKey(newDate, category) })
-  }
-
-  function setCategory(newCategory: string) {
-    onFieldChange({ field_key: buildLunchFieldKey(date, newCategory) })
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <div style={{ display: 'flex', gap: '10px' }}>
-        <Input label="Date" type="date" value={date} onChange={(e) => setDate(e.target.value)} size="sm" fullWidth />
-        <Input label="Category" placeholder="e.g. Protein" value={category} onChange={(e) => setCategory(e.target.value)} size="sm" fullWidth />
-      </div>
-      <p style={{ fontFamily: 'var(--font-mono)', fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-        {fieldKey === 'lunch_' ? 'Set a date and category to derive the field key' : fieldKey}
-      </p>
-      <OptionsEditor
-        options={(field.config?.options as EditableOption[] | undefined) ?? []}
-        onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
-        questionType={field.question_type}
-        displayStyle={field.config?.display_style}
-      />
-    </div>
-  )
 }
 
 // Acknowledgment's edit body — the one piece of its config with no default

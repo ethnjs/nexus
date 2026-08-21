@@ -1,68 +1,119 @@
 import { FormQuestionType } from "@/lib/api";
 
-// Reserved field_key presets, picked from the field_key Combobox rather than
-// the question_type Dropdown — selecting one sets field_key, and constrains
-// question_type to whichever of allowedQuestionTypes fits (switching to
-// defaultQuestionType if the current type isn't one of them). Matches
-// RESERVED_FIELD_KEY_QUESTION_TYPES / LUNCH_QUESTION_TYPES in
-// backend/app/core/form/validation.py — keep in sync if those change.
-// Lunch's field_key is a "lunch_" sentinel (not a real key yet) since the
-// real key is server-derived from a date+category picker.
-export interface FieldKeyPreset {
-  kind: "preset";
-  key: string;
-  field_key: string;
+// Reserved field_key patterns — mirrors backend/app/core/form/validation.py
+// exactly (AVAILABILITY_FIELD_KEY_PATTERN / EVENT_PREFERENCE_FIELD_KEY_PATTERN
+// / LUNCH_FIELD_KEY_PATTERN). All three are now parameterized (a date and/or
+// TD-chosen suffix), not a single fixed string — a tournament can have
+// multiple fields under the same reserved prefix (one per date for
+// availability, one per independently-ranked axis for event preference, one
+// per date+category for lunch). See backend/form-question-types-reference.md
+// ("Reserved field_keys") for the full contract, including why availability
+// merges into one centralized pool while event_preference/lunch don't.
+export type PresetKind = "availability" | "event_preference" | "lunch";
+
+interface PresetMeta {
+  kind: PresetKind;
   label: string;
   allowedQuestionTypes: FormQuestionType[];
   defaultQuestionType: FormQuestionType;
 }
 
-export const FIELD_KEY_PRESETS: FieldKeyPreset[] = [
-  { kind: "preset", key: "availability", field_key: "availability", label: "Availability", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
-  { kind: "preset", key: "event_preference", field_key: "event_preference", label: "Event Preference", allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"], defaultQuestionType: "ranked_choice" },
-  { kind: "preset", key: "lunch", field_key: "lunch_", label: "Lunch", allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"], defaultQuestionType: "single_select_radio" },
-];
+export const PRESETS: Record<PresetKind, PresetMeta> = {
+  availability: {
+    kind: "availability", label: "Availability",
+    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
+    defaultQuestionType: "single_select_radio",
+  },
+  event_preference: {
+    kind: "event_preference", label: "Event Preference",
+    allowedQuestionTypes: ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"],
+    defaultQuestionType: "ranked_choice",
+  },
+  lunch: {
+    kind: "lunch", label: "Lunch",
+    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
+    defaultQuestionType: "single_select_radio",
+  },
+};
 
-// A field_key already used elsewhere in this tournament — shown in the
-// Combobox as a visibly disabled row (not selectable, not hidden) rather
-// than letting the TD type it and only discover the collision from the
-// 409 PUT .../fields/ would otherwise return.
-export interface UsedFieldKeyOption {
-  kind: "used";
-  key: string;
-  field_key: string;
-  label: string;
+const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})$/;
+const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_([a-z0-9_]+)$/;
+const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
+
+// The preset currently active on a field_key, if any. A bare "lunch_"
+// sentinel (no date/category yet) still counts as an active Lunch preset —
+// it's a not-yet-fully-specified key, not a non-preset one — but bare
+// "availability"/"event_preference" (no suffix) do NOT count, matching the
+// backend: every such field must be disambiguated, there's no legacy
+// singleton form anymore.
+export function activePresetKind(fieldKey: string): PresetKind | null {
+  if (AVAILABILITY_FIELD_KEY_PATTERN.test(fieldKey)) return "availability";
+  if (EVENT_PREFERENCE_FIELD_KEY_PATTERN.test(fieldKey)) return "event_preference";
+  if (fieldKey.startsWith("lunch_")) return "lunch";
+  return null;
 }
 
-export type FieldKeyComboOption = FieldKeyPreset | UsedFieldKeyOption;
-
-// The preset currently active on a field_key, if any — the field_key itself
-// (or, for Lunch, the "lunch_" sentinel prefix) matches what's stored.
-export function activePreset(fieldKey: string): FieldKeyPreset | undefined {
-  return FIELD_KEY_PRESETS.find((p) =>
-    p.key === "lunch" ? fieldKey.startsWith("lunch_") : p.field_key === fieldKey
-  );
+// availability_{YYYYMMDD}
+export function parseAvailabilityFieldKey(fieldKey: string): { date: string } {
+  const match = AVAILABILITY_FIELD_KEY_PATTERN.exec(fieldKey);
+  if (!match) return { date: "" };
+  const [, y, m, d] = match;
+  return { date: `${y}-${m}-${d}` };
 }
 
-// Reflects a field_key back onto the Combobox — shows the preset's
-// descriptive label when active, the raw field_key otherwise (a custom
-// TD-typed key).
-export function fieldToComboboxValue(fieldKey: string): string {
-  return activePreset(fieldKey)?.label ?? fieldKey;
+export function buildAvailabilityFieldKey(date: string): string {
+  return date ? `availability_${date.replaceAll("-", "")}` : "availability_";
+}
+
+// event_preference_{suffix} — the suffix is TD-typed free text (slugified),
+// not a date, so there's no fixed-width pattern to parse positionally like
+// the date-based presets.
+export function parseEventPreferenceFieldKey(fieldKey: string): { suffix: string } {
+  const match = EVENT_PREFERENCE_FIELD_KEY_PATTERN.exec(fieldKey);
+  return { suffix: match ? match[1] : "" };
+}
+
+export function buildEventPreferenceFieldKey(suffix: string): string {
+  const slug = slugifyFieldKeyPart(suffix);
+  return slug ? `event_preference_${slug}` : "event_preference_";
 }
 
 // lunch_{YYYYMMDD}_{category} — one date+category pair per lunch field (not
 // per option; a lunch field's options are just that lunch's food choices).
-// Matches LUNCH_FIELD_KEY_PATTERN in backend/app/core/form/validation.py.
 export function parseLunchFieldKey(fieldKey: string): { date: string; category: string } {
-  const match = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/.exec(fieldKey);
+  const match = LUNCH_FIELD_KEY_PATTERN.exec(fieldKey);
   if (!match) return { date: "", category: "" };
   const [, y, m, d, category] = match;
   return { date: `${y}-${m}-${d}`, category };
 }
 
 export function buildLunchFieldKey(date: string, category: string): string {
-  const slug = category.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const slug = slugifyFieldKeyPart(category);
   if (!date || !slug) return "lunch_";
   return `lunch_${date.replaceAll("-", "")}_${slug}`;
+}
+
+// Whether a useFormValidation issue message is about field_key specifically
+// (vs. label/options/etc.) — matches both "Field key is required." and
+// "This field key is already used by another question...". Shared so
+// FieldCard's glanceable key display and FieldKeyPopover's danger styling
+// agree on what counts as a key error.
+export function isFieldKeyError(message: string): boolean {
+  return /field key|key is/i.test(message);
+}
+
+// Shared slug rule for every TD-typed field_key component: a reserved
+// preset's suffix/category, or (via slugifyFieldKey below) the whole
+// auto-derived key for a plain custom question.
+function slugifyFieldKeyPart(text: string): string {
+  return text.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+// Auto-fills field_key from the question label until the TD types into the
+// key field themselves — same "slug follows the title until you touch it"
+// pattern as a URL slug. Empty when the label itself slugifies to nothing
+// (e.g. a label that's only punctuation), so the key stays blank rather than
+// silently becoming "_" or similar noise.
+export function slugifyFieldKey(label: string): string {
+  return slugifyFieldKeyPart(label);
 }

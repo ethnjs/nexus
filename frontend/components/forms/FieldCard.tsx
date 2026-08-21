@@ -8,30 +8,27 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { Combobox } from "@/components/ui/Combobox";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { Popover } from "@/components/ui/Popover";
 import { Toggle } from "@/components/ui/Toggle";
 import {
-  IconGripVertical, IconInfo, IconCopy, IconTrash, IconDotsVertical,
+  IconGripVertical, IconCopy, IconTrash, IconDotsVertical,
 } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { BranchTarget, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
-import {
-  FieldKeyComboOption, UsedFieldKeyOption, FIELD_KEY_PRESETS, activePreset, fieldToComboboxValue,
-} from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, PRESETS, slugifyFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
-// label/type/field_key chrome here, plus whatever body QuestionRenderer's
-// edit mode renders for this question_type (options list, ranks, confirm
-// text, entity picker, ...). Splitting it that way keeps the type-by-type
-// switch in one place (QuestionRenderer) instead of duplicated between a
-// respondent-facing renderer and a TD-facing editor.
+// label/type chrome here (field key + reserved presets live in FieldToolbar
+// now, not inline — see FieldKeyPopover/PresetPopover), plus whatever body
+// QuestionRenderer's edit mode renders for this question_type (options
+// list, ranks, confirm text, entity picker, ...). Splitting it that way
+// keeps the type-by-type switch in one place (QuestionRenderer) instead of
+// duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields, errors,
+  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, allFields, errors,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -40,29 +37,18 @@ export function FieldCard({
   onDuplicate: () => void;
   onDelete: () => void;
   tournamentId: number | null;
-  usedFieldKeys: string[];
   allFields: EditableField[];
   errors: string[];
 }) {
   const [hovered, setHovered] = useState(false);
-  const preset = activePreset(field.field_key);
-  const supportsBranching = !preset && BRANCHING_TYPES.includes(field.question_type);
+  const presetKind = activePresetKind(field.field_key);
+  const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type);
   const [branchingEnabled, setBranchingEnabled] = useState(() =>
     (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
   );
   const branchTargets: BranchTarget[] = allFields
     .filter((f) => f.clientKey !== field.clientKey && f.label.trim())
     .map((f) => ({ id: f.id, label: f.label.trim() }));
-
-  // Reserved key names are already represented by FIELD_KEY_PRESETS, and a
-  // field editing its own already-saved key shouldn't see that key flagged
-  // as "taken" by itself.
-  const comboOptions: FieldKeyComboOption[] = [
-    ...FIELD_KEY_PRESETS,
-    ...usedFieldKeys
-      .filter((k) => k !== field.field_key && !FIELD_KEY_PRESETS.some((p) => p.field_key === k) && !k.startsWith("lunch_"))
-      .map((k): UsedFieldKeyOption => ({ kind: "used", key: `used:${k}`, field_key: k, label: k })),
-  ];
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
@@ -79,6 +65,21 @@ export function FieldCard({
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
 
+  // Field key follows the question label until the TD edits it directly (in
+  // FieldKeyPopover) — same "slug follows the title" pattern as a URL slug.
+  // Detected by comparison rather than a separate "touched" flag: as long as
+  // the current key still equals what the *previous* label would've derived,
+  // nothing's diverged it yet, so it's safe to re-derive from the new label.
+  // Skipped entirely once a reserved preset is active — that key is
+  // parameter-derived (PresetPopover), not label-derived.
+  function handleLabelChange(newLabel: string) {
+    const isAutoKey = !presetKind && (field.field_key === "" || field.field_key === slugifyFieldKey(field.label));
+    onFieldChange({
+      label: newLabel,
+      ...(isAutoKey ? { field_key: slugifyFieldKey(newLabel) } : {}),
+    });
+  }
+
   // Every question_type switch drops whatever config keys belonged to the
   // *previous* type — e.g. short_text's max_length has nowhere to go on
   // multi_select_checkbox, and the backend's extra="forbid" config schemas
@@ -91,7 +92,7 @@ export function FieldCard({
   // lunch picker, not a freeform starter row.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
-    const needsStarterOption = !preset && OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
+    const needsStarterOption = !presetKind && OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     onFieldChange({
       question_type: questionType,
       config: needsStarterOption ? { ...config, options: [newOption()] } : config,
@@ -112,60 +113,30 @@ export function FieldCard({
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
               <Input
                 value={field.label}
-                onChange={(e) => onFieldChange({ label: e.target.value })}
+                onChange={(e) => handleLabelChange(e.target.value)}
                 placeholder="Question"
                 fullWidth
               />
               <Dropdown
                 value={field.question_type}
                 onChange={(v) => handleQuestionTypeChange(v as FormQuestionType)}
-                options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
+                options={presetKind ? QUESTION_TYPE_OPTIONS.filter((o) => PRESETS[presetKind].allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
                 width={220}
               />
             </div>
-            <div style={{ marginBottom: field.showDescription ? "10px" : "16px" }}>
-              <Combobox
-                label="Field Key"
-                labelExtra={
-                  <Tooltip
-                    variant="info"
-                    maxWidth={400}
-                    message="How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns."
-                  >
-                    <IconInfo size={12} style={{ color: "var(--color-text-tertiary)" }} />
-                  </Tooltip>
-                }
-                value={fieldToComboboxValue(field.field_key)}
-                onChange={(text, matched) => {
-                  // A "used" row is always disabled (see getDisabled below), so Combobox
-                  // never surfaces it here as matched — only a real preset can be.
-                  if (matched?.kind === "preset") {
-                    const questionType = matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType;
-                    onFieldChange({
-                      field_key: matched.field_key,
-                      question_type: questionType,
-                      // Only sanitize when the type is actually changing — same-type
-                      // presets (e.g. picking Availability while already on
-                      // single_select_radio) shouldn't disturb existing config.
-                      ...(questionType !== field.question_type ? { config: sanitizeConfigForType(field.config, questionType) } : {}),
-                    });
-                  } else {
-                    onFieldChange({ field_key: text });
-                  }
-                }}
-                options={comboOptions}
-                getId={(p) => p.key}
-                getLabel={(p) => p.label}
-                getDisabled={(p) => p.kind === "used"}
-                getDisabledReason={(p) => (p.kind === "used" ? "already in use" : undefined)}
-                placeholder="e.g. volunteer_availability"
-                allowFreeText
-                size="md"
-              />
-            </div>
+            {/* Glanceable key display — the editable control moved to
+                FieldToolbar's key popover, but the current value (and any
+                collision) shouldn't disappear entirely from the card. */}
+            <p style={{
+              margin: `0 0 ${field.showDescription ? "10px" : "16px"}`,
+              fontFamily: "var(--font-mono)", fontSize: "11px",
+              color: errors.some(isFieldKeyError) ? "var(--color-danger)" : "var(--color-text-tertiary)",
+            }}>
+              {field.field_key.trim() || "no field key set"}
+            </p>
             {errors.length > 0 && (
               <ul style={{ margin: "0 0 12px", padding: "0 0 0 16px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
                 {errors.map((message) => <li key={message}>{message}</li>)}

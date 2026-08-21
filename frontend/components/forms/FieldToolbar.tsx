@@ -3,17 +3,28 @@
 import { Button } from "@/components/ui/Button";
 import { IconPlus, IconDescription, IconButton } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
+import { PresetPopover } from "@/components/forms/PresetPopover";
+import { EditableField } from "@/lib/forms/editableField";
 
-// The one toolbar shared by every field card (add a field below, toggle the
-// description input). It's absolutely positioned over the expanded card's
-// vertical span and sticky *inside* that span, so on a tall card it rides the
-// scroll but can never drift onto a neighbouring card. FieldList measures the
-// card and writes top/height onto boxRef — imperatively, since re-rendering
-// on every observed resize frame would be waste.
+// The one toolbar shared by every field card (field key/presets, add a
+// field below, toggle the description input). It's absolutely positioned
+// over the expanded card's vertical span and sticky *inside* that span, so
+// on a tall card it rides the scroll but can never drift onto a
+// neighbouring card. FieldList measures the card and writes top/height onto
+// boxRef — imperatively, since re-rendering on every observed resize frame
+// would be waste.
 export function FieldToolbar({
-  boxRef, showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt,
+  showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+  usedFieldKeys: string[];
+  allFields: EditableField[];
+  errors: string[];
+  saveAttempt: number;
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
@@ -30,6 +41,16 @@ export function FieldToolbar({
         position: "sticky", top: `${TOPBAR_HEIGHT + 12}px`,
         display: "flex", flexDirection: "column", gap: "6px", pointerEvents: "auto",
       }}>
+        <FieldKeyPopover
+          field={field}
+          onFieldChange={onFieldChange}
+          usedFieldKeys={usedFieldKeys}
+          allFields={allFields}
+          errors={errors}
+          saveAttempt={saveAttempt}
+        />
+        <PresetPopover field={field} onFieldChange={onFieldChange} />
+        <div style={{ width: "20px", height: "1px", background: "var(--color-border)", margin: "2px 0" }} />
         <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
           <IconPlus size={14} />
         </Button>
