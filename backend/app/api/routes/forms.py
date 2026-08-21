@@ -607,11 +607,20 @@ def _write_through_reserved_fields(
     answers_by_field: dict[int, object],
     current_user: User,
 ) -> None:
-    """Syncs `availability`/`lunch_{date}_{category}` answers into their
-    structural tables — tournament-owned forms only (see
+    """Syncs `availability_{date}`/`lunch_{date}_{category}` answers into
+    their structural tables — tournament-owned forms only (see
     form-question-types-reference.md). Runs over every active field, not
     just answered ones, so a reserved field left blank on resubmit clears
-    any previously-synced rows rather than leaving them stale."""
+    any previously-synced rows rather than leaving them stale.
+
+    A tournament can have multiple `availability_*` fields (one per date),
+    but they all write into the same centralized
+    TournamentMembershipAvailability pool for this membership — so their
+    selected shift ids are unioned across every matching field first, and
+    `sync_availability` (which diffs against *all* of the membership's
+    existing rows, not per-field) is called exactly once. Calling it once
+    per field instead would have each call's diff wipe out the shift ids
+    contributed by the previous field's call."""
     membership = (
         db.query(TournamentMembership)
         .filter(
@@ -626,21 +635,22 @@ def _write_through_reserved_fields(
             detail="No membership found for a tournament-owned form response — require_form_view_access should have guaranteed one",
         )
 
+    availability_shift_ids: set[int] = set()
+
     for field in active_fields:
         value = answers_by_field.get(field.id)
         selected = value if isinstance(value, list) else ([value] if value else [])
 
-        if field.field_key == "availability":
+        if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
             # `selected` is the chosen option_id(s) — each option's `value`
             # is the list of real TournamentShift ids it groups together
             # (see validate_availability_options); expand and flatten
             # before diffing, so overlapping shifts across multiple
-            # selected options naturally dedupe via set union.
+            # selected options (within or across fields) naturally dedupe
+            # via set union.
             options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
-            shift_ids: set[int] = set()
             for option_id in selected:
-                shift_ids.update(options_by_id.get(option_id, {}).get("value") or [])
-            sync_availability(db, membership.id, list(shift_ids))
+                availability_shift_ids.update(options_by_id.get(option_id, {}).get("value") or [])
             continue
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
@@ -655,6 +665,9 @@ def _write_through_reserved_fields(
                 if v in options_by_id
             ]
             sync_lunch(db, membership.id, lunch_date, category, values)
+
+    if any(AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key) for field in active_fields):
+        sync_availability(db, membership.id, list(availability_shift_ids))
 
 
 # ---------------------------------------------------------------------------
