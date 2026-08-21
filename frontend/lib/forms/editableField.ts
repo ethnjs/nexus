@@ -50,9 +50,13 @@ export function newField(order: number): EditableField {
 // client-only clientKey off every option (the backend's option schemas use
 // extra='forbid' — an unrecognized key would 422 the whole batch) and fills
 // in the handful of config keys that are Pydantic-required but have no
-// corresponding builder control yet (ranks/allow_duplicates default
-// silently; confirm_label doesn't — an empty one is caught by
-// useFormValidation before a save is ever attempted).
+// corresponding builder control yet (ranks/allow_duplicates/max_length
+// default silently; confirm_label doesn't — an empty one is caught by
+// useFormValidation before a save is ever attempted). max_length in
+// particular can go missing when a field switches types and back — e.g.
+// short_text -> ranked_choice -> short_text leaves it stripped by
+// sanitizeConfigForType on the way in, since ranked_choice's config schema
+// doesn't carry it either.
 export function toFieldInput(field: EditableField): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
   if (config.options) {
@@ -65,6 +69,9 @@ export function toFieldInput(field: EditableField): FormFieldInput {
   if (field.question_type === "ranked_choice") {
     if (config.ranks === undefined) config.ranks = 1;
     if (config.allow_duplicates === undefined) config.allow_duplicates = false;
+  }
+  if ((field.question_type === "short_text" || field.question_type === "long_text") && config.max_length === undefined) {
+    config.max_length = 500;
   }
   return {
     id: field.id ?? undefined,

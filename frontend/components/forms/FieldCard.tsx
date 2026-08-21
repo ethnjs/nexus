@@ -21,7 +21,7 @@ import { EditableField } from "@/lib/forms/editableField";
 import {
   FieldKeyComboOption, UsedFieldKeyOption, FIELD_KEY_PRESETS, activePreset, fieldToComboboxValue,
 } from "@/lib/forms/fieldKeyPresets";
-import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
+import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
@@ -73,17 +73,22 @@ export function FieldCard({
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
 
-  // Landing on an option-bearing type with no options yet (a fresh field,
-  // or one switched over from a non-option type) should always have one row
+  // Every question_type switch drops whatever config keys belonged to the
+  // *previous* type — e.g. short_text's max_length has nowhere to go on
+  // multi_select_checkbox, and the backend's extra="forbid" config schemas
+  // reject it outright rather than ignoring it. Landing on an option-bearing
+  // type with no options yet (a fresh field, or one switched over from a
+  // non-option type) also gets one starter row so there's always something
   // ready to edit rather than an empty list the TD has to click "Add option"
   // to even start on. Preset types (availability/event_preference/lunch)
-  // aren't touched here — their options come from EntityOptionsEditor/the
+  // aren't seeded here — their options come from EntityOptionsEditor/the
   // lunch picker, not a freeform starter row.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
-    const needsStarterOption = !preset && OPTION_BEARING_TYPES.includes(questionType) && !field.config?.options?.length;
+    const config = sanitizeConfigForType(field.config, questionType);
+    const needsStarterOption = !preset && OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     onFieldChange({
       question_type: questionType,
-      ...(needsStarterOption ? { config: { ...field.config, options: [newOption()] } } : {}),
+      config: needsStarterOption ? { ...config, options: [newOption()] } : config,
     });
   }
 
@@ -132,9 +137,14 @@ export function FieldCard({
                   // A "used" row is always disabled (see getDisabled below), so Combobox
                   // never surfaces it here as matched — only a real preset can be.
                   if (matched?.kind === "preset") {
+                    const questionType = matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType;
                     onFieldChange({
                       field_key: matched.field_key,
-                      question_type: matched.allowedQuestionTypes.includes(field.question_type) ? field.question_type : matched.defaultQuestionType,
+                      question_type: questionType,
+                      // Only sanitize when the type is actually changing — same-type
+                      // presets (e.g. picking Availability while already on
+                      // single_select_radio) shouldn't disturb existing config.
+                      ...(questionType !== field.question_type ? { config: sanitizeConfigForType(field.config, questionType) } : {}),
                     });
                   } else {
                     onFieldChange({ field_key: text });
