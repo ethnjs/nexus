@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter,
+  useSensor, useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
@@ -15,7 +16,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
-import { FieldCard } from "@/components/forms/FieldCard";
+import { FieldCard, FieldCardDragPreview } from "@/components/forms/FieldCard";
 import { FieldToolbar } from "@/components/forms/FieldToolbar";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
@@ -204,14 +205,34 @@ export function FieldList({ form }: { form: Form }) {
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+  // The card currently under the cursor — drives the DragOverlay's compressed
+  // preview. The real card stays mounted (invisible) so its slot keeps the
+  // layout space dnd-kit measured at drag start.
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  // Captured at drag start: by drag end, deciding whether to auto-expand the
+  // dropped card needs its *pre-drag* state, which setExpandedKey below would
+  // have already overwritten.
+  const draggedWasExpandedRef = useRef(false);
+  const draggingField = fields.find((f) => f.clientKey === draggingKey);
+
+  function handleDragStart(e: DragStartEvent) {
+    const key = String(e.active.id);
+    setDraggingKey(key);
+    draggedWasExpandedRef.current = expandedKey === key;
+  }
 
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e;
-    if (!over || active.id === over.id) return;
-    const oldIndex = fields.findIndex((f) => f.clientKey === active.id);
-    const newIndex = fields.findIndex((f) => f.clientKey === over.id);
-    if (oldIndex === -1 || newIndex === -1) return;
-    setFields((prev) => arrayMove(prev, oldIndex, newIndex));
+    setDraggingKey(null);
+    if (over && active.id !== over.id) {
+      const oldIndex = fields.findIndex((f) => f.clientKey === active.id);
+      const newIndex = fields.findIndex((f) => f.clientKey === over.id);
+      if (oldIndex !== -1 && newIndex !== -1) setFields((prev) => arrayMove(prev, oldIndex, newIndex));
+    }
+    // Same accordion rule as add/duplicate — the card you just acted on
+    // becomes the open one. Already-expanded cards need no action (moving
+    // them can't drop the open count to zero).
+    if (!draggedWasExpandedRef.current) setExpandedKey(String(active.id));
   }
 
   return (
@@ -236,7 +257,13 @@ export function FieldList({ form }: { form: Form }) {
           />
         </Card>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onDragCancel={() => setDraggingKey(null)}
+        >
           <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
             {fields.map((field) => (
               <FieldCard
@@ -254,6 +281,12 @@ export function FieldList({ form }: { form: Form }) {
               />
             ))}
           </SortableContext>
+          {/* dropAnimation off: the default animates the overlay into the
+              drop slot's rect, which would stretch this compact preview back
+              out to the full card height on release. */}
+          <DragOverlay dropAnimation={null}>
+            {draggingField ? <FieldCardDragPreview field={draggingField} /> : null}
+          </DragOverlay>
         </DndContext>
       )}
       <FloatingSaveBar

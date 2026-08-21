@@ -68,11 +68,13 @@ export function FieldCard({
   // (scoped to a single field's option rows), so dragging a card doesn't
   // interfere with dragging an option within it.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey });
-  // Translate, not Transform: with no DragOverlay, dnd-kit hands the drag
-  // source a transform whose scaleX/scaleY are the ratio of the hovered
-  // card's rect to this one's, so CSS.Transform would squish/stretch the
-  // card to match every differently-sized card it passes over.
-  const sortableStyle = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 };
+  // Translate, not Transform: dnd-kit's transforms carry scaleX/scaleY (the
+  // ratio of another card's rect to this one's), so CSS.Transform would
+  // squish/stretch cards to match whatever they pass over.
+  // While dragging, the visible card is FieldList's DragOverlay copy — this
+  // node stays mounted at full size but invisible, so the gap it leaves is
+  // the real drop slot and dnd-kit's drag-start rect measurements stay valid.
+  const sortableStyle = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0 : 1 };
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
@@ -251,5 +253,40 @@ export function FieldCard({
         )}
       </div>
     </div>
+  );
+}
+
+// What actually follows the cursor mid-drag (rendered into FieldList's
+// DragOverlay). Deliberately not either real card branch: flying a full
+// editor — or even the collapsed card's whole options preview — around the
+// list makes it hard to see where you're dropping, so a dragged card
+// compresses to one line of question text regardless of its prior state.
+export function FieldCardDragPreview({ field }: { field: EditableField }) {
+  return (
+    <Card
+      radius="lg"
+      borderColor="var(--color-border-strong)"
+      style={{
+        padding: "20px 20px 12px", cursor: "grabbing", boxShadow: "var(--shadow-md)", position: "relative",
+      }}
+    >
+      {/* Same top-center placement as the expanded/collapsed card's own grip
+          (FieldCard below) — keeps the drag handle's position consistent
+          across the whole drag, not just while dragging. */}
+      <div style={{
+        position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
+        display: "flex", color: "var(--color-text-tertiary)",
+      }}>
+        <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
+      </div>
+      <span style={{
+        display: "block",
+        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 600,
+        color: "var(--color-text-primary)",
+        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+      }}>
+        {field.label.trim() || "Untitled question"}
+      </span>
+    </Card>
   );
 }
