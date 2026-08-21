@@ -16,7 +16,7 @@ import {
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
-import { activePresetKind, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
@@ -64,6 +64,20 @@ export function FieldCard({
   // QuestionRenderer's edit body.
   const labelError = liveNonKeyErrors.includes('Question text is required.') ? 'Question text is required.' : undefined;
   const bodyErrors = liveNonKeyErrors.filter((e) => e !== 'Question text is required.');
+  // Key/preset errors themselves still surface only through FieldToolbar's
+  // popovers (danger-colored trigger + inline message) — this doesn't
+  // duplicate that message here, it just decides whether the card border
+  // should flag that *something* in the toolbar needs attention. Same
+  // gate-then-recheck pattern as liveNonKeyErrors above: only bothers once
+  // the last validate() pass actually flagged a key/preset problem on this
+  // field, then re-derives it from live data so fixing it via either popover
+  // clears the border immediately.
+  const hadKeyOrPresetError = errors.some((e) => isFieldKeyError(e) || isPresetError(e));
+  const presetIncomplete = !!presetKind && field.field_key.endsWith('_');
+  const effKey = effectiveFieldKey(field);
+  const duplicateKey = !!effKey && allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey);
+  const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
+  const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
   // Purely a question_type property — an entity-backed preset's options are
   // still real, addressable rows a TD can branch from just like a plain
   // question's (see QuestionRenderer's identical calc).
@@ -117,7 +131,12 @@ export function FieldCard({
     <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
         {expanded ? (
-          <Card radius="lg" borderColor={liveNonKeyErrors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
+          <Card
+            radius="lg"
+            variant={hasCardError ? "danger" : "normal"}
+            borderColor={hasCardError ? undefined : "var(--color-border-strong)"}
+            style={{ padding: "28px 24px 20px", position: "relative" }}
+          >
             <div {...gripProps} style={{
               position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
               display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
@@ -210,7 +229,7 @@ export function FieldCard({
         ) : (
           <Card
             radius="lg"
-            borderColor={liveNonKeyErrors.length > 0 ? "var(--color-danger)" : undefined}
+            variant={hasCardError ? "danger" : "normal"}
             style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
             onClick={onExpand}
             onMouseEnter={() => setHovered(true)}
