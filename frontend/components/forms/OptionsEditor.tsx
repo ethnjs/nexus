@@ -361,8 +361,11 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
       {/* position: relative lives on this row (not the outer column) so the
           grip centers on the row's own height, not the row + extra block
           together — top: 14px was a stale hardcode from before the row grew
-          a trailing Dropdown. */}
-      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          a trailing Dropdown. alignItems is flex-start (not center) so an
+          Input.error message growing this row taller doesn't drag the grip/
+          bullet/delete down with it — everything here besides the Input is
+          hand-centered against just its 36px (md) box instead. */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
         {/* No padding added for this — it reaches left into the Card's own
             padding gutter, so the bullet/Input below stay flush with the
             question label Input above them instead of shifting right. */}
@@ -370,14 +373,18 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
           {...attributes}
           {...listeners}
           style={{
-            position: 'absolute', left: '-16px', top: '50%', transform: 'translateY(-50%)',
+            position: 'absolute', left: '-16px', top: '18px', transform: 'translateY(-50%)',
             display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
             opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
           }}
         >
           <IconGripVertical size={13} />
         </span>
-        <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
+        {/* 9px = (36px Input height - 18px bullet size) / 2 — centers the
+            bullet against the Input's own box, same reasoning as the grip above. */}
+        <div style={{ marginTop: '9px' }}>
+          <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
+        </div>
         <Input
           ref={inputRef}
           value={option.label}
