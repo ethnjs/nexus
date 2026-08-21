@@ -68,7 +68,11 @@ export function FieldCard({
   // (scoped to a single field's option rows), so dragging a card doesn't
   // interfere with dragging an option within it.
   const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey });
-  const sortableStyle = { transform: CSS.Transform.toString(transform), opacity: isDragging ? 0.6 : 1 };
+  // Translate, not Transform: with no DragOverlay, dnd-kit hands the drag
+  // source a transform whose scaleX/scaleY are the ratio of the hovered
+  // card's rect to this one's, so CSS.Transform would squish/stretch the
+  // card to match every differently-sized card it passes over.
+  const sortableStyle = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0.6 : 1 };
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
