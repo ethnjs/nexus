@@ -16,7 +16,7 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    formsApi.get(formId)
+    formsApi.getForEdit(formId)
       .then(setForm)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load form."));
   }, [formId]);

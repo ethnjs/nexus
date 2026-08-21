@@ -254,9 +254,18 @@ def _to_list_read(form: Form, creator: MembershipSlimResponse | ChapterMemberRes
 # GET /forms/{form_id}/ — view/render. Any member of a linked
 # tournament/chapter can view (not just managers) — this is what the form
 # renderer for people filling it out calls.
+#
+# raw=true skips resolve_field_options' respondent-facing hydration
+# (availability/event_preference option `value` normally becomes
+# [{id, label, start, end}, ...] instead of the plain ids it's actually
+# stored/submitted as) — the builder needs exactly the round-trippable
+# config it's about to PUT back, not a rendering of it. Same view-access
+# gate either way; there's nothing sensitive in the raw ids a member with
+# view access couldn't already see resolved.
 # ---------------------------------------------------------------------------
 @router.get("/forms/{form_id}/", response_model=FormRead)
 def get_form_for_rendering(
+    raw: bool = False,
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_view_access),
 ):
@@ -268,6 +277,8 @@ def get_form_for_rendering(
     )
 
     for field in active_fields:
+        if raw:
+            continue
         resolved_options = resolve_field_options(db, field)
         if resolved_options:
             config = dict(field.config or {})

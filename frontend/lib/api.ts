@@ -1316,8 +1316,15 @@ export const formsApi = {
     api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
   createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>
     api.post<Form>(`/chapters/${chapterId}/forms/`, { ...body, owner_type: 'chapter', chapter_id: chapterId }),
-  // Renders with option values already resolved (availability/event_preference).
+  // Renders with option values already resolved (availability/event_preference) —
+  // for a respondent-facing view (or the future /preview page), not the builder.
   get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
+  // Unresolved — option `value` comes back exactly as stored (plain
+  // shift/event ids, not `get`'s hydrated {id, label, start, end} objects),
+  // which is what the builder needs since it's what PUT .../fields/ expects
+  // back. Using `get`'s hydrated shape here would round-trip into a 422 the
+  // moment an untouched entity-backed option got saved again.
+  getForEdit: (formId: string) => api.get<Form>(`/forms/${formId}/?raw=true`),
   update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
   archive: (formId: string) => api.post<Form>(`/forms/${formId}/archive/`, {}),
   // 409s if the form has any responses — check response_count client-side first.
