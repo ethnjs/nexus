@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ApiError, FormFieldConfig, FormQuestionType } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
-import { activePresetKind, presetIncompleteMessage } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, effectiveFieldKey, presetIncompleteMessage } from "@/lib/forms/fieldKeyPresets";
 
 // Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
 // rather than importing it — the hook only touches these five properties,
@@ -37,19 +37,21 @@ function issuesFor(field: ValidatableField): string[] {
 
   if (!field.label.trim()) issues.push("Question text is required.");
 
-  if (!field.field_key.trim()) {
-    issues.push("Field key is required.");
-  } else {
-    // A preset's sentinel-only key (e.g. "availability_", picked but not yet
-    // given a date) is a *complete-looking* string, not an empty one — it
-    // needs its own check rather than falling through as if it were a valid
-    // custom key. build{Availability,EventPreference,Lunch}FieldKey all
-    // collapse back to the bare "{prefix}_" sentinel unless every one of
-    // their parameters is filled in, so a trailing "_" reliably means
-    // "still incomplete" — a real date/suffix/category never leaves one.
-    const presetKind = activePresetKind(field.field_key);
-    if (presetKind && field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(presetKind));
-  }
+  // No standalone "field key is required" check — a blank field_key just
+  // means the TD hasn't typed one, and it falls back to the label's own
+  // slug at save time (see effectiveFieldKey/toFieldInput). A truly empty
+  // label is already caught by the check above; nothing else needs a key
+  // of its own to be valid.
+  //
+  // A preset's sentinel-only key (e.g. "availability_", picked but not yet
+  // given a date) is a *complete-looking* string, not an empty one — it
+  // needs its own check rather than falling through as if it were a valid
+  // custom key. build{Availability,EventPreference,Lunch}FieldKey all
+  // collapse back to the bare "{prefix}_" sentinel unless every one of
+  // their parameters is filled in, so a trailing "_" reliably means
+  // "still incomplete" — a real date/suffix/category never leaves one.
+  const presetKind = activePresetKind(field.field_key);
+  if (presetKind && field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(presetKind));
 
   if (field.question_type === "acknowledgment" && !config.confirm_label?.trim()) {
     issues.push("Confirmation text is required.");
@@ -76,8 +78,12 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
   const issues: FieldValidationIssue[] = [];
   const keyCounts = new Map<string, number>();
 
+  // Counted by the key each field will actually save with, not the raw
+  // (possibly blank) field_key — two untouched fields whose labels happen
+  // to slug to the same string collide on Save just as much as two fields
+  // with the same typed key would.
   for (const field of fields) {
-    const key = field.field_key.trim();
+    const key = effectiveFieldKey(field);
     if (key) keyCounts.set(key, (keyCounts.get(key) ?? 0) + 1);
   }
 
@@ -85,7 +91,7 @@ function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
     for (const message of issuesFor(field)) {
       issues.push({ clientKey: field.clientKey, message });
     }
-    const key = field.field_key.trim();
+    const key = effectiveFieldKey(field);
     if (key && (keyCounts.get(key) ?? 0) > 1) {
       issues.push({ clientKey: field.clientKey, message: "This field key is already used by another question on this form." });
     }

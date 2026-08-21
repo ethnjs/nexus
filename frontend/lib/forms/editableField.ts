@@ -1,6 +1,6 @@
 import { FormField, FormFieldConfig, FormFieldInput } from "@/lib/api";
 import { EditableOption } from "@/components/forms/OptionsEditor";
-import { slugifyFieldKey } from "@/lib/forms/fieldKeyPresets";
+import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -79,7 +79,7 @@ export function toFieldInput(field: EditableField): FormFieldInput {
   // was pasted in without ever touching the label input again could still
   // reach Save with an empty key. Same fallback either way: the label's
   // own slug, matching what the TD would see if they'd typed it themselves.
-  const fieldKey = field.field_key.trim() || slugifyFieldKey(field.label);
+  const fieldKey = effectiveFieldKey(field);
   return {
     id: field.id ?? undefined,
     field_key: fieldKey,

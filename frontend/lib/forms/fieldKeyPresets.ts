@@ -145,3 +145,11 @@ function slugifyFieldKeyPart(text: string): string {
 export function slugifyFieldKey(label: string): string {
   return slugifyFieldKeyPart(label);
 }
+
+// The field_key a field will actually save with — its own typed key if set,
+// else the label's slug. Shared by toFieldInput (what's sent to the
+// backend) and useFormValidation (what's checked for duplicates) so the two
+// can't disagree about what a blank-key field's real key is.
+export function effectiveFieldKey(field: { field_key: string; label: string }): string {
+  return field.field_key.trim() || slugifyFieldKey(field.label);
+}
