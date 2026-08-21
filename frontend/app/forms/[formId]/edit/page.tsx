@@ -9,7 +9,8 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { formsApi, Form, FormField, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
+import { formsApi, Form, FormField, FormFieldConfig, FormFieldInput, FormQuestionType, FormStatus, ApiError } from "@/lib/api";
+import { useFormValidation } from "@/lib/useFormValidation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
@@ -24,6 +25,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { Popover } from "@/components/ui/Popover";
 import { Toggle } from "@/components/ui/Toggle";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import {
   IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus,
   IconDescription, IconInfo, IconCopy, IconDotsVertical, IconMenu,
@@ -75,6 +77,36 @@ function newField(order: number): EditableField {
     config: { required: false, max_length: 500 },
     created_at: "",
     updated_at: "",
+  };
+}
+
+// Builds one PUT .../fields/ payload entry from a staged field. Strips the
+// client-only clientKey off every option (the backend's option schemas use
+// extra='forbid' — an unrecognized key would 422 the whole batch) and fills
+// in the handful of config keys that are Pydantic-required but have no
+// corresponding builder control yet (ranks/allow_duplicates default
+// silently; confirm_label doesn't — an empty one is caught by
+// useFormValidation before a save is ever attempted).
+function toFieldInput(field: EditableField): FormFieldInput {
+  const config: FormFieldConfig = { ...(field.config ?? {}) };
+  if (config.options) {
+    config.options = (config.options as EditableOption[]).map((option) => {
+      const { clientKey, ...rest } = option;
+      void clientKey;
+      return rest;
+    });
+  }
+  if (field.question_type === "ranked_choice") {
+    if (config.ranks === undefined) config.ranks = 1;
+    if (config.allow_duplicates === undefined) config.allow_duplicates = false;
+  }
+  return {
+    id: field.id ?? undefined,
+    field_key: field.field_key.trim(),
+    label: field.label.trim(),
+    description: field.showDescription ? field.description : null,
+    question_type: field.question_type,
+    config,
   };
 }
 
@@ -352,6 +384,26 @@ function LunchFieldBody({ field, onFieldChange }: {
   );
 }
 
+// Acknowledgment's card body — the one piece of its config with no default
+// on the backend (AcknowledgmentConfig.confirm_label has no fallback, unlike
+// every other type-specific config key here), so it needs a real editor
+// rather than silently defaulting at save time like ranks/allow_duplicates.
+function AcknowledgmentBody({ field, onFieldChange }: {
+  field: EditableField;
+  onFieldChange: (updates: Partial<EditableField>) => void;
+}) {
+  return (
+    <Input
+      label="Confirmation text"
+      value={field.config?.confirm_label ?? ""}
+      onChange={(e) => onFieldChange({ config: { ...field.config, confirm_label: e.target.value } })}
+      placeholder="I understand and agree to the above"
+      size="sm"
+      fullWidth
+    />
+  );
+}
+
 const EXPAND_MS = 200;
 const EXPAND_EASING = "ease-out";
 
@@ -425,7 +477,7 @@ const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "single_sele
 const DISPLAY_STYLE_TYPES: FormQuestionType[] = ["single_select_radio", "multi_select_checkbox"];
 
 function FieldCard({
-  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields,
+  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields, errors,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -436,6 +488,7 @@ function FieldCard({
   tournamentId: number | null;
   usedFieldKeys: string[];
   allFields: EditableField[];
+  errors: string[];
 }) {
   const [hovered, setHovered] = useState(false);
   const preset = activePreset(field);
@@ -486,7 +539,7 @@ function FieldCard({
         <div ref={wrapperRef}>
           <div ref={contentRef}>
             {expanded ? (
-              <Card radius="lg" borderColor="var(--color-border-strong)" style={{ padding: "28px 24px 20px", position: "relative" }}>
+              <Card radius="lg" borderColor={errors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
                 <div {...gripProps} style={{
                   position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
                   display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
@@ -542,6 +595,11 @@ function FieldCard({
                   size="md"
                 />
               </div>
+              {errors.length > 0 && (
+                <ul style={{ margin: "0 0 12px", padding: "0 0 0 16px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+                  {errors.map((message) => <li key={message}>{message}</li>)}
+                </ul>
+              )}
               {field.showDescription && (
                 <div style={{ marginBottom: "16px" }}>
                   <Input
@@ -563,6 +621,8 @@ function FieldCard({
                 />
               ) : preset?.key === "lunch" ? (
                 <LunchFieldBody field={field} onFieldChange={onFieldChange} />
+              ) : field.question_type === "acknowledgment" ? (
+                <AcknowledgmentBody field={field} onFieldChange={onFieldChange} />
               ) : !preset && OPTION_BEARING_TYPES.includes(field.question_type) ? (
                 <>
                   <OptionsEditor
@@ -572,16 +632,27 @@ function FieldCard({
                     branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
                   />
                   {field.question_type === "ranked_choice" && (
-                    <div style={{ marginTop: "12px", width: "100px" }}>
-                      <Input
-                        label="Ranks"
-                        type="number"
-                        min={1}
-                        value={String(field.config?.ranks ?? 1)}
-                        onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
-                        size="sm"
-                        fullWidth
-                      />
+                    <div style={{ marginTop: "12px", display: "flex", alignItems: "flex-end", gap: "20px" }}>
+                      <div style={{ width: "100px" }}>
+                        <Input
+                          label="Ranks"
+                          type="number"
+                          min={1}
+                          value={String(field.config?.ranks ?? 1)}
+                          onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
+                          size="sm"
+                          fullWidth
+                        />
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingBottom: "9px" }}>
+                        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+                          Allow duplicate ranks
+                        </span>
+                        <Toggle
+                          checked={!!field.config?.allow_duplicates}
+                          onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
+                        />
+                      </div>
                     </div>
                   )}
                 </>
@@ -634,6 +705,7 @@ function FieldCard({
           ) : (
             <Card
               radius="lg"
+              borderColor={errors.length > 0 ? "var(--color-danger)" : undefined}
               style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
               onClick={onExpand}
               onMouseEnter={() => setHovered(true)}
@@ -708,8 +780,10 @@ function FieldToolbar({
 
 // Strict accordion — expanding a card collapses whatever was previously
 // expanded; only one card is ever in edit mode at a time. Field edits are
-// staged in local state only for now — persisting via PUT .../fields/ and
-// the option_id echo-back requirement land in a later step.
+// staged in local state, diffed against a JSON.stringify'd baseline
+// snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
+// that diff is non-empty, and Save PUTs the whole field list in one batch
+// (see the Edit Lifecycle notes on formsApi.putFields).
 function FieldList({ form }: { form: Form }) {
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
@@ -724,6 +798,16 @@ function FieldList({ form }: { form: Form }) {
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
+
+  const validation = useFormValidation();
+  const [saving, setSaving] = useState(false);
+  // Baseline snapshot to diff against — set once on mount, then again after
+  // every successful Save (the server's response, not what was submitted,
+  // becomes the new baseline: it's the source of truth for server-assigned
+  // ids/option_ids).
+  const baselineRef = useRef<string | null>(null);
+  if (baselineRef.current === null) baselineRef.current = JSON.stringify(fields);
+  const isDirty = JSON.stringify(fields) !== baselineRef.current;
 
   const expandedField = fields.find((f) => f.clientKey === expandedKey);
   // Re-measure when cards are added/removed/reordered — but not on every
@@ -830,6 +914,35 @@ function FieldList({ form }: { form: Form }) {
     setExpandedKey((prev) => (prev === clientKey ? null : prev));
   }
 
+  async function handleSave() {
+    const issues = validation.validate(fields);
+    if (issues.length > 0) {
+      setExpandedKey(issues[0].clientKey);
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await formsApi.putFields(form.id, fields.map(toFieldInput));
+      const next = updated
+        .filter((f) => !f.is_archived)
+        .sort((a, b) => a.order - b.order)
+        .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }));
+      setFields(next);
+      baselineRef.current = JSON.stringify(next);
+      validation.clearAll();
+    } catch (err) {
+      validation.handle422(err);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleDiscard() {
+    setFields(baselineRef.current ? JSON.parse(baselineRef.current) : []);
+    validation.clearAll();
+    setExpandedKey(null);
+  }
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   function handleDragEnd(e: DragEndEvent) {
@@ -874,10 +987,19 @@ function FieldList({ form }: { form: Form }) {
               tournamentId={form.tournament_id}
               usedFieldKeys={usedFieldKeys}
               allFields={fields}
+              errors={validation.errorsFor(field.clientKey)}
             />
           ))}
         </SortableContext>
       </DndContext>
+      <FloatingSaveBar
+        visible={isDirty}
+        saving={saving}
+        error={validation.hasErrors ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted questions below.` : validation.saveError || undefined}
+        onSave={handleSave}
+        onCancel={handleDiscard}
+        stayWithin={`/forms/${form.id}`}
+      />
       {expandedField && (
         <FieldToolbar
           boxRef={toolbarRef}
