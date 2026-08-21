@@ -15,7 +15,7 @@ interface CheckboxProps {
 
 // Checkmark is hardcoded white rather than var(--color-text-inverse) —
 // CSS custom properties don't resolve inside a data: URI.
-const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 6l3 3 5-5' fill='none' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>`
+const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 6l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`
 
 export function Checkbox({ checked, onChange, locked = false, size = 16 }: CheckboxProps) {
   const color = locked
@@ -37,9 +37,9 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         height: `${size}px`,
         borderRadius: '4px',
         border: `2px solid ${color}`,
-        background: checked ? color : 'var(--color-surface)',
+        backgroundColor: checked ? color : 'var(--color-surface)',
         backgroundImage: checked ? `url("data:image/svg+xml,${encodeURIComponent(CHECK_SVG)}")` : 'none',
-        backgroundSize: '70%',
+        backgroundSize: '85%',
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         cursor: locked ? 'not-allowed' : 'pointer',
