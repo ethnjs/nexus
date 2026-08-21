@@ -28,6 +28,7 @@ import {
   IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus,
   IconDescription, IconInfo, IconCopy, IconDotsVertical,
 } from "@/components/ui/Icons";
+import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { OptionsEditor, EditableOption, BranchTarget } from "@/components/forms/OptionsEditor";
 import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
@@ -36,7 +37,14 @@ import { EntityOptionsEditor } from "@/components/forms/EntityOptionsEditor";
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
 // per the Edit Lifecycle: an entry with no id means "create"). clientKey is
 // the stable React/accordion identity regardless of whether id exists yet.
-type EditableField = Omit<FormField, "id"> & { id: number | null; clientKey: string };
+// showDescription is draft-only UI state: while the description is toggled
+// off the text is kept (so re-toggling restores it), and Save is what
+// discards it — send `description: showDescription ? description : null`.
+type EditableField = Omit<FormField, "id"> & {
+  id: number | null;
+  clientKey: string;
+  showDescription: boolean;
+};
 
 // Attaches a stable clientKey to every option in a loaded field's config —
 // options fetched from the server have a real option_id (usable as the key)
@@ -56,6 +64,7 @@ function newField(order: number): EditableField {
   return {
     clientKey: crypto.randomUUID(),
     id: null,
+    showDescription: false,
     form_id: "",
     field_key: "",
     order,
@@ -408,20 +417,18 @@ function useHeightTransition(expandedOnMount: boolean) {
 const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "single_select_dropdown"];
 
 function FieldCard({
-  field, expanded, onExpand, onFieldChange, onAddFieldBelow, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields,
+  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields,
 }: {
   field: EditableField;
   expanded: boolean;
   onExpand: () => void;
   onFieldChange: (updates: Partial<EditableField>) => void;
-  onAddFieldBelow: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
   tournamentId: number | null;
   usedFieldKeys: string[];
   allFields: EditableField[];
 }) {
-  const [showDescription, setShowDescription] = useState(!!field.description);
   const [hovered, setHovered] = useState(false);
   const preset = activePreset(field);
   const supportsBranching = !preset && BRANCHING_TYPES.includes(field.question_type);
@@ -444,7 +451,6 @@ function FieldCard({
 
   const expandedOnMount = useRef(expanded).current;
   const { wrapperRef, contentRef } = useHeightTransition(expandedOnMount);
-  const toolbarRef = useRef<HTMLDivElement>(null);
 
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
@@ -460,19 +466,14 @@ function FieldCard({
   // — the two branches are different subtrees, and .animate() replays on every
   // call, so unlike a mount effect it fires on each expand/collapse.
   useLayoutEffect(() => {
-    const timing = { duration: EXPAND_MS, easing: EXPAND_EASING };
-    contentRef.current?.animate([{ opacity: 0 }, { opacity: 1 }], timing);
-    toolbarRef.current?.animate(
-      [{ opacity: 0, transform: "translateX(-6px)" }, { opacity: 1, transform: "none" }],
-      timing,
-    );
+    contentRef.current?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: EXPAND_MS, easing: EXPAND_EASING });
   }, [expanded, contentRef]);
 
   return (
-    // Outer box stays untransformed and unclipped so the floating toolbar can
-    // hang off it at left: 100% — sortable transform/opacity apply here too,
-    // one level in from that constraint, rather than on this node directly.
-    <div style={{ position: "relative" }}>
+    // Outer box stays untransformed so the shared toolbar can measure this
+    // card's resting offsetTop/offsetHeight — sortable transform/opacity apply
+    // one level in rather than on this node directly.
+    <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
         <div ref={wrapperRef}>
           <div ref={contentRef}>
@@ -498,7 +499,7 @@ function FieldCard({
                   width={220}
                 />
               </div>
-              <div style={{ marginBottom: showDescription ? "10px" : "16px" }}>
+              <div style={{ marginBottom: field.showDescription ? "10px" : "16px" }}>
                 <Combobox
                   label="Field Key"
                   labelExtra={
@@ -533,7 +534,7 @@ function FieldCard({
                   size="md"
                 />
               </div>
-              {showDescription && (
+              {field.showDescription && (
                 <div style={{ marginBottom: "16px" }}>
                   <Input
                     value={field.description ?? ""}
@@ -643,25 +644,42 @@ function FieldCard({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Floating toolbar — add a field below, toggle this field's description input. */}
-      {expanded && (
-        <div ref={toolbarRef} style={{
-          position: "absolute", top: 0, left: "100%", marginLeft: "10px",
-          display: "flex", flexDirection: "column", gap: "6px",
-        }}>
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
-            <IconPlus size={14} />
-          </Button>
-          <Button
-            type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
-            title="Toggle description"
-            onClick={() => setShowDescription((v) => !v)}
-          >
-            <IconDescription size={14} />
-          </Button>
-        </div>
-      )}
+// The one toolbar shared by every field card (add a field below, toggle the
+// description input). It's absolutely positioned over the expanded card's
+// vertical span and sticky *inside* that span, so on a tall card it rides the
+// scroll but can never drift onto a neighbouring card. FieldList measures the
+// card and writes top/height onto boxRef — imperatively, since the card's
+// height is animated and re-rendering on every observed frame would be waste.
+function FieldToolbar({ boxRef, showDescription, onAddFieldBelow, onToggleDescription }: {
+  boxRef: React.RefObject<HTMLDivElement | null>;
+  showDescription: boolean;
+  onAddFieldBelow: () => void;
+  onToggleDescription: () => void;
+}) {
+  return (
+    <div ref={boxRef} style={{
+      position: "absolute", left: "100%", marginLeft: "10px",
+      visibility: "hidden", pointerEvents: "none",
+    }}>
+      <div style={{
+        position: "sticky", top: `${TOPBAR_HEIGHT + 12}px`,
+        display: "flex", flexDirection: "column", gap: "6px", pointerEvents: "auto",
+      }}>
+        <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
+          <IconPlus size={14} />
+        </Button>
+        <Button
+          type="button" variant={showDescription ? "primary" : "secondary"} size="sm" iconOnly
+          title="Toggle description"
+          onClick={onToggleDescription}
+        >
+          <IconDescription size={14} />
+        </Button>
+      </div>
     </div>
   );
 }
@@ -675,11 +693,56 @@ function FieldList({ form }: { form: Form }) {
     form.fields
       .filter((f) => !f.is_archived)
       .sort((a, b) => a.order - b.order)
-      .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id) }))
+      .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
+  // Set by add/duplicate so the effect below can scroll the new card into view
+  // once its expand animation has settled at its real height.
+  const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const toolbarRef = useRef<HTMLDivElement>(null);
+
+  const expandedField = fields.find((f) => f.clientKey === expandedKey);
+  // Re-measure when cards are added/removed/reordered — but not on every
+  // keystroke, which `fields` itself as a dep would do (new array each edit).
+  const fieldOrderKey = fields.map((f) => f.clientKey).join(",");
+
+  // Track the expanded card's offset/height so the toolbar follows it. The
+  // card's height is animated by useHeightTransition, so a ResizeObserver
+  // (not a one-shot measure) is what keeps the two in lockstep; observing the
+  // list too catches offsetTop shifts when a sibling collapses above it.
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    const box = toolbarRef.current;
+    if (!expandedKey || !list || !box) return;
+    const card = list.querySelector<HTMLElement>(`[data-field-card="${expandedKey}"]`);
+    if (!card) return;
+    const measure = () => {
+      box.style.top = `${card.offsetTop}px`;
+      box.style.height = `${card.offsetHeight}px`;
+      box.style.visibility = "visible";
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(card);
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, [expandedKey, fieldOrderKey]);
+
+  useEffect(() => {
+    if (!pendingScrollKey) return;
+    const timer = setTimeout(() => {
+      const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${pendingScrollKey}"]`);
+      setPendingScrollKey(null);
+      if (!card) return;
+      const rect = card.getBoundingClientRect();
+      const safeTop = TOPBAR_HEIGHT + 12;
+      if (rect.top >= safeTop && rect.bottom <= window.innerHeight) return;
+      window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8, behavior: "smooth" });
+    }, EXPAND_MS + 30);
+    return () => clearTimeout(timer);
+  }, [pendingScrollKey]);
 
   // Fetched once per form-editing session (not per field card) — every
   // field's Combobox shares this list to flag already-used keys.
@@ -712,6 +775,7 @@ function FieldList({ form }: { form: Form }) {
       return next;
     });
     setExpandedKey(field.clientKey);
+    setPendingScrollKey(field.clientKey);
   }
 
   // Cleared field_key on the copy — a reserved key (availability, ...) can
@@ -736,6 +800,7 @@ function FieldList({ form }: { form: Form }) {
       return next;
     });
     setExpandedKey(copy.clientKey);
+    setPendingScrollKey(copy.clientKey);
   }
 
   function deleteField(clientKey: string) {
@@ -772,7 +837,7 @@ function FieldList({ form }: { form: Form }) {
   }
 
   return (
-    <div ref={listRef} style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    <div ref={listRef} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "12px" }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
           {fields.map((field) => (
@@ -782,7 +847,6 @@ function FieldList({ form }: { form: Form }) {
               expanded={expandedKey === field.clientKey}
               onExpand={() => setExpandedKey(field.clientKey)}
               onFieldChange={(updates) => updateField(field.clientKey, updates)}
-              onAddFieldBelow={() => addField(field.clientKey)}
               onDuplicate={() => duplicateField(field.clientKey)}
               onDelete={() => deleteField(field.clientKey)}
               tournamentId={form.tournament_id}
@@ -792,6 +856,16 @@ function FieldList({ form }: { form: Form }) {
           ))}
         </SortableContext>
       </DndContext>
+      {expandedField && (
+        <FieldToolbar
+          boxRef={toolbarRef}
+          showDescription={expandedField.showDescription}
+          onAddFieldBelow={() => addField(expandedField.clientKey)}
+          onToggleDescription={() =>
+            updateField(expandedField.clientKey, { showDescription: !expandedField.showDescription })
+          }
+        />
+      )}
     </div>
   );
 }
