@@ -24,8 +24,12 @@ import {
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 
 // Strict accordion — expanding a card collapses whatever was previously
-// expanded; only one card is ever in edit mode at a time. Field edits are
-// staged in local state, diffed against a JSON.stringify'd baseline
+// expanded; only one card is ever in edit mode at a time, and (unlike a
+// dismissible panel) it's never *zero* while there's at least one field —
+// there's always something open to edit, clicking outside doesn't dismiss
+// it, and every mutation that could otherwise drop the count to zero
+// (delete, save, discard) picks a fallback card to keep open. Field edits
+// are staged in local state, diffed against a JSON.stringify'd baseline
 // snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
@@ -36,7 +40,7 @@ export function FieldList({ form }: { form: Form }) {
       .sort((a, b) => a.order - b.order)
       .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }))
   );
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
@@ -99,17 +103,6 @@ export function FieldList({ form }: { form: Form }) {
     formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
   }, [form.tournament_id]);
 
-  // Clicking outside every field card collapses whatever's expanded — an
-  // expanded card isn't a required state, unlike a strict radio group.
-  useEffect(() => {
-    if (!expandedKey) return;
-    function handleClick(e: MouseEvent) {
-      if (listRef.current && !listRef.current.contains(e.target as Node)) setExpandedKey(null);
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [expandedKey]);
-
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
   }
@@ -151,9 +144,17 @@ export function FieldList({ form }: { form: Form }) {
     setPendingScrollKey(copy.clientKey);
   }
 
+  // Deleting the expanded card would otherwise drop the open count to zero —
+  // fall back to whatever's now at its old index (its old neighbor below),
+  // or the one above if it was last.
   function deleteField(clientKey: string) {
-    setFields((prev) => prev.filter((f) => f.clientKey !== clientKey));
-    setExpandedKey((prev) => (prev === clientKey ? null : prev));
+    const deletedIndex = fields.findIndex((f) => f.clientKey === clientKey);
+    const next = fields.filter((f) => f.clientKey !== clientKey);
+    setFields(next);
+    if (expandedKey === clientKey) {
+      const fallback = next[deletedIndex] ?? next[deletedIndex - 1];
+      setExpandedKey(fallback ? fallback.clientKey : null);
+    }
   }
 
   async function handleSave() {
@@ -164,12 +165,17 @@ export function FieldList({ form }: { form: Form }) {
     }
     setSaving(true);
     try {
+      // A not-yet-saved field's clientKey is a client UUID that the server
+      // response replaces with String(new id) — track position instead of
+      // identity so the same card stays open across that swap.
+      const expandedIndex = fields.findIndex((f) => f.clientKey === expandedKey);
       const updated = await formsApi.putFields(form.id, fields.map(toFieldInput));
       const next = updated
         .filter((f) => !f.is_archived)
         .sort((a, b) => a.order - b.order)
         .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }));
       setFields(next);
+      setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
       baselineRef.current = JSON.stringify(next);
       validation.clearAll();
     } catch (err) {
@@ -180,9 +186,12 @@ export function FieldList({ form }: { form: Form }) {
   }
 
   function handleDiscard() {
-    setFields(baselineRef.current ? JSON.parse(baselineRef.current) : []);
+    const restored: EditableField[] = baselineRef.current ? JSON.parse(baselineRef.current) : [];
+    setFields(restored);
+    // Keep the same card open if it survived the revert, otherwise fall
+    // back to the first one — discarding shouldn't leave nothing expanded.
+    setExpandedKey((prev) => (restored.some((f) => f.clientKey === prev) ? prev : restored[0]?.clientKey ?? null));
     validation.clearAll();
-    setExpandedKey(null);
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
