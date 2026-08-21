@@ -80,7 +80,7 @@ function BranchDropdown({ option, branchTargets, onChange }: {
     { value: SUBMIT_VALUE, label: 'Submit form' },
   ]
 
-  return <Dropdown value={branchValueFor(option)} onChange={onChange} options={branchOptions} size="sm" width={190} variant="secondary" />
+  return <Dropdown value={branchValueFor(option)} onChange={onChange} options={branchOptions} size="md" width={190} variant="primary" />
 }
 
 interface OptionsEditorProps {
@@ -200,14 +200,13 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange,
       ref={setNodeRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      style={{
-        ...style,
-        position: 'relative',
-        display: 'flex', flexDirection: 'column', gap: '6px',
-        padding: '4px 0',
-      }}
+      style={{ ...style, display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* position: relative lives on this row (not the outer column) so the
+          grip centers on the row's own height, not the row + extra block
+          together — top: 14px was a stale hardcode from before the row grew
+          a trailing Dropdown. */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '8px' }}>
         {/* No padding added for this — it reaches left into the Card's own
             padding gutter, so the bullet/Input below stay flush with the
             question label Input above them instead of shifting right. */}
@@ -215,7 +214,7 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange,
           {...attributes}
           {...listeners}
           style={{
-            position: 'absolute', left: '-16px', top: '14px', transform: 'translateY(-50%)',
+            position: 'absolute', left: '-16px', top: '50%', transform: 'translateY(-50%)',
             display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)',
             opacity: hovered ? 1 : 0, transition: 'opacity 100ms ease', touchAction: 'none',
           }}
@@ -231,7 +230,7 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange,
           size="md"
           fullWidth
         />
-        <Button type="button" variant="ghost" size="sm" iconOnly title="Delete option" onClick={onRemove}>
+        <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove}>
           <IconX size={12} />
         </Button>
         {trailing}
