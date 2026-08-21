@@ -404,62 +404,6 @@ function AcknowledgmentBody({ field, onFieldChange }: {
   );
 }
 
-const EXPAND_MS = 200;
-const EXPAND_EASING = "ease-out";
-
-// Animates a card between its collapsed and expanded heights, Google-Forms
-// style, so the cards below reflow smoothly instead of snapping.
-//
-// Why this is imperative rather than a `height` prop driven by state: React
-// reuses the same DOM nodes across the collapsed/expanded branches, so a
-// mount-triggered effect never re-fires on a *prop* flip — it would only
-// animate brand-new cards. Measuring with a ResizeObserver sidesteps mounting —
-// swapping the branch changes the content's natural height, the observer sees
-// it, and we write the new height onto the clipping wrapper, which transitions.
-// It also gets height animation on any *other* content change for free (e.g.
-// toggling the description input) with no extra wiring.
-function useHeightTransition(expandedOnMount: boolean) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const wrapper = wrapperRef.current;
-    const content = contentRef.current;
-    if (!wrapper || !content) return;
-
-    // `overflow: hidden` is what makes the height animation read as a reveal
-    // rather than a clip-free resize — but it would also clip the Combobox /
-    // Tooltip popups that hang outside the card, so it's only on while a
-    // transition is actually running.
-    let settle: ReturnType<typeof setTimeout> | undefined;
-    const clipDuring = (ms: number) => {
-      wrapper.style.overflow = "hidden";
-      clearTimeout(settle);
-      settle = setTimeout(() => { wrapper.style.overflow = "visible"; }, ms);
-    };
-
-    // Pin an explicit start height before the first paint. A card that mounts
-    // already expanded is a just-added field, so it grows in from 0; every
-    // other card just sits at its natural height with nothing to animate.
-    wrapper.style.transition = "none";
-    wrapper.style.height = expandedOnMount ? "0px" : `${content.offsetHeight}px`;
-    if (expandedOnMount) clipDuring(EXPAND_MS);
-    wrapper.getBoundingClientRect(); // forces a style flush, so the start height is a real computed value to transition from
-    wrapper.style.transition = `height ${EXPAND_MS}ms ${EXPAND_EASING}`;
-
-    const observer = new ResizeObserver(() => {
-      const next = `${content.offsetHeight}px`;
-      if (next === wrapper.style.height) return;
-      clipDuring(EXPAND_MS);
-      wrapper.style.height = next;
-    });
-    observer.observe(content);
-    return () => { observer.disconnect(); clearTimeout(settle); };
-  }, [expandedOnMount]);
-
-  return { wrapperRef, contentRef };
-}
-
 // Types whose card body offers per-option branching (Continue / Jump to /
 // Submit form) — matches BranchingOption's scope in
 // backend/app/schemas/form.py. Excludes reserved presets (availability,
@@ -510,25 +454,14 @@ function FieldCard({
       .map((k): UsedFieldKeyOption => ({ kind: "used", key: `used:${k}`, field_key: k, label: k })),
   ];
 
-  const expandedOnMount = useRef(expanded).current;
-  const { wrapperRef, contentRef } = useHeightTransition(expandedOnMount);
-
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
   // interfere with dragging an option within it.
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.clientKey });
-  const sortableStyle = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.6 : 1 };
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey });
+  const sortableStyle = { transform: CSS.Transform.toString(transform), opacity: isDragging ? 0.6 : 1 };
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
-
-  // Cross-fade the swapped-in content alongside the height change. WAAPI
-  // rather than a CSS transition because there's nothing to transition *from*
-  // — the two branches are different subtrees, and .animate() replays on every
-  // call, so unlike a mount effect it fires on each expand/collapse.
-  useLayoutEffect(() => {
-    contentRef.current?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: EXPAND_MS, easing: EXPAND_EASING });
-  }, [expanded, contentRef]);
 
   return (
     // Outer box stays untransformed so the shared toolbar can measure this
@@ -536,9 +469,7 @@ function FieldCard({
     // one level in rather than on this node directly.
     <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
-        <div ref={wrapperRef}>
-          <div ref={contentRef}>
-            {expanded ? (
+        {expanded ? (
               <Card radius="lg" borderColor={errors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
                 <div {...gripProps} style={{
                   position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
@@ -714,15 +645,13 @@ function FieldCard({
               <div {...gripProps} style={{
                 position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
                 display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
-                opacity: hovered ? 1 : 0, transition: "opacity 100ms ease",
+                opacity: hovered ? 1 : 0,
               }}>
                 <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
               </div>
               <QuestionRenderer field={field} interactive={false} />
             </Card>
           )}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -732,8 +661,8 @@ function FieldCard({
 // description input). It's absolutely positioned over the expanded card's
 // vertical span and sticky *inside* that span, so on a tall card it rides the
 // scroll but can never drift onto a neighbouring card. FieldList measures the
-// card and writes top/height onto boxRef — imperatively, since the card's
-// height is animated and re-rendering on every observed frame would be waste.
+// card and writes top/height onto boxRef — imperatively, since re-rendering
+// on every observed resize frame would be waste.
 function FieldToolbar({
   boxRef, showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
@@ -814,10 +743,10 @@ function FieldList({ form }: { form: Form }) {
   // keystroke, which `fields` itself as a dep would do (new array each edit).
   const fieldOrderKey = fields.map((f) => f.clientKey).join(",");
 
-  // Track the expanded card's offset/height so the toolbar follows it. The
-  // card's height is animated by useHeightTransition, so a ResizeObserver
-  // (not a one-shot measure) is what keeps the two in lockstep; observing the
-  // list too catches offsetTop shifts when a sibling collapses above it.
+  // Track the expanded card's offset/height so the toolbar follows it. A
+  // ResizeObserver (not a one-shot measure) keeps the two in lockstep;
+  // observing the list too catches offsetTop shifts when a sibling above it
+  // expands/collapses or content changes height.
   useLayoutEffect(() => {
     const list = listRef.current;
     const box = toolbarRef.current;
@@ -838,16 +767,13 @@ function FieldList({ form }: { form: Form }) {
 
   useEffect(() => {
     if (!pendingScrollKey) return;
-    const timer = setTimeout(() => {
-      const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${pendingScrollKey}"]`);
-      setPendingScrollKey(null);
-      if (!card) return;
-      const rect = card.getBoundingClientRect();
-      const safeTop = TOPBAR_HEIGHT + 12;
-      if (rect.top >= safeTop && rect.bottom <= window.innerHeight) return;
-      window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8, behavior: "smooth" });
-    }, EXPAND_MS + 30);
-    return () => clearTimeout(timer);
+    const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${pendingScrollKey}"]`);
+    setPendingScrollKey(null);
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const safeTop = TOPBAR_HEIGHT + 12;
+    if (rect.top >= safeTop && rect.bottom <= window.innerHeight) return;
+    window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8 });
   }, [pendingScrollKey]);
 
   // Fetched once per form-editing session (not per field card) — every
