@@ -29,6 +29,8 @@ interface EntityOptionsEditorProps {
       options; entity-backed options are still real, addressable rows, so
       there's no reason branching should be freeform-only. */
   branchTargets?: BranchTarget[]
+  /** Forwarded straight to OptionsEditor — see its own doc. */
+  errors?: string[]
 }
 
 function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
@@ -49,7 +51,7 @@ function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
 // an *additional* block below the row: a Badge list + Popover checklist
 // (reusing the same pattern EventPanel uses for shift attach/detach) sitting
 // alongside whatever OptionsEditor already renders for that row.
-export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange, displayStyle, branchTargets }: EntityOptionsEditorProps) {
+export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange, displayStyle, branchTargets, errors }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
@@ -101,6 +103,7 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
       syncValueWithLabel={false}
       displayStyle={displayStyle}
       branchTargets={branchTargets}
+      errors={errors}
       renderExtra={(option) => (
         <EntityPicker
           option={option}

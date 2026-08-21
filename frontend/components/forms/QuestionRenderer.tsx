@@ -59,6 +59,12 @@ interface QuestionRendererProps {
   /** edit mode only — whether branching is currently toggled on for this field
       (the toggle itself lives outside QuestionRenderer, e.g. FieldCard's Popover). */
   branchingEnabled?: boolean
+  /** edit mode only — this field's useFormValidation messages (label/key
+      errors are handled by the caller — see FieldCard — so only the
+      body-relevant ones need to reach here: confirmation text, options,
+      ranks). Each body works out for itself which of its own inputs a given
+      message belongs to, rather than the message carrying that routing. */
+  errors?: string[]
 }
 
 // Shared between the builder's field-card preview/editor (mode='view'/'edit')
@@ -70,7 +76,7 @@ interface QuestionRendererProps {
 // only field whose shape differs for those.
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, showHeader = true,
-  onFieldChange, tournamentId, branchTargets, branchingEnabled,
+  onFieldChange, tournamentId, branchTargets, branchingEnabled, errors = [],
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -97,6 +103,7 @@ export function QuestionRenderer({
           tournamentId={tournamentId ?? null}
           branchTargets={branchTargets}
           branchingEnabled={branchingEnabled}
+          errors={errors}
         />
       ) : (
         <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} />
@@ -263,12 +270,13 @@ function QuestionBody({ field, interactive, value, onChange }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled }: {
+function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled, errors = [] }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournamentId: number | null
   branchTargets?: BranchTarget[]
   branchingEnabled?: boolean
+  errors?: string[]
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
@@ -281,7 +289,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   const isEntity = isEntityBackedKind && !!tournamentId
 
   if (!isEntityBackedKind && field.question_type === 'acknowledgment') {
-    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} />
+    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={errors.includes('Confirmation text is required.') ? 'Confirmation text is required.' : undefined} />
   }
 
   if (isEntity || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
@@ -296,6 +304,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
             onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
+            errors={errors}
           />
         ) : (
           <OptionsEditor
@@ -304,6 +313,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
             questionType={field.question_type}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
+            errors={errors}
           />
         )}
         {/* Ranks/duplicates apply to ranked_choice regardless of whether its
@@ -319,6 +329,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
                 min={1}
                 value={String(field.config?.ranks ?? 1)}
                 onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
+                error={errors.includes("Ranks can't exceed the number of options.") ? "Can't exceed the number of options." : undefined}
                 size="sm"
                 fullWidth
               />
@@ -345,9 +356,10 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
 // on the backend (AcknowledgmentConfig.confirm_label has no fallback, unlike
 // every other type-specific config key here), so it needs a real editor
 // rather than silently defaulting at save time like ranks/allow_duplicates.
-function AcknowledgmentBody({ field, onFieldChange }: {
+function AcknowledgmentBody({ field, onFieldChange, error }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
+  error?: string
 }) {
   return (
     <Input
@@ -355,6 +367,7 @@ function AcknowledgmentBody({ field, onFieldChange }: {
       value={field.config?.confirm_label ?? ''}
       onChange={(e) => onFieldChange({ config: { ...field.config, confirm_label: e.target.value } })}
       placeholder="I understand and agree to the above"
+      error={error}
       size="sm"
       fullWidth
     />

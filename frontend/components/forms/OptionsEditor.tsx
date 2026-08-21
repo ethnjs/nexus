@@ -159,6 +159,13 @@ interface OptionsEditorProps {
       `value` — entity-backed variants keep `value` as the selected id array,
       so editing the label shouldn't touch it. */
   syncValueWithLabel?: boolean
+  /** This field's validation messages (useFormValidation's per-field issues) —
+      only consulted to gate the two option-shaped ones ("needs a label"/
+      "must be unique") so a row's own Input.error stays blank until a Save
+      attempt actually flagged it, rather than nagging mid-edit. Which row(s)
+      get the message is worked out here from the option data itself, not by
+      threading a matching clientKey/index through the generic message list. */
+  errors?: string[]
 }
 
 // Stacked, reorderable option rows for select/ranked question bodies — each
@@ -170,10 +177,31 @@ interface OptionsEditorProps {
 // handle is hidden while its card is expanded.
 export function OptionsEditor({
   options, onChange, questionType, displayStyle, branchTargets, renderExtra, placeholder = 'Option',
-  createOption = newOption, syncValueWithLabel = true,
+  createOption = newOption, syncValueWithLabel = true, errors = [],
 }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const bulletType = bulletTypeFor(questionType)
+
+  // Gates, not the per-row verdict itself — a Save attempt found *some* row
+  // missing a label / colliding with another, so it's worth checking each
+  // row against its own data; before that attempt, these stay false and no
+  // row shows red no matter what's typed.
+  const flagMissingLabels = errors.includes('Every option needs a label.')
+  const flagDuplicateLabels = errors.includes('Option labels must be unique.')
+  const duplicateKeys = new Set<string>()
+  if (flagDuplicateLabels) {
+    const counts = new Map<string, number>()
+    for (const o of options) {
+      const key = o.label.trim().toLowerCase()
+      if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
+    }
+    for (const [key, count] of counts) if (count > 1) duplicateKeys.add(key)
+  }
+  function errorFor(option: EditableOption): string | undefined {
+    if (flagMissingLabels && !option.label.trim()) return 'Label is required.'
+    if (flagDuplicateLabels && duplicateKeys.has(option.label.trim().toLowerCase())) return 'This label is used by another option.'
+    return undefined
+  }
   // Set right before inserting a row from Enter, so that row can claim focus
   // once it mounts — a plain "focus the last row" wouldn't work since Enter
   // can be pressed from a row in the middle of the list, not just the end.
@@ -238,6 +266,7 @@ export function OptionsEditor({
               placeholder={placeholder}
               trailing={trailing?.(option)}
               extra={renderExtra?.(option)}
+              error={errorFor(option)}
               canRemove={options.length > 1}
               autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
@@ -284,7 +313,7 @@ function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/placeholder/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, number, displayStyle, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
+function OptionRow({ option, bulletType, number, displayStyle, placeholder, trailing, extra, error, canRemove, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
@@ -293,6 +322,7 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
   placeholder: string
   trailing?: ReactNode
   extra?: ReactNode
+  error?: string
   canRemove: boolean
   /** True for the row just inserted by pressing Enter in the row above it. */
   autoFocus: boolean
@@ -354,6 +384,7 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
+          error={error}
           size="md"
           fullWidth
         />

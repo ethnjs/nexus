@@ -47,6 +47,12 @@ export function FieldCard({
   // longer shows the key or flags it, so it shouldn't double-report the
   // same problem in its own border/error list either.
   const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
+  // Routed straight onto the label Textarea's own error prop below, rather
+  // than a shared list — the rest of nonKeyErrors (options/confirm text/
+  // ranks) get the same per-input treatment further down, inside
+  // QuestionRenderer's edit body.
+  const labelError = nonKeyErrors.find((e) => e === 'Question text is required.');
+  const bodyErrors = nonKeyErrors.filter((e) => e !== 'Question text is required.');
   // Purely a question_type property — an entity-backed preset's options are
   // still real, addressable rows a TD can branch from just like a plain
   // question's (see QuestionRenderer's identical calc).
@@ -115,6 +121,7 @@ export function FieldCard({
                 rows={1}
                 autoGrow
                 fullWidth
+                error={labelError}
                 style={{ padding: "7px 16px", lineHeight: "20px", borderRadius: "var(--radius-md)" }}
               />
               <Dropdown
@@ -124,11 +131,6 @@ export function FieldCard({
                 width={220}
               />
             </div>
-            {nonKeyErrors.length > 0 && (
-              <ul style={{ margin: "0 0 12px", padding: "0 0 0 16px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
-                {nonKeyErrors.map((message) => <li key={message}>{message}</li>)}
-              </ul>
-            )}
             {field.showDescription && (
               <div style={{ marginBottom: "16px" }}>
                 <Textarea
@@ -151,6 +153,7 @@ export function FieldCard({
               tournamentId={tournamentId}
               branchTargets={branchTargets}
               branchingEnabled={branchingEnabled}
+              errors={bodyErrors}
             />
 
             <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />
