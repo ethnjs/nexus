@@ -122,13 +122,14 @@ export function PresetPopover({
               fullWidth
             />
           </div>
-          {presetKind === "availability" && <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} />}
-          {presetKind === "event_preference" && <EventPreferenceParams field={field} onFieldChange={onFieldChange} />}
-          {presetKind === "lunch" && <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} />}
-          {presetError && (
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
-              {presetError}
-            </p>
+          {presetKind === "availability" && (
+            <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+          )}
+          {presetKind === "event_preference" && (
+            <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
+          )}
+          {presetKind === "lunch" && (
+            <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
           )}
         </div>
       )}
@@ -136,11 +137,12 @@ export function PresetPopover({
   );
 }
 
-function DayPicker({ label, date, tournamentDates, onChange }: {
+function DayPicker({ label, date, tournamentDates, onChange, error }: {
   label: string;
   date: string;
   tournamentDates: string[];
   onChange: (date: string) => void;
+  error?: string;
 }) {
   // A sole tournament day is auto-applied the instant the preset is picked
   // (see applyPresetKind), but that can race the tournamentDates fetch — if
@@ -154,7 +156,8 @@ function DayPicker({ label, date, tournamentDates, onChange }: {
 
   if (tournamentDates.length <= 1) {
     // Nothing to actually pick — either there's exactly one tournament day
-    // (auto-filled by the effect above) or none loaded yet.
+    // (auto-filled by the effect above) or none loaded yet — so there's
+    // never really a missing-date error to show here.
     return (
       <Input
         label={label}
@@ -174,12 +177,13 @@ function DayPicker({ label, date, tournamentDates, onChange }: {
       placeholder="Select a date"
       size="sm"
       fullWidth
+      error={error}
     />
   );
 }
 
-function AvailabilityParams({ field, onFieldChange, tournamentDates }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[];
+function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[]; showErrors: boolean;
 }) {
   const { date } = parseAvailabilityFieldKey(field.field_key);
   return (
@@ -188,11 +192,14 @@ function AvailabilityParams({ field, onFieldChange, tournamentDates }: {
       date={date}
       tournamentDates={tournamentDates}
       onChange={(newDate) => onFieldChange({ field_key: buildAvailabilityFieldKey(newDate) })}
+      error={showErrors && !date ? "Date is required." : undefined}
     />
   );
 }
 
-function EventPreferenceParams({ field, onFieldChange }: { field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void }) {
+function EventPreferenceParams({ field, onFieldChange, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
+}) {
   const { suffix } = parseEventPreferenceFieldKey(field.field_key);
   return (
     <Input
@@ -202,6 +209,7 @@ function EventPreferenceParams({ field, onFieldChange }: { field: EditableField;
       onChange={(e) => onFieldChange({ field_key: buildEventPreferenceFieldKey(e.target.value) })}
       size="sm"
       fullWidth
+      error={showErrors && !suffix ? "Suffix is required." : undefined}
     />
   );
 }
@@ -214,8 +222,8 @@ function EventPreferenceParams({ field, onFieldChange }: { field: EditableField;
 // character typed until a date happens to already be set too. Local state
 // lets each half hold what was actually typed regardless of whether the
 // other one is filled in yet.
-function LunchParams({ field, onFieldChange, tournamentDates }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[];
+function LunchParams({ field, onFieldChange, tournamentDates, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[]; showErrors: boolean;
 }) {
   const parsed = parseLunchFieldKey(field.field_key);
   const [date, setDateState] = useState(parsed.date);
@@ -233,7 +241,13 @@ function LunchParams({ field, onFieldChange, tournamentDates }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <DayPicker label="Date" date={date} tournamentDates={tournamentDates} onChange={setDate} />
+      <DayPicker
+        label="Date"
+        date={date}
+        tournamentDates={tournamentDates}
+        onChange={setDate}
+        error={showErrors && !date ? "Date is required." : undefined}
+      />
       <Input
         label="Category"
         placeholder="e.g. Protein"
@@ -241,6 +255,7 @@ function LunchParams({ field, onFieldChange, tournamentDates }: {
         onChange={(e) => setCategory(e.target.value)}
         size="sm"
         fullWidth
+        error={showErrors && !category ? "Category is required." : undefined}
       />
     </div>
   );
