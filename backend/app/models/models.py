@@ -829,8 +829,9 @@ class FormResponsePendingUpdate(Base):
 
 
 # ---------------------------------------------------------------------------
-# TournamentMembershipAvailability — write-through target for a form's "availability"
-# field_key answer. Reuses TournamentShift directly, no separate catalog.
+# TournamentMembershipAvailability — write-through target for a form's
+# "availability_{date}" field_key answers. Reuses TournamentShift directly,
+# no separate catalog.
 # ---------------------------------------------------------------------------
 class TournamentMembershipAvailability(Base):
     __tablename__ = "tournament_membership_availability"
