@@ -367,7 +367,7 @@ def _validate_tournament_source(mapper, connection, target: Tournament):
 # ---------------------------------------------------------------------------
 # TournamentMembership — links a User to a Tournament (their volunteer
 # record). Roles/permissions come from TournamentMembershipRole, not a
-# column here. Misc form data lives in extra_data (no schema yet).
+# column here.
 # ---------------------------------------------------------------------------
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
@@ -390,17 +390,7 @@ class TournamentMembership(Base):
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
 
-    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
-    role_preference = Column(JSON, nullable=True)
-
-    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
-    event_preference = Column(JSON, nullable=True)
-
-    availability = Column(JSON, nullable=True)  # [{date, start, end}, ...], normalized to block format
-    lunch_order = Column(JSON, nullable=True)   # dict for structured orders, or a plain string
-
     notes = Column(Text, nullable=True)
-    extra_data = Column(JSON, nullable=True)  # catch-all form fields, no schema yet
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)

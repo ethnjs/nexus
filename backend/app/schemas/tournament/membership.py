@@ -1,31 +1,23 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Optional
+from typing import Optional
 from pydantic import BaseModel, field_validator
 
 from app.schemas.tournament.role import RoleRead
 from app.schemas.user import UserFullResponse, UserSlimResponse
 
-LunchOrderValue = str | dict[str, Any]
-
-
-class AvailabilitySlot(BaseModel):
-    """A single parsed availability window matching block format."""
-    date: str   # "YYYY-MM-DD"
-    start: str  # "HH:MM"
-    end: str    # "HH:MM"
-
 
 class MembershipMeUpdate(BaseModel):
     """Self-service update — the fields a volunteer fills out during onboarding.
 
+    Onboarding data (role/event preference, availability, lunch) now comes
+    through the native form response flow (see app/core/form/write_through.py),
+    not this endpoint — no self-service fields remain here.
+
     manage_members cannot write these on someone else's behalf; see
     MembershipCoordinatorUpdate for the staff-side fields.
     """
-    role_preference: list[str] | None = None
-    event_preference: list[str] | None = None
-    availability: list[AvailabilitySlot] | None = None
-    lunch_order: LunchOrderValue | None = None
+    pass
 
 
 class MembershipCoordinatorUpdate(BaseModel):
@@ -99,12 +91,7 @@ class MembershipFullResponse(_MembershipRolesMixin):
     id: int
     tournament_id: int
     status: str
-    role_preference: list[str] | None = None
-    event_preference: list[str] | None = None
-    availability: list[AvailabilitySlot] | None = None
-    lunch_order: LunchOrderValue | None = None
     notes: Optional[str] = None
-    extra_data: dict | None = None
     source: str
     join_code: MembershipJoinCodeInfo | None = None
 

@@ -11,9 +11,16 @@ ownership is single tournament-or-chapter (owner_type + CHECK constraint) —
 multi-tournament "group forms" are a later, separate phase.
 
 Also includes tournament_membership_availability and tournament_membership_lunch —
-write-through targets for the "availability" and "lunch_{date}_{category}"
+write-through targets for the "availability_{date}" and "lunch_{date}_{category}"
 reserved field_keys. Squashed in here rather than a new migration, same
 local-dev-only reasoning as above.
+
+Also drops tournament_memberships' role_preference/event_preference/
+availability/lunch_order/extra_data — deprecated manual-entry JSON columns,
+superseded by the write-through tables above (availability, lunch) or the
+native form-response flow queried directly (event_preference, role_preference
+have no relational replacement, not currently needed by any read path).
+Squashed into this migration rather than a new one, same reasoning.
 """
 from typing import Sequence, Union
 
@@ -127,8 +134,20 @@ def upgrade() -> None:
     )
     op.create_index(op.f('ix_form_response_pending_updates_id'), 'form_response_pending_updates', ['id'], unique=False)
 
+    op.drop_column('tournament_memberships', 'role_preference')
+    op.drop_column('tournament_memberships', 'event_preference')
+    op.drop_column('tournament_memberships', 'availability')
+    op.drop_column('tournament_memberships', 'lunch_order')
+    op.drop_column('tournament_memberships', 'extra_data')
+
 
 def downgrade() -> None:
+    op.add_column('tournament_memberships', sa.Column('extra_data', sa.JSON(), nullable=True))
+    op.add_column('tournament_memberships', sa.Column('lunch_order', sa.JSON(), nullable=True))
+    op.add_column('tournament_memberships', sa.Column('availability', sa.JSON(), nullable=True))
+    op.add_column('tournament_memberships', sa.Column('event_preference', sa.JSON(), nullable=True))
+    op.add_column('tournament_memberships', sa.Column('role_preference', sa.JSON(), nullable=True))
+
     op.drop_index(op.f('ix_form_response_pending_updates_id'), table_name='form_response_pending_updates')
     op.drop_table('form_response_pending_updates')
     op.drop_index(op.f('ix_tournament_membership_lunch_id'), table_name='tournament_membership_lunch')
