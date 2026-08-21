@@ -18,6 +18,7 @@ from app.core.form import (
 from app.core.form.branching import missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
+    AVAILABILITY_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
     collect_active_field_errors,
@@ -426,7 +427,7 @@ def bulk_update_fields(
         try:
             normalized = validate_field_config(question_type, config)
             validate_reserved_field_key(field_key, question_type)
-            if field_key == "availability":
+            if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(db, form.tournament_id, normalized)
         except FormFieldValidationError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))

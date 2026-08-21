@@ -205,19 +205,27 @@ class TestValidateFieldConfig:
 class TestValidateReservedFieldKey:
     def test_availability_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_reserved_field_key("availability", "single_select_dropdown")
+            validate_reserved_field_key("availability_20260315", "single_select_dropdown")
 
     @pytest.mark.parametrize("question_type", ["single_select_radio", "multi_select_checkbox"])
     def test_availability_allowed_types_pass(self, question_type):
-        validate_reserved_field_key("availability", question_type)  # no raise
+        validate_reserved_field_key("availability_20260315", question_type)  # no raise
 
     @pytest.mark.parametrize("question_type", ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"])
     def test_event_preference_allowed_types_pass(self, question_type):
-        validate_reserved_field_key("event_preference", question_type)  # no raise
+        validate_reserved_field_key("event_preference_morning", question_type)  # no raise
 
     def test_event_preference_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_reserved_field_key("event_preference", "short_text")
+            validate_reserved_field_key("event_preference_morning", "short_text")
+
+    def test_bare_availability_key_no_longer_reserved(self):
+        # No date suffix -> not a reserved key at all, so any question_type
+        # is allowed (same as any other non-reserved field_key).
+        validate_reserved_field_key("availability", "short_text")  # no raise
+
+    def test_bare_event_preference_key_no_longer_reserved(self):
+        validate_reserved_field_key("event_preference", "short_text")  # no raise
 
     def test_non_reserved_key_any_type_allowed(self):
         validate_reserved_field_key("favorite_color", "acknowledgment")  # no raise

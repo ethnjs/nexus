@@ -19,17 +19,34 @@ from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
-# field_key values with a system-defined meaning.
-RESERVED_FIELD_KEY_QUESTION_TYPES = {
-    "availability": {"single_select_radio", "multi_select_checkbox"},
-    "event_preference": {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"},
-}
+# availability_{date}, e.g. "availability_20260315" — one question per date,
+# but every matching field on a tournament writes into the same centralized
+# TournamentMembershipAvailability pool (see write_through.sync_availability
+# and forms.py's _write_through_reserved_fields), so the date isn't used to
+# scope storage, only to keep field_keys distinct per question.
+AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d{8})$")
+AVAILABILITY_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
+
+# event_preference_{suffix}, e.g. "event_preference_morning" — locked prefix,
+# TD-chosen suffix. No write-through yet: whether multiple suffixes merge
+# into one preference list or stay tracked separately is an open product
+# question (see form-question-types-reference.md).
+EVENT_PREFERENCE_FIELD_KEY_PATTERN = re.compile(r"^event_preference_([a-z0-9_]+)$")
+EVENT_PREFERENCE_QUESTION_TYPES = {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"}
 
 # lunch_{date}_{category}, e.g. "lunch_20270213_protein" — date is baked
 # into the key, so per-tournament field_key uniqueness already covers
 # per-(date, category) uniqueness with no separate check needed.
 LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
 LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
+
+# Reserved field_key patterns (lunch excluded — it's checked separately
+# since it also needs to strip the date/category before matching), each
+# paired with the question_types it may be combined with.
+RESERVED_FIELD_KEY_PATTERNS = (
+    (AVAILABILITY_FIELD_KEY_PATTERN, AVAILABILITY_QUESTION_TYPES),
+    (EVENT_PREFERENCE_FIELD_KEY_PATTERN, EVENT_PREFERENCE_QUESTION_TYPES),
+)
 
 
 class FormFieldValidationError(ValueError):
@@ -58,11 +75,13 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
 
 
 def validate_reserved_field_key(field_key: str, question_type: str) -> None:
-    """Reserved field_keys (availability, event_preference, lunch_*) reuse an
-    existing structural question_type rather than introducing their own —
-    reject a reserved key paired with a question_type it doesn't allow.
-    Applies identically regardless of owner_type (tournament vs. chapter);
-    only write-through, not validation, differs by ownership."""
+    """Reserved field_keys (availability_*, event_preference_*, lunch_*) reuse
+    an existing structural question_type rather than introducing their own —
+    reject a reserved key paired with a question_type it doesn't allow. A
+    bare "availability"/"event_preference" (no date/suffix) is not a valid
+    reserved key — every such question must be disambiguated. Applies
+    identically regardless of owner_type (tournament vs. chapter); only
+    write-through, not validation, differs by ownership."""
     if LUNCH_FIELD_KEY_PATTERN.match(field_key):
         _require(
             question_type in LUNCH_QUESTION_TYPES,
@@ -70,13 +89,13 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
         )
         return
 
-    allowed_types = RESERVED_FIELD_KEY_QUESTION_TYPES.get(field_key)
-    if allowed_types is None:
-        return
-    _require(
-        question_type in allowed_types,
-        f"field_key '{field_key}' requires question_type in {sorted(allowed_types)}, got '{question_type}'",
-    )
+    for pattern, allowed_types in RESERVED_FIELD_KEY_PATTERNS:
+        if pattern.match(field_key):
+            _require(
+                question_type in allowed_types,
+                f"field_key '{field_key}' requires question_type in {sorted(allowed_types)}, got '{question_type}'",
+            )
+            return
 
 
 def validate_branching_options(
@@ -157,7 +176,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
-        if field.field_key == "availability":
+        if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
             try:
                 validate_availability_options(db, form.tournament_id, normalized_config)
             except FormFieldValidationError as e:
@@ -184,8 +203,9 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
 
 
 def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:
-    """A field with field_key = "availability" (single_select_radio or
-    multi_select_checkbox) must have every option's `value` be a non-empty
+    """A field with field_key matching AVAILABILITY_FIELD_KEY_PATTERN
+    (single_select_radio or multi_select_checkbox) must have every option's
+    `value` be a non-empty
     list[int] of real TournamentShift ids belonging to the field's own
     tournament — one option groups one or more shifts under a single
     TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). Validated strictly
