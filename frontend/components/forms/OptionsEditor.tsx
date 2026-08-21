@@ -1,6 +1,6 @@
 'use client'
 
-import { ReactNode, useState } from 'react'
+import { KeyboardEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import {
   DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -61,6 +61,20 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
   return { ...option, action: null, next_field_id: null }
 }
 
+// The unchecked "this is what a respondent sees" bullet — purely decorative,
+// so pointerEvents: none keeps the row's own cursor (not RadioCircle/
+// Checkbox's disabled/locked "not-allowed") when hovering over it.
+function Bullet({ type, size }: { type: BulletType; size: number }) {
+  if (type === 'none') return null
+  return (
+    <span style={{ pointerEvents: 'none', display: 'flex' }}>
+      {type === 'radio'
+        ? <RadioCircle checked={false} disabled size={size} />
+        : <Checkbox checked={false} onChange={() => {}} locked size={size} />}
+    </span>
+  )
+}
+
 // Inline, right-aligned in the option's own row (Google-Forms-style — a
 // jump target reads as part of the option, not a separate settings block
 // hanging underneath it), rather than a full-width Dropdown on its own line.
@@ -119,6 +133,10 @@ export function OptionsEditor({
 }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const bulletType = bulletTypeFor(questionType)
+  // Set right before inserting a row from Enter, so that row can claim focus
+  // once it mounts — a plain "focus the last row" wouldn't work since Enter
+  // can be pressed from a row in the middle of the list, not just the end.
+  const [focusKey, setFocusKey] = useState<string | null>(null)
 
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
@@ -148,6 +166,17 @@ export function OptionsEditor({
     onChange([...options, createOption()])
   }
 
+  // Enter from inside a row inserts right after it, rather than appending at
+  // the end — the row you're typing into isn't necessarily the last one.
+  function addOptionAfter(clientKey: string) {
+    const insertIndex = options.findIndex((o) => o.clientKey === clientKey) + 1
+    const created = createOption()
+    const next = [...options]
+    next.splice(insertIndex, 0, created)
+    onChange(next)
+    setFocusKey(created.clientKey)
+  }
+
   const trailing = branchTargets
     ? (option: EditableOption) => (
       <BranchDropdown option={option} branchTargets={branchTargets} onChange={(v) => updateBranch(option.clientKey, v)} />
@@ -167,8 +196,10 @@ export function OptionsEditor({
               trailing={trailing?.(option)}
               extra={renderExtra?.(option)}
               canRemove={options.length > 1}
+              autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
               onRemove={() => removeOption(option.clientKey)}
+              onEnter={() => addOptionAfter(option.clientKey)}
             />
           ))}
         </SortableContext>
@@ -193,8 +224,7 @@ function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-      {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
-      {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
+      <Bullet type={bulletType} size={18} />
       <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ color: 'var(--color-text-tertiary)' }}>
         Add option
       </Button>
@@ -208,19 +238,36 @@ function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/placeholder/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove, onChange, onRemove }: {
+function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
   placeholder: string
   trailing?: ReactNode
   extra?: ReactNode
   canRemove: boolean
+  /** True for the row just inserted by pressing Enter in the row above it. */
+  autoFocus: boolean
   onChange: (label: string) => void
   onRemove: () => void
+  onEnter: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
   const [hovered, setHovered] = useState(false)
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus()
+    // Only on this row's mount — it's created already flagged autoFocus, so
+    // there's nothing to react to later.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key !== 'Enter') return
+    e.preventDefault()
+    onEnter()
+  }
 
   return (
     <div
@@ -248,11 +295,12 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove
         >
           <IconGripVertical size={13} />
         </span>
-        {bulletType === 'radio' && <RadioCircle checked={false} disabled size={18} />}
-        {bulletType === 'checkbox' && <Checkbox checked={false} onChange={() => {}} locked size={18} />}
+        <Bullet type={bulletType} size={18} />
         <Input
+          ref={inputRef}
           value={option.label}
           onChange={(e) => onChange(e.target.value)}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           size="md"
           fullWidth
