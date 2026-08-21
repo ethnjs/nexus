@@ -31,7 +31,12 @@ const OPTION_BEARING = new Set<FormQuestionType>([
 // before a round trip, but the backend remains the source of truth (e.g. it
 // also validates next_field_id resolution and availability option shape,
 // neither of which is checked here).
-function issuesFor(field: ValidatableField): string[] {
+// Exported so callers that already know a field had errors as of the last
+// validate() pass (e.g. FieldCard) can re-run just this field's structural
+// checks against its live, currently-being-edited data — letting an error
+// (and whatever border/highlight it drives) disappear the moment it's
+// actually fixed, instead of staying stuck until the next full validate().
+export function issuesFor(field: ValidatableField): string[] {
   const issues: string[] = [];
   const config = field.config ?? {};
 

@@ -18,6 +18,7 @@ import { BranchTarget, newEntityOption, newOption } from "@/components/forms/Opt
 import { EditableField } from "@/lib/forms/editableField";
 import { activePresetKind, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+import { issuesFor } from "@/lib/forms/useFormValidation";
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
@@ -47,15 +48,22 @@ export function FieldCard({
   // longer shows the key or flags it, so it shouldn't double-report the
   // same problem in its own border/error list either.
   const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
+  // Re-run just this field's structural checks against its live, currently-
+  // being-edited data — but only once the last validate() pass actually
+  // found something here (so a never-touched field doesn't start flashing
+  // errors as soon as you glance at it). This is what lets the card's danger
+  // border, and every error message routed off of it below, disappear the
+  // moment the underlying problem is actually fixed, rather than waiting on
+  // the next Save/validate() call.
+  const liveNonKeyErrors = nonKeyErrors.length > 0
+    ? issuesFor(field).filter((e) => !isFieldKeyError(e) && !isPresetError(e))
+    : [];
   // Routed straight onto the label Textarea's own error prop below, rather
-  // than a shared list — the rest of nonKeyErrors (options/confirm text/
+  // than a shared list — the rest of liveNonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
-  // QuestionRenderer's edit body. Re-gated on the current label too, not
-  // just the errors snapshot from the last Save attempt — otherwise typing
-  // wouldn't clear the error until the next validate() call.
-  const labelError = nonKeyErrors.includes('Question text is required.') && !field.label.trim()
-    ? 'Question text is required.' : undefined;
-  const bodyErrors = nonKeyErrors.filter((e) => e !== 'Question text is required.');
+  // QuestionRenderer's edit body.
+  const labelError = liveNonKeyErrors.includes('Question text is required.') ? 'Question text is required.' : undefined;
+  const bodyErrors = liveNonKeyErrors.filter((e) => e !== 'Question text is required.');
   // Purely a question_type property — an entity-backed preset's options are
   // still real, addressable rows a TD can branch from just like a plain
   // question's (see QuestionRenderer's identical calc).
@@ -109,7 +117,7 @@ export function FieldCard({
     <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
         {expanded ? (
-          <Card radius="lg" borderColor={nonKeyErrors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
+          <Card radius="lg" borderColor={liveNonKeyErrors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
             <div {...gripProps} style={{
               position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
               display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
@@ -202,7 +210,7 @@ export function FieldCard({
         ) : (
           <Card
             radius="lg"
-            borderColor={nonKeyErrors.length > 0 ? "var(--color-danger)" : undefined}
+            borderColor={liveNonKeyErrors.length > 0 ? "var(--color-danger)" : undefined}
             style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
             onClick={onExpand}
             onMouseEnter={() => setHovered(true)}
