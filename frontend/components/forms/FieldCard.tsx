@@ -16,7 +16,7 @@ import {
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { BranchTarget, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
-import { activePresetKind, PRESETS, slugifyFieldKey, isFieldKeyError } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
 // One card in the field list — collapsed, it's a read-only preview of the
@@ -42,11 +42,11 @@ export function FieldCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const presetKind = activePresetKind(field.field_key);
-  // Key errors surface exclusively through FieldToolbar's key popover now
-  // (danger-colored trigger + inline message) — the card itself no longer
-  // shows the key or flags it, so it shouldn't double-report the same
-  // problem in its own border/error list either.
-  const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e));
+  // Key/preset errors surface exclusively through FieldToolbar's popovers
+  // now (danger-colored trigger + inline message) — the card itself no
+  // longer shows the key or flags it, so it shouldn't double-report the
+  // same problem in its own border/error list either.
+  const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e) && !isPresetError(e));
   const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type);
   const [branchingEnabled, setBranchingEnabled] = useState(() =>
     (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
@@ -69,21 +69,6 @@ export function FieldCard({
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
-
-  // Field key follows the question label until the TD edits it directly (in
-  // FieldKeyPopover) — same "slug follows the title" pattern as a URL slug.
-  // Detected by comparison rather than a separate "touched" flag: as long as
-  // the current key still equals what the *previous* label would've derived,
-  // nothing's diverged it yet, so it's safe to re-derive from the new label.
-  // Skipped entirely once a reserved preset is active — that key is
-  // parameter-derived (PresetPopover), not label-derived.
-  function handleLabelChange(newLabel: string) {
-    const isAutoKey = !presetKind && (field.field_key === "" || field.field_key === slugifyFieldKey(field.label));
-    onFieldChange({
-      label: newLabel,
-      ...(isAutoKey ? { field_key: slugifyFieldKey(newLabel) } : {}),
-    });
-  }
 
   // Every question_type switch drops whatever config keys belonged to the
   // *previous* type — e.g. short_text's max_length has nowhere to go on
@@ -121,7 +106,7 @@ export function FieldCard({
             <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
               <Input
                 value={field.label}
-                onChange={(e) => handleLabelChange(e.target.value)}
+                onChange={(e) => onFieldChange({ label: e.target.value })}
                 placeholder="Question"
                 fullWidth
               />

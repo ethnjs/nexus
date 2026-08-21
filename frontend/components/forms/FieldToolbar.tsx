@@ -1,11 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconPlus, IconDescription, IconButton } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { EditableField } from "@/lib/forms/editableField";
+
+type ActivePopover = "key" | "preset" | null;
 
 // The one toolbar shared by every field card (field key/presets, add a
 // field below, toggle the description input). It's absolutely positioned
@@ -15,7 +18,7 @@ import { EditableField } from "@/lib/forms/editableField";
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates, onOpenPresets,
   showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
@@ -28,6 +31,8 @@ export function FieldToolbar({
   /** The tournament's individual running days — passed through to
       PresetPopover's availability/lunch date pickers. */
   tournamentDates: string[];
+  /** Fires when the presets panel opens — see PresetPopover's onOpen. */
+  onOpenPresets?: () => void;
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
@@ -35,6 +40,10 @@ export function FieldToolbar({
   displayStyle: "list" | "buttons" | undefined;
   onToggleDisplayStyle: () => void;
 }) {
+  // Only one of the key/preset popovers can be open at a time — setting one
+  // implicitly closes the other, since both read from this single slot.
+  const [activePopover, setActivePopover] = useState<ActivePopover>(null);
+
   return (
     <div ref={boxRef} style={{
       position: "absolute", left: "100%", marginLeft: "10px",
@@ -61,8 +70,19 @@ export function FieldToolbar({
           allFields={allFields}
           errors={errors}
           saveAttempt={saveAttempt}
+          open={activePopover === "key"}
+          onOpenChange={(open) => setActivePopover(open ? "key" : null)}
         />
-        <PresetPopover field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} />
+        <PresetPopover
+          field={field}
+          onFieldChange={onFieldChange}
+          tournamentDates={tournamentDates}
+          onOpen={onOpenPresets}
+          errors={errors}
+          saveAttempt={saveAttempt}
+          open={activePopover === "preset"}
+          onOpenChange={(open) => setActivePopover(open ? "preset" : null)}
+        />
         {displayStyle && (
           <Button
             type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly

@@ -15,7 +15,7 @@ import { activePresetKind, PRESETS, isFieldKeyError } from "@/lib/forms/fieldKey
 // Save force-opens this with the offending field red-outlined (see
 // saveAttempt below) instead of a proactive disabled-row list, which meant
 // rendering every other question's key just to type a new one.
-export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt }: {
+export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, open, onOpenChange }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
   usedFieldKeys: string[];
@@ -26,9 +26,12 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
       alone can't distinguish "still has that old error" from "just failed
       Save again." 0 means "no attempt yet." */
   saveAttempt: number;
+  /** Owned by FieldToolbar (shared with PresetPopover) — only one of the two
+      can be open at a time, so this can't be local state. */
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   const presetKind = activePresetKind(field.field_key);
-  const [open, setOpen] = useState(false);
   // Owns its own error state rather than deriving straight from `errors`
   // every render, specifically so it can clear the instant field_key
   // changes for *any* reason (typing here, or a preset param edited in
@@ -47,7 +50,7 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
   useEffect(() => {
     if (saveAttempt === 0) return;
     const keyError = errors.find(isFieldKeyError);
-    if (keyError) { setOpen(true); setLocalError(keyError); }
+    if (keyError) { onOpenChange(true); setLocalError(keyError); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveAttempt]);
 
@@ -67,7 +70,7 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
     <FormPopover
       trigger={
         <Button
-          type="button" variant="secondary" size="sm" iconOnly title="Field key"
+          type="button" variant={open ? "primary" : "secondary"} size="sm" iconOnly title="Field key"
           style={localError ? { color: "var(--color-danger)", borderColor: "var(--color-danger)" } : undefined}
         >
           <IconKey size={14} />
@@ -76,7 +79,8 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
       width={280}
       side="right"
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={onOpenChange}
+      closeOnOutsideClick={false}
     >
       {() => (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -101,7 +105,7 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
               value={field.field_key}
               onChange={(e) => onFieldChange({ field_key: e.target.value })}
               onBlur={handleBlur}
-              placeholder="e.g. volunteer_availability"
+              placeholder={field.label.trim() || "e.g. volunteer_availability"}
               size="sm"
               fullWidth
               error={localError}

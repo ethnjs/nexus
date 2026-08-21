@@ -100,10 +100,34 @@ export function buildLunchFieldKey(date: string, category: string): string {
 // Whether a useFormValidation issue message is about field_key specifically
 // (vs. label/options/etc.) — matches both "Field key is required." and
 // "This field key is already used by another question...". Shared so
-// FieldCard's glanceable key display and FieldKeyPopover's danger styling
-// agree on what counts as a key error.
+// FieldCard's error list and FieldKeyPopover's danger styling agree on what
+// counts as a key error (and get excluded from the card either way — see
+// isPresetError below for the sibling "incomplete preset" case).
 export function isFieldKeyError(message: string): boolean {
   return /field key|key is/i.test(message);
+}
+
+const PRESET_INCOMPLETE_PREFIX = "This question's preset is incomplete";
+
+// What each preset kind still needs before its field_key is more than a
+// sentinel — used both to build the useFormValidation message below and, via
+// isPresetError, to route that same message to PresetPopover instead of the
+// field card.
+const PRESET_INCOMPLETE_REQUIREMENT: Record<PresetKind, string> = {
+  availability: "pick a date",
+  event_preference: "enter a suffix",
+  lunch: "pick a date and category",
+};
+
+export function presetIncompleteMessage(kind: PresetKind): string {
+  return `${PRESET_INCOMPLETE_PREFIX} — ${PRESET_INCOMPLETE_REQUIREMENT[kind]}.`;
+}
+
+// Whether a useFormValidation issue message is about an incomplete preset
+// (a picked-but-not-yet-parameterized availability/event/lunch key) — shown
+// in PresetPopover instead of the field card, same idea as isFieldKeyError.
+export function isPresetError(message: string): boolean {
+  return message.startsWith(PRESET_INCOMPLETE_PREFIX);
 }
 
 // Shared slug rule for every TD-typed field_key component: a reserved

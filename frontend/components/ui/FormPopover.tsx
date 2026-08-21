@@ -22,6 +22,11 @@ interface FormPopoverProps {
       original behavior every existing caller still gets). */
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Default true. False keeps the panel open on an outside click — the
+      trigger itself (or a controlled `open=false`) is the only way to close
+      it — for a popover meant to stay open while the user works elsewhere
+      on the page (e.g. editing the card the trigger belongs to). */
+  closeOnOutsideClick?: boolean;
 }
 
 type PanelPos = { left: number } & ({ top: number; bottom?: undefined } | { bottom: number; top?: undefined });
@@ -36,7 +41,10 @@ const PANEL_MAX_HEIGHT = 400;
 // Popover's own (fixed, computed from the trigger's bounding rect so it
 // isn't clipped by a scrollable ancestor like a side panel; flips above the
 // trigger when there's no room below).
-export function FormPopover({ trigger, children, width = 260, side = "bottom", align = "right", open: controlledOpen, onOpenChange }: FormPopoverProps) {
+export function FormPopover({
+  trigger, children, width = 260, side = "bottom", align = "right",
+  open: controlledOpen, onOpenChange, closeOnOutsideClick = true,
+}: FormPopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -75,27 +83,34 @@ export function FormPopover({ trigger, children, width = 260, side = "bottom", a
       : { top: r.bottom + PANEL_GAP, left });
   }
 
+  // Tracks the trigger's position every frame rather than only on scroll/
+  // resize — the trigger can also move because of a layout shift with no
+  // window-level event of its own (e.g. a sibling field's height changing
+  // as validation errors appear, or FloatingSaveBar's own height changing
+  // and nudging surrounding layout). Cheap while a popover's actually open
+  // (two getBoundingClientRect reads per frame), and it's the only way to
+  // stay pinned regardless of *why* the trigger moved.
   useEffect(() => {
     if (!open) { setPanelPos(null); return; }
-    updatePanelPos();
-    window.addEventListener("scroll", updatePanelPos, true);
-    window.addEventListener("resize", updatePanelPos);
-    return () => {
-      window.removeEventListener("scroll", updatePanelPos, true);
-      window.removeEventListener("resize", updatePanelPos);
-    };
+    let raf: number;
+    function loop() {
+      updatePanelPos();
+      raf = requestAnimationFrame(loop);
+    }
+    loop();
+    return () => cancelAnimationFrame(raf);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !closeOnOutsideClick) return;
     function handleClick(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     }
     document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, closeOnOutsideClick]);
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -107,7 +122,7 @@ export function FormPopover({ trigger, children, width = 260, side = "bottom", a
           ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
           left: panelPos.left, zIndex: 300,
           width: `${width}px`, maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto",
-          boxSizing: "border-box", padding: "12px 16px 14px 12px",
+          boxSizing: "border-box", padding: "14px",
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
         }}>

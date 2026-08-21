@@ -118,16 +118,20 @@ export function FieldList({ form }: { form: Form }) {
     formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
   }, [form.tournament_id]);
 
-  // Same one-fetch-per-session scope, for the availability/lunch presets'
-  // date pickers (PresetPopover) — this standalone /forms/ route sits
-  // outside the dashboard's TournamentProvider, so there's no shared
-  // tournament context to read start_date/end_date from.
-  useEffect(() => {
+  // For the availability/lunch presets' date pickers (PresetPopover) — this
+  // standalone /forms/ route sits outside the dashboard's TournamentProvider,
+  // so there's no shared tournament context to read start_date/end_date
+  // from. Loaded eagerly on mount (not deferred until a preset popover first
+  // opens) and re-loaded every time one actually opens (see FieldToolbar's
+  // onOpenPresets below), so a tab left open a while doesn't show a
+  // page-load-stale date range if the tournament's dates changed since.
+  function loadTournamentDates() {
     if (form.tournament_id == null) return;
     tournamentsApi.get(form.tournament_id)
       .then((t) => setTournamentDates(enumerateDates(t.start_date, t.end_date)))
       .catch(() => {});
-  }, [form.tournament_id]);
+  }
+  useEffect(loadTournamentDates, [form.tournament_id]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
@@ -321,12 +325,18 @@ export function FieldList({ form }: { form: Form }) {
       />
       {expandedField && (
         <FieldToolbar
+          // Remounts (resetting FieldToolbar's own activePopover state, so
+          // a key/preset popover left open doesn't silently follow you to
+          // whatever field you switch to next) whenever the expanded field
+          // changes.
+          key={expandedField.clientKey}
           boxRef={toolbarRef}
           field={expandedField}
           onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
           tournamentDates={tournamentDates}
+          onOpenPresets={loadTournamentDates}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}

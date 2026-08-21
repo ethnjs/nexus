@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ApiError, FormFieldConfig, FormQuestionType } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
+import { activePresetKind, presetIncompleteMessage } from "@/lib/forms/fieldKeyPresets";
 
 // Duck-typed against EditableField (frontend/app/forms/[formId]/edit/page.tsx)
 // rather than importing it — the hook only touches these five properties,
@@ -38,8 +39,16 @@ function issuesFor(field: ValidatableField): string[] {
 
   if (!field.field_key.trim()) {
     issues.push("Field key is required.");
-  } else if (field.field_key === "lunch_") {
-    issues.push("Set a date and category for this lunch question.");
+  } else {
+    // A preset's sentinel-only key (e.g. "availability_", picked but not yet
+    // given a date) is a *complete-looking* string, not an empty one — it
+    // needs its own check rather than falling through as if it were a valid
+    // custom key. build{Availability,EventPreference,Lunch}FieldKey all
+    // collapse back to the bare "{prefix}_" sentinel unless every one of
+    // their parameters is filled in, so a trailing "_" reliably means
+    // "still incomplete" — a real date/suffix/category never leaves one.
+    const presetKind = activePresetKind(field.field_key);
+    if (presetKind && field.field_key.endsWith("_")) issues.push(presetIncompleteMessage(presetKind));
   }
 
   if (field.question_type === "acknowledgment" && !config.confirm_label?.trim()) {
