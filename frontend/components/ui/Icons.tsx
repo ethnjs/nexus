@@ -133,6 +133,20 @@ export function IconMenu({ size = 18, ...props }: IconProps) {
   );
 }
 
+// display_style toggle between a plain radio/checkbox list and a
+// ButtonGroup pill layout — a "power button" glyph rather than IconMenu's
+// hamburger, since it reads closer to "toggle" than "more options."
+export function IconButton({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M352 64C352 46.3 337.7 32 320 32C302.3 32 288 46.3 288 64L288 320C288 337.7 302.3 352 320 352C337.7 352 352 337.7 352 320L352 64zM210.3 162.4C224.8 152.3 228.3 132.3 218.2 117.8C208.1 103.3 188.1 99.8 173.6 109.9C107.4 156.1 64 233 64 320C64 461.4 178.6 576 320 576C461.4 576 576 461.4 576 320C576 233 532.6 156.1 466.3 109.9C451.8 99.8 431.9 103.3 421.7 117.8C411.5 132.3 415.1 152.2 429.6 162.4C479.4 197.2 511.9 254.8 511.9 320C511.9 426 425.9 512 319.9 512C213.9 512 128 426 128 320C128 254.8 160.5 197.1 210.3 162.4z"
+      />
+    </svg>
+  );
+}
+
 // -------------------------------------------------------------------------
 // Actions
 // -------------------------------------------------------------------------

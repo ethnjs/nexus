@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@/components/ui/Button";
-import { IconPlus, IconDescription, IconMenu } from "@/components/ui/Icons";
+import { IconPlus, IconDescription, IconButton } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 
 // The one toolbar shared by every field card (add a field below, toggle the
@@ -46,7 +46,7 @@ export function FieldToolbar({
             title={displayStyle === "buttons" ? "Show as list" : "Show as buttons"}
             onClick={onToggleDisplayStyle}
           >
-            <IconMenu size={14} />
+            <IconButton size={14} />
           </Button>
         )}
       </div>

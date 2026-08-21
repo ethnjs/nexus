@@ -61,11 +61,27 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
   return { ...option, action: null, next_field_id: null }
 }
 
-// The unchecked "this is what a respondent sees" bullet — purely decorative,
-// so pointerEvents: none keeps the row's own cursor (not RadioCircle/
-// Checkbox's disabled/locked "not-allowed") when hovering over it.
-function Bullet({ type, size }: { type: BulletType; size: number }) {
+// The "this is what a respondent sees" bullet — purely decorative, so
+// pointerEvents: none keeps the row's own cursor (not RadioCircle/
+// Checkbox's disabled/locked "not-allowed") when hovering over it. In
+// buttons display_style, a respondent doesn't see a radio/checkbox at all
+// (ButtonGroup has no per-option bullet), so this switches to a small
+// unselected-chip swatch instead — echoing the ButtonGroup pill shape here
+// is what actually makes toggling display_style visible while you're still
+// looking at the editor, not just in a preview you've scrolled away from.
+function Bullet({ type, size, displayStyle }: { type: BulletType; size: number; displayStyle?: 'list' | 'buttons' }) {
   if (type === 'none') return null
+  if (displayStyle === 'buttons') {
+    return (
+      <span style={{
+        pointerEvents: 'none', flexShrink: 0,
+        width: `${size + 6}px`, height: `${size}px`,
+        border: '1px solid var(--color-border-strong)',
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--color-surface)',
+      }} />
+    )
+  }
   return (
     <span style={{ pointerEvents: 'none', display: 'flex' }}>
       {type === 'radio'
@@ -101,6 +117,10 @@ interface OptionsEditorProps {
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
   questionType: FormQuestionType
+  /** single_select_radio/multi_select_checkbox only — swaps the row bullets
+      to a chip swatch echoing ButtonGroup's pill shape, since the "list vs
+      buttons" toggle otherwise has no visible effect while you're editing. */
+  displayStyle?: 'list' | 'buttons'
   /** Only meaningful for single_select_radio/dropdown — renders a per-option
       "where does this lead" Dropdown inline at the right edge of the row
       when set. */
@@ -128,7 +148,7 @@ interface OptionsEditorProps {
 // doesn't conflict with the field-level drag context since a field's own
 // handle is hidden while its card is expanded.
 export function OptionsEditor({
-  options, onChange, questionType, branchTargets, renderExtra, placeholder = 'Option',
+  options, onChange, questionType, displayStyle, branchTargets, renderExtra, placeholder = 'Option',
   createOption = newOption, syncValueWithLabel = true,
 }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -192,6 +212,7 @@ export function OptionsEditor({
               key={option.clientKey}
               option={option}
               bulletType={bulletType}
+              displayStyle={displayStyle}
               placeholder={placeholder}
               trailing={trailing?.(option)}
               extra={renderExtra?.(option)}
@@ -204,7 +225,7 @@ export function OptionsEditor({
           ))}
         </SortableContext>
       </DndContext>
-      <AddOptionRow bulletType={bulletType} onClick={addOption} />
+      <AddOptionRow bulletType={bulletType} displayStyle={displayStyle} onClick={addOption} />
     </div>
   )
 }
@@ -213,7 +234,7 @@ export function OptionsEditor({
 // above it (Google-Forms-style — it reads as "the next option," not a
 // detached toolbar button); dropdown/ranked_choice have no per-option bullet
 // to echo, so they keep the plain "+ Add option" button.
-function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick: () => void }) {
+function AddOptionRow({ bulletType, displayStyle, onClick }: { bulletType: BulletType; displayStyle?: 'list' | 'buttons'; onClick: () => void }) {
   if (bulletType === 'none') {
     return (
       <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
@@ -224,7 +245,7 @@ function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-      <Bullet type={bulletType} size={18} />
+      <Bullet type={bulletType} size={18} displayStyle={displayStyle} />
       <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ color: 'var(--color-text-tertiary)' }}>
         Add option
       </Button>
@@ -238,9 +259,10 @@ function AddOptionRow({ bulletType, onClick }: { bulletType: BulletType; onClick
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/placeholder/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
+function OptionRow({ option, bulletType, displayStyle, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
+  displayStyle?: 'list' | 'buttons'
   placeholder: string
   trailing?: ReactNode
   extra?: ReactNode
@@ -295,7 +317,7 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove
         >
           <IconGripVertical size={13} />
         </span>
-        <Bullet type={bulletType} size={18} />
+        <Bullet type={bulletType} size={18} displayStyle={displayStyle} />
         <Input
           ref={inputRef}
           value={option.label}

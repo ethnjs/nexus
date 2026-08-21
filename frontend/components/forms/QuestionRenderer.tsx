@@ -293,6 +293,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
           options={(field.config?.options as EditableOption[] | undefined) ?? []}
           onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
           questionType={field.question_type}
+          displayStyle={field.config?.display_style}
           branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
         />
         {field.question_type === 'ranked_choice' && (
@@ -358,6 +359,7 @@ function LunchFieldBody({ field, onFieldChange }: {
         options={(field.config?.options as EditableOption[] | undefined) ?? []}
         onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
         questionType={field.question_type}
+        displayStyle={field.config?.display_style}
       />
     </div>
   )
