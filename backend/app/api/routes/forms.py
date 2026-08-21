@@ -444,7 +444,7 @@ def bulk_update_fields(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         return normalized
 
-    pending_flags: list[tuple[str, str, int | None, list[str]]] = []
+    pending_flags: list[tuple[str, str, str | None, list[str]]] = []
     # (field_key, reason, field_id_for_answer_lookup, archived_option_ids)
 
     order = 1
@@ -615,7 +615,7 @@ def _write_through_reserved_fields(
     db: Session,
     form: Form,
     active_fields: list[FormField],
-    answers_by_field: dict[int, object],
+    answers_by_field: dict[str, object],
     current_user: User,
 ) -> None:
     """Syncs `availability_{date}`/`lunch_{date}_{category}` answers into

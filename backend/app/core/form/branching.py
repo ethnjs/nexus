@@ -9,7 +9,7 @@ from app.core.form.validation import BRANCHING_QUESTION_TYPES
 from app.models.models import FormField
 
 
-def compute_reachable_field_ids(fields: list[FormField], answers: dict[int, Any]) -> set[int]:
+def compute_reachable_field_ids(fields: list[FormField], answers: dict[str, Any]) -> set[str]:
     """`fields` must be every non-archived field on the form, any order.
     `answers` maps field_id -> submitted value. Walks from the
     lowest-`order` field, following each branching option's
@@ -24,7 +24,7 @@ def compute_reachable_field_ids(fields: list[FormField], answers: dict[int, Any]
     by_order = sorted(fields, key=lambda f: f.order)
     by_id = {f.id: f for f in fields}
 
-    reachable: set[int] = set()
+    reachable: set[str] = set()
     current: FormField | None = by_order[0]
 
     while current is not None and current.id not in reachable:
@@ -62,7 +62,7 @@ def _is_blank(value: Any) -> bool:
     return False
 
 
-def missing_required_field_keys(fields: list[FormField], answers: dict[int, Any]) -> list[str]:
+def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
     """field_keys of reachable, required fields left blank in `answers`."""
     reachable = compute_reachable_field_ids(fields, answers)
     return [

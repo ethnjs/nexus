@@ -10,7 +10,7 @@ import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 // off the text is kept (so re-toggling restores it), and Save is what
 // discards it — send `description: showDescription ? description : null`.
 export type EditableField = Omit<FormField, "id"> & {
-  id: number | null;
+  id: string | null;
   clientKey: string;
   showDescription: boolean;
 };

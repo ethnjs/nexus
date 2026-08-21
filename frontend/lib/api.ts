@@ -1164,7 +1164,7 @@ export interface FormFieldOption {
   label:          string
   is_archived?:   boolean
   // single_select_radio/dropdown only — mutually exclusive with each other.
-  next_field_id?: number | null
+  next_field_id?: string | null
   action?:        'submit_form' | null
 }
 
@@ -1198,7 +1198,7 @@ export interface FormFieldConfig {
 }
 
 export interface FormField {
-  id:            number
+  id:            string
   form_id:       string
   field_key:     string
   order:         number
@@ -1216,7 +1216,7 @@ export interface FormField {
 // on create — the server ignores/derives it otherwise (see BulkFieldEntry
 // in backend/app/schemas/form.py).
 export interface FormFieldInput {
-  id?:            number
+  id?:            string
   field_key?:     string
   label:          string
   description?:   string | null
@@ -1283,18 +1283,18 @@ export interface FormUpdateInput {
 }
 
 export interface FormAnswer {
-  id:       number
-  field_id: number
+  id:       string
+  field_id: string
   value:    unknown
 }
 
 export interface FormAnswerInput {
-  field_id: number
+  field_id: string
   value:    unknown
 }
 
 export interface FormResponse {
-  id:           number
+  id:           string
   form_id:      string
   user_id:      number
   submitted_at: string

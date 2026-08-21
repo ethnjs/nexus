@@ -52,7 +52,7 @@ export function bulletTypeFor(questionType: FormQuestionType): BulletType {
 // field has been saved (a draft field's id is null), so unsaved fields show
 // up disabled with a reason rather than being silently excluded.
 export interface BranchTarget {
-  id: number | null
+  id: string | null
   label: string
 }
 
@@ -68,7 +68,7 @@ function branchValueFor(option: FormFieldOption): string {
 
 function applyBranchValue(option: EditableOption, value: string): EditableOption {
   if (value === SUBMIT_VALUE) return { ...option, action: 'submit_form', next_field_id: null }
-  if (value.startsWith(JUMP_PREFIX)) return { ...option, action: null, next_field_id: Number(value.slice(JUMP_PREFIX.length)) }
+  if (value.startsWith(JUMP_PREFIX)) return { ...option, action: null, next_field_id: value.slice(JUMP_PREFIX.length) }
   return { ...option, action: null, next_field_id: null }
 }
 

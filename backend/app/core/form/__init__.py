@@ -138,7 +138,7 @@ def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: in
     return False
 
 
-def field_has_answers(db: Session, field_id: int) -> bool:
+def field_has_answers(db: Session, field_id: str) -> bool:
     """True if any FormAnswer exists for this field — locks it against
     edit (see forms.py's edit_form_field) and hard delete (below)."""
     return db.query(FormAnswer).filter(FormAnswer.field_id == field_id).first() is not None
@@ -250,7 +250,7 @@ def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[d
     return merged, newly_archived_ids
 
 
-def _upsert_pending_update(db: Session, response_id: int, field_key: str, reason: str) -> None:
+def _upsert_pending_update(db: Session, response_id: str, field_key: str, reason: str) -> None:
     existing = (
         db.query(FormResponsePendingUpdate)
         .filter(
@@ -266,7 +266,7 @@ def _upsert_pending_update(db: Session, response_id: int, field_key: str, reason
         existing.reason = "field_replaced"
 
 
-def flag_pending_updates_for_field(db: Session, field_id: int, field_key: str, reason: str) -> None:
+def flag_pending_updates_for_field(db: Session, field_id: str, field_key: str, reason: str) -> None:
     """Upserts a pending-update row for every response that answered
     `field_id` — used when that field was archived (removed, or archived
     +replaced by a question_type change). Keyed on `field_key`, not

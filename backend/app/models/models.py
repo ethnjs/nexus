@@ -19,11 +19,16 @@ from app.db.session import Base
 from app.core.age import meets_age_requirement
 
 
-def generate_form_id() -> str:
-    """Form.id is a public-facing 12-char random string (nanoid's default
-    alphabet is already URL-safe), not an auto-increment int — forms are
-    referenced directly in URLs (/forms/{id}/edit) the way a user-facing
-    document id is, not as an internal implementation detail."""
+def generate_public_id() -> str:
+    """12-char random string (nanoid's default alphabet is already
+    URL-safe), not an auto-increment int — shared by every Form-family
+    primary key (Form.id, FormField.id, FormResponse.id, FormAnswer.id) so
+    they're all the same recognizable shape, the way option_id already is
+    (assign_option_ids's secrets.token_hex(5)). Form.id specifically is also
+    referenced directly in URLs (/forms/{id}/edit), a user-facing document
+    id rather than an internal implementation detail — the others don't
+    appear in a URL today, but there's no reason for them to look or behave
+    differently from Form.id since nothing depends on them being sequential."""
     return generate_nanoid(size=12)
 
 
@@ -669,7 +674,7 @@ class SheetConfig(Base):
 class Form(Base):
     __tablename__ = "forms"
 
-    id = Column(String(12), primary_key=True, default=generate_form_id)
+    id = Column(String(12), primary_key=True, default=generate_public_id)
     owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
@@ -717,7 +722,7 @@ class Form(Base):
 class FormField(Base):
     __tablename__ = "form_fields"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
     form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
     order = Column(Integer, nullable=False)
     label = Column(String(255), nullable=False)
@@ -766,7 +771,7 @@ class FormField(Base):
 class FormResponse(Base):
     __tablename__ = "form_responses"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
     form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
 
@@ -790,9 +795,9 @@ class FormResponse(Base):
 class FormAnswer(Base):
     __tablename__ = "form_answers"
 
-    id = Column(Integer, primary_key=True, index=True)
-    response_id = Column(Integer, ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
-    field_id = Column(Integer, ForeignKey("form_fields.id"), nullable=False)
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
+    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
     value = Column(JSON, nullable=False)
 
     response = relationship("FormResponse", back_populates="answers")
@@ -816,7 +821,7 @@ class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
 
     id = Column(Integer, primary_key=True, index=True)
-    response_id = Column(Integer, ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
     field_key = Column(String(64), nullable=False)
     reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
     created_at = Column(DateTime(timezone=True), default=utcnow)

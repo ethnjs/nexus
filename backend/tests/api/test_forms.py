@@ -745,7 +745,7 @@ class TestSubmitResponse:
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": 9999, "value": "x"}]})
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": "nonexistent12", "value": "x"}]})
         assert res.status_code == 400
 
     def test_non_member_forbidden(self, client, db, td_user, td_tournament, other_user):

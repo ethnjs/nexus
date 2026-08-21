@@ -60,7 +60,7 @@ class BranchingOption(BaseModel):
     value: str | list[int] = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
-    next_field_id: int | None = None
+    next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
 
     @model_validator(mode="after")
@@ -156,7 +156,7 @@ QUESTION_TYPE_CONFIG_SCHEMAS: dict[str, type[BaseModel]] = {
 # ---------------------------------------------------------------------------
 
 class FormFieldRead(BaseModel):
-    id: int
+    id: str
     form_id: str
     field_key: str
     order: int
@@ -177,7 +177,7 @@ class BulkFieldEntry(BaseModel):
     form. `field_key` is only meaningful (and required) on create — on an
     update it's server-controlled (immutable, or carried over onto a
     question_type-change replacement) and any value sent here is ignored."""
-    id: int | None = None
+    id: str | None = None
     field_key: str | None = None
     label: str
     description: str | None = None
@@ -267,13 +267,13 @@ class FormUpdate(BaseModel):
 # ---------------------------------------------------------------------------
 
 class FormAnswerCreate(BaseModel):
-    field_id: int
+    field_id: str
     value: Any
 
 
 class FormAnswerRead(BaseModel):
-    id: int
-    field_id: int
+    id: str
+    field_id: str
     value: Any
 
     model_config = ConfigDict(from_attributes=True)
@@ -284,7 +284,7 @@ class FormResponseCreate(BaseModel):
 
 
 class FormResponseRead(BaseModel):
-    id: int
+    id: str
     form_id: str
     user_id: int
     submitted_at: datetime

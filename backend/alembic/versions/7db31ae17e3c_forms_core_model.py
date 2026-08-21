@@ -21,6 +21,12 @@ superseded by the write-through tables above (availability, lunch) or the
 native form-response flow queried directly (event_preference, role_preference
 have no relational replacement, not currently needed by any read path).
 Squashed into this migration rather than a new one, same reasoning.
+
+form_fields/form_responses/form_answers.id (and the FK columns pointing at
+them) are String(12) nanoids, not auto-increment ints — matching forms.id's
+scheme (see generate_public_id in app/models/models.py). Edited in place
+here rather than a new migration, same local-dev-only squashing reasoning as
+above; there's no production data to preserve a conversion path for.
 """
 from typing import Sequence, Union
 
@@ -56,7 +62,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_forms_id'), 'forms', ['id'], unique=False)
 
     op.create_table('form_fields',
-    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=12), nullable=False),
     sa.Column('form_id', sa.String(length=12), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),
     sa.Column('label', sa.String(length=255), nullable=False),
@@ -74,7 +80,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_form_fields_id'), 'form_fields', ['id'], unique=False)
 
     op.create_table('form_responses',
-    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=12), nullable=False),
     sa.Column('form_id', sa.String(length=12), nullable=False),
     sa.Column('user_id', sa.Integer(), nullable=False),
     sa.Column('submitted_at', sa.DateTime(timezone=True), nullable=True),
@@ -87,9 +93,9 @@ def upgrade() -> None:
     op.create_index(op.f('ix_form_responses_id'), 'form_responses', ['id'], unique=False)
 
     op.create_table('form_answers',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('response_id', sa.Integer(), nullable=False),
-    sa.Column('field_id', sa.Integer(), nullable=False),
+    sa.Column('id', sa.String(length=12), nullable=False),
+    sa.Column('response_id', sa.String(length=12), nullable=False),
+    sa.Column('field_id', sa.String(length=12), nullable=False),
     sa.Column('value', sa.JSON(), nullable=False),
     sa.ForeignKeyConstraint(['field_id'], ['form_fields.id'], ),
     sa.ForeignKeyConstraint(['response_id'], ['form_responses.id'], ondelete='CASCADE'),
@@ -124,7 +130,7 @@ def upgrade() -> None:
 
     op.create_table('form_response_pending_updates',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('response_id', sa.Integer(), nullable=False),
+    sa.Column('response_id', sa.String(length=12), nullable=False),
     sa.Column('field_key', sa.String(length=64), nullable=False),
     sa.Column('reason', sa.String(length=32), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),

@@ -103,7 +103,7 @@ def validate_branching_options(
     form_id: str,
     question_type: str,
     config: dict,
-    field_id: int | None = None,
+    field_id: str | None = None,
 ) -> None:
     """`next_field_id` must reference an existing, non-archived field in the
     same form and can't equal the field the option belongs to. (Mutual
