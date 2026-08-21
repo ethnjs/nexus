@@ -272,7 +272,7 @@ class TestResolveAvailabilityOptions:
         end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
         shift = _make_shift(db, td_tournament, "Saturday", start, end)
         field = _make_field(
-            db, form, field_key="availability", question_type="single_select_radio",
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
             config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": False}]},
         )
         db.commit()
@@ -291,7 +291,7 @@ class TestResolveAvailabilityOptions:
         morning = _make_shift(db, td_tournament, "Morning", morning_start, morning_end)
         afternoon = _make_shift(db, td_tournament, "Afternoon", afternoon_start, afternoon_end)
         field = _make_field(
-            db, form, field_key="availability", question_type="multi_select_checkbox",
+            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
             config={
                 "options": [
                     {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day", "is_archived": False},
@@ -319,7 +319,7 @@ class TestResolveAvailabilityOptions:
             datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
         )
         field = _make_field(
-            db, form, field_key="availability", question_type="single_select_radio",
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
             config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": True}]},
         )
         db.commit()
@@ -345,7 +345,7 @@ class TestResolveEventPreferenceOptions:
         anat = _make_event(db, td_tournament, "Anatomy and Physiology", division="B")
         disease = _make_event(db, td_tournament, "Disease Detectives", division="C")
         field = _make_field(
-            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
             config={
                 "options": [
                     {"option_id": "opt_life_science", "value": [anat.id, disease.id], "label": "Life Science", "is_archived": False},
@@ -370,7 +370,7 @@ class TestResolveEventPreferenceOptions:
         form = _make_form(db, td_user, td_tournament)
         event = _make_event(db, td_tournament, "Anatomy and Physiology")
         field = _make_field(
-            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
             config={"options": [{"option_id": "opt_1", "value": str(event.id), "label": "Anatomy and Physiology", "is_archived": False}]},
         )
         db.commit()
@@ -382,7 +382,7 @@ class TestResolveEventPreferenceOptions:
         form = _make_form(db, td_user, td_tournament)
         event = _make_event(db, td_tournament, "Anatomy and Physiology")
         field = _make_field(
-            db, form, field_key="event_preference", question_type="multi_select_checkbox",
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
             config={"options": [{"option_id": "opt_1", "value": [event.id], "label": "Anatomy and Physiology", "is_archived": True}]},
         )
         db.commit()

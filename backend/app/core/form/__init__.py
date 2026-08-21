@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
+from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, EVENT_PREFERENCE_FIELD_KEY_PATTERN
 from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent, TournamentShift
 
 import re
@@ -13,10 +14,10 @@ def slugify(text: str, max_len: int = 64) -> str:
 
 
 # Types whose answer value references option_id(s) and so can be snapshotted
-# at submission time (see snapshot_answer_value). `availability` is
-# deliberately excluded even though it's currently multi_select_checkbox —
-# its answer still submits a raw TournamentShift id, not an option_id,
-# until the shift-grouping work lands.
+# at submission time (see snapshot_answer_value). An `availability_*`-keyed
+# field is deliberately excluded even though it's currently
+# multi_select_checkbox — its answer still submits a raw TournamentShift id,
+# not an option_id, until the shift-grouping work lands.
 OPTION_BEARING_TYPES = {"single_select_radio", "single_select_dropdown", "multi_select_checkbox", "ranked_choice"}
 
 
@@ -44,7 +45,7 @@ def snapshot_answer_value(field: FormField, value):
     Falls back to returning `value` unchanged for anything that doesn't
     match the expected shape for `field.question_type` — answer value is
     unvalidated user input, not something to raise on here."""
-    if field.field_key == "availability" or field.question_type not in OPTION_BEARING_TYPES or value is None:
+    if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key) or field.question_type not in OPTION_BEARING_TYPES or value is None:
         return value
 
     options_by_id = {o["option_id"]: o for o in (field.config or {}).get("options", [])}
@@ -107,7 +108,7 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
 
 
 def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
-    """True if `shift_id` appears inside any non-archived availability
+    """True if `shift_id` appears inside any non-archived availability_*
     field's option `value` (the list of grouped TournamentShift ids) on
     any form owned by `tournament_id` — used by the shift deletion guard
     so a shift can't be pulled out from under a live option's grouping,
@@ -116,18 +117,21 @@ def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: in
     plain JSON column (not JSONB) and tests run on SQLite, which has no
     JSON operators at all, so this is a Python-side scan rather than a
     DB-side containment query — same reasoning as the pending-updates scan
-    over FormAnswer.value."""
+    over FormAnswer.value. field_key matching is Python-side too (rather
+    than a DB LIKE) so it goes through the one real pattern, same as every
+    other reserved-key check."""
     fields = (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
         .filter(
             Form.tournament_id == tournament_id,
-            FormField.field_key == "availability",
             FormField.is_archived == False,
         )
         .all()
     )
     for field in fields:
+        if not AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
+            continue
         for option in (field.config or {}).get("options", []):
             if not option.get("is_archived") and shift_id in (option.get("value") or []):
                 return True
@@ -363,9 +367,9 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
     config = dict(field.config or {})
     options = [o for o in config.get("options", []) if not o.get("is_archived")]
 
-    if field.field_key == "availability":
+    if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
         return [_resolve_availability_option(db, o) for o in options]
-    if field.field_key == "event_preference":
+    if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
         return [_resolve_event_preference_option(db, o) for o in options]
 
     return options
