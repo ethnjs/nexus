@@ -16,12 +16,12 @@ import {
   IconGripVertical, IconInfo, IconCopy, IconTrash, IconDotsVertical,
 } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
-import { BranchTarget } from "@/components/forms/OptionsEditor";
+import { BranchTarget, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
 import {
   FieldKeyComboOption, UsedFieldKeyOption, FIELD_KEY_PRESETS, activePreset, fieldToComboboxValue,
 } from "@/lib/forms/fieldKeyPresets";
-import { QUESTION_TYPE_OPTIONS, BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
+import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
 
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
@@ -73,6 +73,20 @@ export function FieldCard({
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
 
+  // Landing on an option-bearing type with no options yet (a fresh field,
+  // or one switched over from a non-option type) should always have one row
+  // ready to edit rather than an empty list the TD has to click "Add option"
+  // to even start on. Preset types (availability/event_preference/lunch)
+  // aren't touched here — their options come from EntityOptionsEditor/the
+  // lunch picker, not a freeform starter row.
+  function handleQuestionTypeChange(questionType: FormQuestionType) {
+    const needsStarterOption = !preset && OPTION_BEARING_TYPES.includes(questionType) && !field.config?.options?.length;
+    onFieldChange({
+      question_type: questionType,
+      ...(needsStarterOption ? { config: { ...field.config, options: [newOption()] } } : {}),
+    });
+  }
+
   return (
     // Outer box stays untransformed so the shared toolbar can measure this
     // card's resting offsetTop/offsetHeight — sortable transform/opacity apply
@@ -96,7 +110,7 @@ export function FieldCard({
               />
               <Dropdown
                 value={field.question_type}
-                onChange={(v) => onFieldChange({ question_type: v as FormQuestionType })}
+                onChange={(v) => handleQuestionTypeChange(v as FormQuestionType)}
                 options={preset ? QUESTION_TYPE_OPTIONS.filter((o) => preset.allowedQuestionTypes.includes(o.value)) : QUESTION_TYPE_OPTIONS}
                 width={220}
               />

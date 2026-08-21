@@ -137,7 +137,10 @@ export function OptionsEditor({
     onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)))
   }
 
+  // A question needs at least one option to mean anything, so the last row
+  // can't be deleted — only cleared out and edited in place.
   function removeOption(clientKey: string) {
+    if (options.length <= 1) return
     onChange(options.filter((o) => o.clientKey !== clientKey))
   }
 
@@ -163,6 +166,7 @@ export function OptionsEditor({
               placeholder={placeholder}
               trailing={trailing?.(option)}
               extra={renderExtra?.(option)}
+              canRemove={options.length > 1}
               onChange={(label) => updateOption(option.clientKey, label)}
               onRemove={() => removeOption(option.clientKey)}
             />
@@ -182,12 +186,13 @@ export function OptionsEditor({
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/placeholder/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange, onRemove }: {
+function OptionRow({ option, bulletType, placeholder, trailing, extra, canRemove, onChange, onRemove }: {
   option: EditableOption
   bulletType: BulletType
   placeholder: string
   trailing?: ReactNode
   extra?: ReactNode
+  canRemove: boolean
   onChange: (label: string) => void
   onRemove: () => void
 }) {
@@ -230,9 +235,11 @@ function OptionRow({ option, bulletType, placeholder, trailing, extra, onChange,
           size="md"
           fullWidth
         />
-        <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove}>
-          <IconX size={12} />
-        </Button>
+        {canRemove && (
+          <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove}>
+            <IconX size={12} />
+          </Button>
+        )}
         {trailing}
       </div>
       {extra}
