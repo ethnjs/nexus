@@ -50,6 +50,10 @@ export function FieldList({ form }: { form: Form }) {
 
   const validation = useFormValidation();
   const [saving, setSaving] = useState(false);
+  // Reported live by FloatingSaveBar (its own measured height, which grows
+  // when a validation/save error wraps to a second line) — applied as
+  // bottom padding so the bar never covers the last question(s) in the list.
+  const [saveBarHeight, setSaveBarHeight] = useState(0);
   // Baseline snapshot to diff against — set once on mount, then again after
   // every successful Save (the server's response, not what was submitted,
   // becomes the new baseline: it's the source of truth for server-assigned
@@ -160,7 +164,12 @@ export function FieldList({ form }: { form: Form }) {
   async function handleSave() {
     const issues = validation.validate(fields);
     if (issues.length > 0) {
+      // Expand *and* scroll to the first offending card — "fix the
+      // highlighted questions below" was ambiguous (the actual error could
+      // be above the user's current scroll position), so this makes the
+      // message true by construction instead of rewording around it.
       setExpandedKey(issues[0].clientKey);
+      setPendingScrollKey(issues[0].clientKey);
       return;
     }
     setSaving(true);
@@ -206,7 +215,13 @@ export function FieldList({ form }: { form: Form }) {
   }
 
   return (
-    <div ref={listRef} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "12px" }}>
+    <div
+      ref={listRef}
+      style={{
+        position: "relative", display: "flex", flexDirection: "column", gap: "12px",
+        paddingBottom: `${saveBarHeight}px`, transition: "padding-bottom 0.25s ease",
+      }}
+    >
       {fields.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
@@ -244,9 +259,10 @@ export function FieldList({ form }: { form: Form }) {
       <FloatingSaveBar
         visible={isDirty}
         saving={saving}
-        error={validation.hasErrors ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted questions below.` : validation.saveError || undefined}
+        error={validation.hasErrors ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.` : validation.saveError || undefined}
         onSave={handleSave}
         onCancel={handleDiscard}
+        onHeightChange={setSaveBarHeight}
         stayWithin={`/forms/${form.id}`}
       />
       {expandedField && (

@@ -124,7 +124,7 @@ export function useFormValidation() {
   function renderErrorBanner() {
     if (hasErrors) {
       const n = validationErrors.length;
-      return <Banner variant="error" message={`${n} issue${n !== 1 ? "s" : ""} — fix the highlighted questions below.`} />;
+      return <Banner variant="error" message={`${n} issue${n !== 1 ? "s" : ""} — fix the highlighted question${n !== 1 ? "s" : ""}.`} />;
     }
     if (saveError) return <Banner variant="error" message={saveError} />;
     return null;
