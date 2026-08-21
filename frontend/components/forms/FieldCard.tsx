@@ -50,8 +50,11 @@ export function FieldCard({
   // Routed straight onto the label Textarea's own error prop below, rather
   // than a shared list — the rest of nonKeyErrors (options/confirm text/
   // ranks) get the same per-input treatment further down, inside
-  // QuestionRenderer's edit body.
-  const labelError = nonKeyErrors.find((e) => e === 'Question text is required.');
+  // QuestionRenderer's edit body. Re-gated on the current label too, not
+  // just the errors snapshot from the last Save attempt — otherwise typing
+  // wouldn't clear the error until the next validate() call.
+  const labelError = nonKeyErrors.includes('Question text is required.') && !field.label.trim()
+    ? 'Question text is required.' : undefined;
   const bodyErrors = nonKeyErrors.filter((e) => e !== 'Question text is required.');
   // Purely a question_type property — an entity-backed preset's options are
   // still real, addressable rows a TD can branch from just like a plain

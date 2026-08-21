@@ -289,7 +289,12 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   const isEntity = isEntityBackedKind && !!tournamentId
 
   if (!isEntityBackedKind && field.question_type === 'acknowledgment') {
-    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={errors.includes('Confirmation text is required.') ? 'Confirmation text is required.' : undefined} />
+    // Gated on the current config too, not just the errors snapshot from the
+    // last Save attempt — otherwise typing into the field wouldn't clear its
+    // own error until the next Save/validate() call re-ran.
+    const confirmError = errors.includes('Confirmation text is required.') && !field.config?.confirm_label?.trim()
+      ? 'Confirmation text is required.' : undefined
+    return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />
   }
 
   if (isEntity || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
@@ -320,16 +325,24 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
             options are entity-backed (event_preference) or freeform — the
             rank mechanics are a property of the question type, not of where
             the option rows come from. */}
-        {field.question_type === 'ranked_choice' && (
+        {field.question_type === 'ranked_choice' && (() => {
+          const options = (field.config?.options as EditableOption[] | undefined) ?? []
+          const ranks = field.config?.ranks ?? 1
+          // Same live-data gate as confirmError above — re-check against the
+          // current option count rather than trusting the errors snapshot is
+          // still accurate once ranks or the option list has since changed.
+          const ranksError = errors.includes("Ranks can't exceed the number of options.") && ranks > options.length
+            ? "Can't exceed the number of options." : undefined
+          return (
           <div style={{ marginTop: '12px', display: 'flex', alignItems: 'flex-end', gap: '20px' }}>
             <div style={{ width: '100px' }}>
               <Input
                 label="Ranks"
                 type="number"
                 min={1}
-                value={String(field.config?.ranks ?? 1)}
+                value={String(ranks)}
                 onChange={(e) => onFieldChange({ config: { ...field.config, ranks: Math.max(1, Number(e.target.value) || 1) } })}
-                error={errors.includes("Ranks can't exceed the number of options.") ? "Can't exceed the number of options." : undefined}
+                error={ranksError}
                 size="sm"
                 fullWidth
               />
@@ -344,7 +357,8 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
               />
             </div>
           </div>
-        )}
+          )
+        })()}
       </>
     )
   }
