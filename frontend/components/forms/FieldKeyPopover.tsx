@@ -105,7 +105,7 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
               value={field.field_key}
               onChange={(e) => onFieldChange({ field_key: e.target.value })}
               onBlur={handleBlur}
-              placeholder={field.label.trim() || "e.g. volunteer_availability"}
+              placeholder={field.label.trim()}
               size="sm"
               fullWidth
               error={localError}
