@@ -8,7 +8,14 @@ interface FormPopoverProps {
   /** Panel content; receives a close() callback so the form can dismiss itself after a successful submit. */
   children: (close: () => void) => ReactNode;
   width?: number;
-  /** Which side of the trigger the panel hangs from. */
+  /** Which side of the trigger the panel hangs from. 'bottom' (default)
+      drops the panel below the trigger, edge-aligned per `align`. 'right'
+      flies it out to the trigger's right, top-aligned — e.g. a vertical
+      icon rail where the panel should read as "belongs to this icon," not
+      "dropped from it." Flips to the left of the trigger if there isn't
+      room on the right. */
+  side?: "bottom" | "right";
+  /** 'bottom' side only — which side of the trigger the panel hangs from. */
   align?: "left" | "right";
   /** Controlled open state — e.g. forcing a field's key popover open when
       Save surfaces an error on it. Omit for plain click-to-toggle (the
@@ -29,7 +36,7 @@ const PANEL_MAX_HEIGHT = 400;
 // Popover's own (fixed, computed from the trigger's bounding rect so it
 // isn't clipped by a scrollable ancestor like a side panel; flips above the
 // trigger when there's no room below).
-export function FormPopover({ trigger, children, width = 260, align = "right", open: controlledOpen, onOpenChange }: FormPopoverProps) {
+export function FormPopover({ trigger, children, width = 260, side = "bottom", align = "right", open: controlledOpen, onOpenChange }: FormPopoverProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : uncontrolledOpen;
@@ -46,6 +53,19 @@ export function FormPopover({ trigger, children, width = 260, align = "right", o
   function updatePanelPos() {
     if (!triggerRef.current) return;
     const r = triggerRef.current.getBoundingClientRect();
+
+    if (side === "right") {
+      // Top-aligned with the trigger rather than dropped below it — this is
+      // a "belongs to this icon" flyout, not a dropdown — and clamped so a
+      // tall panel next to a trigger near the viewport's bottom doesn't run
+      // off it. Flips to the trigger's left if there isn't room on the right.
+      const spaceRight = window.innerWidth - r.right;
+      const left = spaceRight < width + PANEL_GAP ? r.left - width - PANEL_GAP : r.right + PANEL_GAP;
+      const top = Math.max(PANEL_GAP, Math.min(r.top, window.innerHeight - PANEL_MAX_HEIGHT - PANEL_GAP));
+      setPanelPos({ top, left });
+      return;
+    }
+
     const left = align === "right" ? r.right - width : r.left;
     const spaceBelow = window.innerHeight - r.bottom;
     const spaceAbove = r.top;

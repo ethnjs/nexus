@@ -40,15 +40,19 @@ const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})$/;
 const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_([a-z0-9_]+)$/;
 const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
 
-// The preset currently active on a field_key, if any. A bare "lunch_"
-// sentinel (no date/category yet) still counts as an active Lunch preset —
-// it's a not-yet-fully-specified key, not a non-preset one — but bare
-// "availability"/"event_preference" (no suffix) do NOT count, matching the
-// backend: every such field must be disambiguated, there's no legacy
-// singleton form anymore.
+// The preset currently active on a field_key, if any — prefix-based, not
+// the strict fully-parameterized pattern: PresetPopover sets a bare
+// "availability_"/"event_preference_"/"lunch_" sentinel the instant a
+// preset is picked, before its date/suffix/category is filled in, and that
+// in-progress state must still read as "this preset is active" (matching
+// the ButtonGroup selection, the QuestionEditBody body it renders, etc.) —
+// otherwise picking a preset would appear to silently do nothing until
+// every parameter was filled in. Save-time validation is what actually
+// enforces the fully-parameterized shape (matches
+// backend/app/core/form/validation.py's stricter regexes exactly).
 export function activePresetKind(fieldKey: string): PresetKind | null {
-  if (AVAILABILITY_FIELD_KEY_PATTERN.test(fieldKey)) return "availability";
-  if (EVENT_PREFERENCE_FIELD_KEY_PATTERN.test(fieldKey)) return "event_preference";
+  if (fieldKey.startsWith("availability_")) return "availability";
+  if (fieldKey.startsWith("event_preference_")) return "event_preference";
   if (fieldKey.startsWith("lunch_")) return "lunch";
   return null;
 }

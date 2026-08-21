@@ -15,7 +15,7 @@ import { EditableField } from "@/lib/forms/editableField";
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates,
   showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
@@ -25,6 +25,9 @@ export function FieldToolbar({
   allFields: EditableField[];
   errors: string[];
   saveAttempt: number;
+  /** The tournament's individual running days — passed through to
+      PresetPopover's availability/lunch date pickers. */
+  tournamentDates: string[];
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
@@ -41,16 +44,6 @@ export function FieldToolbar({
         position: "sticky", top: `${TOPBAR_HEIGHT + 12}px`,
         display: "flex", flexDirection: "column", gap: "6px", pointerEvents: "auto",
       }}>
-        <FieldKeyPopover
-          field={field}
-          onFieldChange={onFieldChange}
-          usedFieldKeys={usedFieldKeys}
-          allFields={allFields}
-          errors={errors}
-          saveAttempt={saveAttempt}
-        />
-        <PresetPopover field={field} onFieldChange={onFieldChange} />
-        <div style={{ width: "20px", height: "1px", background: "var(--color-border)", margin: "2px 0" }} />
         <Button type="button" variant="secondary" size="sm" iconOnly title="Add field below" onClick={onAddFieldBelow}>
           <IconPlus size={14} />
         </Button>
@@ -61,6 +54,15 @@ export function FieldToolbar({
         >
           <IconDescription size={14} />
         </Button>
+        <FieldKeyPopover
+          field={field}
+          onFieldChange={onFieldChange}
+          usedFieldKeys={usedFieldKeys}
+          allFields={allFields}
+          errors={errors}
+          saveAttempt={saveAttempt}
+        />
+        <PresetPopover field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} />
         {displayStyle && (
           <Button
             type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly

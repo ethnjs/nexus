@@ -42,6 +42,11 @@ export function FieldCard({
 }) {
   const [hovered, setHovered] = useState(false);
   const presetKind = activePresetKind(field.field_key);
+  // Key errors surface exclusively through FieldToolbar's key popover now
+  // (danger-colored trigger + inline message) — the card itself no longer
+  // shows the key or flags it, so it shouldn't double-report the same
+  // problem in its own border/error list either.
+  const nonKeyErrors = errors.filter((e) => !isFieldKeyError(e));
   const supportsBranching = !presetKind && BRANCHING_TYPES.includes(field.question_type);
   const [branchingEnabled, setBranchingEnabled] = useState(() =>
     (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
@@ -106,14 +111,14 @@ export function FieldCard({
     <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
         {expanded ? (
-          <Card radius="lg" borderColor={errors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
+          <Card radius="lg" borderColor={nonKeyErrors.length > 0 ? "var(--color-danger)" : "var(--color-border-strong)"} style={{ padding: "28px 24px 20px", position: "relative" }}>
             <div {...gripProps} style={{
               position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
               display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "8px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
               <Input
                 value={field.label}
                 onChange={(e) => handleLabelChange(e.target.value)}
@@ -127,19 +132,9 @@ export function FieldCard({
                 width={220}
               />
             </div>
-            {/* Glanceable key display — the editable control moved to
-                FieldToolbar's key popover, but the current value (and any
-                collision) shouldn't disappear entirely from the card. */}
-            <p style={{
-              margin: `0 0 ${field.showDescription ? "10px" : "16px"}`,
-              fontFamily: "var(--font-mono)", fontSize: "11px",
-              color: errors.some(isFieldKeyError) ? "var(--color-danger)" : "var(--color-text-tertiary)",
-            }}>
-              {field.field_key.trim() || "no field key set"}
-            </p>
-            {errors.length > 0 && (
+            {nonKeyErrors.length > 0 && (
               <ul style={{ margin: "0 0 12px", padding: "0 0 0 16px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
-                {errors.map((message) => <li key={message}>{message}</li>)}
+                {nonKeyErrors.map((message) => <li key={message}>{message}</li>)}
               </ul>
             )}
             {field.showDescription && (
@@ -206,7 +201,7 @@ export function FieldCard({
         ) : (
           <Card
             radius="lg"
-            borderColor={errors.length > 0 ? "var(--color-danger)" : undefined}
+            borderColor={nonKeyErrors.length > 0 ? "var(--color-danger)" : undefined}
             style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
             onClick={onExpand}
             onMouseEnter={() => setHovered(true)}

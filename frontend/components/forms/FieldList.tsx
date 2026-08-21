@@ -8,7 +8,8 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, Form } from "@/lib/api";
+import { formsApi, tournamentsApi, Form } from "@/lib/api";
+import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -43,6 +44,10 @@ export function FieldList({ form }: { form: Form }) {
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
+  // The tournament's individual running days — availability/lunch presets
+  // pick from these rather than an unconstrained date input. Empty until
+  // loaded (or permanently, on a chapter-owned form with no tournament).
+  const [tournamentDates, setTournamentDates] = useState<string[]>([]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
@@ -107,10 +112,21 @@ export function FieldList({ form }: { form: Form }) {
   }, [pendingScrollKey]);
 
   // Fetched once per form-editing session (not per field card) — every
-  // field's Combobox shares this list to flag already-used keys.
+  // field's FieldKeyPopover shares this list to flag already-used keys.
   useEffect(() => {
     if (form.tournament_id == null) return;
     formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
+  }, [form.tournament_id]);
+
+  // Same one-fetch-per-session scope, for the availability/lunch presets'
+  // date pickers (PresetPopover) — this standalone /forms/ route sits
+  // outside the dashboard's TournamentProvider, so there's no shared
+  // tournament context to read start_date/end_date from.
+  useEffect(() => {
+    if (form.tournament_id == null) return;
+    tournamentsApi.get(form.tournament_id)
+      .then((t) => setTournamentDates(enumerateDates(t.start_date, t.end_date)))
+      .catch(() => {});
   }, [form.tournament_id]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
@@ -310,6 +326,7 @@ export function FieldList({ form }: { form: Form }) {
           onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
+          tournamentDates={tournamentDates}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}

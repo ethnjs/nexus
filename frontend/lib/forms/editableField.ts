@@ -1,5 +1,6 @@
 import { FormField, FormFieldConfig, FormFieldInput } from "@/lib/api";
 import { EditableOption } from "@/components/forms/OptionsEditor";
+import { slugifyFieldKey } from "@/lib/forms/fieldKeyPresets";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -73,9 +74,15 @@ export function toFieldInput(field: EditableField): FormFieldInput {
   if ((field.question_type === "short_text" || field.question_type === "long_text") && config.max_length === undefined) {
     config.max_length = 500;
   }
+  // FieldCard auto-syncs field_key from label live, but that's a UI
+  // convenience, not a guarantee — a duplicated field or one whose label
+  // was pasted in without ever touching the label input again could still
+  // reach Save with an empty key. Same fallback either way: the label's
+  // own slug, matching what the TD would see if they'd typed it themselves.
+  const fieldKey = field.field_key.trim() || slugifyFieldKey(field.label);
   return {
     id: field.id ?? undefined,
-    field_key: field.field_key.trim(),
+    field_key: fieldKey,
     label: field.label.trim(),
     description: field.showDescription ? field.description : null,
     question_type: field.question_type,
