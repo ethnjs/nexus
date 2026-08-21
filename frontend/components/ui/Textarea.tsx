@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, TextareaHTMLAttributes, useEffect, useId, useRef, useState } from "react"
+import { forwardRef, TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
 type InputFont = 'sans' | 'mono' | 'serif'
 type InputSize = 'xs' | 'sm' | 'md'
@@ -23,6 +23,9 @@ interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   expandable?: boolean
   expandedWidth?: string
   expandedHeight?: string
+  /** Grows the box to fit wrapped content instead of scrolling internally —
+   * e.g. a 1-row textarea that should expand as the text wraps to more lines. */
+  autoGrow?: boolean
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -46,7 +49,7 @@ const BACKGROUND_MAP: Record<InputVariant, string> = {
 export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
   ({
     label, error, fullWidth, rows = 4, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, style,
-    expandable = false, expandedWidth = '280px', expandedHeight = '140px',
+    expandable = false, expandedWidth = '280px', expandedHeight = '140px', autoGrow = false,
     onFocus, onBlur, onMouseEnter, onMouseLeave,
     ...props
   }, ref) => {
@@ -70,6 +73,18 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
       if (focused) setExpanded(true)
       else if (!hovering) setExpanded(false)
     }, [expandable, focused, hovering])
+
+    // Grows the box with content instead of scrolling internally — reset to
+    // 'auto' first so shrinking (e.g. deleting a wrapped line) isn't stuck at
+    // the previous scrollHeight. scrollHeight excludes the 1px top/bottom
+    // border, so it's added back here — box-sizing is border-box, so without
+    // it the assigned height comes up 2px short of the content it just measured.
+    useLayoutEffect(() => {
+      if (!autoGrow || !innerRef.current) return
+      const el = innerRef.current
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight + 2}px`
+    }, [autoGrow, value])
 
     // Once the box collapses back down, scroll it back to the top so it
     // doesn't show a mid-scroll snippet of a long note in the small view.
@@ -116,7 +131,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
           id={inputId}
           rows={rows}
           style={{
-            height: sizing.height,
+            height: autoGrow ? undefined : sizing.height,
             padding: sizing.padding,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
@@ -126,8 +141,9 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             borderRadius: 'var(--radius-sm)',
             outline: 'none',
             width: fullWidth ? '100%' : undefined,
+            resize: autoGrow ? 'none' : undefined,
             transition: 'border-color 150ms ease, width 150ms ease, height 150ms ease',
-            overflow: sizing.height ? (expanded ? 'auto' : 'hidden') : undefined,
+            overflow: autoGrow ? 'hidden' : sizing.height ? (expanded ? 'auto' : 'hidden') : undefined,
             ...(expandable ? {
               position: 'absolute', top: 0, left: 0,
               width: expanded ? expandedWidth : '100%',

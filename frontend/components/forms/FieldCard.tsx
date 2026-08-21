@@ -6,7 +6,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { FormQuestionType } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Textarea } from "@/components/ui/Textarea";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Popover } from "@/components/ui/Popover";
 import { Toggle } from "@/components/ui/Toggle";
@@ -107,12 +107,15 @@ export function FieldCard({
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
-              <Input
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
+              <Textarea
                 value={field.label}
                 onChange={(e) => onFieldChange({ label: e.target.value })}
                 placeholder="Question"
+                rows={1}
+                autoGrow
                 fullWidth
+                style={{ padding: "7px 16px", lineHeight: "20px", borderRadius: "var(--radius-md)" }}
               />
               <Dropdown
                 value={field.question_type}
@@ -128,12 +131,15 @@ export function FieldCard({
             )}
             {field.showDescription && (
               <div style={{ marginBottom: "16px" }}>
-                <Input
+                <Textarea
                   value={field.description ?? ""}
                   onChange={(e) => onFieldChange({ description: e.target.value })}
-                  placeholder="Description (optional)"
+                  placeholder="Description"
+                  rows={1}
+                  autoGrow
                   size="sm"
                   fullWidth
+                  style={{ padding: "5px 10px", lineHeight: "16px", borderRadius: "var(--radius-md)" }}
                 />
               </div>
             )}

@@ -83,7 +83,7 @@ export function QuestionRenderer({
             {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </span>
           {field.description && (
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '15px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
               {field.description}
             </p>
           )}
