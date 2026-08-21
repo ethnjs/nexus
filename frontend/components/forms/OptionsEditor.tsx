@@ -348,7 +348,7 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
           fullWidth
         />
         {canRemove && (
-          <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove}>
+          <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove} style={{ flexShrink: 0 }}>
             <IconX size={12} />
           </Button>
         )}
