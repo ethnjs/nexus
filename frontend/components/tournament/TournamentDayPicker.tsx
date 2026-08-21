@@ -1,7 +1,6 @@
 "use client";
 
 import { Dropdown } from "@/components/ui/Dropdown";
-import { Input } from "@/components/ui/Input";
 import { formatDayLabel } from "@/lib/timeFormat";
 
 interface TournamentDayPickerProps {
@@ -26,30 +25,19 @@ interface TournamentDayPickerProps {
 // unconstrained date input, since "day" here always means one of the
 // specific dates the tournament spans. A tournament with only one running
 // day (or one whose dates haven't loaded yet) has nothing to actually
-// choose, so it collapses to a locked, read-only Input instead of a
-// Dropdown with a single (or zero) option.
+// choose, so the dropdown itself locks — same control either way, just
+// disabled when there's nothing to pick between.
 export function TournamentDayPicker({
   label, value, onChange, days, placeholder = "Select a date", locked, size = "md", fullWidth, error,
 }: TournamentDayPickerProps) {
-  if (days.length <= 1) {
-    return (
-      <Input
-        label={label}
-        value={days.length === 1 ? formatDayLabel(days[0]) : "Loading tournament dates…"}
-        locked
-        size={size}
-        fullWidth={fullWidth}
-      />
-    );
-  }
   return (
     <Dropdown
       label={label}
       value={value}
       onChange={onChange}
       options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
-      placeholder={placeholder}
-      locked={locked}
+      placeholder={days.length === 0 ? "Loading tournament dates…" : placeholder}
+      locked={locked || days.length <= 1}
       size={size}
       fullWidth={fullWidth}
       error={error}
