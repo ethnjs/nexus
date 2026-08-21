@@ -63,6 +63,14 @@ export async function POST(
   return proxy(req, path, 'POST')
 }
 
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> },
+) {
+  const { path } = await params
+  return proxy(req, path, 'PUT')
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ path: string[] }> },
