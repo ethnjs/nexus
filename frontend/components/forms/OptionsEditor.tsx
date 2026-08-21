@@ -27,13 +27,17 @@ export function newOption(): EditableOption {
 }
 
 // Which disabled "this is what a respondent sees" bullet to show per row —
-// only single_select_radio/multi_select_checkbox have a real per-option
-// affordance; dropdown and ranked_choice don't render one inline like this.
-export type BulletType = 'radio' | 'checkbox' | 'none'
+// radio/checkbox have a real per-option affordance; dropdown has no bullet
+// of its own once picked, but a numbered list reads better while editing
+// than nothing at all (it's the order the closed Dropdown's panel lists
+// them in); ranked_choice doesn't render one inline like this (RankedList
+// has its own rank-number UI on the respondent side).
+export type BulletType = 'radio' | 'checkbox' | 'number' | 'none'
 
 export function bulletTypeFor(questionType: FormQuestionType): BulletType {
   if (questionType === 'single_select_radio') return 'radio'
   if (questionType === 'multi_select_checkbox') return 'checkbox'
+  if (questionType === 'single_select_dropdown') return 'number'
   return 'none'
 }
 
@@ -69,8 +73,18 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
 // unselected-chip swatch instead — echoing the ButtonGroup pill shape here
 // is what actually makes toggling display_style visible while you're still
 // looking at the editor, not just in a preview you've scrolled away from.
-function Bullet({ type, size, displayStyle }: { type: BulletType; size: number; displayStyle?: 'list' | 'buttons' }) {
+function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: number; number?: number; displayStyle?: 'list' | 'buttons' }) {
   if (type === 'none') return null
+  if (type === 'number') {
+    return (
+      <span style={{
+        pointerEvents: 'none', flexShrink: 0, minWidth: `${size}px`, textAlign: 'right',
+        fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--color-text-tertiary)',
+      }}>
+        {number}.
+      </span>
+    )
+  }
   if (displayStyle === 'buttons') {
     return (
       <span style={{
@@ -207,11 +221,12 @@ export function OptionsEditor({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={options.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
-          {options.map((option) => (
+          {options.map((option, index) => (
             <OptionRow
               key={option.clientKey}
               option={option}
               bulletType={bulletType}
+              number={index + 1}
               displayStyle={displayStyle}
               placeholder={placeholder}
               trailing={trailing?.(option)}
@@ -225,16 +240,19 @@ export function OptionsEditor({
           ))}
         </SortableContext>
       </DndContext>
-      <AddOptionRow bulletType={bulletType} displayStyle={displayStyle} onClick={addOption} />
+      <AddOptionRow bulletType={bulletType} number={options.length + 1} displayStyle={displayStyle} onClick={addOption} />
     </div>
   )
 }
 
-// Radio/checkbox questions get an unchecked bullet matching the option rows
+// Radio/checkbox/dropdown questions get a bullet matching the option rows
 // above it (Google-Forms-style — it reads as "the next option," not a
-// detached toolbar button); dropdown/ranked_choice have no per-option bullet
-// to echo, so they keep the plain "+ Add option" button.
-function AddOptionRow({ bulletType, displayStyle, onClick }: { bulletType: BulletType; displayStyle?: 'list' | 'buttons'; onClick: () => void }) {
+// detached toolbar button, and for dropdown previews the number the next
+// option will get); ranked_choice has no per-option bullet to echo, so it
+// keeps the plain "+ Add option" button.
+function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
+  bulletType: BulletType; number: number; displayStyle?: 'list' | 'buttons'; onClick: () => void
+}) {
   if (bulletType === 'none') {
     return (
       <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
@@ -245,7 +263,7 @@ function AddOptionRow({ bulletType, displayStyle, onClick }: { bulletType: Bulle
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-      <Bullet type={bulletType} size={18} displayStyle={displayStyle} />
+      <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
       <Button type="button" variant="ghost" size="sm" onClick={onClick} style={{ color: 'var(--color-text-tertiary)' }}>
         Add option
       </Button>
@@ -259,9 +277,11 @@ function AddOptionRow({ bulletType, displayStyle, onClick }: { bulletType: Bulle
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/placeholder/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, displayStyle, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
+function OptionRow({ option, bulletType, number, displayStyle, placeholder, trailing, extra, canRemove, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
+  /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
+  number: number
   displayStyle?: 'list' | 'buttons'
   placeholder: string
   trailing?: ReactNode
@@ -317,7 +337,7 @@ function OptionRow({ option, bulletType, displayStyle, placeholder, trailing, ex
         >
           <IconGripVertical size={13} />
         </span>
-        <Bullet type={bulletType} size={18} displayStyle={displayStyle} />
+        <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
         <Input
           ref={inputRef}
           value={option.label}
