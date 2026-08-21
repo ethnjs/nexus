@@ -26,7 +26,7 @@ import { Popover } from "@/components/ui/Popover";
 import { Toggle } from "@/components/ui/Toggle";
 import {
   IconArrowLeft, IconArchive, IconTrash, IconForms, IconGripVertical, IconPlus,
-  IconDescription, IconInfo, IconCopy, IconDotsVertical,
+  IconDescription, IconInfo, IconCopy, IconDotsVertical, IconMenu,
 } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
@@ -416,6 +416,14 @@ function useHeightTransition(expandedOnMount: boolean) {
 // hand-builds a branch tree over.
 const BRANCHING_TYPES: FormQuestionType[] = ["single_select_radio", "single_select_dropdown"];
 
+// Types whose config carries display_style — a TD-facing render choice
+// between a plain radio/checkbox list and a ButtonGroup pill layout. Matches
+// SingleSelectRadioConfig/MultiSelectCheckboxConfig's scope in
+// backend/app/schemas/form.py; single_select_dropdown and ranked_choice have
+// no equivalent (dropdown is always a closed Dropdown control, ranked_choice
+// always a RankedList).
+const DISPLAY_STYLE_TYPES: FormQuestionType[] = ["single_select_radio", "multi_select_checkbox"];
+
 function FieldCard({
   field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, usedFieldKeys, allFields,
 }: {
@@ -654,11 +662,16 @@ function FieldCard({
 // scroll but can never drift onto a neighbouring card. FieldList measures the
 // card and writes top/height onto boxRef — imperatively, since the card's
 // height is animated and re-rendering on every observed frame would be waste.
-function FieldToolbar({ boxRef, showDescription, onAddFieldBelow, onToggleDescription }: {
+function FieldToolbar({
+  boxRef, showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
+}: {
   boxRef: React.RefObject<HTMLDivElement | null>;
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
+  /** undefined = the expanded field's question_type doesn't support display_style — hides the button. */
+  displayStyle: "list" | "buttons" | undefined;
+  onToggleDisplayStyle: () => void;
 }) {
   return (
     <div ref={boxRef} style={{
@@ -679,6 +692,15 @@ function FieldToolbar({ boxRef, showDescription, onAddFieldBelow, onToggleDescri
         >
           <IconDescription size={14} />
         </Button>
+        {displayStyle && (
+          <Button
+            type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly
+            title={displayStyle === "buttons" ? "Show as list" : "Show as buttons"}
+            onClick={onToggleDisplayStyle}
+          >
+            <IconMenu size={14} />
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -863,6 +885,12 @@ function FieldList({ form }: { form: Form }) {
           onAddFieldBelow={() => addField(expandedField.clientKey)}
           onToggleDescription={() =>
             updateField(expandedField.clientKey, { showDescription: !expandedField.showDescription })
+          }
+          displayStyle={DISPLAY_STYLE_TYPES.includes(expandedField.question_type) ? expandedField.config?.display_style ?? "list" : undefined}
+          onToggleDisplayStyle={() =>
+            updateField(expandedField.clientKey, {
+              config: { ...expandedField.config, display_style: expandedField.config?.display_style === "buttons" ? "list" : "buttons" },
+            })
           }
         />
       )}
