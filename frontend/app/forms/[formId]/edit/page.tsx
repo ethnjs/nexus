@@ -880,44 +880,42 @@ function FieldList({ form }: { form: Form }) {
     setFields((prev) => arrayMove(prev, oldIndex, newIndex));
   }
 
-  if (fields.length === 0) {
-    return (
-      <Card radius="lg" style={{ padding: "8px" }}>
-        <EmptyState
-          icon={<IconForms size={28} />}
-          title="No fields yet"
-          description="Add a field to start building this form."
-          action={
-            <Button type="button" variant="primary" size="sm" onClick={() => addField()}>
-              <IconPlus size={14} /> Add field
-            </Button>
-          }
-        />
-      </Card>
-    );
-  }
-
   return (
     <div ref={listRef} style={{ position: "relative", display: "flex", flexDirection: "column", gap: "12px" }}>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
-          {fields.map((field) => (
-            <FieldCard
-              key={field.clientKey}
-              field={field}
-              expanded={expandedKey === field.clientKey}
-              onExpand={() => setExpandedKey(field.clientKey)}
-              onFieldChange={(updates) => updateField(field.clientKey, updates)}
-              onDuplicate={() => duplicateField(field.clientKey)}
-              onDelete={() => deleteField(field.clientKey)}
-              tournamentId={form.tournament_id}
-              usedFieldKeys={usedFieldKeys}
-              allFields={fields}
-              errors={validation.errorsFor(field.clientKey)}
-            />
-          ))}
-        </SortableContext>
-      </DndContext>
+      {fields.length === 0 ? (
+        <Card radius="lg" style={{ padding: "8px" }}>
+          <EmptyState
+            icon={<IconForms size={28} />}
+            title="No fields yet"
+            description="Add a field to start building this form."
+            action={
+              <Button type="button" variant="primary" size="sm" onClick={() => addField()}>
+                <IconPlus size={14} /> Add field
+              </Button>
+            }
+          />
+        </Card>
+      ) : (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
+            {fields.map((field) => (
+              <FieldCard
+                key={field.clientKey}
+                field={field}
+                expanded={expandedKey === field.clientKey}
+                onExpand={() => setExpandedKey(field.clientKey)}
+                onFieldChange={(updates) => updateField(field.clientKey, updates)}
+                onDuplicate={() => duplicateField(field.clientKey)}
+                onDelete={() => deleteField(field.clientKey)}
+                tournamentId={form.tournament_id}
+                usedFieldKeys={usedFieldKeys}
+                allFields={fields}
+                errors={validation.errorsFor(field.clientKey)}
+              />
+            ))}
+          </SortableContext>
+        </DndContext>
+      )}
       <FloatingSaveBar
         visible={isDirty}
         saving={saving}
