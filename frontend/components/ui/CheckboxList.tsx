@@ -19,21 +19,52 @@ interface CheckboxListProps {
   gap?: string
 }
 
+const ROW_HEIGHT = '36px'
+
 // Plain checkbox list — the fallback for multi-select when option labels
 // are too long for ButtonGroup's pill layout to read well.
 export function CheckboxList({ options, value, onChange, locked = false, size = 16, fontSize = '13px', gap = '8px' }: CheckboxListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap }}>
       {options.map((opt) => (
-        <label key={opt.value} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: locked ? 'default' : 'pointer' }}>
-          {/* locked rows never show a selection — see RadioList for why value
-              comparison alone isn't safe there. */}
-          <Checkbox checked={!locked && value.includes(opt.value)} locked={locked} onChange={() => onChange(opt.value)} size={size} />
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize, color: 'var(--color-text-secondary)' }}>
-            {opt.label}
-          </span>
-        </label>
+        <CheckboxRow
+          key={opt.value}
+          option={opt}
+          checked={!locked && value.includes(opt.value)}
+          locked={locked}
+          size={size}
+          fontSize={fontSize}
+          onChange={() => onChange(opt.value)}
+        />
       ))}
     </div>
+  )
+}
+
+function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
+  option: CheckboxListOption
+  checked: boolean
+  locked: boolean
+  size: number
+  fontSize: string
+  onChange: () => void
+}) {
+  return (
+    <label
+      style={{
+        display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
+        height: ROW_HEIGHT,
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--color-surface)',
+        cursor: locked ? 'default' : 'pointer',
+      }}
+    >
+      {/* locked rows never show a selection — see RadioList for why value
+          comparison alone isn't safe there. */}
+      <Checkbox checked={checked} locked={locked} onChange={onChange} size={size} />
+      <span style={{ fontFamily: 'var(--font-sans)', fontSize, color: 'var(--color-text-primary)' }}>
+        {option.label}
+      </span>
+    </label>
   )
 }

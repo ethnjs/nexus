@@ -44,6 +44,12 @@ interface QuestionRendererProps {
       boolean for acknowledgment, ...). */
   value?: unknown
   onChange?: (value: unknown) => void
+  /** view mode, interactive only — validation message for this field, shown
+      inline where the question type has somewhere to put it (currently just
+      ranked_choice's add-combobox; other types don't have an equivalent
+      inline slot yet, so the caller still has to render its own message for
+      them). Not used at all in edit mode — see the `errors` prop instead. */
+  error?: string
   /** view mode only — the tournament's shifts, so an availability option's
       time range can resolve even when `value` is still the raw shift-id
       list (the builder's collapsed card preview) rather than GET's already-
@@ -90,7 +96,7 @@ interface QuestionRendererProps {
 // shift's own start/end (see optionDisplayLabel) so the option can show its
 // time range alongside the TD-typed label.
 export function QuestionRenderer({
-  field, mode = 'view', interactive = false, value, onChange, shifts, showHeader = true,
+  field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
 }: QuestionRendererProps) {
   const config = field.config ?? {}
@@ -172,11 +178,12 @@ function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] 
   return option.label
 }
 
-function QuestionBody({ field, interactive, value, onChange, shifts }: {
+function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
   field: QuestionFieldData
   interactive?: boolean
   value?: unknown
   onChange?: (value: unknown) => void
+  error?: string
   shifts?: TournamentShift[] | null
 }) {
   const config = field.config ?? {}
@@ -242,9 +249,9 @@ function QuestionBody({ field, interactive, value, onChange, shifts }: {
           value={selected}
           onChange={(v) => interactive && onChange?.(v)}
           locked={!interactive}
-          size={18}
-          fontSize="14px"
-          gap="10px"
+          size={19}
+          fontSize="16px"
+          gap="8px"
         />
       )
     }
@@ -290,9 +297,9 @@ function QuestionBody({ field, interactive, value, onChange, shifts }: {
           value={selected}
           onChange={toggle}
           locked={!interactive}
-          size={18}
-          fontSize="14px"
-          gap="10px"
+          size={19}
+          fontSize="16px"
+          gap="8px"
         />
       )
     }

@@ -33,11 +33,7 @@ interface RankedListProps {
   locked?: boolean
 }
 
-// Matches Combobox's own md-size Input box (36px tall, 16px horizontal
-// padding) — the picked rows below it read as more of the same control
-// (a "closed" combobox for each rank) rather than a visually separate list.
 const ROW_HEIGHT = '36px'
-const ROW_PADDING_X = '16px'
 
 // One combobox to add your Nth choice (search a pool of up to dozens of
 // options — event_preference can run to 40+), with the picks so far shown
@@ -102,7 +98,7 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
         </SortableContext>
       </DndContext>
       {!locked && picked.length < ranks && remainingOptions.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <RankBullet rank={picked.length + 1} />
           <div style={{ flex: 1 }}>
             <Combobox
@@ -134,7 +130,7 @@ function RankBullet({ rank }: { rank: number }) {
   return (
     <span style={{
       flexShrink: 0, minWidth: '16px', textAlign: 'right',
-      fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--color-text-tertiary)',
+      fontFamily: 'var(--font-mono)', fontSize: '15px', color: 'var(--color-text-tertiary)',
     }}>
       {rank}.
     </span>
@@ -153,7 +149,6 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: value })
-  const [hovered, setHovered] = useState(false)
   // Translate, not Transform — CSS.Transform also emits the scaleX/scaleY
   // dnd-kit derives from the hovered row's rect, which squishes a dragged
   // row if rows ever differ in height (same reasoning as OptionsEditor's
@@ -161,26 +156,24 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <div style={{ display: 'flex', alignItems: 'center'}}>
       <RankBullet rank={rank} />
       <div
         ref={setNodeRef}
         {...(!locked ? attributes : {})}
         {...(!locked ? listeners : {})}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         style={{
           ...style,
           flex: 1, boxSizing: 'border-box',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-          height: ROW_HEIGHT, padding: `0 ${ROW_PADDING_X}`,
+          height: ROW_HEIGHT, paddingLeft: '16px',
           borderRadius: 'var(--radius-md)',
-          background: !locked && hovered ? 'var(--color-bg)' : 'var(--color-surface)',
+          background: 'var(--color-surface)',
           cursor: locked ? 'default' : 'grab',
           touchAction: 'none',
         }}
       >
-        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-primary)' }}>
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
           {label}
         </span>
         {!locked && (
