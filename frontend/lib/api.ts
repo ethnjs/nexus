@@ -382,13 +382,15 @@ export interface TournamentPublic {
 }
 
 export interface Tournament extends TournamentPublic {
-  id:          number
-  is_public:   boolean
-  is_archived: boolean
-  owner_id:    number
-  roles:       Role[]
-  created_at:  string
-  updated_at:  string
+  id:           number
+  timezone:     string
+  is_multi_day: boolean
+  is_public:    boolean
+  is_archived:  boolean
+  owner_id:     number
+  roles:        Role[]
+  created_at:   string
+  updated_at:   string
 }
 
 // GET /tournaments/me/ — lightweight card view, no roles/owner

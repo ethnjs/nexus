@@ -84,7 +84,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
         setSelectedTournament,
         isArchived: !!selectedTournament?.is_archived,
         days,
-        isMultiDay: days.length > 1,
+        isMultiDay: !!selectedTournament?.is_multi_day,
         loading,
         refresh,
       }}
