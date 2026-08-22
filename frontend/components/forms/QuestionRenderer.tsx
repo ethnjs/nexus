@@ -242,6 +242,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
             value={selected}
             onChange={(v) => interactive && onChange?.(v)}
             locked={!interactive}
+            clickThrough={!interactive}
           />
         )
       }
@@ -290,6 +291,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
             value={selected}
             onChange={toggle}
             locked={!interactive}
+            clickThrough={!interactive}
           />
         )
       }
