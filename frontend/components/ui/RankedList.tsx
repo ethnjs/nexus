@@ -120,6 +120,7 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
               }}
               allowFreeText={false}
               placeholder={`Add choice ${picked.length + 1} of ${ranks}`}
+              maxResults={remainingOptions.length}
               size="md"
             />
           </div>
