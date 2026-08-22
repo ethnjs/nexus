@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useRef, useState, MouseEvent as ReactMouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
@@ -19,6 +19,93 @@ import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isF
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
+// How long to keep waiting for the clicked input to exist. The entity-backed
+// editors (availability/event_preference) render "Loading shifts…" until their
+// fetch lands, so the option row a click was aimed at isn't in the DOM at the
+// moment the card expands.
+const FOCUS_WAIT_MS = 4000;
+
+// Which editor input a click on the collapsed preview was aimed at. Options
+// are addressed by position, not option_id: unsaved options all carry a blank
+// id, and preview and editor render the same list in the same order anyway.
+export type FocusIntent = {
+  target: "label" | "description" | `option:${number}`;
+  /** Character offset the click landed on within the preview's text, so the
+      caret opens where you pointed. null when the click missed the text. */
+  offset: number | null;
+} | null;
+
+// Character offset of a viewport point within its own text node. Chrome/Firefox
+// expose caretPositionFromPoint; WebKit only has the older caretRangeFromPoint.
+function caretOffsetFromPoint(x: number, y: number): number | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null;
+  };
+  const pos = doc.caretPositionFromPoint?.(x, y);
+  if (pos) return pos.offsetNode.nodeType === Node.TEXT_NODE ? pos.offset : null;
+  const range = document.caretRangeFromPoint?.(x, y);
+  // Outside a text node the "offset" is a child index, which would be a
+  // meaningless caret position — better to fall back to the end of the value.
+  if (!range || range.startContainer.nodeType !== Node.TEXT_NODE) return null;
+  return range.startOffset;
+}
+
+// An option row leads with its bullet — a real <input type="checkbox"/"radio">
+// rendered as the respondent-facing preview — so "the first input in the row"
+// is not the label field, and isn't even selection-capable.
+const TEXT_FIELD = 'textarea, input[type="text"], input:not([type])';
+
+function resolveTarget(root: HTMLElement, target: NonNullable<FocusIntent>["target"]) {
+  if (target.startsWith("option:")) {
+    const row = root.querySelectorAll<HTMLElement>("[data-option-value]")[Number(target.slice(7))];
+    return row?.querySelector<HTMLInputElement | HTMLTextAreaElement>(TEXT_FIELD) ?? null;
+  }
+  // A description that's empty isn't rendered on the collapsed card at all, so
+  // its intent can only arrive when the editor has the field — but fall back
+  // rather than no-op if that ever stops holding.
+  return root.querySelector<HTMLElement>(`[data-focus="${target}"]`)
+    ?? root.querySelector<HTMLElement>('[data-focus="label"]');
+}
+
+// Resolves an intent against an expanded card's DOM and drops the caret in.
+// Matched by data attributes rather than refs since the targets live at
+// different depths across three components (here, QuestionRenderer,
+// OptionsEditor) and most of them don't exist until the card is expanded.
+// Returns a canceller: the retry below outlives the click that started it.
+function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
+  if (!intent) return () => {};
+  let frame = 0;
+  const deadline = Date.now() + FOCUS_WAIT_MS;
+
+  const attempt = () => {
+    const active = document.activeElement;
+    // The user got there first while we were waiting on a fetch — stealing
+    // focus out from under them mid-keystroke is worse than not landing it.
+    if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
+
+    const target = resolveTarget(root, intent.target);
+    if (!target) {
+      if (Date.now() < deadline) frame = requestAnimationFrame(attempt);
+      return;
+    }
+    target.focus();
+    // selectionStart is null on input types that don't support selection
+    // (checkbox, radio, ...) — reading it is the sanctioned way to ask,
+    // and calling setSelectionRange on one throws InvalidStateError.
+    if ((target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement)
+      && target.selectionStart !== null) {
+      // Where you clicked, clamped to what the editor actually holds — an
+      // entity-backed option's preview text ("Crime Busters B, 9:00–11:00")
+      // is longer than the label the editor is editing.
+      const caret = Math.min(intent.offset ?? target.value.length, target.value.length);
+      target.setSelectionRange(caret, caret);
+    }
+  };
+
+  attempt();
+  return () => cancelAnimationFrame(frame);
+}
+
 // One card in the field list — collapsed, it's a read-only preview of the
 // real question (QuestionRenderer's view mode); expanded, it's the editor:
 // label/type chrome here (field key + reserved presets live in FieldToolbar
@@ -28,11 +115,17 @@ import { issuesFor } from "@/lib/forms/useFormValidation";
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, errors,
+  field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, errors,
 }: {
   field: EditableField;
   expanded: boolean;
-  onExpand: () => void;
+  /** Carries which part of the collapsed preview was clicked, so the card can
+      open with the caret already in the editor input that renders it. */
+  onExpand: (intent: FocusIntent) => void;
+  focusIntent: FocusIntent;
+  /** Bumped per expand — the effect that consumes focusIntent keys off this
+      so it fires once per click, not on every re-render while expanded. */
+  focusNonce: number;
   onFieldChange: (updates: Partial<EditableField>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -108,6 +201,31 @@ export function FieldCard({
   // expand — grabbing the grip shouldn't also trigger that.
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
 
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!focusNonce || !rootRef.current) return;
+    return applyFocusIntent(rootRef.current, focusIntent);
+    // Once per expand — focusNonce is the edge, focusIntent just rides along.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusNonce]);
+
+  // Reads the click's position in the preview off the data attributes the
+  // preview renders (QuestionRenderer's header, RadioList/CheckboxList's
+  // rows), so clicking a question, its description, or one specific option
+  // opens the card with that input focused.
+  function handleCollapsedClick(e: ReactMouseEvent) {
+    const el = e.target instanceof HTMLElement ? e.target : null;
+    const offset = caretOffsetFromPoint(e.clientX, e.clientY);
+    const optionRow = el?.closest<HTMLElement>("[data-option-value]");
+    if (optionRow) {
+      const rows = [...(rootRef.current?.querySelectorAll<HTMLElement>("[data-option-value]") ?? [])];
+      onExpand({ target: `option:${rows.indexOf(optionRow)}`, offset });
+      return;
+    }
+    const focus = el?.closest<HTMLElement>("[data-focus]")?.dataset.focus;
+    onExpand(focus === "label" || focus === "description" ? { target: focus, offset } : null);
+  }
+
   // Every question_type switch drops whatever config keys belonged to the
   // *previous* type — e.g. short_text's max_length has nowhere to go on
   // multi_select_checkbox, and the backend's extra="forbid" config schemas
@@ -132,7 +250,7 @@ export function FieldCard({
     // Outer box stays untransformed so the shared toolbar can measure this
     // card's resting offsetTop/offsetHeight — sortable transform/opacity apply
     // one level in rather than on this node directly.
-    <div data-field-card={field.clientKey} style={{ position: "relative" }}>
+    <div ref={rootRef} data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
         {isDragging ? (
           <FieldCardDragPreview field={field} />
@@ -151,6 +269,7 @@ export function FieldCard({
             </div>
             <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: field.showDescription ? "10px" : "16px" }}>
               <Textarea
+                data-focus="label"
                 value={field.label}
                 onChange={(e) => onFieldChange({ label: e.target.value })}
                 placeholder="Question"
@@ -170,6 +289,7 @@ export function FieldCard({
             {field.showDescription && (
               <div style={{ marginBottom: "16px" }}>
                 <Textarea
+                  data-focus="description"
                   value={field.description ?? ""}
                   onChange={(e) => onFieldChange({ description: e.target.value })}
                   placeholder="Description"
@@ -219,7 +339,7 @@ export function FieldCard({
             radius="lg"
             variant={hasCardError ? "danger" : "normal"}
             style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
-            onClick={onExpand}
+            onClick={handleCollapsedClick}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
           >
@@ -230,7 +350,14 @@ export function FieldCard({
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <QuestionRenderer field={field} interactive={false} shifts={shifts} />
+            {/* field-preview turns the pieces that map to an editor input
+                (see FocusIntent) into an I-beam, so the preview reads as
+                editable text rather than one big button. Scoped by class
+                because the targets are rendered by shared components that
+                the respondent-facing form uses too. */}
+            <div className="field-preview">
+              <QuestionRenderer field={field} interactive={false} shifts={shifts} />
+            </div>
           </Card>
         )}
       </div>

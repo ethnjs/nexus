@@ -105,12 +105,15 @@ export function QuestionRenderer({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       {showHeader && (
         <div>
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
+          {/* data-focus marks which editor input a click here corresponds to,
+              so the builder's collapsed card can open straight into it. Inert
+              everywhere else. */}
+          <span data-focus="label" style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
             {field.label || 'Untitled question'}
             {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
           </span>
           {field.description && (
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
+            <p data-focus="description" style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
               {field.description}
             </p>
           )}

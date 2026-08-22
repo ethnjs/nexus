@@ -118,28 +118,28 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
     }))
   }
 
-  if (loadError) {
-    return (
-      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)' }}>
-        {loadError}
-      </p>
-    )
-  }
+  // The option rows don't depend on this fetch — their labels live on the
+  // field itself. Only the chips and the picker's checklist need the entity
+  // list, so the editor renders immediately and those fill in when it lands;
+  // blocking the whole body on it made the rows unclickable (and unfocusable
+  // — see FieldCard's FocusIntent) for as long as the request took.
+  const loading = entities === null
+  const loaded = entities ?? []
+  const noun = fieldKey === 'availability' ? 'shifts' : 'events'
 
-  if (entities === null) {
-    return (
-      <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)' }}>
-        Loading {fieldKey === 'availability' ? 'shifts' : 'events'}…
-      </p>
-    )
-  }
-
-  const emptyMessage = fieldKey === 'availability'
-    ? 'No shifts on this tournament yet — add some under Events > Shifts.'
-    : 'No events on this tournament yet — add some under Events.'
+  const emptyMessage = loading
+    ? `Loading ${noun}…`
+    : fieldKey === 'availability'
+      ? 'No shifts on this tournament yet — add some under Events > Shifts.'
+      : 'No events on this tournament yet — add some under Events.'
 
   return (
     <>
+      {loadError && (
+        <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)', marginBottom: '8px' }}>
+          {loadError}
+        </p>
+      )}
       <OptionsEditor
         options={options}
         onChange={onChange}
@@ -152,7 +152,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
         renderExtra={(option) => (
           <EntityPicker
             option={option}
-            entities={entities}
+            entities={loaded}
             fieldKey={fieldKey}
             isMultiDay={tournament.is_multi_day}
             emptyMessage={emptyMessage}
@@ -160,7 +160,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
           />
         )}
       />
-      {fieldKey === 'event_preference' && entities.length > 0 && (
+      {fieldKey === 'event_preference' && loaded.length > 0 && (
         <Button
           type="button" variant="secondary" size="sm"
           onClick={() => setShowPicker(true)}
@@ -171,7 +171,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
       )}
       {showPicker && (
         <EventOptionsPickerModal
-          events={entities as TournamentEvent[]}
+          events={loaded as TournamentEvent[]}
           existingEventIds={existingEventIds}
           onClose={() => setShowPicker(false)}
           onConfirm={(newOptions) => {

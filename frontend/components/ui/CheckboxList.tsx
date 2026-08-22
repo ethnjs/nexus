@@ -51,6 +51,9 @@ function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
 }) {
   return (
     <label
+      // Lets a read-only preview of this list report which option was
+      // clicked (the form builder focuses that option's editor row).
+      data-option-value={option.value}
       style={{
         display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
         height: ROW_HEIGHT,

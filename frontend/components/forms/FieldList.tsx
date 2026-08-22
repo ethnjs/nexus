@@ -17,7 +17,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
-import { FieldCard, FieldCardDragPreview } from "@/components/forms/FieldCard";
+import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
 import { FieldToolbar } from "@/components/forms/FieldToolbar";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
@@ -74,6 +74,11 @@ export function FieldList({ form }: { form: Form }) {
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
+  // Which input the click that opened a card was aimed at (see FocusIntent).
+  // The nonce starts at 1 so 0 can mean "no request for this card" — expanding
+  // the same card twice in a row still has to re-fire the focus.
+  const [focusRequest, setFocusRequest] = useState<{ key: string; intent: FocusIntent; nonce: number } | null>(null);
+  const focusNonceRef = useRef(1);
   const listRef = useRef<HTMLDivElement>(null);
   const toolbarRef = useRef<HTMLDivElement>(null);
 
@@ -444,10 +449,13 @@ export function FieldList({ form }: { form: Form }) {
                 // Expanding grows the card downward from where it sat, so a
                 // click near the bottom of the viewport leaves most of the
                 // question you just opened below the fold.
-                onExpand={() => {
+                onExpand={(intent) => {
                   setExpandedKey(field.clientKey);
                   setPendingScrollKey(field.clientKey);
+                  setFocusRequest({ key: field.clientKey, intent, nonce: focusNonceRef.current++ });
                 }}
+                focusIntent={focusRequest?.key === field.clientKey ? focusRequest.intent : null}
+                focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
                 onFieldChange={(updates) => updateField(field.clientKey, updates)}
                 onDuplicate={() => duplicateField(field.clientKey)}
                 onDelete={() => deleteField(field.clientKey)}

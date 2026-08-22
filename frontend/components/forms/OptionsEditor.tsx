@@ -380,6 +380,9 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
       ref={setNodeRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      // Pairs with the read-only preview's data-option-value: clicking an
+      // option on a collapsed card focuses this row's Input (see FieldCard).
+      data-option-value={option.option_id}
       style={{ ...style, display: 'flex', flexDirection: 'column', gap: '6px', padding: '4px 0' }}
     >
       {/* position: relative lives on this row (not the outer column) so the
