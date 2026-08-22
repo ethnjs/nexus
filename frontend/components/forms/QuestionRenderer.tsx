@@ -304,6 +304,7 @@ function QuestionBody({ field, interactive, value, onChange, shifts }: {
           ranks={ranks}
           value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
           onChange={(next) => interactive && onChange?.(next)}
+          allowDuplicates={!!config.allow_duplicates}
           locked={!interactive}
         />
       )
