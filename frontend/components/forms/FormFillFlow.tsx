@@ -77,10 +77,6 @@ function fieldErrorMessage(field: FormField, value: unknown): string | undefined
   return undefined;
 }
 
-function invalidFieldIds(walk: FormField[], answers: Record<string, unknown>): string[] {
-  return walk.filter((f) => fieldErrorMessage(f, answers[f.id]) !== undefined).map((f) => f.id);
-}
-
 interface FormFillFlowProps {
   form: Form;
   /** Rendered above the title card — e.g. the builder preview's "nothing
@@ -115,7 +111,11 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // value stops being invalid (same reactive-recheck pattern as FieldCard's
   // liveNonKeyErrors).
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
-  const [submitAttempted, setSubmitAttempted] = useState(false);
+  // True only across the span from a Submit click that found nothing
+  // invalid to the next answer edit — reset by setAnswer, so fixing the
+  // last error by itself never flips this true; Submit has to actually be
+  // clicked again once things are fixed.
+  const [submitSucceeded, setSubmitSucceeded] = useState(false);
   // Field to scroll to once its Card is actually in the DOM — set alongside
   // the state change that reveals/flags it (revealCount, attemptedIds), so
   // the effect below only ever fires after that same render has committed,
@@ -129,8 +129,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // not just "the active field happens to be last" (that field still needs
   // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
-  const invalidIds = new Set(invalidFieldIds(walk, answers));
-  const showSuccess = submitAttempted && allContinued && invalidIds.size === 0;
+  const showSuccess = submitSucceeded;
 
   // A branching answer changing (editing an already-passed radio/dropdown)
   // can make an earlier answer's downstream fields unreachable — those
@@ -165,6 +164,10 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
 
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
+    // Whatever Submit last validated is now stale — require clicking it
+    // again rather than letting showSuccess flip true the instant the last
+    // error happens to clear.
+    setSubmitSucceeded(false);
   }
 
   function handleContinue(field: FormField) {
@@ -176,13 +179,14 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   }
 
   function handleSubmit() {
-    setSubmitAttempted(true);
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
     const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
     if (firstInvalid) {
+      setSubmitSucceeded(false);
       setPendingScrollId(firstInvalid.id);
       return;
     }
+    setSubmitSucceeded(true);
     onComplete?.(answers);
   }
 
