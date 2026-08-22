@@ -31,6 +31,10 @@ interface RankedListProps {
       option normally drops out of the add-combobox's pool until removed. */
   allowDuplicates?: boolean
   locked?: boolean
+  /** Shown on the add-combobox (this is the only interactive control left
+      once every rank slot has a pick, so it's also where "N of ranks still
+      required" surfaces once a Continue/Submit attempt flags it). */
+  error?: string
 }
 
 const ROW_HEIGHT = '36px'
@@ -43,7 +47,7 @@ const ROW_HEIGHT = '36px'
 // pool) means re-searching that same long list `ranks` times over instead
 // of once per pick, and reordering is a drag on a touch device rather than
 // a search-and-tap, both worse on mobile.
-export function RankedList({ options, ranks, value, onChange, allowDuplicates = false, locked = false }: RankedListProps) {
+export function RankedList({ options, ranks, value, onChange, allowDuplicates = false, locked = false, error }: RankedListProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const [draft, setDraft] = useState('')
 
@@ -97,8 +101,8 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
           ))}
         </SortableContext>
       </DndContext>
-      {!locked && picked.length < ranks && remainingOptions.length > 0 && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {!locked && picked.length < ranks && (remainingOptions.length > 0 || error) && (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
           <RankBullet rank={picked.length + 1} />
           <div style={{ flex: 1 }}>
             <Combobox
@@ -117,6 +121,7 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
               allowFreeText={false}
               placeholder={`Add choice ${picked.length + 1} of ${ranks}`}
               maxResults={remainingOptions.length}
+              error={error}
               size="md"
             />
           </div>
@@ -126,10 +131,14 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
   )
 }
 
+// Fixed to ROW_HEIGHT and internally flex-centered so it lines up with just
+// the input row next to it — not the midpoint of input-plus-error-message
+// when that sibling's Combobox is showing a validation error below itself.
 function RankBullet({ rank }: { rank: number }) {
   return (
     <span style={{
-      flexShrink: 0, minWidth: '16px', textAlign: 'right',
+      flexShrink: 0, minWidth: '16px', height: ROW_HEIGHT,
+      display: 'flex', alignItems: 'center', justifyContent: 'flex-end',
       fontFamily: 'var(--font-mono)', fontSize: '15px', color: 'var(--color-text-tertiary)',
     }}>
       {rank}.
@@ -156,7 +165,7 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center'}}>
+    <div style={{ display: 'flex', alignItems: 'flex-start' }}>
       <RankBullet rank={rank} />
       <div
         ref={setNodeRef}

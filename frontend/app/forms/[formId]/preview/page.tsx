@@ -56,15 +56,36 @@ function isBlank(value: unknown): boolean {
   return false;
 }
 
-function missingRequiredFieldIds(walk: FormField[], answers: Record<string, unknown>): string[] {
-  return walk.filter((f) => f.config?.required && isBlank(answers[f.id])).map((f) => f.id);
+// ranked_choice has a second validation rule beyond plain required/blank:
+// a required question needs every rank slot filled (not just one), and an
+// *optional* one — once the respondent has picked anything at all — also
+// needs every slot filled (a half-finished ranking isn't a meaningful
+// answer to leave in). `pickedCount < ranks` alone covers both: when
+// required, `pickedCount === 0` already satisfies it (0 < ranks); when
+// optional, the `pickedCount > 0` guard is what stops an untouched
+// question from being flagged.
+function fieldErrorMessage(field: FormField, value: unknown): string | undefined {
+  const required = !!field.config?.required;
+  if (field.question_type === "ranked_choice") {
+    const ranks = field.config?.ranks ?? 0;
+    const pickedCount = value && typeof value === "object" ? Object.keys(value as object).length : 0;
+    if (pickedCount === 0) return required ? "This can't be empty." : undefined;
+    if (pickedCount < ranks) return "All ranks must be filled.";
+    return undefined;
+  }
+  if (required && isBlank(value)) return "This question is required.";
+  return undefined;
+}
+
+function invalidFieldIds(walk: FormField[], answers: Record<string, unknown>): string[] {
+  return walk.filter((f) => fieldErrorMessage(f, answers[f.id]) !== undefined).map((f) => f.id);
 }
 
 // TD-only, read-only-but-simulated view of the form as a respondent would
 // see it — must work on draft forms (that's the point of previewing before
 // publishing). No FormResponse is created here: Submit only runs the same
-// required-field validation the server would (see missingRequiredFieldIds),
-// it never actually calls formsApi.submitResponse.
+// validation the server would (see invalidFieldIds), it never actually
+// calls formsApi.submitResponse.
 export default function FormPreviewPage({ params }: { params: Promise<{ formId: string }> }) {
   const { formId } = use(params);
 
@@ -97,8 +118,26 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   // not just "the active field happens to be last" (that field still needs
   // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
-  const missingIds = new Set(missingRequiredFieldIds(walk, answers));
-  const showSuccess = submitAttempted && allContinued && missingIds.size === 0;
+  const invalidIds = new Set(invalidFieldIds(walk, answers));
+  const showSuccess = submitAttempted && allContinued && invalidIds.size === 0;
+
+  // A branching answer changing (editing an already-passed radio/dropdown)
+  // can make an earlier answer's downstream fields unreachable — those
+  // fields keep whatever the respondent answered before the branch changed
+  // unless explicitly cleared, so this drops anything no longer in `walk`.
+  // Effect (not derived state): it mutates `answers`, and only when there's
+  // actually something stale to drop — an unchanged `prev` triggers no
+  // re-render, so this can't loop against the walk/answers memo above.
+  useEffect(() => {
+    const reachableIds = new Set(walk.map((f) => f.id));
+    setAnswers((prev) => {
+      const staleIds = Object.keys(prev).filter((id) => !reachableIds.has(id));
+      if (staleIds.length === 0) return prev;
+      const next = { ...prev };
+      staleIds.forEach((id) => delete next[id]);
+      return next;
+    });
+  }, [walk]);
 
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
@@ -106,7 +145,7 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
 
   function handleContinue(field: FormField) {
     setAttemptedIds((prev) => new Set(prev).add(field.id));
-    if (field.config?.required && isBlank(answers[field.id])) return;
+    if (fieldErrorMessage(field, answers[field.id])) return;
     setRevealCount((c) => c + 1);
   }
 
@@ -161,23 +200,28 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
       ) : (
         visibleFields.map((field, i) => {
           const isActive = i === visibleFields.length - 1 && !allContinued;
-          const showError = attemptedIds.has(field.id) && !!field.config?.required && isBlank(answers[field.id]);
+          const errorMessage = attemptedIds.has(field.id) ? fieldErrorMessage(field, answers[field.id]) : undefined;
+          // ranked_choice surfaces its own error on the add-combobox (via
+          // QuestionRenderer's `error` prop) — every other type has no
+          // inline slot for it yet, so it falls back to plain text below.
+          const isRanked = field.question_type === "ranked_choice";
           return (
-            <Card key={field.id} radius="lg" style={{ padding: "24px" }}>
+            <Card key={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} style={{ padding: "24px" }}>
               <QuestionRenderer
                 field={field}
                 interactive
                 value={answers[field.id]}
                 onChange={(v) => setAnswer(field.id, v)}
+                error={isRanked ? errorMessage : undefined}
               />
-              {showError && (
+              {!isRanked && errorMessage && (
                 <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "10px" }}>
-                  This question is required.
+                  {errorMessage}
                 </p>
               )}
               {isActive && (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "16px" }}>
-                  <Button type="button" variant="primary" size="sm" onClick={() => handleContinue(field)}>
+                  <Button type="button" variant="primary" size="md" onClick={() => handleContinue(field)}>
                     Continue
                   </Button>
                 </div>

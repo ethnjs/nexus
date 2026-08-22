@@ -128,7 +128,7 @@ export function QuestionRenderer({
           errors={errors}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} shifts={shifts} />
+        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
       )}
     </div>
   )
@@ -315,6 +315,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           onChange={(next) => interactive && onChange?.(next)}
           allowDuplicates={!!config.allow_duplicates}
           locked={!interactive}
+          error={error}
         />
       )
     }
