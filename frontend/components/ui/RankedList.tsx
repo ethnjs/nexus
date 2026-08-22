@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
 import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
@@ -50,6 +50,7 @@ const ROW_HEIGHT = '36px'
 export function RankedList({ options, ranks, value, onChange, allowDuplicates = false, locked = false, error }: RankedListProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const [draft, setDraft] = useState('')
+  const [activeId, setActiveId] = useState<string | null>(null)
 
   const picked = Object.keys(value)
     .map(Number)
@@ -83,7 +84,12 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
     commit(picked.filter((v) => v !== optionValue))
   }
 
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id))
+  }
+
   function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null)
     const { active, over } = event
     if (!over || active.id === over.id) return
     const oldIndex = picked.indexOf(String(active.id))
@@ -94,12 +100,27 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+        onDragCancel={() => setActiveId(null)}
+      >
         <SortableContext items={displayed} strategy={verticalListSortingStrategy}>
           {displayed.map((v, i) => (
             <RankedRow key={v} value={v} rank={i + 1} label={labelFor(v)} locked={locked} onRemove={() => removePick(v)} />
           ))}
         </SortableContext>
+        {/* Rendered in a portal at document.body and positioned via
+            position:fixed, so the dragged pill following the cursor never
+            expands this container's (or the page's) scrollable area — the
+            bug with translating the in-flow row itself to track the
+            pointer, which the browser counts as scrollable overflow and
+            keeps growing as you drag past the list's edges. */}
+        <DragOverlay>
+          {activeId && <RowPill label={labelFor(activeId)} dragging />}
+        </DragOverlay>
       </DndContext>
       {!locked && picked.length < ranks && (remainingOptions.length > 0 || error) && (
         <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -146,6 +167,41 @@ function RankBullet({ rank }: { rank: number }) {
   )
 }
 
+// The actual visual pill — shared between a row's in-list placeholder and
+// the DragOverlay clone that follows the cursor, so the two look identical.
+function RowPill({ label, onRemove, locked = false, dragging = false }: {
+  label: string
+  onRemove?: () => void
+  locked?: boolean
+  dragging?: boolean
+}) {
+  return (
+    <div
+      style={{
+        boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+        height: ROW_HEIGHT, paddingLeft: '16px',
+        borderRadius: 'var(--radius-md)',
+        background: 'var(--color-surface)',
+        boxShadow: dragging ? 'var(--shadow-md, 0 4px 12px rgba(0,0,0,0.15))' : undefined,
+        cursor: locked ? 'default' : dragging ? 'grabbing' : 'grab',
+      }}
+    >
+      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
+        {label}
+      </span>
+      {onRemove && (
+        <Button
+          type="button" variant="ghost" size="sm" iconOnly title="Remove"
+          onClick={(e) => { e.stopPropagation(); onRemove() }}
+        >
+          <IconX size={12} />
+        </Button>
+      )}
+    </div>
+  )
+}
+
 // The bullet lives outside this row's own sortable node (see RankedList's
 // map above) — it marks a fixed rank *slot*, not something that travels
 // with the dragged item, so mid-drag it stays put while the pill under it
@@ -161,8 +217,15 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   // Translate, not Transform — CSS.Transform also emits the scaleX/scaleY
   // dnd-kit derives from the hovered row's rect, which squishes a dragged
   // row if rows ever differ in height (same reasoning as OptionsEditor's
-  // own row list).
-  const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
+  // own row list). The dragged row itself is left in place at opacity 0
+  // (its real visual is the DragOverlay clone above) rather than translated
+  // to follow the cursor — translating an in-flow element far enough grows
+  // the page's scrollable area without bound, which is the bug this avoids.
+  const style = {
+    transform: isDragging ? undefined : CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  }
 
   return (
     <div style={{ display: 'flex', alignItems: 'flex-start' }}>
@@ -171,28 +234,9 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
         ref={setNodeRef}
         {...(!locked ? attributes : {})}
         {...(!locked ? listeners : {})}
-        style={{
-          ...style,
-          flex: 1, boxSizing: 'border-box',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
-          height: ROW_HEIGHT, paddingLeft: '16px',
-          borderRadius: 'var(--radius-md)',
-          background: 'var(--color-surface)',
-          cursor: locked ? 'default' : 'grab',
-          touchAction: 'none',
-        }}
+        style={{ ...style, flex: 1, touchAction: 'none' }}
       >
-        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '16px', color: 'var(--color-text-primary)' }}>
-          {label}
-        </span>
-        {!locked && (
-          <Button
-            type="button" variant="ghost" size="sm" iconOnly title="Remove"
-            onClick={(e) => { e.stopPropagation(); onRemove() }}
-          >
-            <IconX size={12} />
-          </Button>
-        )}
+        <RowPill label={label} onRemove={!locked ? onRemove : undefined} locked={locked} />
       </div>
     </div>
   )
