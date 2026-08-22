@@ -95,7 +95,7 @@ function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: 
   if (displayStyle === 'buttons') {
     return (
       <span style={{
-        pointerEvents: 'none', flexShrink: 0,
+        pointerEvents: 'none', display: 'block', flexShrink: 0,
         width: `${size + 6}px`, height: `${size}px`,
         border: '1px solid var(--color-border-strong)',
         borderRadius: 'var(--radius-md)',
