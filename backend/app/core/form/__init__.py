@@ -1,5 +1,4 @@
 from sqlalchemy.orm import Session
-from sqlalchemy.orm.attributes import flag_modified
 from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, EVENT_PREFERENCE_FIELD_KEY_PATTERN
 from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent, TournamentShift
 
@@ -137,91 +136,6 @@ def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: in
                 return True
     return False
 
-
-def field_has_answers(db: Session, field_id: str) -> bool:
-    """True if any FormAnswer exists for this field — locks it against
-    edit (see forms.py's edit_form_field) and hard delete (below)."""
-    return db.query(FormAnswer).filter(FormAnswer.field_id == field_id).first() is not None
-
-
-def remove_form_field(
-        db: Session,
-        field: FormField
-) -> bool:
-
-    if field_has_answers(db, field.id):
-        field.is_archived = True
-        db.commit()
-        return True
-    else:
-        db.delete(field)
-        db.commit()
-        return False
-
-def update_field_text(
-        db: Session,
-        field: FormField,
-        label: str | None,
-        description: str | None
-) -> FormField:
-
-    if label is not None:
-        field.label = label
-    if description is not None:
-        field.description = description
-
-    db.commit()
-    db.refresh(field)
-    return field
-
-def set_field_config(
-        db: Session,
-        field: FormField,
-        config: dict,
-) -> FormField:
-    field.config = config
-    flag_modified(field, "config")
-    db.commit()
-    db.refresh(field)
-    return field
-
-
-def reorder_field(
-        db: Session,
-        field: FormField,
-        order: int,
-) -> FormField:
-    field.order = order
-    db.commit()
-    db.refresh(field)
-    return field
-
-
-def replace_field_type(
-        db: Session,
-        field: FormField,
-        new_type: str
-) -> FormField:
-    
-    field.is_archived = True
-
-    old_key = field.field_key
-    field.field_key = f"{old_key}_archived_{field.id}"
-
-    new_field = FormField(
-        form_id=field.form_id,
-        order=field.order,
-        label=field.label,
-        description=field.description,
-        question_type=new_type,
-        field_key=old_key,
-        is_archived=False,
-    )
-
-    db.add(new_field)
-    db.commit()
-    db.refresh(new_field)
-    return new_field
 
 def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[dict, list[str]]:
     """For an in-place field update on a published form: an option_id

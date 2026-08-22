@@ -13,8 +13,6 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.form import (
     field_key_taken_in_tournament,
-    remove_form_field,
-    replace_field_type,
     resolve_field_options,
     slugify,
 )
@@ -208,57 +206,6 @@ class TestModelCRUD:
         db.commit()
 
         assert db.query(Form).filter(Form.id == form_id).first() is None
-
-
-# ---------------------------------------------------------------------------
-# Field-editing helpers
-# ---------------------------------------------------------------------------
-
-class TestFieldHelpers:
-    def test_remove_form_field_archives_when_answers_exist(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, order=1, field_key="favorite_color")
-
-        response = FormResponse(form_id=form.id, user_id=td_user.id)
-        db.add(response)
-        db.flush()
-
-        answer = FormAnswer(response_id=response.id, field_id=field.id, value=["opt_1"])
-        db.add(answer)
-        db.flush()
-
-        removed = remove_form_field(db, field)
-
-        assert removed is True
-        db.refresh(field)
-        assert field.is_archived is True
-        assert db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one().value == ["opt_1"]
-
-    def test_remove_form_field_hard_deletes_when_no_answers(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, field_key="no_answers_yet")
-
-        removed = remove_form_field(db, field)
-
-        assert removed is False
-        assert db.query(FormField).filter(FormField.id == field.id).first() is None
-
-    def test_replace_field_type_archives_old_field_and_keeps_order(self, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        field = _make_field(db, form, order=7, field_key="tshirt_size")
-
-        replacement = replace_field_type(db, field, "multi_select")
-
-        db.refresh(field)
-        assert field.is_archived is True
-        assert field.field_key.endswith(f"_archived_{field.id}")
-
-        assert replacement is not field
-        assert replacement.form_id == form.id
-        assert replacement.order == field.order
-        assert replacement.question_type == "multi_select"
-        assert replacement.field_key == "tshirt_size"
-        assert replacement.is_archived is False
 
 
 # ---------------------------------------------------------------------------
