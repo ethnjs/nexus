@@ -436,7 +436,13 @@ export function FieldList({ form }: { form: Form }) {
                 key={field.clientKey}
                 field={field}
                 expanded={expandedKey === field.clientKey}
-                onExpand={() => setExpandedKey(field.clientKey)}
+                // Expanding grows the card downward from where it sat, so a
+                // click near the bottom of the viewport leaves most of the
+                // question you just opened below the fold.
+                onExpand={() => {
+                  setExpandedKey(field.clientKey);
+                  setPendingScrollKey(field.clientKey);
+                }}
                 onFieldChange={(updates) => updateField(field.clientKey, updates)}
                 onDuplicate={() => duplicateField(field.clientKey)}
                 onDelete={() => deleteField(field.clientKey)}
