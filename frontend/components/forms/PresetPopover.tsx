@@ -194,19 +194,32 @@ function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors 
   );
 }
 
+// Local suffix state, synced FROM field_key but not read straight back out
+// of it on every keystroke — same reasoning as LunchParams below:
+// buildEventPreferenceFieldKey slugifies (and trims trailing separators),
+// so a display value derived straight from field_key would eat the
+// trailing space after each word, making a multi-word suffix like
+// "morning session" impossible to type.
 function EventPreferenceParams({ field, onFieldChange, showErrors }: {
   field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
 }) {
-  const { suffix } = parseEventPreferenceFieldKey(field.field_key);
+  const { suffix: parsedSuffix } = parseEventPreferenceFieldKey(field.field_key);
+  const [suffix, setSuffix] = useState(parsedSuffix);
+
+  function handleChange(newSuffix: string) {
+    setSuffix(newSuffix);
+    onFieldChange({ field_key: buildEventPreferenceFieldKey(newSuffix) });
+  }
+
   return (
     <Input
       label="Suffix"
-      placeholder="e.g. morning"
+      placeholder="e.g. morning session"
       value={suffix}
-      onChange={(e) => onFieldChange({ field_key: buildEventPreferenceFieldKey(e.target.value) })}
+      onChange={(e) => handleChange(e.target.value)}
       size="sm"
       fullWidth
-      error={showErrors && !suffix ? "Suffix is required." : undefined}
+      error={showErrors && !parsedSuffix ? "Suffix is required." : undefined}
     />
   );
 }
