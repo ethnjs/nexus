@@ -52,7 +52,7 @@ export function SubHeader({ form, onUpdated, onDeleted }: {
           <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <Button type="button" variant="secondary" size="md" onClick={() => router.push(`/forms/${form.id}/preview`)}>
+          <Button type="button" variant="secondary" size="md" onClick={() => window.open(`/forms/${form.id}/preview`, "_blank")}>
             <IconEye size={14} /> Preview
           </Button>
           <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
