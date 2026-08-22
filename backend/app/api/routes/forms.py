@@ -520,6 +520,11 @@ def bulk_update_fields(
         else:
             flag_pending_updates_for_archived_options(db, live_by_id[field_id], archived_option_ids)
 
+    # Editing a FormField never touches the Form row itself, so its
+    # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
+    # updated_at (and list_tournament_forms' ordering by it) reflects field
+    # add/edit/reorder/delete, not just edits to the form's own name/title/etc.
+    form.updated_at = utcnow()
     db.commit()
 
     return (
