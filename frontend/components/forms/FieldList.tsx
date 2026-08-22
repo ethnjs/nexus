@@ -154,25 +154,25 @@ export function FieldList({ form }: { form: Form }) {
     const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${clientKey}"]`);
     if (!card) return;
 
-    // Follow whatever the user is actually typing in, falling back to the
-    // card as a whole. On a question taller than the viewport, hauling the
-    // card's top into view would yank them away from an edit they're making
-    // near its bottom — the thing that has to clear the bar is their cursor,
-    // not the card's first pixel.
     const focused = document.activeElement;
-    const target = focused instanceof HTMLElement && card.contains(focused) ? focused : card;
+    const focusedInCard = focused instanceof HTMLElement && card.contains(focused) ? focused : null;
 
     const apply = () => {
-      const rect = target.getBoundingClientRect();
       const safeTop = TOPBAR_HEIGHT + 12;
       const safeBottom = window.innerHeight - saveBarHeightRef.current;
+      const band = safeBottom - safeTop;
+      const cardRect = card.getBoundingClientRect();
+      // A question that fits gets cleared whole — no part of it should sit
+      // under the bar. One that can't fit falls back to whatever the user is
+      // typing in, since hauling its top into view would yank them away from
+      // an edit near its bottom; with nothing focused (e.g. after Cancel)
+      // there's no better answer than the card, and the guard below then
+      // leaves the scroll alone entirely.
+      const target = cardRect.height <= band ? card : focusedInCard ?? card;
+      const rect = target === card ? cardRect : target.getBoundingClientRect();
       if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
-      // Too tall to ever fit the band (a long question with nothing focused
-      // in it, e.g. after Cancel): leave the scroll alone as long as some of
-      // it is on screen. Any "correction" here is just a jump to a part of
-      // the card the user didn't ask to look at.
-      if (rect.height > safeBottom - safeTop && rect.bottom > safeTop && rect.top < safeBottom) return;
-      // Otherwise the minimum nudge that clears whichever edge it's past.
+      if (rect.height > band && rect.bottom > safeTop && rect.top < safeBottom) return;
+      // The minimum nudge that clears whichever edge it's past.
       const delta = rect.top < safeTop ? rect.top - safeTop - 8 : rect.bottom - safeBottom + 8;
       window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
     };
