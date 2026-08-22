@@ -174,7 +174,16 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
           events={entities as TournamentEvent[]}
           existingEventIds={existingEventIds}
           onClose={() => setShowPicker(false)}
-          onConfirm={(newOptions) => onChange([...options, ...newOptions])}
+          onConfirm={(newOptions) => {
+            // A brand-new field starts with one placeholder option (empty
+            // label, no entities picked yet) — bulk-adding real options from
+            // the modal should replace that placeholder, not sit next to it
+            // as an extra unlabeled option the TD has to notice and delete.
+            const [first, ...rest] = options
+            const firstIsEmptyPlaceholder = first && !first.label.trim() && (!Array.isArray(first.value) || first.value.length === 0)
+            const base = firstIsEmptyPlaceholder ? rest : options
+            onChange([...base, ...newOptions])
+          }}
         />
       )}
     </>
