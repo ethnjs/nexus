@@ -25,6 +25,11 @@ import {
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 
+// How long a scroll-into-view keeps following a card that's still growing
+// (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
+// a slow connection, short enough that it can't surprise you later.
+const SETTLE_MS = 2000;
+
 // Strict accordion — expanding a card collapses whatever was previously
 // expanded; only one card is ever in edit mode at a time, and (unlike a
 // dismissible panel) it's never *zero* while there's at least one field —
@@ -127,23 +132,55 @@ export function FieldList({ form }: { form: Form }) {
     return () => observer.disconnect();
   }, [expandedKey, fieldOrderKey]);
 
+  // Tears down the in-flight settle watch below. Held in a ref so a new
+  // scroll request (or unmount) cancels the previous card's watch.
+  const settleRef = useRef<(() => void) | null>(null);
+  useEffect(() => () => settleRef.current?.(), []);
+
   // Bring a card fully into the clear — below the sticky topbar, above the
   // save bar's resting footprint (0 while it's hidden). No-ops when the card
   // already fits, so it never yanks the page out from under a scroll the
   // user just made themselves.
+  //
+  // Then keeps re-applying while the card is still settling: the entity-backed
+  // presets (availability, event_preference) fetch their shifts/events on
+  // expand, so those cards reach their real height a beat *after* we first
+  // measure — one shot would scroll to a height that's about to change and
+  // land short. The watch ends at the first sign of the user scrolling
+  // themselves (our own smooth scroll doesn't fire these events, so it can't
+  // cancel itself), or after SETTLE_MS if the fetch never resolves.
   function scrollCardIntoView(clientKey: string) {
+    settleRef.current?.();
     const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${clientKey}"]`);
     if (!card) return;
-    const rect = card.getBoundingClientRect();
-    const safeTop = TOPBAR_HEIGHT + 12;
-    const safeBottom = window.innerHeight - saveBarHeightRef.current;
-    if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
-    // Top-align when the card is too tall to fit whole (or is above the fold)
-    // — its label/type controls are up top and matter more than its tail.
-    const delta = rect.top < safeTop || rect.height > safeBottom - safeTop
-      ? rect.top - safeTop - 8
-      : rect.bottom - safeBottom + 8;
-    window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
+
+    const apply = () => {
+      const rect = card.getBoundingClientRect();
+      const safeTop = TOPBAR_HEIGHT + 12;
+      const safeBottom = window.innerHeight - saveBarHeightRef.current;
+      if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
+      // Top-align when the card is too tall to fit whole (or is above the
+      // fold) — its label/type controls are up top and matter more than its
+      // tail. This is also what a card keeps doing as async options stream
+      // in past the viewport height, instead of chasing its growing bottom.
+      const delta = rect.top < safeTop || rect.height > safeBottom - safeTop
+        ? rect.top - safeTop - 8
+        : rect.bottom - safeBottom + 8;
+      window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
+    };
+
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(card);
+    const stop = () => {
+      observer.disconnect();
+      clearTimeout(timer);
+      for (const e of ["wheel", "touchmove", "keydown"]) window.removeEventListener(e, stop);
+      settleRef.current = null;
+    };
+    const timer = setTimeout(stop, SETTLE_MS);
+    for (const e of ["wheel", "touchmove", "keydown"]) window.addEventListener(e, stop, { passive: true });
+    settleRef.current = stop;
   }
 
   useEffect(() => {
@@ -275,9 +312,19 @@ export function FieldList({ form }: { form: Form }) {
   function handleDiscard() {
     const restored: EditableField[] = baselineRef.current ? JSON.parse(baselineRef.current) : [];
     setFields(restored);
-    // Keep the same card open if it survived the revert, otherwise fall
-    // back to the first one — discarding shouldn't leave nothing expanded.
-    setExpandedKey((prev) => (restored.some((f) => f.clientKey === prev) ? prev : restored[0]?.clientKey ?? null));
+    // Keep the same card open if it survived the revert. If it didn't (you
+    // added a question, then discarded), walk *up* from where it sat to the
+    // nearest survivor rather than jumping to the top of the list — the
+    // question above the one you just dropped is where you were working.
+    const droppedIndex = fields.findIndex((f) => f.clientKey === expandedKey);
+    const above = droppedIndex < 0 ? [] : fields.slice(0, droppedIndex).reverse();
+    const key = restored.some((f) => f.clientKey === expandedKey)
+      ? expandedKey
+      : above.find((f) => restored.some((r) => r.clientKey === f.clientKey))?.clientKey
+        ?? restored[0]?.clientKey
+        ?? null;
+    setExpandedKey(key);
+    if (key) setPendingScrollKey(key);
     validation.clearAll();
   }
 
@@ -317,12 +364,15 @@ export function FieldList({ form }: { form: Form }) {
       ref={listRef}
       style={{
         position: "relative", display: "flex", flexDirection: "column", gap: "12px",
+        // Applied instantly in both directions, deliberately: this padding is
+        // the scroll room scrollCardIntoView depends on, and the browser
+        // clamps scrollTo against the document height *at call time*.
+        // Animating the grow would clamp the scroll short (card stays under
+        // the bar); animating the shrink would let the document keep
+        // collapsing underneath a scroll already in flight. The cost is that
+        // the page's bottom edge snaps rather than glides when the bar
+        // appears/leaves, which is only visible if you're scrolled to the end.
         paddingBottom: `${saveBarHeight}px`,
-        // Grow instantly, shrink with the bar's slide-out. Animating the grow
-        // would mean the extra scroll room doesn't exist yet at the moment
-        // scrollCardIntoView runs, so the browser would clamp the scroll
-        // short and leave the card under the bar anyway.
-        transition: saveBarHeight === 0 ? "padding-bottom 0.25s ease" : "none",
       }}
     >
       {fields.length === 0 ? (
