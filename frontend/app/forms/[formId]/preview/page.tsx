@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 import { CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
+import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 
 // Mirrors backend/app/core/form/branching.py's compute_reachable_field_ids —
 // same walk (lowest-order field first, following each branching option's
@@ -104,6 +105,11 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
   // liveNonKeyErrors).
   const [attemptedIds, setAttemptedIds] = useState<Set<string>>(new Set());
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Field to scroll to once its Card is actually in the DOM — set alongside
+  // the state change that reveals/flags it (revealCount, attemptedIds), so
+  // the effect below only ever fires after that same render has committed,
+  // never against a stale layout.
+  const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
 
   useEffect(() => {
     formsApi.get(formId)
@@ -139,6 +145,19 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
     });
   }, [walk]);
 
+  // data-preview-field on each Card is the only handle this needs — same
+  // "measure after commit, offset past the topbar" approach as FieldList's
+  // own pendingScrollKey effect.
+  useEffect(() => {
+    if (!pendingScrollId) return;
+    const el = document.querySelector<HTMLElement>(`[data-preview-field="${pendingScrollId}"]`);
+    setPendingScrollId(null);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const safeTop = TOPBAR_HEIGHT + 12;
+    window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8, behavior: "smooth" });
+  }, [pendingScrollId]);
+
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
   }
@@ -147,11 +166,15 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
     setAttemptedIds((prev) => new Set(prev).add(field.id));
     if (fieldErrorMessage(field, answers[field.id])) return;
     setRevealCount((c) => c + 1);
+    const nextField = walk[revealCount];
+    if (nextField) setPendingScrollId(nextField.id);
   }
 
   function handleSubmit() {
     setSubmitAttempted(true);
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
+    const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
+    if (firstInvalid) setPendingScrollId(firstInvalid.id);
   }
 
   if (loadError) {
@@ -206,7 +229,7 @@ export default function FormPreviewPage({ params }: { params: Promise<{ formId: 
           // inline slot for it yet, so it falls back to plain text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
-            <Card key={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} style={{ padding: "24px" }}>
+            <Card key={field.id} data-preview-field={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} style={{ padding: "24px" }}>
               <QuestionRenderer
                 field={field}
                 interactive
