@@ -77,7 +77,16 @@ export function FieldList({ form }: { form: Form }) {
   // Reported live by FloatingSaveBar (its own measured height, which grows
   // when a validation/save error wraps to a second line) — applied as
   // bottom padding so the bar never covers the last question(s) in the list.
+  // Mirrored into a ref because FloatingSaveBar reports from a *layout*
+  // effect, which runs before this component's pending passive effects: the
+  // scroll below would otherwise read a stale 0 on the very render where the
+  // bar appears (i.e. exactly when it's about to cover something).
   const [saveBarHeight, setSaveBarHeight] = useState(0);
+  const saveBarHeightRef = useRef(0);
+  function handleSaveBarHeight(px: number) {
+    saveBarHeightRef.current = px;
+    setSaveBarHeight(px);
+  }
   // Bumped on every *failed* Save — FieldKeyPopover uses this as an
   // edge-trigger to auto-open when Save surfaces a key error on its field,
   // since the errors array alone can't tell "just failed again" from "this
@@ -118,16 +127,41 @@ export function FieldList({ form }: { form: Form }) {
     return () => observer.disconnect();
   }, [expandedKey, fieldOrderKey]);
 
-  useEffect(() => {
-    if (!pendingScrollKey) return;
-    const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${pendingScrollKey}"]`);
-    setPendingScrollKey(null);
+  // Bring a card fully into the clear — below the sticky topbar, above the
+  // save bar's resting footprint (0 while it's hidden). No-ops when the card
+  // already fits, so it never yanks the page out from under a scroll the
+  // user just made themselves.
+  function scrollCardIntoView(clientKey: string) {
+    const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${clientKey}"]`);
     if (!card) return;
     const rect = card.getBoundingClientRect();
     const safeTop = TOPBAR_HEIGHT + 12;
-    if (rect.top >= safeTop && rect.bottom <= window.innerHeight) return;
-    window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8 });
+    const safeBottom = window.innerHeight - saveBarHeightRef.current;
+    if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
+    // Top-align when the card is too tall to fit whole (or is above the fold)
+    // — its label/type controls are up top and matter more than its tail.
+    const delta = rect.top < safeTop || rect.height > safeBottom - safeTop
+      ? rect.top - safeTop - 8
+      : rect.bottom - safeBottom + 8;
+    window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
+  }
+
+  useEffect(() => {
+    if (!pendingScrollKey) return;
+    setPendingScrollKey(null);
+    scrollCardIntoView(pendingScrollKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingScrollKey]);
+
+  // The bar slides in over whatever happens to sit at the bottom of the
+  // viewport, which on the edit that *made* the form dirty is usually the
+  // card being edited. Re-runs when the bar appears/grows or the open card
+  // changes; the no-op guard above keeps it quiet the rest of the time.
+  useEffect(() => {
+    if (!expandedKey || saveBarHeight === 0) return;
+    scrollCardIntoView(expandedKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saveBarHeight, expandedKey]);
 
   // Fetched once per form-editing session (not per field card) — every
   // field's FieldKeyPopover shares this list to flag already-used keys.
@@ -283,7 +317,12 @@ export function FieldList({ form }: { form: Form }) {
       ref={listRef}
       style={{
         position: "relative", display: "flex", flexDirection: "column", gap: "12px",
-        paddingBottom: `${saveBarHeight}px`, transition: "padding-bottom 0.25s ease",
+        paddingBottom: `${saveBarHeight}px`,
+        // Grow instantly, shrink with the bar's slide-out. Animating the grow
+        // would mean the extra scroll room doesn't exist yet at the moment
+        // scrollCardIntoView runs, so the browser would clamp the scroll
+        // short and leave the card under the bar anyway.
+        transition: saveBarHeight === 0 ? "padding-bottom 0.25s ease" : "none",
       }}
     >
       {fields.length === 0 ? (
@@ -338,7 +377,7 @@ export function FieldList({ form }: { form: Form }) {
         error={validation.hasErrors ? `${validation.validationErrors.length} issue${validation.validationErrors.length !== 1 ? "s" : ""} — fix the highlighted question${validation.validationErrors.length !== 1 ? "s" : ""}.` : validation.saveError || undefined}
         onSave={handleSave}
         onCancel={handleDiscard}
-        onHeightChange={setSaveBarHeight}
+        onHeightChange={handleSaveBarHeight}
         stayWithin={`/forms/${form.id}`}
       />
       {expandedField && (
