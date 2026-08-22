@@ -149,9 +149,6 @@ interface OptionsEditorProps {
   /** Escape hatch for a variant that needs different below-row content than
       the branch dropdown — e.g. EntityOptionsEditor's entity picker. */
   renderExtra?: (option: EditableOption) => ReactNode
-  /** Row label placeholder — "Option" for freeform choices, something more
-      specific (e.g. "e.g. All Day") for entity-backed variants. */
-  placeholder?: string
   /** How a new row is seeded — plain freeform options default to `newOption()`;
       entity-backed variants start `value` as an id array instead of "". */
   createOption?: () => EditableOption
@@ -176,7 +173,7 @@ interface OptionsEditorProps {
 // doesn't conflict with the field-level drag context since a field's own
 // handle is hidden while its card is expanded.
 export function OptionsEditor({
-  options, onChange, questionType, displayStyle, branchTargets, renderExtra, placeholder = 'Option',
+  options, onChange, questionType, displayStyle, branchTargets, renderExtra,
   createOption = newOption, syncValueWithLabel = true, errors = [],
 }: OptionsEditorProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -283,7 +280,6 @@ export function OptionsEditor({
               bulletType={bulletType}
               number={index + 1}
               displayStyle={displayStyle}
-              placeholder={placeholder}
               trailing={trailing?.(option)}
               extra={extraFor?.(option)}
               error={errorFor(option)}
@@ -331,15 +327,14 @@ function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
 // inline `trailing` slot at the row's right edge (the branch dropdown), and
 // an optional `extra` block below the row (EntityOptionsEditor's picker).
 // This is "the general look" every options list shares; EntityOptionsEditor
-// builds on it purely through OptionsEditor's renderExtra/placeholder/
+// builds on it purely through OptionsEditor's renderExtra/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, number, displayStyle, placeholder, trailing, extra, error, canRemove, autoFocus, onChange, onRemove, onEnter }: {
+function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
   number: number
   displayStyle?: 'list' | 'buttons'
-  placeholder: string
   trailing?: ReactNode
   extra?: ReactNode
   error?: string
@@ -410,7 +405,7 @@ function OptionRow({ option, bulletType, number, displayStyle, placeholder, trai
           value={option.label}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={placeholder}
+          placeholder="Option"
           error={error}
           size="md"
           fullWidth

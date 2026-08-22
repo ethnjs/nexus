@@ -144,7 +144,6 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
         options={options}
         onChange={onChange}
         questionType={questionType}
-        placeholder="e.g. All Day"
         createOption={newEntityOption}
         syncValueWithLabel={false}
         displayStyle={displayStyle}
