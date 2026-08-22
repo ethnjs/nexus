@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from 'react'
 import {
-  tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, FormQuestionType, ApiError,
+  tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, Tournament, FormQuestionType, ApiError,
 } from '@/lib/api'
 import { eventNameWithDivision } from '@/lib/eventDisplay'
-import { formatTime } from '@/lib/timeFormat'
+import { formatDayLabel, formatTime, toDateInput } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
 import { ChipInput } from '@/components/ui/ChipInput'
 import { Popover } from '@/components/ui/Popover'
@@ -17,7 +17,11 @@ type Entity = TournamentShift | TournamentEvent
 
 interface EntityOptionsEditorProps {
   fieldKey: EntityFieldKey
-  tournamentId: number
+  /** id sources shifts/events; is_multi_day decides whether availability's
+      shift chips/picker show a day alongside the label (see entityLabel/
+      entityTooltip) or fall back to the original label+time-range display —
+      a single-day tournament has no day worth disambiguating. */
+  tournament: Tournament
   questionType: FormQuestionType
   options: EditableOption[]
   onChange: (options: EditableOption[]) => void
@@ -33,10 +37,42 @@ interface EntityOptionsEditorProps {
   errors?: string[]
 }
 
-function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
+// On a multi-day tournament, a shift's label + short day/date is enough to
+// tell same-named shifts on different days apart (the ambiguous case) — the
+// exact time range is secondary once you've picked one, so it's dropped from
+// the visible text and surfaces via entityTooltip instead, on both the chip
+// and the picker row, rather than crowding every shift with a full time
+// range it usually doesn't need. A single-day tournament has no day worth
+// disambiguating, so this falls back to the original label+time-range
+// display with no tooltip needed. Events have no day/time of their own here
+// (event_preference options aren't day-scoped), so they're unaffected either way.
+function entityLabel(fieldKey: EntityFieldKey, entity: Entity, isMultiDay: boolean): string {
   if (fieldKey === 'availability') {
     const shift = entity as TournamentShift
-    return `${shift.label} (${formatTime(shift.start)}–${formatTime(shift.end)})`
+    return isMultiDay
+      ? `${shift.label} (${formatDayLabel(toDateInput(shift.start))})`
+      : `${shift.label} (${formatTime(shift.start)}–${formatTime(shift.end)})`
+  }
+  return eventNameWithDivision(entity as TournamentEvent)
+}
+
+function entityTooltip(fieldKey: EntityFieldKey, entity: Entity, isMultiDay: boolean): string | undefined {
+  if (fieldKey !== 'availability' || !isMultiDay) return undefined
+  const shift = entity as TournamentShift
+  return `${formatTime(shift.start)}–${formatTime(shift.end)}`
+}
+
+// The picker row gets everything inline instead of a tooltip — there's
+// plenty of horizontal room in a 280px-wide panel, unlike the chip's own
+// tight footprint. Always shows the time range; the day only joins it on a
+// multi-day tournament, same disambiguation rule as entityLabel/entityTooltip.
+function entityPickerLabel(fieldKey: EntityFieldKey, entity: Entity, isMultiDay: boolean): string {
+  if (fieldKey === 'availability') {
+    const shift = entity as TournamentShift
+    const time = `${formatTime(shift.start)}–${formatTime(shift.end)}`
+    return isMultiDay
+      ? `${shift.label} (${formatDayLabel(toDateInput(shift.start))}, ${time})`
+      : `${shift.label} (${time})`
   }
   return eventNameWithDivision(entity as TournamentEvent)
 }
@@ -51,18 +87,18 @@ function entityLabel(fieldKey: EntityFieldKey, entity: Entity): string {
 // an *additional* block below the row: a Badge list + Popover checklist
 // (reusing the same pattern EventPanel uses for shift attach/detach) sitting
 // alongside whatever OptionsEditor already renders for that row.
-export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, options, onChange, displayStyle, branchTargets, errors }: EntityOptionsEditorProps) {
+export function EntityOptionsEditor({ fieldKey, tournament, questionType, options, onChange, displayStyle, branchTargets, errors }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     setEntities(null);
     setLoadError(null);
-    const list = fieldKey === 'availability' ? tournamentShiftsApi.list(tournamentId) : tournamentEventsApi.list(tournamentId)
+    const list = fieldKey === 'availability' ? tournamentShiftsApi.list(tournament.id) : tournamentEventsApi.list(tournament.id)
     list
       .then(setEntities)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : `Failed to load ${fieldKey === 'availability' ? 'shifts' : 'events'}.`))
-  }, [fieldKey, tournamentId])
+  }, [fieldKey, tournament.id])
 
   function toggleEntity(clientKey: string, entityId: number) {
     onChange(options.map((o) => {
@@ -109,6 +145,7 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
           option={option}
           entities={entities}
           fieldKey={fieldKey}
+          isMultiDay={tournament.is_multi_day}
           emptyMessage={emptyMessage}
           onToggle={(id) => toggleEntity(option.clientKey, id)}
         />
@@ -117,10 +154,11 @@ export function EntityOptionsEditor({ fieldKey, tournamentId, questionType, opti
   )
 }
 
-function EntityPicker({ option, entities, fieldKey, emptyMessage, onToggle }: {
+function EntityPicker({ option, entities, fieldKey, isMultiDay, emptyMessage, onToggle }: {
   option: EditableOption
   entities: Entity[]
   fieldKey: EntityFieldKey
+  isMultiDay: boolean
   emptyMessage: string
   onToggle: (id: number) => void
 }) {
@@ -134,18 +172,22 @@ function EntityPicker({ option, entities, fieldKey, emptyMessage, onToggle }: {
   // (typing is disabled), so the first entity missing from the new chip list
   // is unambiguously the one that was removed.
   function handleChipsChange(chips: string[]) {
-    const removed = selectedEntities.find((e) => !chips.includes(entityLabel(fieldKey, e)))
+    const removed = selectedEntities.find((e) => !chips.includes(entityLabel(fieldKey, e, isMultiDay)))
     if (removed) onToggle(removed.id)
   }
 
   return (
     <ChipInput
-      value={selectedEntities.map((e) => entityLabel(fieldKey, e))}
+      value={selectedEntities.map((e) => entityLabel(fieldKey, e, isMultiDay))}
       onChange={handleChipsChange}
       disableInput
       variant="transparent"
       size="sm"
       fullWidth
+      getChipTooltip={(chip) => {
+        const entity = selectedEntities.find((e) => entityLabel(fieldKey, e, isMultiDay) === chip)
+        return entity ? entityTooltip(fieldKey, entity, isMultiDay) : undefined
+      }}
       addButton={
         <Popover
           trigger={
@@ -155,12 +197,12 @@ function EntityPicker({ option, entities, fieldKey, emptyMessage, onToggle }: {
           }
           items={entities}
           getKey={(e) => e.id}
-          renderLabel={(e) => entityLabel(fieldKey, e)}
+          renderLabel={(e) => entityPickerLabel(fieldKey, e, isMultiDay)}
           onSelect={(e) => onToggle(e.id)}
           checklist
           isSelected={(e) => selectedIds.includes(e.id)}
           emptyMessage={emptyMessage}
-          width={280}
+          width={400}
         />
       }
     />

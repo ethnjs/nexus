@@ -23,6 +23,8 @@ interface ChipInputProps {
   locked?: boolean;
   /** Per-chip lock, independent of `locked` — chips this returns a reason for show a lock icon (tooltipped with that reason) instead of "x" and can't be removed, while the rest of the chips stay removable. Return undefined for a removable chip. For a reason specific to that chip's value (e.g. a role that ties/outranks the actor), as opposed to `locked`'s blanket "nothing here is editable." */
   chipLockReason?: (chip: string) => string | undefined;
+  /** Per-chip hover tooltip — for detail that would overcrowd the chip text itself (e.g. a shift's time range when the chip already shows label + day). Return undefined for a chip with nothing extra to show. */
+  getChipTooltip?: (chip: string) => string | undefined;
   variant?: ChipInputVariant;
   size?: ChipInputSize;
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
@@ -88,7 +90,7 @@ function ChipRemoveButton({ onClick }: { onClick: () => void }) {
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, chipLockReason,
-  variant = "primary", size = "md", addButton,
+  getChipTooltip, variant = "primary", size = "md", addButton,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
@@ -153,6 +155,7 @@ export function ChipInput({
           const status = getChipStatus?.(chip) ?? "default";
           const styles = STATUS_STYLES[status];
           const lockReason = chipLockReason?.(chip);
+          const chipTooltip = getChipTooltip?.(chip);
           return (
             <span
               key={chip}
@@ -164,7 +167,11 @@ export function ChipInput({
                 fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
               }}
             >
-              {chip}
+              {chipTooltip ? (
+                <Tooltip variant="info" message={chipTooltip} showIcon={false}>
+                  {chip}
+                </Tooltip>
+              ) : chip}
               {!locked && lockReason && (
                 <Tooltip variant="info" message={lockReason} showIcon={false}>
                   <span

@@ -1,6 +1,6 @@
 'use client'
 
-import { FormFieldOption, FormFieldConfig, FormQuestionType } from '@/lib/api'
+import { FormFieldOption, FormFieldConfig, FormQuestionType, Tournament } from '@/lib/api'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -50,9 +50,10 @@ interface QuestionRendererProps {
   /** edit mode only — applies a partial update to the field being edited. */
   onFieldChange?: (updates: FieldUpdate) => void
   /** edit mode only — tournament scope for the availability/event_preference
-      presets' entity-backed options. null/undefined hides those presets' editor
+      presets' entity-backed options (id + is_multi_day, used by
+      EntityOptionsEditor). null/undefined hides those presets' editor
       (falls through to the plain preview instead). */
-  tournamentId?: number | null
+  tournament?: Tournament | null
   /** edit mode only — candidate "jump to" fields for single_select_radio/dropdown's
       per-option branching. Omitted (or empty) hides the branch dropdown. */
   branchTargets?: BranchTarget[]
@@ -81,7 +82,7 @@ interface QuestionRendererProps {
 // only field whose shape differs for those.
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, showHeader = true,
-  onFieldChange, tournamentId, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
+  onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -105,7 +106,7 @@ export function QuestionRenderer({
         <QuestionEditBody
           field={field}
           onFieldChange={onFieldChange ?? (() => {})}
-          tournamentId={tournamentId ?? null}
+          tournament={tournament ?? null}
           branchTargets={branchTargets}
           branchingEnabled={branchingEnabled}
           customValuesEnabled={customValuesEnabled}
@@ -276,10 +277,10 @@ function QuestionBody({ field, interactive, value, onChange }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled, customValuesEnabled, errors = [] }: {
+function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [] }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
-  tournamentId: number | null
+  tournament: Tournament | null
   branchTargets?: BranchTarget[]
   branchingEnabled?: boolean
   customValuesEnabled?: boolean
@@ -288,12 +289,12 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
   const isEntityBackedKind = isEntityBackedPreset(presetKind)
-  // tournamentId null/undefined means the entity-backed editor has no scope
-  // to fetch shifts/events from — falls through to the read-only preview at
-  // the bottom instead (see the tournamentId prop doc on QuestionRenderer),
-  // never the plain freeform OptionsEditor: an availability/event_preference
-  // field's options are never TD-typed text, tournamentId or not.
-  const isEntity = isEntityBackedKind && !!tournamentId
+  // tournament null means the entity-backed editor has no scope to fetch
+  // shifts/events from — falls through to the read-only preview at the
+  // bottom instead (see the tournament prop doc on QuestionRenderer), never
+  // the plain freeform OptionsEditor: an availability/event_preference
+  // field's options are never TD-typed text, tournament or not.
+  const isEntity = isEntityBackedKind && !!tournament
 
   if (!isEntityBackedKind && field.question_type === 'acknowledgment') {
     // Gated on the current config too, not just the errors snapshot from the
@@ -310,7 +311,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
         {isEntity ? (
           <EntityOptionsEditor
             fieldKey={presetKind as 'availability' | 'event_preference'}
-            tournamentId={tournamentId!}
+            tournament={tournament!}
             questionType={field.question_type}
             options={(field.config?.options as EditableOption[] | undefined) ?? []}
             onChange={(options) => onFieldChange({ config: { ...field.config, options } })}

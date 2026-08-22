@@ -3,7 +3,7 @@
 import { useState, MouseEvent as ReactMouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FormQuestionType } from "@/lib/api";
+import { FormQuestionType, Tournament } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
@@ -28,7 +28,7 @@ import { issuesFor } from "@/lib/forms/useFormValidation";
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournamentId, allFields, errors,
+  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournament, allFields, errors,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -36,7 +36,11 @@ export function FieldCard({
   onFieldChange: (updates: Partial<EditableField>) => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  tournamentId: number | null;
+  /** null hides the availability/event_preference entity-backed editor
+      (falls through to the plain preview instead) — a chapter-owned form has
+      no tournament to source shifts/events from. Also carries is_multi_day,
+      which decides how EntityOptionsEditor's shift chips/picker display. */
+  tournament: Tournament | null;
   allFields: EditableField[];
   errors: string[];
 }) {
@@ -172,7 +176,7 @@ export function FieldCard({
               mode="edit"
               showHeader={false}
               onFieldChange={onFieldChange}
-              tournamentId={tournamentId}
+              tournament={tournament}
               branchTargets={branchTargets}
               branchingEnabled={field.branchingEnabled}
               customValuesEnabled={field.customValuesEnabled}

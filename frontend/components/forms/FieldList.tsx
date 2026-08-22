@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, tournamentsApi, Form } from "@/lib/api";
+import { formsApi, tournamentsApi, Form, Tournament } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -47,10 +47,16 @@ export function FieldList({ form }: { form: Form }) {
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
-  // The tournament's individual running days — availability/lunch presets
-  // pick from these rather than an unconstrained date input. Empty until
-  // loaded (or permanently, on a chapter-owned form with no tournament).
-  const [tournamentDates, setTournamentDates] = useState<string[]>([]);
+  // The full tournament — this standalone /forms/ route sits outside the
+  // dashboard's TournamentProvider, so there's no shared context to read it
+  // from; fetched here and passed down as one object (id, start/end date,
+  // is_multi_day, ...) rather than threading the individual fields each
+  // consumer happens to need through every layer between here and them.
+  // null until loaded (or permanently, on a chapter-owned form with no
+  // tournament). tournamentDates below is just its derived day list, for
+  // PresetPopover's date pickers.
+  const [tournament, setTournament] = useState<Tournament | null>(null);
+  const tournamentDates = tournament ? enumerateDates(tournament.start_date, tournament.end_date) : [];
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
@@ -121,20 +127,16 @@ export function FieldList({ form }: { form: Form }) {
     formsApi.listFieldKeysForTournament(form.tournament_id).then(setUsedFieldKeys).catch(() => {});
   }, [form.tournament_id]);
 
-  // For the availability/lunch presets' date pickers (PresetPopover) — this
-  // standalone /forms/ route sits outside the dashboard's TournamentProvider,
-  // so there's no shared tournament context to read start_date/end_date
-  // from. Loaded eagerly on mount (not deferred until a preset popover first
-  // opens) and re-loaded every time one actually opens (see FieldToolbar's
+  // Loaded eagerly on mount (not deferred until something that needs it —
+  // PresetPopover's date pickers, EntityOptionsEditor — first renders) and
+  // re-loaded every time a preset popover opens (see FieldToolbar's
   // onOpenPresets below), so a tab left open a while doesn't show a
-  // page-load-stale date range if the tournament's dates changed since.
-  function loadTournamentDates() {
+  // page-load-stale tournament if its dates changed since.
+  function loadTournament() {
     if (form.tournament_id == null) return;
-    tournamentsApi.get(form.tournament_id)
-      .then((t) => setTournamentDates(enumerateDates(t.start_date, t.end_date)))
-      .catch(() => {});
+    tournamentsApi.get(form.tournament_id).then(setTournament).catch(() => {});
   }
-  useEffect(loadTournamentDates, [form.tournament_id]);
+  useEffect(loadTournament, [form.tournament_id]);
 
   function updateField(clientKey: string, updates: Partial<EditableField>) {
     setFields((prev) => prev.map((f) => (f.clientKey === clientKey ? { ...f, ...updates } : f)));
@@ -306,7 +308,7 @@ export function FieldList({ form }: { form: Form }) {
                 onFieldChange={(updates) => updateField(field.clientKey, updates)}
                 onDuplicate={() => duplicateField(field.clientKey)}
                 onDelete={() => deleteField(field.clientKey)}
-                tournamentId={form.tournament_id}
+                tournament={tournament}
                 allFields={fields}
                 errors={validation.errorsFor(field.clientKey)}
               />
@@ -342,7 +344,7 @@ export function FieldList({ form }: { form: Form }) {
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
           tournamentDates={tournamentDates}
-          onOpenPresets={loadTournamentDates}
+          onOpenPresets={loadTournament}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}
