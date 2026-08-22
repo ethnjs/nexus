@@ -18,9 +18,7 @@ interface CheckboxProps {
 const CHECK_SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path d='M2 6l3 3 5-5' fill='none' stroke='white' stroke-width='2.25' stroke-linecap='round' stroke-linejoin='round'/></svg>`
 
 export function Checkbox({ checked, onChange, locked = false, size = 16 }: CheckboxProps) {
-  const color = locked
-    ? 'var(--color-text-tertiary)'
-    : checked ? 'var(--color-accent)' : 'var(--color-border-strong)'
+  const color = locked ? 'var(--color-text-tertiary)' : 'var(--color-text-secondary)'
 
   return (
     <input
