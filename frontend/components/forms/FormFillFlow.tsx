@@ -4,11 +4,13 @@ import { ReactNode, useEffect, useMemo, useState } from "react";
 import { Form, FormField, FormFieldOption } from "@/lib/api";
 import { BRANCHING_TYPES } from "@/lib/forms/fieldTypes";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
+import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
 // Mirrors backend/app/core/form/branching.py's compute_reachable_field_ids —
 // same walk (lowest-order field first, following each branching option's
@@ -121,6 +123,11 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // the effect below only ever fires after that same render has committed,
   // never against a stale layout.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // Reported live by FloatingSubmitBar (its own measured height, which
+  // grows when the error summary line wraps) — applied as bottom padding so
+  // the bar never covers the last question(s), same pattern as FieldList's
+  // saveBarHeight for FloatingSaveBar.
+  const [submitBarHeight, setSubmitBarHeight] = useState(0);
 
   const fields = useMemo(() => form.fields.filter((f) => !f.is_archived), [form.fields]);
   const walk = useMemo(() => computeWalk(fields, answers), [fields, answers]);
@@ -130,6 +137,13 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // its own Continue click first).
   const allContinued = walk.length > 0 && revealCount > walk.length;
   const showSuccess = submitSucceeded;
+  const invalidCount = walk.filter((f) => attemptedIds.has(f.id) && fieldErrorMessage(f, answers[f.id]) !== undefined).length;
+  // Broader than the submit bar's own visibility (allContinued) — leaving
+  // partway through, before ever reaching the end, should still warn if the
+  // respondent has actually answered something. Only clears once Submit
+  // has succeeded, same as showSuccess.
+  const isDirty = !showSuccess && Object.values(answers).some((v) => !isBlank(v));
+  useBlockNavigation(isDirty);
 
   // A branching answer changing (editing an already-passed radio/dropdown)
   // can make an earlier answer's downstream fields unreachable — those
@@ -191,7 +205,10 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   }
 
   return (
-    <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+    <div style={{
+      maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px", display: "flex", flexDirection: "column", gap: "16px",
+      paddingBottom: `${22 + submitBarHeight}px`, transition: "padding-bottom 0.25s ease",
+    }}>
       {banner}
 
       {(form.title || form.description) && (
@@ -249,16 +266,16 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
         })
       )}
 
-      {allContinued && !showSuccess && (
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <Button type="button" variant="primary" onClick={handleSubmit}>
-            Submit
-          </Button>
-        </div>
-      )}
       {showSuccess && (
         <Banner variant="success" message={successMessage} />
       )}
+
+      <FloatingSubmitBar
+        visible={allContinued && !showSuccess}
+        invalidCount={invalidCount}
+        onSubmit={handleSubmit}
+        onHeightChange={setSubmitBarHeight}
+      />
     </div>
   );
 }
