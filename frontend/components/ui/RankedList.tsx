@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -7,9 +8,9 @@ import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Dropdown } from '@/components/ui/Dropdown'
+import { Combobox } from '@/components/ui/Combobox'
 import { Button } from '@/components/ui/Button'
-import { IconGripVertical, IconX } from '@/components/ui/Icons'
+import { IconX } from '@/components/ui/Icons'
 
 export interface RankedListOption {
   value: string
@@ -32,6 +33,12 @@ interface RankedListProps {
   locked?: boolean
 }
 
+// Matches Combobox's own md-size Input box (36px tall, 16px horizontal
+// padding) — the picked rows below it read as more of the same control
+// (a "closed" combobox for each rank) rather than a visually separate list.
+const ROW_HEIGHT = '36px'
+const ROW_PADDING_X = '16px'
+
 // One combobox to add your Nth choice (search a pool of up to dozens of
 // options — event_preference can run to 40+), with the picks so far shown
 // as a numbered, drag-reorderable list below. Order-of-adding IS the rank,
@@ -42,6 +49,7 @@ interface RankedListProps {
 // a search-and-tap, both worse on mobile.
 export function RankedList({ options, ranks, value, onChange, allowDuplicates = false, locked = false }: RankedListProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  const [draft, setDraft] = useState('')
 
   const picked = Object.keys(value)
     .map(Number)
@@ -96,16 +104,25 @@ export function RankedList({ options, ranks, value, onChange, allowDuplicates = 
       {!locked && picked.length < ranks && remainingOptions.length > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <RankBullet rank={picked.length + 1} />
-          <Dropdown
-            value=""
-            onChange={addPick}
-            options={remainingOptions.map((o) => ({ value: o.value, label: o.label }))}
-            placeholder={`Add choice ${picked.length + 1} of ${ranks}`}
-            searchable
-            emptyMessage="No matching options"
-            size="sm"
-            fullWidth
-          />
+          <div style={{ flex: 1 }}>
+            <Combobox
+              options={remainingOptions}
+              getId={(o) => o.value}
+              getLabel={(o) => o.label}
+              value={draft}
+              onChange={(text, matched) => {
+                if (matched) {
+                  addPick(matched.value)
+                  setDraft('')
+                } else {
+                  setDraft(text)
+                }
+              }}
+              allowFreeText={false}
+              placeholder={`Add choice ${picked.length + 1} of ${ranks}`}
+              size="md"
+            />
+          </div>
         </div>
       )}
     </div>
@@ -123,6 +140,10 @@ function RankBullet({ rank }: { rank: number }) {
   )
 }
 
+// The bullet lives outside this row's own sortable node (see RankedList's
+// map above) — it marks a fixed rank *slot*, not something that travels
+// with the dragged item, so mid-drag it stays put while the pill under it
+// slides to preview the new order.
 function RankedRow({ value, rank, label, locked, onRemove }: {
   value: string
   rank: number
@@ -131,6 +152,7 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   onRemove: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: value })
+  const [hovered, setHovered] = useState(false)
   // Translate, not Transform — CSS.Transform also emits the scaleX/scaleY
   // dnd-kit derives from the hovered row's rect, which squishes a dragged
   // row if rows ever differ in height (same reasoning as OptionsEditor's
@@ -138,28 +160,37 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
   const style = { transform: CSS.Translate.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{ ...style, display: 'flex', alignItems: 'center', gap: '8px' }}
-    >
-      {!locked && (
-        <span
-          {...attributes}
-          {...listeners}
-          style={{ display: 'flex', cursor: 'grab', color: 'var(--color-text-tertiary)', touchAction: 'none' }}
-        >
-          <IconGripVertical size={13} />
-        </span>
-      )}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
       <RankBullet rank={rank} />
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)', flex: 1 }}>
-        {label}
-      </span>
-      {!locked && (
-        <Button type="button" variant="ghost" size="sm" iconOnly title="Remove" onClick={onRemove}>
-          <IconX size={12} />
-        </Button>
-      )}
+      <div
+        ref={setNodeRef}
+        {...(!locked ? attributes : {})}
+        {...(!locked ? listeners : {})}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          ...style,
+          flex: 1, boxSizing: 'border-box',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px',
+          height: ROW_HEIGHT, padding: `0 ${ROW_PADDING_X}`,
+          borderRadius: 'var(--radius-md)',
+          background: !locked && hovered ? 'var(--color-bg)' : 'var(--color-surface)',
+          cursor: locked ? 'default' : 'grab',
+          touchAction: 'none',
+        }}
+      >
+        <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-primary)' }}>
+          {label}
+        </span>
+        {!locked && (
+          <Button
+            type="button" variant="ghost" size="sm" iconOnly title="Remove"
+            onClick={(e) => { e.stopPropagation(); onRemove() }}
+          >
+            <IconX size={12} />
+          </Button>
+        )}
+      </div>
     </div>
   )
 }
