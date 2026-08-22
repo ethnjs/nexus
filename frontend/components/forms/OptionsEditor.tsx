@@ -72,6 +72,9 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
   return { ...option, action: null, next_field_id: null }
 }
 
+// Width every number bullet reserves, whatever number it shows.
+const NUMBER_BULLET_WIDTH = 24
+
 // The "this is what a respondent sees" bullet — purely decorative, so
 // pointerEvents: none keeps the row's own cursor (not RadioCircle/
 // Checkbox's disabled/locked "not-allowed") when hovering over it. In
@@ -83,9 +86,15 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
 function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: number; number?: number; displayStyle?: 'list' | 'buttons' }) {
   if (type === 'none') return null
   if (type === 'number') {
+    // Fixed width (fits "99." in 13px mono), not sized to this row's own
+    // number — otherwise "20." is wider than "8." and the two rows start
+    // their Inputs at different x. inline-block is load-bearing: width is
+    // ignored on an inline box, and OptionRow wraps this in a plain div so
+    // it isn't a flex item that would get blockified for free.
     return (
       <span style={{
-        pointerEvents: 'none', flexShrink: 0, minWidth: `${size}px`, textAlign: 'right',
+        pointerEvents: 'none', display: 'inline-block', flexShrink: 0,
+        width: `${NUMBER_BULLET_WIDTH}px`, textAlign: 'right',
         fontFamily: 'var(--font-mono)', fontSize: '13px', color: 'var(--color-text-tertiary)',
       }}>
         {number}.
@@ -419,10 +428,14 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
       </div>
       {/* Indented to match the Input's left edge above, not the row's own —
           otherwise it lines up with the bullet instead (EntityOptionsEditor's
-          badge/picker block, offset by the same 18px bullet + 8px flex gap
+          badge/picker block, offset by the same bullet width + 8px flex gap
           the row above spends before reaching the Input). No offset when
           there's no bullet to line up past. */}
-      {extra && <div style={{ marginLeft: bulletType === 'none' ? 0 : '26px' }}>{extra}</div>}
+      {extra && (
+        <div style={{ marginLeft: bulletType === 'none' ? 0 : `${(bulletType === 'number' ? NUMBER_BULLET_WIDTH : 18) + 8}px` }}>
+          {extra}
+        </div>
+      )}
     </div>
   )
 }
