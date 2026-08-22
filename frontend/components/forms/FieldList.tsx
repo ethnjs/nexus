@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter,
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent, MeasuringStrategy, PointerSensor, closestCenter,
   useSensor, useSensors,
 } from "@dnd-kit/core";
 import {
@@ -429,6 +429,11 @@ export function FieldList({ form }: { form: Form }) {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
           onDragCancel={() => setDraggingKey(null)}
+          // The dragged card collapses to a one-line slot on pickup, which
+          // moves every card below it. Without continuous measuring dnd-kit
+          // would keep collision-testing against the rects it captured at
+          // drag start, so drops would land against stale positions.
+          measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
         >
           <SortableContext items={fields.map((f) => f.clientKey)} strategy={verticalListSortingStrategy}>
             {fields.map((field) => (
@@ -470,7 +475,10 @@ export function FieldList({ form }: { form: Form }) {
         onHeightChange={handleSaveBarHeight}
         stayWithin={`/forms/${form.id}`}
       />
-      {expandedField && (
+      {/* Hidden mid-drag: it's absolutely positioned over the expanded card's
+          box, which is now a one-line slot — a full-height toolbar of buttons
+          floating beside it would just be in the way of the drop. */}
+      {expandedField && !draggingKey && (
         <FieldToolbar
           // Remounts (resetting FieldToolbar's own activePopover state, so
           // a key/preset popover left open doesn't silently follow you to

@@ -97,9 +97,12 @@ export function FieldCard({
   // Translate, not Transform: dnd-kit's transforms carry scaleX/scaleY (the
   // ratio of another card's rect to this one's), so CSS.Transform would
   // squish/stretch cards to match whatever they pass over.
-  // While dragging, the visible card is FieldList's DragOverlay copy — this
-  // node stays mounted at full size but invisible, so the gap it leaves is
-  // the real drop slot and dnd-kit's drag-start rect measurements stay valid.
+  // While dragging, the visible card is FieldList's DragOverlay copy and this
+  // node stays mounted-but-invisible as the drop slot. It renders the same
+  // compressed preview the overlay does (see the isDragging branch below)
+  // rather than the full card: a tall question left a slot taller than the
+  // viewport, so you couldn't see the gap you were aiming at. FieldList's
+  // MeasuringStrategy.Always keeps dnd-kit's rects honest as that collapses.
   const sortableStyle = { transform: CSS.Translate.toString(transform), opacity: isDragging ? 0 : 1 };
   // The grip lives inside the collapsed Card, which has its own onClick to
   // expand — grabbing the grip shouldn't also trigger that.
@@ -131,7 +134,9 @@ export function FieldCard({
     // one level in rather than on this node directly.
     <div data-field-card={field.clientKey} style={{ position: "relative" }}>
       <div ref={setNodeRef} style={sortableStyle}>
-        {expanded ? (
+        {isDragging ? (
+          <FieldCardDragPreview field={field} />
+        ) : expanded ? (
           <Card
             radius="lg"
             variant={hasCardError ? "danger" : "normal"}
