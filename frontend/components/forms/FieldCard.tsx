@@ -3,7 +3,7 @@
 import { useState, MouseEvent as ReactMouseEvent } from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { FormQuestionType, Tournament } from "@/lib/api";
+import { FormQuestionType, Tournament, TournamentShift } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
@@ -28,7 +28,7 @@ import { issuesFor } from "@/lib/forms/useFormValidation";
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournament, allFields, errors,
+  field, expanded, onExpand, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, errors,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -41,6 +41,11 @@ export function FieldCard({
       no tournament to source shifts/events from. Also carries is_multi_day,
       which decides how EntityOptionsEditor's shift chips/picker display. */
   tournament: Tournament | null;
+  /** Collapsed-card preview only — lets an availability option's time range
+      resolve client-side (its `value` is still raw shift ids, not GET's
+      resolved shape) without every card fetching its own copy. null while
+      still loading, same as tournament. */
+  shifts: TournamentShift[] | null;
   allFields: EditableField[];
   errors: string[];
 }) {
@@ -220,7 +225,7 @@ export function FieldCard({
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>
-            <QuestionRenderer field={field} interactive={false} />
+            <QuestionRenderer field={field} interactive={false} shifts={shifts} />
           </Card>
         )}
       </div>

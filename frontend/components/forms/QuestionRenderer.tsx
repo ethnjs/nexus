@@ -1,6 +1,7 @@
 'use client'
 
-import { FormFieldOption, FormFieldConfig, FormQuestionType, Tournament } from '@/lib/api'
+import { FormFieldOption, FormFieldConfig, FormQuestionType, ResolvedShiftOption, Tournament, TournamentShift } from '@/lib/api'
+import { formatTime } from '@/lib/timeFormat'
 import { Input } from '@/components/ui/Input'
 import { Textarea } from '@/components/ui/Textarea'
 import { Checkbox } from '@/components/ui/Checkbox'
@@ -43,6 +44,12 @@ interface QuestionRendererProps {
       boolean for acknowledgment, ...). */
   value?: unknown
   onChange?: (value: unknown) => void
+  /** view mode only — the tournament's shifts, so an availability option's
+      time range can resolve even when `value` is still the raw shift-id
+      list (the builder's collapsed card preview) rather than GET's already-
+      resolved shape. null/undefined = no range shown for the raw-id case
+      (an already-resolved `value` still renders its range regardless). */
+  shifts?: TournamentShift[] | null
   /** Hide the label/description header — e.g. the builder's expanded card already
       shows the label via its own editable Input, so repeating it here would be
       redundant. */
@@ -77,11 +84,13 @@ interface QuestionRendererProps {
 // and the eventual /preview and /view pages (mode='view', interactive=true) —
 // one place that knows how each question_type both answers and edits, so the
 // builder's editor and a respondent's view never drift apart. Reserved-key
-// entity grouping (availability/event_preference) doesn't affect view mode —
-// it only ever reads an option's `label`, never its `value`, which is the
-// only field whose shape differs for those.
+// entity grouping (availability/event_preference) mostly doesn't affect view
+// mode — it only ever reads an option's `label`, not its raw `value` — except
+// availability, where GET /forms/{id}/ resolves `value` into each grouped
+// shift's own start/end (see optionDisplayLabel) so the option can show its
+// time range alongside the TD-typed label.
 export function QuestionRenderer({
-  field, mode = 'view', interactive = false, value, onChange, showHeader = true,
+  field, mode = 'view', interactive = false, value, onChange, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
 }: QuestionRendererProps) {
   const config = field.config ?? {}
@@ -113,17 +122,60 @@ export function QuestionRenderer({
           errors={errors}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} />
+        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} shifts={shifts} />
       )}
     </div>
   )
 }
 
-function QuestionBody({ field, interactive, value, onChange }: {
+// number[] (unresolved, still-editing shape) elements are numbers;
+// ResolvedShiftOption[] (GET-resolved, respondent-facing shape) elements are
+// objects — cheap enough to discriminate on without a field_key check.
+function isResolvedShiftOptions(value: FormFieldOption['value']): value is ResolvedShiftOption[] {
+  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'object'
+}
+
+function isRawShiftIds(value: FormFieldOption['value']): value is number[] {
+  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'number'
+}
+
+function timeRangeOf(starts: string[], ends: string[]): string {
+  // ISO strings compare lexicographically the same as chronologically here
+  // since they're all the same backend format/timezone, so plain string
+  // min/max works without parsing dates.
+  const start = starts.reduce((min, s) => (s < min ? s : min))
+  const end = ends.reduce((max, e) => (e > max ? e : max))
+  return `${formatTime(start)}–${formatTime(end)}`
+}
+
+// availability's option label alone doesn't tell a respondent when it
+// actually is — this appends the span across every shift grouped under the
+// option (min start to max end, not one shift's own range) so "All Day"
+// reads as "All Day (7:00 AM–5:00 PM)" instead of leaving them to guess or
+// hunt down each shift individually. Handles both shapes `value` can be in
+// here: GET's already-resolved `{id, label, start, end}[]`, and the raw
+// shift-id list the builder's collapsed card preview still has — the latter
+// needs `shifts` (looked up by id) to find each one's start/end itself.
+function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] | null): string {
+  if (isResolvedShiftOptions(option.value)) {
+    const resolved = option.value
+    return `${option.label} (${timeRangeOf(resolved.map((s) => s.start), resolved.map((s) => s.end))})`
+  }
+  if (isRawShiftIds(option.value) && shifts) {
+    const matched = shifts.filter((s) => (option.value as number[]).includes(s.id))
+    if (matched.length > 0) {
+      return `${option.label} (${timeRangeOf(matched.map((s) => s.start), matched.map((s) => s.end))})`
+    }
+  }
+  return option.label
+}
+
+function QuestionBody({ field, interactive, value, onChange, shifts }: {
   field: QuestionFieldData
   interactive?: boolean
   value?: unknown
   onChange?: (value: unknown) => void
+  shifts?: TournamentShift[] | null
 }) {
   const config = field.config ?? {}
 
@@ -168,12 +220,13 @@ function QuestionBody({ field, interactive, value, onChange }: {
 
     case 'single_select_radio': {
       const options: FormFieldOption[] = config.options ?? []
+      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? (value as string | undefined) ?? '' : ''
 
       if (config.display_style === 'buttons') {
         return (
           <ButtonGroup
-            options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+            options={displayOptions}
             value={selected}
             onChange={(v) => interactive && onChange?.(v)}
             locked={!interactive}
@@ -183,7 +236,7 @@ function QuestionBody({ field, interactive, value, onChange }: {
 
       return (
         <RadioList
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          options={displayOptions}
           value={selected}
           onChange={(v) => interactive && onChange?.(v)}
           locked={!interactive}
@@ -210,6 +263,7 @@ function QuestionBody({ field, interactive, value, onChange }: {
 
     case 'multi_select_checkbox': {
       const options: FormFieldOption[] = config.options ?? []
+      const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
       function toggle(optionId: string) {
@@ -220,7 +274,7 @@ function QuestionBody({ field, interactive, value, onChange }: {
       if (config.display_style === 'buttons') {
         return (
           <ButtonGroup
-            options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+            options={displayOptions}
             value={selected}
             onChange={toggle}
             locked={!interactive}
@@ -230,7 +284,7 @@ function QuestionBody({ field, interactive, value, onChange }: {
 
       return (
         <CheckboxList
-          options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
+          options={displayOptions}
           value={selected}
           onChange={toggle}
           locked={!interactive}

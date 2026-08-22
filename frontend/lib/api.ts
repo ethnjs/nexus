@@ -1158,11 +1158,13 @@ export type FormOwnerType = 'tournament' | 'chapter'
 
 // value is normally TD-facing display text; for an entity-backed reserved
 // field_key (availability → TournamentShift ids, event_preference →
-// TournamentEvent ids) it's the raw list[int] instead — resolved in place
-// into FormFieldOptionResolved on GET (see resolveFieldOptionValue below).
+// TournamentEvent ids) it's the raw list[int] while editing, but GET
+// /forms/{id}/ (non-raw) resolves it server-side into ResolvedShiftOption[]/
+// ResolvedEventOption[] instead — see resolve_field_options in
+// backend/app/core/form/__init__.py.
 export interface FormFieldOption {
   option_id:      string
-  value:          string | number[]
+  value:          string | number[] | ResolvedShiftOption[] | ResolvedEventOption[]
   label:          string
   is_archived?:   boolean
   // single_select_radio/dropdown only — mutually exclusive with each other.

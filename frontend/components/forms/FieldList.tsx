@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, tournamentsApi, Form, Tournament } from "@/lib/api";
+import { formsApi, tournamentsApi, tournamentShiftsApi, Form, Tournament, TournamentShift } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -57,6 +57,15 @@ export function FieldList({ form }: { form: Form }) {
   // PresetPopover's date pickers.
   const [tournament, setTournament] = useState<Tournament | null>(null);
   const tournamentDates = tournament ? enumerateDates(tournament.start_date, tournament.end_date) : [];
+  // Fetched once here (not per-card) so every collapsed availability-preset
+  // card's preview can show its option's time range without each one
+  // re-fetching the same list — EntityOptionsEditor fetches its own copy
+  // too, but only while a field is actually expanded/being edited.
+  const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
+  useEffect(() => {
+    if (form.tournament_id == null) return;
+    tournamentShiftsApi.list(form.tournament_id).then(setShifts).catch(() => {});
+  }, [form.tournament_id]);
   // Set by add/duplicate so the effect below can scroll the new card into view
   // once its expand animation has settled at its real height.
   const [pendingScrollKey, setPendingScrollKey] = useState<string | null>(null);
@@ -309,6 +318,7 @@ export function FieldList({ form }: { form: Form }) {
                 onDuplicate={() => duplicateField(field.clientKey)}
                 onDelete={() => deleteField(field.clientKey)}
                 tournament={tournament}
+                shifts={shifts}
                 allFields={fields}
                 errors={validation.errorsFor(field.clientKey)}
               />
