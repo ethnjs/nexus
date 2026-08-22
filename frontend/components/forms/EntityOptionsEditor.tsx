@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   tournamentShiftsApi, tournamentEventsApi, TournamentShift, TournamentEvent, Tournament, FormQuestionType, ApiError,
 } from '@/lib/api'
@@ -9,8 +9,9 @@ import { formatDayLabel, formatTime, toDateInput } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
 import { ChipInput } from '@/components/ui/ChipInput'
 import { Popover } from '@/components/ui/Popover'
-import { IconPlus } from '@/components/ui/Icons'
+import { IconPlus, IconSearch } from '@/components/ui/Icons'
 import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
+import { EventOptionsPickerModal } from '@/components/forms/EventOptionsPickerModal'
 
 type EntityFieldKey = 'availability' | 'event_preference'
 type Entity = TournamentShift | TournamentEvent
@@ -90,6 +91,14 @@ function entityPickerLabel(fieldKey: EntityFieldKey, entity: Entity, isMultiDay:
 export function EntityOptionsEditor({ fieldKey, tournament, questionType, options, onChange, displayStyle, branchTargets, errors }: EntityOptionsEditorProps) {
   const [entities, setEntities] = useState<Entity[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  // event_preference-only bulk entry point (see EventOptionsPickerModal) —
+  // the per-row picker above stays as the way to fine-tune one option
+  // afterward, this is just a faster way to create several at once.
+  const [showPicker, setShowPicker] = useState(false)
+  const existingEventIds = useMemo(
+    () => new Set(options.flatMap((o) => (Array.isArray(o.value) ? (o.value as number[]) : []))),
+    [options]
+  )
 
   useEffect(() => {
     setEntities(null);
@@ -130,27 +139,46 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
     : 'No events on this tournament yet — add some under Events.'
 
   return (
-    <OptionsEditor
-      options={options}
-      onChange={onChange}
-      questionType={questionType}
-      placeholder="e.g. All Day"
-      createOption={newEntityOption}
-      syncValueWithLabel={false}
-      displayStyle={displayStyle}
-      branchTargets={branchTargets}
-      errors={errors}
-      renderExtra={(option) => (
-        <EntityPicker
-          option={option}
-          entities={entities}
-          fieldKey={fieldKey}
-          isMultiDay={tournament.is_multi_day}
-          emptyMessage={emptyMessage}
-          onToggle={(id) => toggleEntity(option.clientKey, id)}
+    <>
+      <OptionsEditor
+        options={options}
+        onChange={onChange}
+        questionType={questionType}
+        placeholder="e.g. All Day"
+        createOption={newEntityOption}
+        syncValueWithLabel={false}
+        displayStyle={displayStyle}
+        branchTargets={branchTargets}
+        errors={errors}
+        renderExtra={(option) => (
+          <EntityPicker
+            option={option}
+            entities={entities}
+            fieldKey={fieldKey}
+            isMultiDay={tournament.is_multi_day}
+            emptyMessage={emptyMessage}
+            onToggle={(id) => toggleEntity(option.clientKey, id)}
+          />
+        )}
+      />
+      {fieldKey === 'event_preference' && entities.length > 0 && (
+        <Button
+          type="button" variant="secondary" size="sm"
+          onClick={() => setShowPicker(true)}
+          style={{ alignSelf: 'flex-start', marginTop: '6px' }}
+        >
+          <IconSearch size={12} /> Browse events
+        </Button>
+      )}
+      {showPicker && (
+        <EventOptionsPickerModal
+          events={entities as TournamentEvent[]}
+          existingEventIds={existingEventIds}
+          onClose={() => setShowPicker(false)}
+          onConfirm={(newOptions) => onChange([...options, ...newOptions])}
         />
       )}
-    />
+    </>
   )
 }
 
