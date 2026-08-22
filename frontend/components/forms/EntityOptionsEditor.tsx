@@ -7,7 +7,7 @@ import {
 import { eventNameWithDivision } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
-import { Badge } from '@/components/ui/Badge'
+import { ChipInput } from '@/components/ui/ChipInput'
 import { Popover } from '@/components/ui/Popover'
 import { IconPlus } from '@/components/ui/Icons'
 import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
@@ -127,28 +127,42 @@ function EntityPicker({ option, entities, fieldKey, emptyMessage, onToggle }: {
   const selectedIds = Array.isArray(option.value) ? (option.value as number[]) : []
   const selectedEntities = entities.filter((e) => selectedIds.includes(e.id))
 
+  // disableInput: chips here only ever come from the Popover checklist (the
+  // addButton), never typed/pasted — ChipInput's own "x" is still live
+  // though, so removing a chip needs mapping back to the entity it came from
+  // rather than a free-text diff. Only one chip is ever removed per click
+  // (typing is disabled), so the first entity missing from the new chip list
+  // is unambiguously the one that was removed.
+  function handleChipsChange(chips: string[]) {
+    const removed = selectedEntities.find((e) => !chips.includes(entityLabel(fieldKey, e)))
+    if (removed) onToggle(removed.id)
+  }
+
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '6px' }}>
-      {selectedEntities.map((entity) => (
-        <Badge key={entity.id} variant="default">
-          {entityLabel(fieldKey, entity)}
-        </Badge>
-      ))}
-      <Popover
-        trigger={
-          <Button type="button" variant="secondary" size="xs">
-            <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
-          </Button>
-        }
-        items={entities}
-        getKey={(e) => e.id}
-        renderLabel={(e) => entityLabel(fieldKey, e)}
-        onSelect={(e) => onToggle(e.id)}
-        checklist
-        isSelected={(e) => selectedIds.includes(e.id)}
-        emptyMessage={emptyMessage}
-        width={280}
-      />
-    </div>
+    <ChipInput
+      value={selectedEntities.map((e) => entityLabel(fieldKey, e))}
+      onChange={handleChipsChange}
+      disableInput
+      variant="transparent"
+      size="sm"
+      fullWidth
+      addButton={
+        <Popover
+          trigger={
+            <Button type="button" variant="secondary" size="xs">
+              <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
+            </Button>
+          }
+          items={entities}
+          getKey={(e) => e.id}
+          renderLabel={(e) => entityLabel(fieldKey, e)}
+          onSelect={(e) => onToggle(e.id)}
+          checklist
+          isSelected={(e) => selectedIds.includes(e.id)}
+          emptyMessage={emptyMessage}
+          width={280}
+        />
+      }
+    />
   )
 }
