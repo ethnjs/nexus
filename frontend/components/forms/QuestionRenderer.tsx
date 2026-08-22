@@ -130,9 +130,11 @@ export function QuestionRenderer({
 
 // number[] (unresolved, still-editing shape) elements are numbers;
 // ResolvedShiftOption[] (GET-resolved, respondent-facing shape) elements are
-// objects — cheap enough to discriminate on without a field_key check.
+// objects. ResolvedEventOption[] is also an array of objects but has no
+// start/end, so checking for 'start' is what actually distinguishes the two
+// resolved shapes (event_preference options must never hit timeRangeOf).
 function isResolvedShiftOptions(value: FormFieldOption['value']): value is ResolvedShiftOption[] {
-  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'object'
+  return Array.isArray(value) && value.length > 0 && typeof value[0] === 'object' && 'start' in value[0]
 }
 
 function isRawShiftIds(value: FormFieldOption['value']): value is number[] {
