@@ -172,8 +172,14 @@ export function FieldList({ form }: { form: Form }) {
       const rect = target === card ? cardRect : target.getBoundingClientRect();
       if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
       if (rect.height > band && rect.bottom > safeTop && rect.top < safeBottom) return;
-      // The minimum nudge that clears whichever edge it's past.
-      const delta = rect.top < safeTop ? rect.top - safeTop - 8 : rect.bottom - safeBottom + 8;
+      // Centering, not a minimum nudge, when we're following the focused
+      // control on an oversized card: the bar's top edge is exactly where a
+      // minimum nudge would park it, so the next control down is covered
+      // again the moment you tab to it. The middle of the band gives room in
+      // both directions and survives the card growing around it.
+      const delta = target === card
+        ? rect.top < safeTop ? rect.top - safeTop - 8 : rect.bottom - safeBottom + 8
+        : rect.top + rect.height / 2 - (safeTop + band / 2);
       window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
     };
 
@@ -207,6 +213,26 @@ export function FieldList({ form }: { form: Form }) {
     scrollCardIntoView(expandedKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveBarHeight, expandedKey]);
+
+  // Where you're editing changes as you click and tab through a card, not
+  // just when the bar first appears — so follow focus too, or every control
+  // below the one that triggered the initial scroll is covered again. Only
+  // while the bar is actually up: with nothing covering the page, moving
+  // focus is no reason to move the viewport.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const onFocusIn = (e: FocusEvent) => {
+      if (saveBarHeightRef.current === 0) return;
+      const key = e.target instanceof HTMLElement
+        ? e.target.closest<HTMLElement>("[data-field-card]")?.dataset.fieldCard
+        : undefined;
+      if (key) scrollCardIntoView(key);
+    };
+    list.addEventListener("focusin", onFocusIn);
+    return () => list.removeEventListener("focusin", onFocusIn);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Fetched once per form-editing session (not per field card) — every
   // field's FieldKeyPopover shares this list to flag already-used keys.
