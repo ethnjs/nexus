@@ -2,11 +2,13 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { IconPlus, IconDescription, IconButton } from "@/components/ui/Icons";
+import { IconPlus, IconDescription, IconButton, IconBranch, IconSwap } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { EditableField } from "@/lib/forms/editableField";
+import { activePresetKind, isEntityBackedPreset } from "@/lib/forms/fieldKeyPresets";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 type ActivePopover = "key" | "preset" | null;
 
@@ -90,6 +92,24 @@ export function FieldToolbar({
             onClick={onToggleDisplayStyle}
           >
             <IconButton size={14} />
+          </Button>
+        )}
+        {BRANCHING_TYPES.includes(field.question_type) && (
+          <Button
+            type="button" variant={field.branchingEnabled ? "primary" : "secondary"} size="sm" iconOnly
+            title={field.branchingEnabled ? "Disable branching" : "Enable branching"}
+            onClick={() => onFieldChange({ branchingEnabled: !field.branchingEnabled })}
+          >
+            <IconBranch size={14} />
+          </Button>
+        )}
+        {OPTION_BEARING_TYPES.includes(field.question_type) && !isEntityBackedPreset(activePresetKind(field.field_key)) && (
+          <Button
+            type="button" variant={field.customValuesEnabled ? "primary" : "secondary"} size="sm" iconOnly
+            title={field.customValuesEnabled ? "Hide custom values" : "Set custom values"}
+            onClick={() => onFieldChange({ customValuesEnabled: !field.customValuesEnabled })}
+          >
+            <IconSwap size={14} />
           </Button>
         )}
       </div>

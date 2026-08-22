@@ -220,6 +220,10 @@ export function OptionsEditor({
     onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, label, ...(syncValueWithLabel ? { value: label } : {}) } : o)))
   }
 
+  function updateOptionValue(clientKey: string, value: string) {
+    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, value } : o)))
+  }
+
   function updateBranch(clientKey: string, value: string) {
     onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)))
   }
@@ -252,6 +256,22 @@ export function OptionsEditor({
     )
     : undefined
 
+  // renderExtra is an override for variants with their own below-row content
+  // (EntityOptionsEditor's picker) — when it's absent and label/value have
+  // been un-synced (FieldToolbar's "custom values" toggle), fall back to a
+  // plain value Input instead of rendering nothing.
+  const extraFor = renderExtra ?? (!syncValueWithLabel
+    ? (option: EditableOption) => (
+      <Input
+        value={typeof option.value === 'string' ? option.value : ''}
+        onChange={(e) => updateOptionValue(option.clientKey, e.target.value)}
+        placeholder="Value (shown in exports, defaults to label)"
+        size="sm"
+        fullWidth
+      />
+    )
+    : undefined)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -265,7 +285,7 @@ export function OptionsEditor({
               displayStyle={displayStyle}
               placeholder={placeholder}
               trailing={trailing?.(option)}
-              extra={renderExtra?.(option)}
+              extra={extraFor?.(option)}
               error={errorFor(option)}
               canRemove={options.length > 1}
               autoFocus={option.clientKey === focusKey}

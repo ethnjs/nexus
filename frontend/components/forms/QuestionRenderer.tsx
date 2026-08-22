@@ -57,8 +57,13 @@ interface QuestionRendererProps {
       per-option branching. Omitted (or empty) hides the branch dropdown. */
   branchTargets?: BranchTarget[]
   /** edit mode only — whether branching is currently toggled on for this field
-      (the toggle itself lives outside QuestionRenderer, e.g. FieldCard's Popover). */
+      (the toggle itself lives outside QuestionRenderer, in FieldToolbar). */
   branchingEnabled?: boolean
+  /** edit mode only — whether this field's options currently show a separate
+      value input (freeform types only — entity-backed presets ignore this,
+      their value is always the picked entity ids). Toggle lives in
+      FieldToolbar, same as branchingEnabled. */
+  customValuesEnabled?: boolean
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -76,7 +81,7 @@ interface QuestionRendererProps {
 // only field whose shape differs for those.
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, showHeader = true,
-  onFieldChange, tournamentId, branchTargets, branchingEnabled, errors = [],
+  onFieldChange, tournamentId, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -103,6 +108,7 @@ export function QuestionRenderer({
           tournamentId={tournamentId ?? null}
           branchTargets={branchTargets}
           branchingEnabled={branchingEnabled}
+          customValuesEnabled={customValuesEnabled}
           errors={errors}
         />
       ) : (
@@ -270,12 +276,13 @@ function QuestionBody({ field, interactive, value, onChange }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled, errors = [] }: {
+function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, branchingEnabled, customValuesEnabled, errors = [] }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournamentId: number | null
   branchTargets?: BranchTarget[]
   branchingEnabled?: boolean
+  customValuesEnabled?: boolean
   errors?: string[]
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
@@ -318,6 +325,7 @@ function QuestionEditBody({ field, onFieldChange, tournamentId, branchTargets, b
             questionType={field.question_type}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
+            syncValueWithLabel={!customValuesEnabled}
             errors={errors}
           />
         )}

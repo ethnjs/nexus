@@ -21,7 +21,7 @@ import { FieldCard, FieldCardDragPreview } from "@/components/forms/FieldCard";
 import { FieldToolbar } from "@/components/forms/FieldToolbar";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
-  EditableField, withOptionClientKeys, newField, toFieldInput,
+  EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
 
@@ -40,7 +40,10 @@ export function FieldList({ form }: { form: Form }) {
     form.fields
       .filter((f) => !f.is_archived)
       .sort((a, b) => a.order - b.order)
-      .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }))
+      .map((f) => ({
+        ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
+        branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+      }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
   const [usedFieldKeys, setUsedFieldKeys] = useState<string[]>([]);
@@ -209,7 +212,10 @@ export function FieldList({ form }: { form: Form }) {
       const next = updated
         .filter((f) => !f.is_archived)
         .sort((a, b) => a.order - b.order)
-        .map((f) => ({ ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description }));
+        .map((f) => ({
+          ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
+          branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+        }));
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
       baselineRef.current = JSON.stringify(next);

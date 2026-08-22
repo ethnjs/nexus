@@ -9,11 +9,30 @@ import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 // showDescription is draft-only UI state: while the description is toggled
 // off the text is kept (so re-toggling restores it), and Save is what
 // discards it — send `description: showDescription ? description : null`.
+// branchingEnabled/customValuesEnabled are the same kind of draft-only UI
+// state, now living on the field (not a component's local useState) so they
+// survive FieldToolbar remounting on every expanded-field switch — see
+// deriveBranchingEnabled/deriveCustomValuesEnabled below for how a loaded
+// field's initial value is worked out from its actual option data.
 export type EditableField = Omit<FormField, "id"> & {
   id: string | null;
   clientKey: string;
   showDescription: boolean;
+  branchingEnabled: boolean;
+  customValuesEnabled: boolean;
 };
+
+// A field's options actually use branching/custom values yet — used to seed
+// branchingEnabled/customValuesEnabled when a field is first loaded (or
+// reloaded after Save), so the toggle reflects real data instead of
+// defaulting to off and hiding a branch/value an earlier session set up.
+export function deriveBranchingEnabled(field: FormField): boolean {
+  return (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null);
+}
+
+export function deriveCustomValuesEnabled(field: FormField): boolean {
+  return (field.config?.options ?? []).some((o) => typeof o.value === "string" && o.value !== o.label);
+}
 
 // Attaches a stable clientKey to every option in a loaded field's config —
 // options fetched from the server have a real option_id (usable as the key)
@@ -34,6 +53,8 @@ export function newField(order: number): EditableField {
     clientKey: crypto.randomUUID(),
     id: null,
     showDescription: false,
+    branchingEnabled: false,
+    customValuesEnabled: false,
     form_id: "",
     field_key: "",
     order,

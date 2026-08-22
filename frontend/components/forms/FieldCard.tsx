@@ -8,16 +8,15 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/Textarea";
 import { Dropdown } from "@/components/ui/Dropdown";
-import { Popover } from "@/components/ui/Popover";
 import { Toggle } from "@/components/ui/Toggle";
 import {
-  IconGripVertical, IconCopy, IconTrash, IconDotsVertical,
+  IconGripVertical, IconCopy, IconTrash,
 } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
 import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
-import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, BRANCHING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
 
 // One card in the field list — collapsed, it's a read-only preview of the
@@ -78,13 +77,6 @@ export function FieldCard({
   const duplicateKey = !!effKey && allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey);
   const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
   const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
-  // Purely a question_type property — an entity-backed preset's options are
-  // still real, addressable rows a TD can branch from just like a plain
-  // question's (see QuestionRenderer's identical calc).
-  const supportsBranching = BRANCHING_TYPES.includes(field.question_type);
-  const [branchingEnabled, setBranchingEnabled] = useState(() =>
-    (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null)
-  );
   const branchTargets: BranchTarget[] = allFields
     .filter((f) => f.clientKey !== field.clientKey && f.label.trim())
     .map((f) => ({ id: f.id, label: f.label.trim() }));
@@ -182,7 +174,8 @@ export function FieldCard({
               onFieldChange={onFieldChange}
               tournamentId={tournamentId}
               branchTargets={branchTargets}
-              branchingEnabled={branchingEnabled}
+              branchingEnabled={field.branchingEnabled}
+              customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
             />
 
@@ -204,25 +197,6 @@ export function FieldCard({
                 <Button type="button" variant="ghost" size="sm" iconOnly title="Delete question" onClick={onDelete} style={{ color: "var(--color-danger)" }}>
                   <IconTrash size={14} />
                 </Button>
-                {supportsBranching && (
-                  <>
-                    <div style={{ width: "1px", height: "20px", background: "var(--color-border)", margin: "0 4px" }} />
-                    <Popover
-                      trigger={
-                        <Button type="button" variant="ghost" size="sm" iconOnly title="More options">
-                          <IconDotsVertical size={15} />
-                        </Button>
-                      }
-                      items={[{ key: "branching", label: "Branching" }]}
-                      getKey={(item) => item.key}
-                      checklist
-                      isSelected={() => branchingEnabled}
-                      onSelect={() => setBranchingEnabled((v) => !v)}
-                      renderLabel={(item) => item.label}
-                      width={160}
-                    />
-                  </>
-                )}
               </div>
             </div>
           </Card>
