@@ -3,7 +3,6 @@
 import { useMemo, useState } from 'react'
 import { TournamentEvent, TournamentDivision } from '@/lib/api'
 import { eventName, eventNameWithDivision } from '@/lib/eventDisplay'
-import { formatDateTime } from '@/lib/timeFormat'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -58,9 +57,6 @@ interface PickerRow {
   key: string
   label: string
   eventIds: number[]
-  /** Only meaningful for ungrouped rows — shown as a secondary line so a TD
-      can tell same-named events apart without opening the events page. */
-  subtitle?: string
 }
 
 // The one place that defines "what a checked row bundles" — used both to
@@ -72,7 +68,6 @@ function computeRows(visibleEvents: TournamentEvent[], groupMode: GroupMode): Pi
       key: `ev-${e.id}`,
       label: eventNameWithDivision(e),
       eventIds: [e.id],
-      subtitle: e.start_time ? formatDateTime(e.start_time) : undefined,
     }))
   }
 
@@ -189,6 +184,12 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
     setChecked(new Set())
   }
 
+  const allChecked = rows.length > 0 && rows.every((r) => checked.has(r.key))
+
+  function toggleSelectAll() {
+    setChecked(allChecked ? new Set() : new Set(rows.map((r) => r.key)))
+  }
+
   function handleConfirm() {
     const newOptions: EditableOption[] = rows
       .filter((r) => checked.has(r.key))
@@ -204,7 +205,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
   ]
 
   return (
-    <Modal title="Browse events" onClose={onClose} width={640}>
+    <Modal title="Browse events" onClose={onClose} width={700}>
       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
         <div style={{ flex: '1 1 200px', minWidth: '160px' }}>
           <Input
@@ -214,7 +215,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
             icon={<IconSearch size={14} />}
             font="sans"
             size="md"
-            variant="secondary"
+            variant="primary"
             fullWidth
           />
         </div>
@@ -231,7 +232,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
           onChange={(v) => setSortField(v as SortField)}
           options={SORT_FIELD_OPTIONS}
           size="md"
-          variant="secondary"
+          variant="primary"
           width={130}
         />
         <Button
@@ -257,28 +258,38 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
         {rows.length === 0 ? (
           <EmptyState title="No matching events" description="Try adjusting your search or filters." />
         ) : (
-          rows.map((row, i) => (
+          <>
             <label
-              key={row.key}
               style={{
                 display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
-                padding: '9px 12px',
-                borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--color-border)',
+                padding: '9px 12px', borderBottom: '1px solid var(--color-border)',
+                background: 'var(--color-surface)',
               }}
             >
-              <Checkbox checked={checked.has(row.key)} onChange={() => toggleRow(row.key)} />
-              <span style={{ display: 'flex', flexDirection: 'column' }}>
+              <Checkbox checked={allChecked} onChange={toggleSelectAll} />
+              <span style={{
+                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+                letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)',
+              }}>
+                {allChecked ? 'Deselect all' : 'Select all'}
+              </span>
+            </label>
+            {rows.map((row, i) => (
+              <label
+                key={row.key}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer',
+                  padding: '9px 12px',
+                  borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--color-border)',
+                }}
+              >
+                <Checkbox checked={checked.has(row.key)} onChange={() => toggleRow(row.key)} />
                 <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-primary)' }}>
                   {row.label}
                 </span>
-                {row.subtitle && (
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '11px', color: 'var(--color-text-tertiary)' }}>
-                    {row.subtitle}
-                  </span>
-                )}
-              </span>
-            </label>
-          ))
+              </label>
+            ))}
+          </>
         )}
       </div>
 
