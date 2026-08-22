@@ -137,10 +137,10 @@ export function FieldList({ form }: { form: Form }) {
   const settleRef = useRef<(() => void) | null>(null);
   useEffect(() => () => settleRef.current?.(), []);
 
-  // Bring a card fully into the clear — below the sticky topbar, above the
-  // save bar's resting footprint (0 while it's hidden). No-ops when the card
-  // already fits, so it never yanks the page out from under a scroll the
-  // user just made themselves.
+  // Bring a card into the clear — below the sticky topbar, above the save
+  // bar's resting footprint (0 while it's hidden) — with the smallest scroll
+  // that does it. No-ops when it already fits, so it never yanks the page out
+  // from under a scroll the user just made themselves.
   //
   // Then keeps re-applying while the card is still settling: the entity-backed
   // presets (availability, event_preference) fetch their shifts/events on
@@ -154,18 +154,26 @@ export function FieldList({ form }: { form: Form }) {
     const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${clientKey}"]`);
     if (!card) return;
 
+    // Follow whatever the user is actually typing in, falling back to the
+    // card as a whole. On a question taller than the viewport, hauling the
+    // card's top into view would yank them away from an edit they're making
+    // near its bottom — the thing that has to clear the bar is their cursor,
+    // not the card's first pixel.
+    const focused = document.activeElement;
+    const target = focused instanceof HTMLElement && card.contains(focused) ? focused : card;
+
     const apply = () => {
-      const rect = card.getBoundingClientRect();
+      const rect = target.getBoundingClientRect();
       const safeTop = TOPBAR_HEIGHT + 12;
       const safeBottom = window.innerHeight - saveBarHeightRef.current;
       if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
-      // Top-align when the card is too tall to fit whole (or is above the
-      // fold) — its label/type controls are up top and matter more than its
-      // tail. This is also what a card keeps doing as async options stream
-      // in past the viewport height, instead of chasing its growing bottom.
-      const delta = rect.top < safeTop || rect.height > safeBottom - safeTop
-        ? rect.top - safeTop - 8
-        : rect.bottom - safeBottom + 8;
+      // Too tall to ever fit the band (a long question with nothing focused
+      // in it, e.g. after Cancel): leave the scroll alone as long as some of
+      // it is on screen. Any "correction" here is just a jump to a part of
+      // the card the user didn't ask to look at.
+      if (rect.height > safeBottom - safeTop && rect.bottom > safeTop && rect.top < safeBottom) return;
+      // Otherwise the minimum nudge that clears whichever edge it's past.
+      const delta = rect.top < safeTop ? rect.top - safeTop - 8 : rect.bottom - safeBottom + 8;
       window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
     };
 
