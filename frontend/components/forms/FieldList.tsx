@@ -162,7 +162,19 @@ export function FieldList({ form }: { form: Form }) {
     const focused = document.activeElement;
     const focusedInCard = focused instanceof HTMLElement && card.contains(focused) ? focused : null;
 
+    let frame = 0;
     const apply = () => {
+      // Mid expand/collapse the card's height is being animated (see
+      // useCardHeight), so every measurement here is a frame of the
+      // animation rather than where the card is going to land. Wait it out
+      // instead of re-targeting the scroll ~60 times on the way.
+      // The ResizeObserver below also fires on every frame of that animation,
+      // so drop any retry already queued rather than stacking one per frame.
+      if (card.dataset.animating) {
+        cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(apply);
+        return;
+      }
       const safeTop = TOPBAR_HEIGHT + 12;
       const safeBottom = window.innerHeight - saveBarHeightRef.current;
       const band = safeBottom - safeTop;
@@ -193,6 +205,7 @@ export function FieldList({ form }: { form: Form }) {
     observer.observe(card);
     const stop = () => {
       observer.disconnect();
+      cancelAnimationFrame(frame);
       clearTimeout(timer);
       for (const e of ["wheel", "touchmove", "keydown"]) window.removeEventListener(e, stop);
       settleRef.current = null;

@@ -13,6 +13,7 @@ import {
   IconGripVertical, IconCopy, IconTrash,
 } from "@/components/ui/Icons";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
+import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
 import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
@@ -202,6 +203,10 @@ export function FieldCard({
   const gripProps = { ...attributes, ...listeners, onClick: (e: ReactMouseEvent) => e.stopPropagation() };
 
   const rootRef = useRef<HTMLDivElement>(null);
+  // Skipped mid-drag: the card swaps to the compressed placeholder then back,
+  // and animating that would fight dnd-kit's continuous rect measuring.
+  useCardHeight(rootRef, expanded, isDragging);
+
   useEffect(() => {
     if (!focusNonce || !rootRef.current) return;
     return applyFocusIntent(rootRef.current, focusIntent);
