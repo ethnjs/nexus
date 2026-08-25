@@ -127,12 +127,19 @@ def validate_branching_options(
     if not next_field_ids:
         return
 
-    valid_ids = {
-        fid
-        for (fid,) in db.query(FormField.id)
-        .filter(FormField.form_id == form_id, FormField.id.in_(next_field_ids), FormField.is_archived == False)
-        .all()
-    }
+    # FormField.id is a String(12) column — an int (or other non-str)
+    # next_field_id can never match, and Postgres (unlike SQLite) errors on
+    # an id_in() with mixed types instead of just finding no rows. Skip the
+    # query for those and let them fall straight into `missing` below.
+    string_ids = {fid for fid in next_field_ids if isinstance(fid, str)}
+    valid_ids = set()
+    if string_ids:
+        valid_ids = {
+            fid
+            for (fid,) in db.query(FormField.id)
+            .filter(FormField.form_id == form_id, FormField.id.in_(string_ids), FormField.is_archived == False)
+            .all()
+        }
     missing = next_field_ids - valid_ids
     _require(
         not missing,

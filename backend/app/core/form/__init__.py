@@ -113,10 +113,10 @@ def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: in
     so a shift can't be pulled out from under a live option's grouping,
     independent of whether anyone's answered yet (that's the separate,
     pre-existing MembershipAvailability guard). `FormField.config` is a
-    plain JSON column (not JSONB) and tests run on SQLite, which has no
-    JSON operators at all, so this is a Python-side scan rather than a
-    DB-side containment query — same reasoning as the pending-updates scan
-    over FormAnswer.value. field_key matching is Python-side too (rather
+    plain JSON column (not JSONB), which has no containment operators, so
+    this is a Python-side scan rather than a DB-side containment query —
+    same reasoning as the pending-updates scan over FormAnswer.value.
+    field_key matching is Python-side too (rather
     than a DB LIKE) so it goes through the one real pattern, same as every
     other reserved-key check."""
     fields = (
