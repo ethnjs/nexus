@@ -5,9 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome,
-  IconAssignments,
   IconEvents,
-  IconSheets,
+  IconForms,
   IconMembers,
   IconSettings,
   IconChevronDown,
@@ -18,12 +17,14 @@ import { useMyMembership } from "@/lib/useMyMembership";
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
+// Sheets is deprecated and Assignments isn't built yet — both dropped from
+// nav rather than left as dead links. Neither route was deleted, just the
+// sidebar entry pointing at it.
 const NAV_ITEMS = [
-  { segment: "overview",    icon: <IconHome />,        label: "Overview" },
-  { segment: "assignments", icon: <IconAssignments />, label: "Assignments" },
-  { segment: "events",      icon: <IconEvents />,      label: "Events" },
-  { segment: "sheets",      icon: <IconSheets />,      label: "Sheets" },
-  { segment: "members",     icon: <IconMembers />,     label: "Members" },
+  { segment: "overview", icon: <IconHome />,  label: "Overview" },
+  { segment: "events",   icon: <IconEvents />, label: "Events" },
+  { segment: "forms",    icon: <IconForms />,  label: "Forms" },
+  { segment: "members",  icon: <IconMembers />, label: "Members" },
 ];
 
 const SETTINGS_SUBITEMS = [
@@ -53,6 +54,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const canManageTournament = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
   const canManageMembers = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_members");
   const canManageEvents = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_events");
+  const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
   const settingsSubitems = SETTINGS_SUBITEMS.filter(
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
@@ -62,7 +64,8 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
   const navItems = NAV_ITEMS.filter(
     ({ segment }) =>
       (segment !== "members" || canManageMembers) &&
-      (segment !== "events" || canManageEvents)
+      (segment !== "events" || canManageEvents) &&
+      (segment !== "forms" || canManageForms)
   );
   // Locked open on settings routes — the sub-nav labels need to stay
   // readable without requiring the mouse to stay parked on the rail.

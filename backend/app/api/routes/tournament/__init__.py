@@ -38,6 +38,7 @@ def _serialize(tournament: Tournament) -> dict:
         "state": tournament.state,
         "level": tournament.level,
         "division": tournament.division,
+        "timezone": tournament.timezone,
         "is_public": tournament.is_public,
         "is_verified": tournament.is_verified,
         "is_archived": tournament.is_archived,

@@ -372,7 +372,11 @@ def test_get_my_membership_not_found_tournament(client, td_user):
 # Self-service update — PATCH .../me/
 # ---------------------------------------------------------------------------
 
-def test_update_my_membership(client, td_tournament, db):
+def test_update_my_membership_ignores_all_fields(client, td_tournament, db):
+    """MembershipMeUpdate has no fields left — onboarding data (role/event
+    preference, availability, lunch) now comes through the native form
+    response flow, not this endpoint. Sending any of it is a no-op, not an
+    error."""
     u = _make_user(db, "volunteer@example.com")
     from app.core.auth import hash_password
     from app.models.models import User as UserModel
@@ -384,28 +388,7 @@ def test_update_my_membership(client, td_tournament, db):
     login(client, "volunteer@example.com", "volpass")
     response = client.patch(
         f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={"lunch_order": "Veggie Wrap", "role_preference": ["event_volunteer"]},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["lunch_order"] == "Veggie Wrap"
-    assert data["role_preference"] == ["event_volunteer"]
-
-
-def test_update_my_membership_ignores_restricted_fields(client, td_tournament, db):
-    """schedule/notes aren't in MembershipMeUpdate — sending them is a no-op, not an error."""
-    u = _make_user(db, "volunteer2@example.com")
-    from app.core.auth import hash_password
-    from app.models.models import User as UserModel
-    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-    user.hashed_password = hash_password("volpass")
-    db.commit()
-    _make_membership(db, td_tournament.id, u["id"])
-
-    login(client, "volunteer2@example.com", "volpass")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={"notes": "should not be saved", "status": "confirmed"},
+        json={"notes": "should not be saved", "status": "confirmed", "lunch_order": "Veggie Wrap"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -418,7 +401,7 @@ def test_update_my_membership_not_found(client, td_tournament, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.patch(
         f"/tournaments/{td_tournament.id + 9999}/memberships/me/",
-        json={"lunch_order": "Veggie Wrap"},
+        json={},
     )
     assert response.status_code == 404
 
@@ -434,36 +417,16 @@ def test_update_my_membership_only_affects_own_membership(client, td_tournament,
         user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
         user.hashed_password = hash_password(pw)
     db.commit()
-    m1 = _make_membership(db, td_tournament.id, u1["id"], lunch_order="A's order")
-    m2 = _make_membership(db, td_tournament.id, u2["id"], lunch_order="B's order")
+    m1 = _make_membership(db, td_tournament.id, u1["id"])
+    _make_membership(db, td_tournament.id, u2["id"])
 
     login(client, "vol-a@example.com", "volpassA")
     response = client.patch(
         f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={"lunch_order": "Changed by A"},
+        json={},
     )
     assert response.status_code == 200
     assert response.json()["id"] == m1.id
-
-    db.refresh(m2)
-    assert m2.lunch_order == "B's order"
-
-
-def test_update_my_membership_invalid_availability_shape(client, td_tournament, db):
-    u = _make_user(db, "volunteer3@example.com")
-    from app.core.auth import hash_password
-    from app.models.models import User as UserModel
-    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-    user.hashed_password = hash_password("volpass")
-    db.commit()
-    _make_membership(db, td_tournament.id, u["id"])
-
-    login(client, "volunteer3@example.com", "volpass")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={"availability": [{"date": "2026-05-21"}]},  # missing start/end
-    )
-    assert response.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -483,16 +446,17 @@ def test_update_membership_notes(client, td_user, td_tournament, db):
 
 
 def test_update_membership_ignores_onboarding_fields(client, td_user, td_tournament, db):
-    """lunch_order/role_preference/etc aren't in MembershipCoordinatorUpdate."""
+    """lunch_order/role_preference/etc aren't in MembershipCoordinatorUpdate
+    (or on the model at all anymore) — sending them is a no-op."""
     u = _make_user(db)
-    m = _make_membership(db, td_tournament.id, u["id"], lunch_order="Veggie Wrap")
+    m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
     response = client.patch(
         f"/tournaments/{td_tournament.id}/memberships/{m.id}/",
         json={"lunch_order": "Changed by staff"},
     )
     assert response.status_code == 200
-    assert response.json()["lunch_order"] == "Veggie Wrap"
+    assert "lunch_order" not in response.json()
 
 
 def test_update_membership_requires_manage_members(client, td_user, other_tournament, db):

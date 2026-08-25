@@ -2,7 +2,7 @@
 // In prod: NEXT_PUBLIC_API_URL is unset → goes through /api/proxy → Next.js adds API key server-side
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api/proxy'
 
-type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
+type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE'
 
 interface RequestOptions {
   method?:  HttpMethod
@@ -61,6 +61,7 @@ export const api = {
   get:    <T>(path: string)                => request<T>(path),
   post:   <T>(path: string, body: unknown) => request<T>(path, { method: 'POST',  body }),
   patch:  <T>(path: string, body: unknown) => request<T>(path, { method: 'PATCH', body }),
+  put:    <T>(path: string, body: unknown) => request<T>(path, { method: 'PUT',   body }),
   delete: <T>(path: string, body?: unknown) => request<T>(path, { method: 'DELETE', body }),
 }
 
@@ -381,13 +382,15 @@ export interface TournamentPublic {
 }
 
 export interface Tournament extends TournamentPublic {
-  id:          number
-  is_public:   boolean
-  is_archived: boolean
-  owner_id:    number
-  roles:       Role[]
-  created_at:  string
-  updated_at:  string
+  id:           number
+  timezone:     string
+  is_multi_day: boolean
+  is_public:    boolean
+  is_archived:  boolean
+  owner_id:     number
+  roles:        Role[]
+  created_at:   string
+  updated_at:   string
 }
 
 // GET /tournaments/me/ — lightweight card view, no roles/owner
@@ -747,9 +750,10 @@ export type Permission =
   | 'manage_members'
   | 'manage_events'
   | 'manage_invites'
+  | 'manage_forms'
 
 export const ALL_PERMISSIONS: Permission[] = [
-  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites',
+  'manage_tournament', 'manage_roles', 'manage_members', 'manage_events', 'manage_invites', 'manage_forms',
 ]
 
 export const PERMISSION_INFO: Record<Permission, { label: string; description: string }> = {
@@ -772,6 +776,10 @@ export const PERMISSION_INFO: Record<Permission, { label: string; description: s
   manage_invites: {
     label: 'Manage Invites',
     description: 'Create invite links to the tournament and manage existing ones.',
+  },
+  manage_forms: {
+    label: 'Manage Forms',
+    description: 'Create and edit forms, and manage their published state.',
   },
 }
 
@@ -1130,4 +1138,209 @@ export const sheetsApi = {
     const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
     return memberships.map((m) => m.user.email)
   },
+}
+
+// -------------------------------------------------------------------------
+// Forms — see backend/form-question-types-reference.md for the full
+// question_type/config/reserved-field_key shape reference this mirrors.
+// -------------------------------------------------------------------------
+export type FormQuestionType =
+  | 'acknowledgment'
+  | 'single_select_radio'
+  | 'single_select_dropdown'
+  | 'multi_select_checkbox'
+  | 'ranked_choice'
+  | 'short_text'
+  | 'long_text'
+
+export type FormStatus = 'draft' | 'published' | 'archived'
+export type FormOwnerType = 'tournament' | 'chapter'
+
+// value is normally TD-facing display text; for an entity-backed reserved
+// field_key (availability → TournamentShift ids, event_preference →
+// TournamentEvent ids) it's the raw list[int] while editing, but GET
+// /forms/{id}/ (non-raw) resolves it server-side into ResolvedShiftOption[]/
+// ResolvedEventOption[] instead — see resolve_field_options in
+// backend/app/core/form/__init__.py.
+export interface FormFieldOption {
+  option_id:      string
+  value:          string | number[] | ResolvedShiftOption[] | ResolvedEventOption[]
+  label:          string
+  is_archived?:   boolean
+  // single_select_radio/dropdown only — mutually exclusive with each other.
+  next_field_id?: string | null
+  action?:        'submit_form' | null
+}
+
+// value shape after GET-time resolution for availability/event_preference —
+// one entry per grouped entity, kept separate rather than collapsed.
+export interface ResolvedShiftOption {
+  id:    number
+  label: string
+  start: string
+  end:   string
+}
+
+export interface ResolvedEventOption {
+  id:       number
+  name:     string
+  division: string
+}
+
+export interface FormFieldConfig {
+  required?:         boolean
+  confirm_label?:    string
+  options?:          FormFieldOption[]
+  ranks?:            number
+  allow_duplicates?: boolean
+  max_length?:       number
+  // single_select_radio and multi_select_checkbox only — long option labels
+  // don't fit ButtonGroup's pill layout well, so the TD can fall back to a
+  // plain radio/checkbox list. single_select_dropdown has no equivalent
+  // (always a closed Dropdown control, not a style choice).
+  display_style?:    "buttons" | "list"
+}
+
+export interface FormField {
+  id:            string
+  form_id:       string
+  field_key:     string
+  order:         number
+  label:         string
+  description:   string | null
+  question_type: FormQuestionType
+  is_archived:   boolean
+  config:        FormFieldConfig | null
+  created_at:    string
+  updated_at:    string
+}
+
+// One entry in a PUT .../fields/ bulk-update payload. `id` omitted = create;
+// `id` present must match a currently-live field. `field_key` only matters
+// on create — the server ignores/derives it otherwise (see BulkFieldEntry
+// in backend/app/schemas/form.py).
+export interface FormFieldInput {
+  id?:            string
+  field_key?:     string
+  label:          string
+  description?:   string | null
+  question_type:  FormQuestionType
+  config?:        FormFieldConfig | null
+}
+
+export interface Form {
+  id:              string
+  name:            string
+  title:           string | null
+  description:     string | null
+  status:          FormStatus
+  owner_type:      FormOwnerType
+  tournament_id:   number | null
+  chapter_id:      number | null
+  created_by:      number
+  created_at:      string
+  updated_at:      string
+  response_count:  number
+  fields:          FormField[]
+}
+
+// Matches ChapterMemberResponse — no chapter dashboard exists yet, so this
+// exists only to type FormListItem.creator for chapter-owned forms.
+export interface ChapterMember extends UserSlim {
+  membership_id: number
+  role:          string
+  joined_at:     string
+}
+
+// GET /tournaments/{id}/forms/ and /chapters/{id}/forms/ — a lighter row
+// shape than Form: no fields array, and creator resolved server-side the
+// same way Invite.creator/AuditLogEntry.actor are.
+export interface FormListItem {
+  id:              string
+  name:            string
+  title:           string | null
+  description:     string | null
+  status:          FormStatus
+  owner_type:      FormOwnerType
+  tournament_id:   number | null
+  chapter_id:      number | null
+  creator:         MembershipSlim | ChapterMember | UserSlim
+  created_at:      string
+  updated_at:      string
+  response_count:  number
+}
+
+export interface FormCreateInput {
+  name:          string
+  title?:        string | null
+  description?:  string | null
+  owner_type:    FormOwnerType
+  tournament_id?: number | null
+  chapter_id?:   number | null
+}
+
+export interface FormUpdateInput {
+  name?:        string
+  title?:       string
+  description?: string
+  status?:      FormStatus
+}
+
+export interface FormAnswer {
+  id:       string
+  field_id: string
+  value:    unknown
+}
+
+export interface FormAnswerInput {
+  field_id: string
+  value:    unknown
+}
+
+export interface FormResponse {
+  id:           string
+  form_id:      string
+  user_id:      number
+  submitted_at: string
+  updated_at:   string
+  answers:      FormAnswer[]
+}
+
+export const formsApi = {
+  listForTournament: (tournamentId: number) =>
+    api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
+  listForChapter: (chapterId: number) =>
+    api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
+  // Every field_key already in use across this tournament's forms (archived
+  // included — an archived key isn't released for reuse) — the builder's
+  // field_key Combobox shows these as disabled options.
+  listFieldKeysForTournament: (tournamentId: number) =>
+    api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+  createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
+    api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
+  createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>
+    api.post<Form>(`/chapters/${chapterId}/forms/`, { ...body, owner_type: 'chapter', chapter_id: chapterId }),
+  // Renders with option values already resolved (availability/event_preference) —
+  // for a respondent-facing view (or the future /preview page), not the builder.
+  get: (formId: string) => api.get<Form>(`/forms/${formId}/`),
+  // Unresolved — option `value` comes back exactly as stored (plain
+  // shift/event ids, not `get`'s hydrated {id, label, start, end} objects),
+  // which is what the builder needs since it's what PUT .../fields/ expects
+  // back. Using `get`'s hydrated shape here would round-trip into a 422 the
+  // moment an untouched entity-backed option got saved again.
+  getForEdit: (formId: string) => api.get<Form>(`/forms/${formId}/?raw=true`),
+  update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
+  archive: (formId: string) => api.post<Form>(`/forms/${formId}/archive/`, {}),
+  // 409s if the form has any responses — check response_count client-side first.
+  delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
+  // Full ordered target field list — see FormFieldInput and the Edit
+  // Lifecycle section of form-question-types-reference.md. On a published
+  // form, an existing option missing from the submitted config must still
+  // be echoed back (via its option_id) or the server archives it.
+  putFields: (formId: string, fields: FormFieldInput[]) =>
+    api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  submitResponse: (formId: string, answers: FormAnswerInput[]) =>
+    api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
+  listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
+  getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
 }

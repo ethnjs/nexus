@@ -1,7 +1,7 @@
 from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import available_timezones
-from pydantic import BaseModel, field_validator, model_validator
+from pydantic import BaseModel, computed_field, field_validator, model_validator
 
 from app.schemas.tournament.role import RoleRead
 from app.schemas.university import UniversityResponse
@@ -162,6 +162,7 @@ class TournamentRead(BaseModel):
     state: str
     level: str
     division: list[str]
+    timezone: str
     is_public: bool
     is_verified: bool
     is_archived: bool
@@ -171,6 +172,11 @@ class TournamentRead(BaseModel):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @computed_field
+    @property
+    def is_multi_day(self) -> bool:
+        return self.end_date > self.start_date
 
 
 class TournamentPublic(BaseModel):

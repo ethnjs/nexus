@@ -152,6 +152,7 @@
      for the ones that are (accent, border, success, danger, text-*, etc.) */
   --color-bg:           #F7F7F5;
   --color-accent-hover: #2A2A2A;
+  --color-danger-hover: #C53030;
 
   --color-text-primary:   #0A0A0A;
   --color-text-secondary: #6B6B65;
@@ -297,4 +298,14 @@ input, textarea, select {
 
 .link-subtle:hover {
   color: var(--color-text-primary)
+}
+/* The form builder's collapsed field card. Its preview is a read-only render
+   of the question, but clicking a piece of it opens the editor with that
+   input focused (FieldCard's FocusIntent), so the text advertises itself as
+   text rather than inheriting the card's pointer. !important because
+   RadioList/CheckboxList rows set cursor inline (they render 'default' when
+   locked, which a preview always is) and inline styles outrank selectors. */
+.field-preview [data-focus],
+.field-preview [data-option-value] {
+  cursor: text !important;
 }

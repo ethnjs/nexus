@@ -212,8 +212,6 @@ def update_my_membership(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
     update_data = payload.model_dump(exclude_none=True)
-    if "availability" in update_data and payload.availability:
-        update_data["availability"] = [s.model_dump() for s in payload.availability]
 
     for field, value in update_data.items():
         setattr(m, field, value)

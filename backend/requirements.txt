@@ -10,6 +10,9 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 psycopg2-binary==2.9.10
 
+# Public-facing short random ids (Form.id)
+nanoid==2.0.0
+
 # Scheduled jobs (daily auto-archive)
 apscheduler==3.11.3
 

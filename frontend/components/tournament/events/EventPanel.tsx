@@ -7,18 +7,18 @@ import {
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { toDateInput, toTimeInput, fromDayAndTime, formatTime, formatDayLabel } from "@/lib/timeFormat";
+import { toDateInput, toTimeInput, fromDayAndTime, formatTime } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
@@ -324,12 +324,12 @@ export function EventPanel({
           </SettingsRow>
 
           <SettingsRow label="Day">
-            <Dropdown
+            <TournamentDayPicker
               value={draft.day}
               onChange={(v) => patch({ day: v })}
-              options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+              days={days}
               placeholder="Select a day"
-              locked={locked || !isMultiDay}
+              locked={locked}
               fullWidth
             />
           </SettingsRow>

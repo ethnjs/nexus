@@ -10,6 +10,8 @@ export type InputCharset = 'numeric' | 'alpha' | 'alphanumeric'
 
 interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?:     string
+  /** Rendered inline next to the label — e.g. an info icon + Tooltip explaining the field. Ignored when label isn't set. */
+  labelExtra?: ReactNode
   error?:     string
   helper?:    string
   fullWidth?: boolean
@@ -51,7 +53,7 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, ...props }, ref) => {
+  ({ label, labelExtra, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, onFocus, onBlur, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -67,20 +69,23 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: fullWidth ? '100%' : undefined }}>
         {label && (
-          <label
-            htmlFor={inputId}
-            style={{
-              fontFamily: 'var(--font-sans)',
-              fontSize: '11px',
-              fontWeight: 600,
-              textTransform: 'uppercase',
-              letterSpacing: '0.07em',
-              color: 'var(--color-text-tertiary)',
-            }}
-          >
-            {label}
-            {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <label
+              htmlFor={inputId}
+              style={{
+                fontFamily: 'var(--font-sans)',
+                fontSize: '11px',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: '0.07em',
+                color: 'var(--color-text-tertiary)',
+              }}
+            >
+              {label}
+              {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+            </label>
+            {labelExtra}
+          </div>
         )}
         <div style={{ position: 'relative', width: fullWidth ? '100%' : undefined }}>
           {icon && (
@@ -121,9 +126,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             }}
             onFocus={e => {
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
+              onFocus?.(e)
             }}
             onBlur={e => {
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
+              onBlur?.(e)
             }}
             className={className}
             value={value ?? ''}

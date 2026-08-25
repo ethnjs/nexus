@@ -6,16 +6,30 @@ with SQLAlchemy 2.0.36 + Python 3.13.
 """
 
 from datetime import datetime, timezone
+from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
     ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 from typing import Optional
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
+
+
+def generate_public_id() -> str:
+    """12-char random string (nanoid's default alphabet is already
+    URL-safe), not an auto-increment int — shared by every Form-family
+    primary key (Form.id, FormField.id, FormResponse.id, FormAnswer.id) so
+    they're all the same recognizable shape, the way option_id already is
+    (assign_option_ids's secrets.token_hex(5)). Form.id specifically is also
+    referenced directly in URLs (/forms/{id}/edit), a user-facing document
+    id rather than an internal implementation detail — the others don't
+    appear in a URL today, but there's no reason for them to look or behave
+    differently from Form.id since nothing depends on them being sequential."""
+    return generate_nanoid(size=12)
 
 
 def utcnow():
@@ -60,11 +74,11 @@ class VerificationToken(Base):
     token_hash = Column(String(255), nullable=False, index=True, unique=True)
     purpose = Column(String(32), nullable=False)  # "signup_verify" | "email_change" | "password_reset" | "email_change_revert"
     new_email = Column(String(255), nullable=True)  # "email_change": new address. "email_change_revert": address to revert TO (old address).
- 
+
     expires_at = Column(DateTime(timezone=True), nullable=False)
     used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
- 
+
     user = relationship("User")
 
 # ---------------------------------------------------------------------------
@@ -122,6 +136,28 @@ class Event(Base):
 
 
 # ---------------------------------------------------------------------------
+# SeasonEvent — admin-curated "this canonical event, in this division, is
+# active this year" list. Drives the tournament events bulk-load default
+# list (see TournamentEvent); independent of any single tournament.
+# ---------------------------------------------------------------------------
+class SeasonEvent(Base):
+    __tablename__ = "season_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
+    year = Column(Integer, nullable=False)
+    division = Column(String(4), nullable=False)
+    is_active = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    event = relationship("Event")
+
+    __table_args__ = (
+        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # User — core identity for volunteers, TDs, and admins.
 # role="admin" bypasses all tournament permission checks; "user" is gated by
 # TournamentMembershipRole. Sheet-synced volunteers have hashed_password=None.
@@ -142,7 +178,7 @@ class User(Base):
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
-    
+
     # if a student
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
     major = Column(String(255), nullable=True)
@@ -152,14 +188,14 @@ class User(Base):
 
     # if not a student
     employer = Column(String(255), nullable=True)
-    
+
     has_competition_experience = Column(Boolean, nullable=True)
     has_volunteer_experience = Column(Boolean, nullable=True)
     # has_stem_experience = Column(Boolean, nullable=True)        # debatable
 
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
-    
+
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -184,6 +220,8 @@ class User(Base):
     university = relationship("University", back_populates="users")
     chapter_membership = relationship("ChapterMembership", back_populates="user", uselist=False)
     join_codes = relationship("JoinCode", back_populates="creator")
+    created_forms = relationship("Form", back_populates="creator")
+    form_responses = relationship("FormResponse", back_populates="user")
 
 # ---------------------------------------------------------------------------
 # Competition Experience
@@ -208,18 +246,53 @@ class UserVolunteerExperience(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey('users.id', ondelete="CASCADE"), nullable=False)
-    
+
     # manual add by the user
     tournament_name = Column(String(255), nullable=False)
     year = Column(Integer, nullable=False)
     event_id = Column(Integer, ForeignKey('events.id', ondelete="RESTRICT"), nullable=True)
     role = Column(String(63), nullable=False)
-    
+
     notes = Column(JSON, nullable=True)  # {"event": custom name, "other": free notes}
 
     user = relationship("User", back_populates="volunteer_experience")
     event = relationship("Event", back_populates="user_volunteer_experience")
 
+
+# ---------------------------------------------------------------------------
+# AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
+# ---------------------------------------------------------------------------
+class AlumniChapter(Base):
+    __tablename__ = "alumni_chapters"
+
+    id = Column(Integer,  primary_key=True)
+    name = Column(String(255), nullable=False)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    university = relationship("University", back_populates="alumni_chapter")
+    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
+    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
+    forms = relationship("Form", back_populates="chapter", cascade="all, delete-orphan")
+
+
+# ---------------------------------------------------------------------------
+# ChapterMembership — join table, User <-> AlumniChapter.
+# ---------------------------------------------------------------------------
+class ChapterMembership(Base):
+    __tablename__ = "chapter_memberships"
+
+    id = Column(Integer, primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
+    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
+    joined_at = Column(DateTime(timezone=True), default=utcnow)
+
+    # Relationships
+    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
+    user = relationship("User", back_populates="chapter_membership")
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +353,7 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
+    forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -298,7 +372,7 @@ def _validate_tournament_source(mapper, connection, target: Tournament):
 # ---------------------------------------------------------------------------
 # TournamentMembership — links a User to a Tournament (their volunteer
 # record). Roles/permissions come from TournamentMembershipRole, not a
-# column here. Misc form data lives in extra_data (no schema yet).
+# column here.
 # ---------------------------------------------------------------------------
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
@@ -321,17 +395,7 @@ class TournamentMembership(Base):
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
 
-    # What they asked for on the form — ["event_volunteer", "general_volunteer"]
-    role_preference = Column(JSON, nullable=True)
-
-    # Specific event names they prefer — ["Boomilever", "Hovercraft"]
-    event_preference = Column(JSON, nullable=True)
-
-    availability = Column(JSON, nullable=True)  # [{date, start, end}, ...], normalized to block format
-    lunch_order = Column(JSON, nullable=True)   # dict for structured orders, or a plain string
-
     notes = Column(Text, nullable=True)
-    extra_data = Column(JSON, nullable=True)  # catch-all form fields, no schema yet
 
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -341,21 +405,23 @@ class TournamentMembership(Base):
     tournament = relationship("Tournament", back_populates="memberships")
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
     join_code = relationship("JoinCode")
+    availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
+    lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
         if self.user.date_of_birth is None:
             return None
-        
+
         return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 18)
-    
+
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
         if self.user.date_of_birth is None:
             return None
-        
+
         return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 21)
-    
+
     # TODO: add .expression variants for server-side age filtering once needed.
 
     __table_args__ = (
@@ -473,7 +539,7 @@ class TournamentEvent(Base):
     tournament_id = Column(
         Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False
     )
-    
+
     # Custom (event_id-less) events only
     name = Column(String(255), nullable=True)
     division = Column(String(4), nullable=True)           # "A" | "B" | "C"
@@ -533,6 +599,9 @@ class TournamentShift(Base):
     tournament_events = relationship(
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
+    membership_availabilities = relationship(
+        "TournamentMembershipAvailability", back_populates="tournament_shift", cascade="all, delete-orphan"
+    )
 
     # Read by TournamentShiftRead — how many events this shift is attached
     # to, for the delete-confirm warning. Callers that list many shifts
@@ -540,6 +609,14 @@ class TournamentShift(Base):
     @property
     def event_count(self) -> int:
         return len(self.tournament_events)
+
+    # Unlike event_count (advisory only — deletion still cascades through
+    # events), a nonzero availability_count hard-blocks deletion — see
+    # delete_shift. Availability write-through is membership-owned data,
+    # not something a shift edit should silently detach.
+    @property
+    def availability_count(self) -> int:
+        return len(self.membership_availabilities)
 
 
 # ---------------------------------------------------------------------------
@@ -553,26 +630,17 @@ class TournamentEventShift(Base):
 
 
 # ---------------------------------------------------------------------------
-# SeasonEvent — admin-curated "this canonical event, in this division, is
-# active this year" list. Drives the tournament events bulk-load default
-# list (see TournamentEvent); independent of any single tournament.
+# TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
 # ---------------------------------------------------------------------------
-class SeasonEvent(Base):
-    __tablename__ = "season_events"
+class TournamentChapter(Base):
+    __tablename__ = "tournament_chapters"
 
-    id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
-    year = Column(Integer, nullable=False)
-    division = Column(String(4), nullable=False)
-    is_active = Column(Boolean, nullable=False, default=False)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
 
-    event = relationship("Event")
-
-    __table_args__ = (
-        UniqueConstraint("event_id", "year", "division", name="uq_season_event"),
-    )
-
+    # Relationships
+    tournament = relationship("Tournament", back_populates="tournament_chapters")
+    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
 
 # ---------------------------------------------------------------------------
 # SheetConfig
@@ -599,53 +667,209 @@ class SheetConfig(Base):
 
 
 # ---------------------------------------------------------------------------
-# AlumniChapter — a regional hub (e.g. "Bay Area") for alumni coordination.
+# Form — a first-party form (replaces the Google Forms + sheet-sync
+# pipeline). Owned by exactly one tournament OR one chapter (owner_type +
+# CHECK constraint) — multi-tournament "group forms" are a later phase.
 # ---------------------------------------------------------------------------
+class Form(Base):
+    __tablename__ = "forms"
 
-class AlumniChapter(Base):
-    __tablename__ = "alumni_chapters"
-
-    id = Column(Integer,  primary_key=True)
+    id = Column(String(12), primary_key=True, default=generate_public_id)
+    owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
+    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
     name = Column(String(255), nullable=False)
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=False, unique=True)
+    # Respondent-facing title, shown on the actual form — distinct from
+    # `name` (the TD-facing dashboard/list label). Independently editable;
+    # callers default it to `name` at creation time if not given, but
+    # nothing here enforces them staying in sync afterward.
+    title = Column(String(255), nullable=True)
+    description = Column(Text, nullable=True)
+    status = Column(String(16), nullable=False, default="draft")  # "draft" | "published" | "archived"
+
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="forms")
+    chapter = relationship("AlumniChapter", back_populates="forms")
+    creator = relationship("User", back_populates="created_forms")
+    fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
+    responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        CheckConstraint(
+            "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "
+            "(owner_type = 'chapter' AND chapter_id IS NOT NULL AND tournament_id IS NULL)",
+            name="ck_form_owner_exclusive",
+        ),
+    )
+
+    # Read by the forms list page to preemptively disable Delete (which
+    # 409s server-side if any responses exist) rather than let a TD hit a
+    # dead-end click.
+    @property
+    def response_count(self) -> int:
+        return len(self.responses)
+
+
+# ---------------------------------------------------------------------------
+# FormField — a single question on a Form. question_type drives how config
+# is shaped (see comments inline below). Removing a field with existing
+# answers archives it instead of deleting (see app/core/form).
+# ---------------------------------------------------------------------------
+class FormField(Base):
+    __tablename__ = "form_fields"
+
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    order = Column(Integer, nullable=False)
+    label = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+
+    question_type = Column(String(32), nullable=False)
+    # short_text | paragraph | single_select_radio | single_select_dropdown
+    # | multi_select | ranked_choice | grid | shift_select | page_break
+
+    # Dashboard lookup key — slugified from the TD-typed label at create
+    # time (see app/core/form.slugify) and stable afterward, even if the
+    # label is later edited. Unique per tournament, not just per form (see
+    # app/core/form.check_field_key_available_in_tournament).
+    field_key = Column(String(64), nullable=False)
+
+    config = Column(JSON, nullable=True)
+    # For plain choice questions: {"options": [{"id": "opt_1", "label": "...",
+    #   "archived": false, "next_section_id": null, "allow_other": false}, ...]}
+    # For "grid": {"rows": [{"id","label"}...], "columns": [{"id","label"}...],
+    #   "column_selection": "single"|"multiple"}
+    # For "page_break": unused, null
+
+    is_archived = Column(Boolean, nullable=False, default=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    form = relationship("Form", back_populates="fields")
+    answer = relationship("FormAnswer", back_populates="field")
+
+    __table_args__ = (
+        UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
+    )
+
+    @validates("field_key")
+    def validate_field_key(self, key, value):
+        if not value or not value.replace("_", "").isalnum():
+            raise ValueError("field_key must be snake_case alphanumeric")
+        return value
+
+
+# ---------------------------------------------------------------------------
+# FormResponse — one row per (form, user). Resubmitting overwrites the
+# existing response's answers in place; no submission history is kept.
+# ---------------------------------------------------------------------------
+class FormResponse(Base):
+    __tablename__ = "form_responses"
+
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+
+    submitted_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    form = relationship("Form", back_populates="responses")
+    user = relationship("User", back_populates="form_responses")
+    answers = relationship("FormAnswer", back_populates="response", cascade="all, delete-orphan")
+    pending_updates = relationship("FormResponsePendingUpdate", back_populates="response", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("form_id", "user_id", name="uq_form_response_per_user"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# FormAnswer — one row per (response, field). Generic value storage; shape
+# of `value` depends on the field's question_type.
+# ---------------------------------------------------------------------------
+class FormAnswer(Base):
+    __tablename__ = "form_answers"
+
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
+    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
+    value = Column(JSON, nullable=False)
+
+    response = relationship("FormResponse", back_populates="answers")
+    field = relationship("FormField", back_populates="answer")
+
+    __table_args__ = (
+        UniqueConstraint("response_id", "field_id", name="uq_answer_per_field"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# FormResponsePendingUpdate — flags that a response answered a field/option
+# which a republish later archived out from under it, so a TD/respondent
+# can be shown "this answer needs another look". One row per
+# (response, field_key); reason only ever escalates option_archived ->
+# field_replaced (never the reverse) on upsert, and the row is deleted once
+# that response next submits an answer for whichever field currently holds
+# that field_key — see _apply_published_field_changes in api/routes/forms.py.
+# ---------------------------------------------------------------------------
+class FormResponsePendingUpdate(Base):
+    __tablename__ = "form_response_pending_updates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
+    field_key = Column(String(64), nullable=False)
+    reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
-    # Relationships
-    university = relationship("University", back_populates="alumni_chapter")
-    chapter_memberships = relationship("ChapterMembership", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    join_codes = relationship("JoinCode", back_populates="alumni_chapter", cascade="all, delete-orphan")
-    tournament_chapters = relationship("TournamentChapter", back_populates="chapter")
+    response = relationship("FormResponse", back_populates="pending_updates")
+
+    __table_args__ = (
+        UniqueConstraint("response_id", "field_key", name="uq_pending_update_per_response_field"),
+    )
 
 
 # ---------------------------------------------------------------------------
-# ChapterMembership — join table, User <-> AlumniChapter.
+# TournamentMembershipAvailability — write-through target for a form's
+# "availability_{date}" field_key answers. Reuses TournamentShift directly,
+# no separate catalog.
 # ---------------------------------------------------------------------------
+class TournamentMembershipAvailability(Base):
+    __tablename__ = "tournament_membership_availability"
 
-class ChapterMembership(Base):
-    __tablename__ = "chapter_memberships"
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), nullable=False)
 
-    id = Column(Integer, primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)  # one chapter per user
-    role = Column(String(32), nullable=False, default="member")  # "lead" | "officer" | "member"
-    joined_at = Column(DateTime(timezone=True), default=utcnow)
+    membership = relationship("TournamentMembership", back_populates="availability_shifts")
+    tournament_shift = relationship("TournamentShift", back_populates="membership_availabilities")
 
-    # Relationships
-    alumni_chapter = relationship("AlumniChapter", back_populates="chapter_memberships")
-    user = relationship("User", back_populates="chapter_membership")
-
+    __table_args__ = (
+        UniqueConstraint("membership_id", "tournament_shift_id", name="uq_membership_availability"),
+    )
 
 
 # ---------------------------------------------------------------------------
-# TournamentChapter — junction table, AlumniChapter <-> Tournament (many-to-many).
+# TournamentMembershipLunch — write-through target for a form's
+# "lunch_{date}_{category}" field_key answers. Stores whatever was actually
+# selected, keyed by category string — no dedicated menu/catalog table.
 # ---------------------------------------------------------------------------
+class TournamentMembershipLunch(Base):
+    __tablename__ = "tournament_membership_lunch"
 
-class TournamentChapter(Base):
-    __tablename__ = "tournament_chapters"
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    date = Column(Date, nullable=False)
+    category = Column(String(64), nullable=False)
+    value = Column(String(64), nullable=False)
+    label = Column(String(255), nullable=False)
 
-    tournament_id = Column(Integer, ForeignKey("tournaments.id"), primary_key=True)
-    chapter_id = Column(Integer, ForeignKey("alumni_chapters.id"), primary_key=True)
+    membership = relationship("TournamentMembership", back_populates="lunch_selections")
 
-    # Relationships
-    tournament = relationship("Tournament", back_populates="tournament_chapters")
-    chapter = relationship("AlumniChapter", back_populates="tournament_chapters")
+    __table_args__ = (
+        UniqueConstraint("membership_id", "date", "category", "value", name="uq_membership_lunch_selection"),
+    )

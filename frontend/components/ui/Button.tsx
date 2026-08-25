@@ -20,53 +20,63 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   interactive?: boolean
 }
 
-// Use longhand border properties throughout so hover can safely override
-// borderColor without conflicting with the shorthand `border` property.
+// Longhand borderWidth/Style/Color rather than the `border` shorthand, so
+// hoverOverrides below can set borderColor alone without clobbering the
+// other two.
 const variantStyles: Record<Variant, React.CSSProperties> = {
   primary: {
-    background:   '#0A0A0A',
-    color:        '#FFFFFF',
+    backgroundColor: 'var(--color-accent)',
+    color:        'var(--color-text-inverse)',
     borderWidth:  '1px',
     borderStyle:  'solid',
-    borderColor:  '#0A0A0A',
+    borderColor:  'var(--color-accent)',
   },
   secondary: {
-    background:   'var(--color-surface)',
+    backgroundColor: 'var(--color-surface)',
     color:        'var(--color-text-primary)',
     borderWidth:  '1px',
     borderStyle:  'solid',
     borderColor:  'var(--color-border)',
   },
   ghost: {
-    background:   'transparent',
+    backgroundColor: 'transparent',
     color:        'var(--color-text-primary)',
     borderWidth:  '1px',
     borderStyle:  'solid',
     borderColor:  'transparent',
   },
   danger: {
-    background:   'var(--color-danger)',
-    color:        '#FFFFFF',
+    backgroundColor: 'var(--color-danger)',
+    color:        'var(--color-text-inverse)',
     borderWidth:  '1px',
     borderStyle:  'solid',
     borderColor:  'var(--color-danger)',
   },
 }
 
+// Every hover token gets an explicit var() fallback to the variant's own
+// resting color. If a token is ever missing at runtime the declaration is
+// invalid at computed-value time, which resolves to the *initial* value —
+// transparent for background-color — so a filled button silently goes
+// see-through on hover instead of just not shifting shade. (Exactly that
+// happened when a stale Turbopack dev CSS chunk was missing
+// --color-danger-hover.) The fallback makes the failure mode "no hover
+// effect" rather than "button disappears."
+
 /** Background applied on hover per variant */
 const variantHoverBg: Record<Variant, string> = {
-  primary:   '#2A2A2A',
-  secondary: 'var(--color-accent-subtle)',
-  ghost:     'var(--color-accent-subtle)',
-  danger:    '#C53030',
+  primary:   'var(--color-accent-hover, var(--color-accent))',
+  secondary: 'var(--color-accent-subtle, var(--color-surface))',
+  ghost:     'var(--color-accent-subtle, transparent)',
+  danger:    'var(--color-danger-hover, var(--color-danger))',
 }
 
 /** Border color applied on hover (null = no change) */
 const variantHoverBorderColor: Record<Variant, string | null> = {
-  primary:   null,
-  secondary: 'var(--color-border-strong)',
+  primary:   'var(--color-accent-hover, var(--color-accent))',
+  secondary: 'var(--color-border-strong, var(--color-border))',
   ghost:     null,
-  danger:    null,
+  danger:    'var(--color-danger-hover, var(--color-danger))',
 }
 
 const sizeStyles: Record<Size, React.CSSProperties> = {
@@ -101,7 +111,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
 
     const hoverOverrides: React.CSSProperties = showHover
       ? {
-          background:  variantHoverBg[variant],
+          backgroundColor: variantHoverBg[variant],
           // Safe to set because base styles use borderColor (longhand), not border (shorthand)
           ...(variantHoverBorderColor[variant]
             ? { borderColor: variantHoverBorderColor[variant] }
@@ -135,7 +145,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
           borderRadius:   'var(--radius-md)',
           cursor:         isDisabled ? 'not-allowed' : 'pointer',
           opacity:        isDisabled ? 0.6 : 1,
-          transition:     'background 120ms ease, border-color 120ms ease',
+          transition:     'background-color 120ms ease, border-color 120ms ease',
           width:          fullWidth ? '100%' : undefined,
           ...variantStyles[variant],
           ...sizeStyles[size],
@@ -150,7 +160,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             width:          '14px',
             height:         '14px',
             border:         '2px solid rgba(255,255,255,0.4)',
-            borderTopColor: variant === 'primary' || variant === 'danger' ? '#fff' : 'var(--color-text-primary)',
+            borderTopColor: variant === 'primary' || variant === 'danger' ? 'var(--color-text-inverse)' : 'var(--color-text-primary)',
             borderRadius:   '50%',
             display:        'inline-block',
             animation:      'btn-spin 600ms linear infinite',

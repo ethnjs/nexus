@@ -9,10 +9,10 @@ import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { ShiftEventsCard } from "@/components/tournament/events/ShiftEventsCard";
 import { IconPlus, IconTrash, IconCalendar, IconEdit, IconX } from "@/components/ui/Icons";
@@ -384,7 +384,6 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
                     expanded={expandedShiftId === row.id}
                     errors={fieldErrors[row.id]}
                     days={days}
-                    isMultiDay={isMultiDay}
                     onChange={(patch) => patchRow(row.id, patch)}
                     onEdit={() => setEditingIds((cur) => new Set(cur).add(row.id))}
                     onCancelEdit={() => cancelRowEdit(row.id)}
@@ -462,7 +461,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   );
 }
 
-function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, days, isMultiDay, onChange, onEdit, onCancelEdit, onDelete, onToggleExpand }: {
+function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, days, onChange, onEdit, onCancelEdit, onDelete, onToggleExpand }: {
   row: ShiftDraftRow;
   isLast: boolean;
   editing: boolean;
@@ -470,7 +469,6 @@ function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, days, isMul
   expanded: boolean;
   errors?: RowFieldErrors;
   days: string[];
-  isMultiDay: boolean;
   onChange: (patch: Partial<ShiftDraftRow>) => void;
   onEdit: () => void;
   onCancelEdit: () => void;
@@ -503,12 +501,11 @@ function ShiftRow({ row, isLast, editing, canEdit, expanded, errors, days, isMul
             font="sans" size="sm" fullWidth
             error={errors?.label}
           />
-          <Dropdown
+          <TournamentDayPicker
             value={row.day}
             onChange={(v) => onChange({ day: v })}
-            options={days.map((d) => ({ value: d, label: formatDayLabel(d) }))}
+            days={days}
             placeholder="Day"
-            locked={!isMultiDay}
             size="sm"
             fullWidth
           />
