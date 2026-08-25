@@ -457,7 +457,10 @@ def bulk_update_fields(
             if type_changed and is_published:
                 field.is_archived = True
                 old_key = field.field_key
-                field.field_key = f"{old_key}_archived_{field.id}"
+                # field.id is a nanoid and can contain '-', which field_key's
+                # snake_case-alphanumeric validator rejects — swap it for
+                # '_' so the archived key stays valid regardless of id shape.
+                field.field_key = f"{old_key}_archived_{field.id}".replace("-", "_")
                 pending_flags.append((old_key, "field_replaced", field.id, []))
 
                 new_field = FormField(
