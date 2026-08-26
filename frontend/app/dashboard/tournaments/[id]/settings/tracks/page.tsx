@@ -12,12 +12,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { FormPopover } from "@/components/ui/FormPopover";
+import { EditableText } from "@/components/ui/EditableText";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge } from "@/components/ui/Badge";
-import { IconLock, IconPlus, IconTrash, IconVolunteers } from "@/components/ui/Icons";
+import { IconArchive, IconLock, IconPlus, IconTrash, IconVolunteers } from "@/components/ui/Icons";
 
-// Name / Status / Save / Archive / Delete
-const TRACK_ROW_COLUMNS = "1fr 100px 88px 96px 40px";
+// Name / Status / Actions
+const TRACK_ROW_COLUMNS = "1fr 100px 68px";
 
 export default function TracksSettingsPage() {
   const params = useParams();
@@ -114,8 +115,6 @@ export default function TracksSettingsPage() {
             <span>Tracks — {tracks?.length}</span>
             <span style={{ textAlign: "center" }}>Status</span>
             <span />
-            <span />
-            <span />
           </div>
 
           {tracks?.map((track, i) => (
@@ -207,26 +206,9 @@ function AddTrackPopover({ tournamentId, existingNames, onCreated, trigger }: {
 }
 
 function TrackRow({ tournamentId, track, isLast, onChange, onDelete }: { tournamentId: number; track: TournamentTrack; isLast: boolean; onChange: (track: TournamentTrack) => void; onDelete: () => void }) {
-  const [name, setName] = useState(track.name);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [hovered, setHovered] = useState(false);
-  const dirty = name.trim() !== track.name;
-
-  useEffect(() => setName(track.name), [track.name]);
-
-  async function saveName() {
-    if (!dirty || !name.trim()) return;
-    setSaving(true);
-    setError(undefined);
-    try {
-      onChange(await tournamentTracksApi.update(tournamentId, track.id, { name: name.trim() }));
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Failed to rename track.");
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function setArchived(is_archived: boolean) {
     setSaving(true);
@@ -252,19 +234,32 @@ function TrackRow({ tournamentId, track, isLast, onChange, onDelete }: { tournam
         transition: "background 100ms ease",
       }}
     >
-      <Input value={name} onChange={(event) => setName(event.target.value)} disabled={track.is_archived} size="sm" font="sans" fullWidth />
+      {track.is_archived ? (
+        <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-tertiary)" }}>
+          {track.name}
+        </span>
+      ) : (
+        <EditableText
+          value={track.name}
+          onSave={async (name) => onChange(await tournamentTracksApi.update(tournamentId, track.id, { name }))}
+          title="Click to edit name"
+        />
+      )}
       <div style={{ display: "flex", justifyContent: "center" }}>
-        {track.is_archived && <Badge variant="default">Archived</Badge>}
+        <Badge variant={track.is_archived ? "removed" : "confirmed"}>
+          {track.is_archived ? "Archived" : "Active"}
+        </Badge>
       </div>
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        {dirty && <Button type="button" variant="secondary" size="sm" loading={saving} onClick={saveName} disabled={!name.trim()}>Save</Button>}
-      </div>
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        <Button type="button" variant="secondary" size="sm" loading={saving} onClick={() => setArchived(!track.is_archived)}>
-          {track.is_archived ? "Restore" : "Archive"}
+      <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title={track.is_archived ? "Restore" : "Archive"}
+          loading={saving}
+          onClick={() => setArchived(!track.is_archived)}
+          style={{ width: "28px", height: "28px", padding: 0 }}
+        >
+          <IconArchive size={14} />
         </Button>
-      </div>
-      <div style={{ display: "flex", justifyContent: "center" }}>
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Delete"
