@@ -68,7 +68,7 @@ function FormRow({ form, isLast }: {
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Edit"
-          onClick={(e) => { e.stopPropagation(); router.push(`/forms/${form.id}/edit`); }}
+          onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer"); }}
         >
           <IconEdit size={14} />
         </Button>
@@ -110,7 +110,6 @@ function FormTable({ forms }: { forms: FormListItem[] }) {
 
 export default function FormsPage() {
   const params = useParams();
-  const router = useRouter();
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
@@ -159,7 +158,7 @@ export default function FormsPage() {
   // Submit -> POST -> redirect straight into the builder. title/description
   // are set later, inside the builder — not part of this modal.
   function handleCreated(form: Form) {
-    router.push(`/forms/${form.id}/edit`);
+    window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer");
   }
 
   return (

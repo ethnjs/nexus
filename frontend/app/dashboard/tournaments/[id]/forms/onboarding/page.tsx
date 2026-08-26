@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -20,7 +20,6 @@ import { IconEdit, IconForms, IconGripVertical, IconLock, IconPlus, IconTrash } 
 
 export default function OnboardingFormsPage() {
   const params = useParams();
-  const router = useRouter();
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
@@ -190,7 +189,7 @@ export default function OnboardingFormsPage() {
                   form={form}
                   step={i + 1}
                   removing={removingId === form.id}
-                  onEdit={() => router.push(`/forms/${form.id}/edit`)}
+                  onEdit={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
                   onRemove={() => handleRemove(form.id)}
                 />
               ))}
