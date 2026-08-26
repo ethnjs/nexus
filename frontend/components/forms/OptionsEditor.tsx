@@ -422,12 +422,12 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           size="md"
           fullWidth
         />
+        {trailing}
         {canRemove && (
           <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove} style={{ flexShrink: 0 }}>
             <IconX size={12} />
           </Button>
         )}
-        {trailing}
       </div>
       {/* Indented to match the Input's left edge above, not the row's own —
           otherwise it lines up with the bullet instead (EntityOptionsEditor's
