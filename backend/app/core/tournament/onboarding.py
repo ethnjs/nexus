@@ -24,6 +24,23 @@ def advance_onboarding_progress(
     the generic forms submission flow. A client calls the onboarding progress
     endpoint after submitting a form to learn where to go next.
     """
+    next_form_id = next_required_onboarding_form_id(db, membership)
+    if next_form_id is None and membership.onboarded_at is None:
+        membership.onboarded_at = utcnow()
+
+    return OnboardingProgress(next_form_id=next_form_id)
+
+
+def next_required_onboarding_form_id(
+    db: Session,
+    membership: TournamentMembership,
+) -> str | None:
+    """Return the next unanswered published onboarding form without mutating state.
+
+    Form access and the member overview need the exact same ordered answer as
+    the progression endpoint, but merely reading either must not mark someone
+    onboarded. ``advance_onboarding_progress`` owns that one write.
+    """
     steps = (
         db.query(TournamentForm)
         .join(Form, TournamentForm.form_id == Form.id)
@@ -48,7 +65,4 @@ def advance_onboarding_progress(
     }
 
     next_step = next((step for step in steps if step.form_id not in answered_form_ids), None)
-    if next_step is None and membership.onboarded_at is None:
-        membership.onboarded_at = utcnow()
-
-    return OnboardingProgress(next_form_id=next_step.form_id if next_step else None)
+    return next_step.form_id if next_step else None

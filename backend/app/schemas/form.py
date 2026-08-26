@@ -284,6 +284,20 @@ class FormListRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class MemberFormRead(BaseModel):
+    """A member's completed or currently available tournament form."""
+    id: str
+    name: str
+    title: str | None = None
+    description: str | None = None
+    status: Literal["draft", "published", "archived"]
+    is_onboarding: bool
+    completed: bool
+    eligible: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FormCreate(BaseModel):
     name: str
     title: str | None = None

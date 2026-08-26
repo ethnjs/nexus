@@ -28,6 +28,9 @@ from app.core.form.validation import (
     validate_reserved_field_key,
 )
 from app.core.form.write_through import parse_lunch_field_key, sync_availability, sync_lunch
+from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
+from app.core.tournament.memberships import get_membership_by_user
+from app.core.tournament.onboarding import next_required_onboarding_form_id
 from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -51,6 +54,7 @@ from app.schemas.form import (
     FormCreate,
     FormFieldRead,
     FormListRead,
+    MemberFormRead,
     FormRead,
     FormResponseCreate,
     FormResponseRead,
@@ -167,6 +171,62 @@ def list_tournament_forms(
     )
     creators = resolve_memberships_or_users(db, tournament_id, {f.created_by for f in forms})
     return [_to_list_read(f, creators[f.created_by]) for f in forms]
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/me/ — a member's form history and
+# current work: every completed form plus every form they may take now.
+# ---------------------------------------------------------------------------
+@router.get(
+    "/tournaments/{tournament_id}/forms/me/",
+    response_model=list[MemberFormRead],
+    tags=["tournaments"],
+)
+def list_my_tournament_forms(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    membership = get_membership_by_user(db, tournament_id, current_user.id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
+
+    rows = (
+        db.query(TournamentForm)
+        .join(Form, Form.id == TournamentForm.form_id)
+        .filter(TournamentForm.tournament_id == tournament_id)
+        .order_by(TournamentForm.is_onboarding.desc(), TournamentForm.order, Form.updated_at.desc())
+        .all()
+    )
+    form_ids = [row.form_id for row in rows]
+    completed_ids = {
+        form_id
+        for (form_id,) in db.query(FormResponse.form_id)
+        .filter(FormResponse.user_id == current_user.id, FormResponse.form_id.in_(form_ids))
+        .all()
+    }
+    next_onboarding_form_id = next_required_onboarding_form_id(db, membership)
+
+    result = []
+    for tournament_form in rows:
+        form = tournament_form.form
+        completed = form.id in completed_ids
+        if tournament_form.is_onboarding:
+            eligible = form.status == "published" and form.id == next_onboarding_form_id
+        else:
+            eligible = form.status == "published" and member_meets_form_prerequisites(db, membership, tournament_form)
+        if completed or eligible:
+            result.append(MemberFormRead(
+                id=form.id,
+                name=form.name,
+                title=form.title,
+                description=form.description,
+                status=form.status,
+                is_onboarding=tournament_form.is_onboarding,
+                completed=completed,
+                eligible=eligible,
+            ))
+    return result
 
 
 # ---------------------------------------------------------------------------

@@ -1246,6 +1246,17 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
+export interface MemberForm {
+  id:            string
+  name:          string
+  title:         string | null
+  description:   string | null
+  status:        FormStatus
+  is_onboarding: boolean
+  completed:     boolean
+  eligible:      boolean
+}
+
 export interface Form {
   id:              string
   name:            string
@@ -1340,6 +1351,8 @@ export interface TournamentOnboardingProgress {
 export const formsApi = {
   listForTournament: (tournamentId: number) =>
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
+  listMineForTournament: (tournamentId: number) =>
+    api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
   listForChapter: (chapterId: number) =>
     api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
   // Every field_key already in use across this tournament's forms (archived

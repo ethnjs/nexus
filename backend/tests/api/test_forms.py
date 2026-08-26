@@ -22,6 +22,7 @@ from app.models.models import (
     TournamentForm,
     TournamentRole,
     TournamentShift,
+    utcnow,
 )
 
 
@@ -329,6 +330,56 @@ class TestTournamentFormPrerequisites:
 
 
 # ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/forms/me/
+# ---------------------------------------------------------------------------
+
+class TestMyTournamentForms:
+    def _form(self, db, user, tournament, *, status="published", is_onboarding=False, order=None, prerequisites=None):
+        form = _make_form(db, user, tournament, status=status)
+        db.add(TournamentForm(
+            form_id=form.id,
+            tournament_id=tournament.id,
+            is_onboarding=is_onboarding,
+            order=order,
+            prerequisites=prerequisites or {},
+        ))
+        db.commit()
+        return form
+
+    def test_lists_completed_history_and_currently_eligible_forms(self, client, db, td_user, td_tournament, other_user):
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        completed_archived = self._form(db, td_user, td_tournament, status="archived")
+        eligible_standard = self._form(db, td_user, td_tournament)
+        blocked_standard = self._form(db, td_user, td_tournament, prerequisites={"onboarding_complete": True})
+        completed_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=1)
+        next_onboarding = self._form(db, td_user, td_tournament, is_onboarding=True, order=2)
+        db.add_all([
+            FormResponse(form_id=completed_archived.id, user_id=other_user.id),
+            FormResponse(form_id=completed_onboarding.id, user_id=other_user.id),
+        ])
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        res = client.get(f"/tournaments/{td_tournament.id}/forms/me/")
+
+        assert res.status_code == 200
+        rows = {row["id"]: row for row in res.json()}
+        assert set(rows) == {completed_archived.id, eligible_standard.id, completed_onboarding.id, next_onboarding.id}
+        assert rows[completed_archived.id]["completed"] is True
+        assert rows[completed_archived.id]["eligible"] is False
+        assert rows[eligible_standard.id]["eligible"] is True
+        assert rows[completed_onboarding.id]["is_onboarding"] is True
+        assert rows[next_onboarding.id]["eligible"] is True
+        assert blocked_standard.id not in rows
+        assert membership.onboarded_at is None
+
+    def test_requires_a_tournament_membership(self, client, td_user, td_tournament, other_user):
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/tournaments/{td_tournament.id}/forms/me/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # GET /forms/{form_id}/
 # ---------------------------------------------------------------------------
 
@@ -343,7 +394,8 @@ class TestGetForm:
 
     def test_plain_member_can_view(self, client, db, td_user, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")
-        form = _make_form(db, td_user, td_tournament)
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id))
         db.commit()
         login(client, "other@test.com", "otherpass")
         res = client.get(f"/forms/{form.id}/")
@@ -394,6 +446,23 @@ class TestUpdateArchiveDeleteForm:
         res = client.patch(f"/forms/{form.id}/", json={"status": "archived"})
         assert res.status_code == 200
         assert res.json()["status"] == "archived"
+
+    def test_member_cannot_view_standard_form_without_prerequisites(self, client, db, td_user, td_tournament, other_user):
+        membership = grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.add(TournamentForm(
+            form_id=form.id,
+            tournament_id=td_tournament.id,
+            prerequisites={"onboarding_complete": True},
+        ))
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+
+        assert client.get(f"/forms/{form.id}/").status_code == 403
+        assert client.post(f"/forms/{form.id}/responses/", json={"answers": []}).status_code == 403
+        membership.onboarded_at = utcnow()
+        db.commit()
+        assert client.get(f"/forms/{form.id}/").status_code == 200
 
     def test_patch_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="archived")
