@@ -92,9 +92,6 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     source = config or {}
     if "track_status_enabled" not in source:
         normalized.pop("track_status_enabled", None)
-    for original, option in zip(source.get("options") or [], normalized.get("options") or []):
-        if "track_statuses" not in original:
-            option.pop("track_statuses", None)
     return normalized
 
 
@@ -138,11 +135,14 @@ def track_status_enabled(field_key: str, config: dict) -> bool:
 
 
 def _track_status_assignments(config: dict) -> list[dict]:
-    return [
-        assignment
-        for option in config.get("options") or []
-        for assignment in option.get("track_statuses") or []
-    ]
+    assignments = []
+    for option in config.get("options") or []:
+        value = option.get("value")
+        if isinstance(value, list):
+            assignments.extend(value)
+        elif isinstance(value, dict):
+            assignments.extend(value.get("track_statuses") or [])
+    return assignments
 
 
 def validate_track_status_options(
@@ -169,7 +169,7 @@ def validate_track_status_options(
     if TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key):
         _require(config.get("required") is True, "track status fields must be required")
 
-    track_ids = {assignment["track_id"] for assignment in assignments}
+    track_ids = {assignment["id"] for assignment in assignments}
     valid_ids = {
         track_id
         for (track_id,) in db.query(TournamentTrack.id)
@@ -182,7 +182,7 @@ def validate_track_status_options(
     if question_type == "multi_select_checkbox":
         statuses_by_track: dict[int, set[str]] = {}
         for assignment in assignments:
-            statuses_by_track.setdefault(assignment["track_id"], set()).add(assignment["status"])
+            statuses_by_track.setdefault(assignment["id"], set()).add(assignment["status"])
         conflicting = sorted(track_id for track_id, statuses in statuses_by_track.items() if len(statuses) > 1)
         _require(
             not conflicting,

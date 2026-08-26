@@ -41,12 +41,12 @@ class TrackStatusAssignment(BaseModel):
     """One track outcome attached to a selectable option."""
     model_config = ConfigDict(extra="forbid")
 
-    track_id: int = Field(gt=0)
+    id: int = Field(gt=0)
     status: Literal["interested", "confirmed", "declined"]
 
 
 def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
-    track_ids = [assignment.track_id for assignment in assignments]
+    track_ids = [assignment.id for assignment in assignments]
     if len(track_ids) != len(set(track_ids)):
         raise ValueError("duplicate track_id in track_statuses")
     return assignments
@@ -62,15 +62,9 @@ class PlainOption(BaseModel):
     expect based on the field's field_key."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | dict = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
-    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
-
-    @field_validator("track_statuses")
-    @classmethod
-    def _unique_track_statuses(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
-        return _unique_track_statuses(assignments)
 
 
 class BranchingOption(BaseModel):
@@ -78,17 +72,12 @@ class BranchingOption(BaseModel):
     See PlainOption for value's dual str/list[int] shape."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | dict = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
-    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
 
-    @field_validator("track_statuses")
-    @classmethod
-    def _unique_track_statuses(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
-        return _unique_track_statuses(assignments)
 
     @model_validator(mode="after")
     def _mutually_exclusive(self):

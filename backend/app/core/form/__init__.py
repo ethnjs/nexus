@@ -122,9 +122,9 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
     )
     return any(
         any(
-            assignment.get("track_id") == track_id
+            assignment.get("id") == track_id
             for option in (field.config or {}).get("options") or []
-            for assignment in option.get("track_statuses") or []
+            for assignment in (option.get("value") if isinstance(option.get("value"), list) else (option.get("value") or {}).get("track_statuses", []))
         )
         for field in fields
     )
