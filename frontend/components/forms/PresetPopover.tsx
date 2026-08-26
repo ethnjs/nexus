@@ -6,7 +6,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
-import { IconPresets } from "@/components/ui/Icons";
+import { IconPresets, IconX } from "@/components/ui/Icons";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { EditableField } from "@/lib/forms/editableField";
@@ -19,12 +19,11 @@ import {
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
-const KIND_OPTIONS: { value: PresetKind | ""; label: string }[] = [
-  { value: "", label: "No preset" },
+const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
   { value: "lunch", label: "Lunch" },
-  { value: "track_status", label: "Track Status" },
+  { value: "track_status", label: "Track" },
 ];
 
 // Reserved-key presets (availability_{date}, event_preference_{suffix},
@@ -141,13 +140,26 @@ export function PresetPopover({
             }}>
               Preset
             </span>
-            <Dropdown
-              options={KIND_OPTIONS}
-              value={presetKind ?? ""}
-              onChange={(value) => applyPresetKind(value ? value as PresetKind : null)}
-              size="sm"
-              fullWidth
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <Dropdown
+                options={KIND_OPTIONS}
+                value={presetKind ?? ""}
+                onChange={(value) => applyPresetKind(value as PresetKind)}
+                placeholder="No preset"
+                size="sm"
+                fullWidth
+              />
+              {presetKind && (
+                <Button
+                  type="button" variant="ghost" size="sm" iconOnly
+                  title="Clear preset"
+                  onClick={() => applyPresetKind(null)}
+                  style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0 }}
+                >
+                  <IconX size={14} />
+                </Button>
+              )}
+            </div>
           </div>
           {presetKind === "availability" && (
             <>
