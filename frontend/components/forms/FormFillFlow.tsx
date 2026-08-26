@@ -125,6 +125,11 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // the effect below only ever fires after that same render has committed,
   // never against a stale layout.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // On the final Continue, the current card loses its button while the
+  // submit bar appears. Keep this separately from the ordinary next-card
+  // scroll: the bar's measured footprint and the card's new height both need
+  // to settle before we can tell whether the card is covered.
+  const [pendingBarClearanceId, setPendingBarClearanceId] = useState<string | null>(null);
   // Reported live by FloatingSubmitBar (its own measured height, which
   // grows when the error summary line wraps) — applied as bottom padding so
   // the bar never covers the last question(s), same pattern as FieldList's
@@ -178,6 +183,50 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8, behavior: "smooth" });
   }, [pendingScrollId]);
 
+  useEffect(() => {
+    if (!pendingBarClearanceId || submitBarHeight === 0) return;
+    const card = document.querySelector<HTMLElement>(`[data-form-field="${pendingBarClearanceId}"]`);
+    if (!card) {
+      setPendingBarClearanceId(null);
+      return;
+    }
+
+    // FloatingBar measures itself before it slides in, while the just-finished
+    // card is simultaneously dropping its Continue button. Wait through both
+    // the next paint and the card-height animation window before measuring.
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const apply = () => {
+      const safeTop = TOPBAR_HEIGHT + 12;
+      const safeBottom = window.innerHeight - submitBarHeight;
+      const rect = card.getBoundingClientRect();
+      const visibleBand = safeBottom - safeTop;
+      let delta = 0;
+
+      if (rect.height <= visibleBand) {
+        if (rect.top < safeTop) delta = rect.top - safeTop - 8;
+        else if (rect.bottom > safeBottom) delta = rect.bottom - safeBottom + 8;
+      } else if (rect.top < safeTop || rect.top >= safeBottom) {
+        // An oversized question cannot entirely fit above the bar; put its
+        // beginning in the readable band instead of leaving it obscured.
+        delta = rect.top - safeTop - 8;
+      }
+
+      if (delta !== 0) window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
+      setPendingBarClearanceId(null);
+    };
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        timer = window.setTimeout(apply, 250);
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [pendingBarClearanceId, submitBarHeight]);
+
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
     // Whatever Submit last validated is now stale — require clicking it
@@ -193,6 +242,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
+    else setPendingBarClearanceId(field.id);
   }
 
   async function handleSubmit() {
