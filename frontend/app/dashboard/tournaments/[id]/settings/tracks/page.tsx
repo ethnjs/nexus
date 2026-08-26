@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { ReactNode, useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -11,9 +11,13 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
+import { FormPopover } from "@/components/ui/FormPopover";
 import { Spinner } from "@/components/ui/Spinner";
 import { Badge } from "@/components/ui/Badge";
 import { IconLock, IconPlus, IconTrash, IconVolunteers } from "@/components/ui/Icons";
+
+// Name / Status / Save / Archive / Delete
+const TRACK_ROW_COLUMNS = "1fr 100px 88px 96px 40px";
 
 export default function TracksSettingsPage() {
   const params = useParams();
@@ -22,8 +26,6 @@ export default function TracksSettingsPage() {
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageTracks = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_tournament");
   const [tracks, setTracks] = useState<TournamentTrack[] | null>(null);
-  const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [deleteTarget, setDeleteTarget] = useState<TournamentTrack | null>(null);
 
@@ -40,20 +42,8 @@ export default function TracksSettingsPage() {
     if (canManageTracks) loadTracks();
   }, [canManageTracks, loadTracks]);
 
-  async function createTrack() {
-    const name = newName.trim();
-    if (!name || creating) return;
-    setCreating(true);
-    setError(undefined);
-    try {
-      const track = await tournamentTracksApi.create(tournamentId, name);
-      setTracks((current) => [...(current ?? []), track]);
-      setNewName("");
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Failed to create track.");
-    } finally {
-      setCreating(false);
-    }
+  function handleCreated(track: TournamentTrack) {
+    setTracks((current) => [...(current ?? []), track]);
   }
 
   if (membershipLoading || (canManageTracks && tracks === null)) {
@@ -73,37 +63,73 @@ export default function TracksSettingsPage() {
 
   return (
     <div>
-      <PageHeader heading="Tracks" subheading="Tournament Settings" />
-      <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", margin: "-12px 0 20px" }}>
-        Tracks describe the ways members can participate, such as test writing or day 1. Archive a track when it should no longer be offered; historical form fields remain intact.
-      </p>
-
-      <Card radius="lg" style={{ padding: "12px" }}>
-        <div style={{ display: "flex", gap: "10px", margin: "4px 4px 12px" }}>
-          <Input
-            value={newName}
-            onChange={(event) => setNewName(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter") createTrack(); }}
-            placeholder="e.g. Test Writing"
-            fullWidth
+      <PageHeader heading="Tracks" subheading="Tournament Settings"
+        action={
+          <AddTrackPopover
+            tournamentId={tournamentId}
+            existingNames={tracks?.map((track) => track.name) ?? []}
+            onCreated={handleCreated}
+            trigger={
+              <Button type="button" variant="primary">
+                <IconPlus size={14} /> Add track
+              </Button>
+            }
           />
-          <Button type="button" variant="primary" onClick={createTrack} loading={creating} disabled={!newName.trim()}>
-            <IconPlus size={14} /> Add track
-          </Button>
-        </div>
+      }/>
 
-        {error && <p style={{ margin: "0 4px 12px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>}
+      {error && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+          {error}
+        </p>
+      )}
 
-        {tracks?.length === 0 ? (
-          <EmptyState icon={<IconVolunteers size={28} />} title="No tracks yet" description="Add the participation tracks members can select on your forms." />
-        ) : (
-          <div style={{ borderTop: "1px solid var(--color-border)" }}>
-            {tracks?.map((track) => (
-              <TrackRow key={track.id} tournamentId={tournamentId} track={track} onChange={(next) => setTracks((current) => current?.map((item) => item.id === next.id ? next : item) ?? current)} onDelete={() => setDeleteTarget(track)} />
-            ))}
+      {tracks?.length === 0 ? (
+        <Card radius="lg" style={{ padding: "8px" }}>
+          <EmptyState
+            icon={<IconVolunteers size={28} />}
+            title="No tracks yet"
+            description="Add the participation tracks members can select on your forms."
+            action={
+              <AddTrackPopover
+                tournamentId={tournamentId}
+                existingNames={tracks?.map((track) => track.name) ?? []}
+                onCreated={handleCreated}
+                trigger={
+                  <Button type="button" variant="primary" size="sm">
+                    <IconPlus size={14} /> Add track
+                  </Button>
+                }
+              />
+            }
+          />
+        </Card>
+      ) : (
+        <Card radius="lg" style={{ padding: "8px 12px" }}>
+          <div style={{
+            display: "grid", gridTemplateColumns: TRACK_ROW_COLUMNS, gap: "8px",
+            padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
+            fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
+            color: "var(--color-text-tertiary)",
+          }}>
+            <span>Tracks — {tracks?.length}</span>
+            <span style={{ textAlign: "center" }}>Status</span>
+            <span />
+            <span />
+            <span />
           </div>
-        )}
-      </Card>
+
+          {tracks?.map((track, i) => (
+            <TrackRow
+              key={track.id}
+              tournamentId={tournamentId}
+              track={track}
+              isLast={i === (tracks?.length ?? 0) - 1}
+              onChange={(next) => setTracks((current) => current?.map((item) => item.id === next.id ? next : item) ?? current)}
+              onDelete={() => setDeleteTarget(track)}
+            />
+          ))}
+        </Card>
+      )}
 
       {deleteTarget && (
         <DeleteTrackModal
@@ -120,10 +146,71 @@ export default function TracksSettingsPage() {
   );
 }
 
-function TrackRow({ tournamentId, track, onChange, onDelete }: { tournamentId: number; track: TournamentTrack; onChange: (track: TournamentTrack) => void; onDelete: () => void }) {
+function AddTrackPopover({ tournamentId, existingNames, onCreated, trigger }: {
+  tournamentId: number;
+  existingNames: string[];
+  onCreated: (track: TournamentTrack) => void;
+  trigger: ReactNode;
+}) {
+  const [name, setName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | undefined>();
+
+  async function submit(close: () => void) {
+    const trimmed = name.trim();
+    if (!trimmed || creating) return;
+    setCreating(true);
+    setError(undefined);
+    try {
+      const track = await tournamentTracksApi.create(tournamentId, trimmed);
+      onCreated(track);
+      setName("");
+      close();
+    } catch (err: unknown) {
+      setError(err instanceof ApiError ? err.message : "Failed to create track.");
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <FormPopover
+      trigger={trigger}
+      width={260}
+      onOpenChange={(open) => {
+        if (!open) { setName(""); setError(undefined); }
+      }}
+    >
+      {(close) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <Input
+            label="Track name"
+            placeholder="e.g. Debate"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(close); } }}
+            error={error ?? (existingNames.some((n) => n.toLowerCase() === name.trim().toLowerCase()) ? "A track with this name already exists." : undefined)}
+            size="sm"
+            font="sans"
+            fullWidth
+            autoFocus
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <Button type="button" variant="primary" size="sm" loading={creating} disabled={!name.trim()} onClick={() => submit(close)}>
+              Add track
+            </Button>
+          </div>
+        </div>
+      )}
+    </FormPopover>
+  );
+}
+
+function TrackRow({ tournamentId, track, isLast, onChange, onDelete }: { tournamentId: number; track: TournamentTrack; isLast: boolean; onChange: (track: TournamentTrack) => void; onDelete: () => void }) {
   const [name, setName] = useState(track.name);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>();
+  const [hovered, setHovered] = useState(false);
   const dirty = name.trim() !== track.name;
 
   useEffect(() => setName(track.name), [track.name]);
@@ -154,21 +241,46 @@ function TrackRow({ tournamentId, track, onChange, onDelete }: { tournamentId: n
   }
 
   return (
-    <div style={{ padding: "12px 4px", borderBottom: "1px solid var(--color-border)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-        <div style={{ flex: 1 }}>
-          <Input value={name} onChange={(event) => setName(event.target.value)} disabled={track.is_archived} fullWidth />
-        </div>
+    <div
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      style={{
+        display: "grid", gridTemplateColumns: TRACK_ROW_COLUMNS, alignItems: "center",
+        gap: "8px", padding: "10px 12px",
+        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
+        background: hovered ? "var(--color-bg)" : "transparent",
+        transition: "background 100ms ease",
+      }}
+    >
+      <Input value={name} onChange={(event) => setName(event.target.value)} disabled={track.is_archived} size="sm" font="sans" fullWidth />
+      <div style={{ display: "flex", justifyContent: "center" }}>
         {track.is_archived && <Badge variant="default">Archived</Badge>}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
         {dirty && <Button type="button" variant="secondary" size="sm" loading={saving} onClick={saveName} disabled={!name.trim()}>Save</Button>}
+      </div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
         <Button type="button" variant="secondary" size="sm" loading={saving} onClick={() => setArchived(!track.is_archived)}>
           {track.is_archived ? "Restore" : "Archive"}
         </Button>
-        <Button type="button" variant="danger" size="sm" onClick={onDelete} disabled={saving} aria-label={`Delete ${track.name}`}>
+      </div>
+      <div style={{ display: "flex", justifyContent: "center" }}>
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Delete"
+          onClick={onDelete}
+          disabled={saving}
+          aria-label={`Delete ${track.name}`}
+          style={{ width: "28px", height: "28px", padding: 0, color: "var(--color-danger)" }}
+        >
           <IconTrash size={14} />
         </Button>
       </div>
-      {error && <p style={{ margin: "7px 0 0", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{error}</p>}
+      {error && (
+        <p style={{ gridColumn: "1 / -1", margin: "7px 0 0", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
