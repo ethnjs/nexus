@@ -353,6 +353,7 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
+    tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
     forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
     tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
 
@@ -627,6 +628,29 @@ class TournamentShift(Base):
     @property
     def availability_count(self) -> int:
         return len(self.membership_availabilities)
+
+
+# ---------------------------------------------------------------------------
+# TournamentTrack — a TD-managed volunteer track such as Test Writing or
+# Day 1. `slug` is the durable reserved-field-key suffix; `name` can change
+# without invalidating historical forms or future membership-track rows.
+# ---------------------------------------------------------------------------
+class TournamentTrack(Base):
+    __tablename__ = "tournament_tracks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    slug = Column(String(64), nullable=False)
+    name = Column(String(255), nullable=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="tracks")
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "slug", name="uq_tournament_track_slug"),
+    )
 
 
 # ---------------------------------------------------------------------------
