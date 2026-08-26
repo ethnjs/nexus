@@ -1312,6 +1312,11 @@ export interface OnboardingForm extends FormListItem {
   order: number | null
 }
 
+export interface TournamentOnboardingProgress {
+  next_form_id: string | null
+  onboarded_at: string | null
+}
+
 export const formsApi = {
   listForTournament: (tournamentId: number) =>
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
@@ -1363,4 +1368,9 @@ export const onboardingFormsApi = {
     ),
   remove: (tournamentId: number, formId: string) =>
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
+}
+
+export const tournamentOnboardingApi = {
+  progress: (tournamentId: number) =>
+    api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 }

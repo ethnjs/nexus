@@ -21,11 +21,13 @@ interface FloatingSubmitBarProps {
       line, same idea as FloatingSaveBar's validation error line. */
   invalidCount: number
   onSubmit: () => void
+  loading?: boolean
+  error?: string
   /** See FloatingSaveBar's own onHeightChange doc — same purpose. */
   onHeightChange?: (px: number) => void
 }
 
-export function FloatingSubmitBar({ visible, invalidCount, onSubmit, onHeightChange }: FloatingSubmitBarProps) {
+export function FloatingSubmitBar({ visible, invalidCount, onSubmit, loading = false, error, onHeightChange }: FloatingSubmitBarProps) {
   const barRef = useRef<HTMLDivElement>(null)
 
   useLayoutEffect(() => {
@@ -60,8 +62,13 @@ export function FloatingSubmitBar({ visible, invalidCount, onSubmit, onHeightCha
             {invalidCount} question{invalidCount !== 1 ? "s" : ""} need{invalidCount === 1 ? "s" : ""} your attention.
           </div>
         )}
+        {error && (
+          <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "2px" }}>
+            {error}
+          </div>
+        )}
       </div>
-      <Button type="button" variant="primary" onClick={onSubmit} style={{ flexShrink: 0 }}>Submit</Button>
+      <Button type="button" variant="primary" loading={loading} onClick={onSubmit} style={{ flexShrink: 0 }}>Submit</Button>
     </div>
   )
 }

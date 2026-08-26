@@ -91,7 +91,7 @@ interface FormFillFlowProps {
   /** Called once, after Submit's validation passes — a real viewer wires
       this to formsApi.submitResponse; omitted (the default), nothing is
       persisted, which is what makes this safe to use for a TD's preview. */
-  onComplete?: (answers: Record<string, unknown>) => void;
+  onComplete?: (answers: Record<string, unknown>) => void | Promise<void>;
 }
 
 // One question revealed at a time (Continue advances; Submit only appears
@@ -118,6 +118,8 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // last error by itself never flips this true; Submit has to actually be
   // clicked again once things are fixed.
   const [submitSucceeded, setSubmitSucceeded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   // Field to scroll to once its Card is actually in the DOM — set alongside
   // the state change that reveals/flags it (revealCount, attemptedIds), so
   // the effect below only ever fires after that same render has committed,
@@ -182,6 +184,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     // again rather than letting showSuccess flip true the instant the last
     // error happens to clear.
     setSubmitSucceeded(false);
+    setSubmitError(undefined);
   }
 
   function handleContinue(field: FormField) {
@@ -192,7 +195,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     if (nextField) setPendingScrollId(nextField.id);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
     const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
     if (firstInvalid) {
@@ -200,8 +203,17 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
       setPendingScrollId(firstInvalid.id);
       return;
     }
-    setSubmitSucceeded(true);
-    onComplete?.(answers);
+    setSubmitting(true);
+    setSubmitError(undefined);
+    try {
+      await onComplete?.(answers);
+      setSubmitSucceeded(true);
+    } catch (error: unknown) {
+      setSubmitSucceeded(false);
+      setSubmitError(error instanceof Error ? error.message : "Failed to submit your response. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -274,6 +286,8 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
         visible={allContinued && !showSuccess}
         invalidCount={invalidCount}
         onSubmit={handleSubmit}
+        loading={submitting}
+        error={submitError}
         onHeightChange={setSubmitBarHeight}
       />
     </div>
