@@ -306,19 +306,19 @@ def update_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    if payload.status == "draft" and form.status == "published":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="A published form cannot be reverted to draft — archive it instead if it should stop accepting responses",
-        )
-
     if payload.status == "published" and form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An archived form must be unarchived to draft and reviewed before it can be republished",
         )
 
-    if payload.status == "archived":
+    if payload.status == "draft" and form.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Use the unarchive endpoint to restore an archived form to draft",
+        )
+
+    if payload.status in {"draft", "archived"} and form.status == "published":
         _reject_if_onboarding(db, form)
 
     if payload.status == "published":
@@ -373,6 +373,28 @@ def archive_form(
 
 
 # ---------------------------------------------------------------------------
+# POST /forms/{form_id}/unarchive/ — restores an archived form to draft.
+# Restoring intentionally never publishes the form: a manager must review and
+# explicitly publish it before it can accept responses again.
+# ---------------------------------------------------------------------------
+@router.post("/forms/{form_id}/unarchive/", response_model=FormRead)
+def unarchive_form(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    if form.status != "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only archived forms can be restored to draft",
+        )
+
+    form.status = "draft"
+    db.commit()
+    db.refresh(form)
+    return form
+
+
+# ---------------------------------------------------------------------------
 # DELETE /forms/{form_id}/ — hard delete. Blocked if any responses exist
 # (use the archive route above instead — hard delete would cascade away
 # submitted response data). Cascades to fields and the tournament/chapter
@@ -403,13 +425,13 @@ def delete_form(
 # `id` creates one; a currently-live field whose `id` is absent from the
 # payload is removed.
 #
-# draft-status forms apply directly (hard delete/update/insert) — nothing
-# on a draft form has ever been answerable, so there's no history to
-# protect. published-status forms archive instead of hard-deleting/losing
-# data: a removed or question_type-changed field is archived (and, for a
-# type change, replaced by a new field at the same list position inheriting
-# the old field_key); an option dropped from an otherwise-unchanged field's
-# config is archived in place rather than removed from storage. Either way
+# A never-answered draft applies directly (hard delete/update/insert).
+# Published forms — and drafts restored/unpublished after receiving a response
+# — archive instead of hard-deleting/losing data: a removed or
+# question_type-changed field is archived (and, for a type change, replaced
+# by a new field at the same list position inheriting the old field_key); an
+# option dropped from an otherwise-unchanged field's config is archived in
+# place rather than removed from storage. Either way
 # the whole batch is applied inside one transaction, flushed (so newly
 # created fields get real ids), validated as a whole via
 # collect_active_field_errors, and only committed if that validation
@@ -422,7 +444,11 @@ def bulk_update_fields(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    is_published = form.status == "published"
+    # An unpublish/restore makes the form editable as a draft, but it must
+    # never reopen the destructive draft-edit path after answers exist.
+    is_history_preserving = form.status == "published" or (
+        db.query(FormResponse.id).filter(FormResponse.form_id == form.id).first() is not None
+    )
 
     live_fields = (
         db.query(FormField)
@@ -488,7 +514,7 @@ def bulk_update_fields(
             normalized_config = _validate_config(entry.question_type, entry.config, field.field_key)
             type_changed = entry.question_type != field.question_type
 
-            if type_changed and is_published:
+            if type_changed and is_history_preserving:
                 field.is_archived = True
                 old_key = field.field_key
                 # field.id is a nanoid and can contain '-', which field_key's
@@ -509,7 +535,7 @@ def bulk_update_fields(
                 )
                 db.add(new_field)
             else:
-                if is_published:
+                if is_history_preserving:
                     normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
                     if archived_option_ids:
                         pending_flags.append((field.field_key, "option_archived", field.id, archived_option_ids))
@@ -538,7 +564,7 @@ def bulk_update_fields(
 
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
     for field in removed_fields:
-        if is_published:
+        if is_history_preserving:
             field.is_archived = True
             pending_flags.append((field.field_key, "field_replaced", field.id, []))
         else:

@@ -318,6 +318,40 @@ class TestUpdateArchiveDeleteForm:
         assert res.status_code == 200
         assert res.json()["status"] == "archived"
 
+    def test_unarchive_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/unarchive/")
+
+        assert res.status_code == 200
+        assert res.json()["status"] == "draft"
+
+    def test_unarchive_rejects_non_archived_form(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(f"/forms/{form.id}/unarchive/").status_code == 409
+
+    def test_archived_form_must_use_unarchive_endpoint(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="archived")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.patch(f"/forms/{form.id}/", json={"status": "draft"}).status_code == 409
+
+    def test_unpublish_published_form_to_draft(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.patch(f"/forms/{form.id}/", json={"status": "draft"})
+
+        assert res.status_code == 200
+        assert res.json()["status"] == "draft"
+
     def test_delete_succeeds_with_no_responses(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         db.commit()
@@ -445,6 +479,22 @@ class TestBulkUpdateFieldsPublished:
         assert res.status_code == 200
         assert res.json() == []
 
+        db.refresh(field)
+        assert field.is_archived is True
+        assert db.query(FormField).filter(FormField.id == field.id).first() is not None
+
+    def test_unpublished_form_with_responses_preserves_removed_field(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+        assert client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]}).status_code == 200
+
+        assert client.patch(f"/forms/{form.id}/", json={"status": "draft"}).status_code == 200
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+
+        assert res.status_code == 200
         db.refresh(field)
         assert field.is_archived is True
         assert db.query(FormField).filter(FormField.id == field.id).first() is not None
