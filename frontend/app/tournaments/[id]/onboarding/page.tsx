@@ -18,7 +18,8 @@ export default function TournamentOnboardingPage() {
     tournamentOnboardingApi.progress(tournamentId)
       .then((progress) => {
         if (progress.next_form_id) {
-          router.replace(`/tournaments/${tournamentId}/onboarding/forms/${progress.next_form_id}`);
+          const redirect = encodeURIComponent(`/tournaments/${tournamentId}/onboarding`);
+          router.replace(`/forms/${progress.next_form_id}/view?redirect=${redirect}`);
         } else {
           router.replace(`/dashboard/tournaments/${tournamentId}/overview`);
         }

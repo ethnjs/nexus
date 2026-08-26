@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { ApiError, Form, formsApi, tournamentOnboardingApi } from "@/lib/api";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ApiError, Form, formsApi } from "@/lib/api";
 import { FormFillFlow } from "@/components/forms/FormFillFlow";
 import { Spinner } from "@/components/ui/Spinner";
 
-export default function TournamentOnboardingFormPage() {
+// Respondent-facing form renderer. `redirect` is optional so this can serve
+// direct form links too; only an app-relative path is honored to avoid making
+// form submissions an open-redirect vector.
+function internalRedirect(value: string | null): string | null {
+  return value?.startsWith("/") && !value.startsWith("//") ? value : null;
+}
+
+export default function FormViewPage() {
   const params = useParams();
   const router = useRouter();
-  const tournamentId = Number(params.id);
+  const searchParams = useSearchParams();
   const formId = String(params.formId);
+  const redirect = useMemo(() => internalRedirect(searchParams.get("redirect")), [searchParams]);
   const [form, setForm] = useState<Form | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -20,17 +28,12 @@ export default function TournamentOnboardingFormPage() {
       .catch((error) => setLoadError(error instanceof ApiError ? error.message : "Failed to load form."));
   }, [formId]);
 
-  async function submitAndAdvance(answers: Record<string, unknown>) {
+  async function submitResponse(answers: Record<string, unknown>) {
     await formsApi.submitResponse(
       formId,
       Object.entries(answers).map(([field_id, value]) => ({ field_id, value })),
     );
-    const progress = await tournamentOnboardingApi.progress(tournamentId);
-    router.replace(
-      progress.next_form_id
-        ? `/tournaments/${tournamentId}/onboarding/forms/${progress.next_form_id}`
-        : `/dashboard/tournaments/${tournamentId}/overview`,
-    );
+    if (redirect) router.replace(redirect);
   }
 
   if (loadError) {
@@ -49,7 +52,7 @@ export default function TournamentOnboardingFormPage() {
     <FormFillFlow
       form={form}
       successMessage="Your response was saved."
-      onComplete={submitAndAdvance}
+      onComplete={submitResponse}
     />
   );
 }
