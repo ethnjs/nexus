@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { parseLocalDate } from "@/lib/date";
 import { ApiError, formsApi, MemberForm } from "@/lib/api";
@@ -11,15 +11,15 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconCalendar, IconCheckCircle, IconForms, IconLocation } from "@/components/ui/Icons";
+import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 export default function OverviewPage() {
   const params = useParams();
-  const router = useRouter();
   const tournamentId = params.id as string;
   const { selectedTournament } = useTournament();
   const [forms, setForms] = useState<MemberForm[] | null>(null);
   const [formsError, setFormsError] = useState<string | null>(null);
+  const [hoveredFormId, setHoveredFormId] = useState<string | null>(null);
 
   useEffect(() => {
     formsApi.listMineForTournament(Number(tournamentId))
@@ -80,31 +80,38 @@ export default function OverviewPage() {
         ) : forms.length > 0 ? (
           <Card radius="lg" style={{ width: "min(100%, 480px)", padding: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 4px 10px" }}>
-              <IconForms size={18} />
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600 }}>Forms</span>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-              {forms.map((form) => (
-                <div key={form.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "8px 4px" }}>
-                  {form.completed ? <IconCheckCircle size={16} /> : <IconForms size={16} />}
+              {forms.map((form, index) => (
+                <div
+                  key={form.id}
+                  onMouseEnter={() => setHoveredFormId(form.id)}
+                  onMouseLeave={() => setHoveredFormId(null)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: "10px", padding: "8px 4px",
+                    borderBottom: index === forms.length - 1 ? "none" : "1px solid var(--color-border)",
+                    background: hoveredFormId === form.id ? "var(--color-bg)" : "transparent",
+                    transition: "background 100ms ease",
+                  }}
+                >
                   <div style={{ minWidth: 0, flex: 1 }}>
                     <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
                       {form.name}
                     </div>
-                    <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-                      {form.completed ? "Completed" : form.is_onboarding ? "Onboarding" : "To do"}
-                    </div>
                   </div>
+                  <Badge variant={form.completed ? "confirmed" : "default"}>
+                    {form.completed ? "Completed" : "To do"}
+                  </Badge>
                   {form.eligible && !form.completed && (
                     <Button
                       type="button"
                       variant="secondary"
                       size="sm"
                       onClick={() => {
-                        const redirect = encodeURIComponent(`/dashboard/tournaments/${tournamentId}/overview`);
-                        router.push(form.is_onboarding
+                        window.open(form.is_onboarding
                           ? `/tournaments/${tournamentId}/onboarding`
-                          : `/forms/${form.id}/view?redirect=${redirect}`);
+                          : `/forms/${form.id}/view`, "_blank", "noopener,noreferrer");
                       }}
                     >
                       Open
