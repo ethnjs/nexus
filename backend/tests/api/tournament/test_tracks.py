@@ -82,10 +82,16 @@ def test_unused_track_can_be_deleted_but_referenced_track_cannot(client, db, td_
     db.add(FormField(
         form_id=form.id,
         order=1,
-        field_key=f"track_{referenced['id']}",
+        field_key="track_status_interest",
         label="Track status",
         question_type="single_select_radio",
-        config={"required": True, "options": [], "track_id": referenced["id"]},
+        config={
+            "required": True,
+            "options": [{
+                "option_id": "interested", "value": "interested", "label": "Interested",
+                "track_statuses": [{"track_id": referenced["id"], "status": "interested"}],
+            }],
+        },
     ))
     db.commit()
 

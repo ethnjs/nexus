@@ -16,8 +16,10 @@ from app.core.form.validation import (
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
+    validate_track_status_options,
+    validate_tournament_preset,
 )
-from app.models.models import Form, FormField, TournamentShift
+from app.models.models import Form, FormField, TournamentShift, TournamentTrack
 
 
 # ---------------------------------------------------------------------------
@@ -230,6 +232,29 @@ class TestValidateReservedFieldKey:
     def test_non_reserved_key_any_type_allowed(self):
         validate_reserved_field_key("favorite_color", "acknowledgment")  # no raise
 
+    @pytest.mark.parametrize("question_type", ["single_select_radio", "multi_select_checkbox"])
+    def test_track_status_allowed_types_pass(self, question_type):
+        validate_reserved_field_key("track_status_volunteer_interest", question_type)  # no raise
+
+    def test_track_status_disallowed_type_rejected(self):
+        with pytest.raises(FormFieldValidationError):
+            validate_reserved_field_key("track_status_volunteer_interest", "single_select_dropdown")
+
+
+class TestValidateTournamentPreset:
+    @pytest.mark.parametrize("field_key", [
+        "availability_20260315",
+        "event_preference_morning",
+        "lunch_20260315_protein",
+        "track_status_interest",
+    ])
+    def test_presets_reject_chapter_owned_forms(self, field_key):
+        with pytest.raises(FormFieldValidationError, match="tournament-owned"):
+            validate_tournament_preset(field_key, None)
+
+    def test_custom_field_is_valid_without_tournament(self):
+        validate_tournament_preset("favorite_color", None)
+
 
 # ---------------------------------------------------------------------------
 # validate_branching_options
@@ -314,6 +339,82 @@ class TestValidateAvailabilityOptions:
         config = {"options": [{"value": [], "label": "Whenever"}]}
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
+
+
+# ---------------------------------------------------------------------------
+# validate_track_status_options
+# ---------------------------------------------------------------------------
+
+class TestValidateTrackStatusOptions:
+    def _track(self, db, tournament):
+        track = TournamentTrack(tournament_id=tournament.id, name="Test Writing")
+        db.add(track)
+        db.flush()
+        return track
+
+    def _config(self, track_id, **overrides):
+        config = {
+            "required": True,
+            "options": [{
+                "option_id": "yes", "value": "yes", "label": "Yes",
+                "track_statuses": [{"track_id": track_id, "status": "interested"}],
+            }],
+        }
+        config.update(overrides)
+        return config
+
+    def test_track_status_accepts_tournament_track(self, db, td_user, td_tournament):
+        track = self._track(db, td_tournament)
+        config = self._config(track.id)
+        validate_track_status_options(db, td_tournament.id, "track_status_interest", "single_select_radio", config)
+
+    def test_track_status_requires_required_question(self, db, td_user, td_tournament):
+        track = self._track(db, td_tournament)
+        with pytest.raises(FormFieldValidationError, match="must be required"):
+            validate_track_status_options(
+                db, td_tournament.id, "track_status_interest", "single_select_radio",
+                self._config(track.id, required=False),
+            )
+
+    def test_option_track_statuses_require_explicit_known_status(self):
+        with pytest.raises(FormFieldValidationError):
+            validate_field_config(
+                "single_select_radio",
+                {
+                    "required": True,
+                    "options": [{
+                        "option_id": "opt_1", "value": "a", "label": "A",
+                        "track_statuses": [{"track_id": 1, "status": "maybe"}],
+                    }],
+                },
+            )
+
+    def test_track_status_rejects_foreign_track(self, db, td_user, td_tournament, other_tournament):
+        foreign = self._track(db, other_tournament)
+        with pytest.raises(FormFieldValidationError, match="do not belong"):
+            validate_track_status_options(
+                db, td_tournament.id, "track_status_interest", "single_select_radio", self._config(foreign.id)
+            )
+
+    def test_availability_requires_opt_in_for_track_outcomes(self, db, td_user, td_tournament):
+        track = self._track(db, td_tournament)
+        config = self._config(track.id)
+        with pytest.raises(FormFieldValidationError, match="only allowed"):
+            validate_track_status_options(
+                db, td_tournament.id, "availability_20260315", "single_select_radio", config
+            )
+
+        config["track_status_enabled"] = True
+        validate_track_status_options(db, td_tournament.id, "availability_20260315", "single_select_radio", config)
+
+    def test_checkbox_rejects_conflicting_track_statuses(self, db, td_user, td_tournament):
+        track = self._track(db, td_tournament)
+        config = self._config(track.id, options=[
+            {"option_id": "one", "value": "one", "label": "One", "track_statuses": [{"track_id": track.id, "status": "interested"}]},
+            {"option_id": "two", "value": "two", "label": "Two", "track_statuses": [{"track_id": track.id, "status": "declined"}]},
+        ])
+        with pytest.raises(FormFieldValidationError, match="conflicting statuses"):
+            validate_track_status_options(db, td_tournament.id, "track_status_interest", "multi_select_checkbox", config)
 
 
 # ---------------------------------------------------------------------------

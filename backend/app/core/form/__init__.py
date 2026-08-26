@@ -109,10 +109,10 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:
     """True when any field in the tournament is bound to ``track_id``.
 
-    The track preset added later stores the durable catalog ID in config; the
-    field-key check covers the reserved ``track_{id}`` shape as well. Archived
-    fields are intentionally included: they are historical form structure and
-    deleting the catalog entry would leave them unresolved.
+    Track outcomes store durable catalog IDs in each option's
+    ``track_statuses`` list. Archived fields are intentionally included: they
+    are historical form structure and deleting the catalog entry would leave
+    them unresolved.
     """
     fields = (
         db.query(FormField)
@@ -120,9 +120,12 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
         .filter(Form.tournament_id == tournament_id)
         .all()
     )
-    track_key = f"track_{track_id}"
     return any(
-        field.field_key == track_key or (field.config or {}).get("track_id") == track_id
+        any(
+            assignment.get("track_id") == track_id
+            for option in (field.config or {}).get("options") or []
+            for assignment in option.get("track_statuses") or []
+        )
         for field in fields
     )
 

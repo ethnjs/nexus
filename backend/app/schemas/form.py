@@ -37,6 +37,21 @@ def _unique_option_fields(options: list) -> list:
     return options
 
 
+class TrackStatusAssignment(BaseModel):
+    """One track outcome attached to a selectable option."""
+    model_config = ConfigDict(extra="forbid")
+
+    track_id: int = Field(gt=0)
+    status: Literal["interested", "confirmed", "declined"]
+
+
+def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+    track_ids = [assignment.track_id for assignment in assignments]
+    if len(track_ids) != len(set(track_ids)):
+        raise ValueError("duplicate track_id in track_statuses")
+    return assignments
+
+
 class PlainOption(BaseModel):
     """An option with no branching — multi_select_checkbox, ranked_choice.
     extra='forbid' rejects a stray next_field_id/action on these types.
@@ -50,6 +65,12 @@ class PlainOption(BaseModel):
     value: str | list[int] = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
+
+    @field_validator("track_statuses")
+    @classmethod
+    def _unique_track_statuses(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
 
 
 class BranchingOption(BaseModel):
@@ -60,8 +81,14 @@ class BranchingOption(BaseModel):
     value: str | list[int] = Field(min_length=1)
     label: str = Field(min_length=1)
     is_archived: bool = False
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
+
+    @field_validator("track_statuses")
+    @classmethod
+    def _unique_track_statuses(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
 
     @model_validator(mode="after")
     def _mutually_exclusive(self):
@@ -84,6 +111,7 @@ class SingleSelectRadioConfig(BaseModel):
     # Dropdown has no equivalent (it's always a closed Dropdown control, not
     # a style choice), so this doesn't exist on that config.
     display_style: Literal["buttons", "list"] = "list"
+    track_status_enabled: bool = False
     options: list[BranchingOption]
 
     @field_validator("options")
@@ -107,6 +135,7 @@ class MultiSelectCheckboxConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     required: bool
     display_style: Literal["buttons", "list"] = "list"
+    track_status_enabled: bool = False
     options: list[PlainOption]
 
     @field_validator("options")

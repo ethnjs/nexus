@@ -14,7 +14,7 @@ import re
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
-from app.models.models import Form, FormField, TournamentShift
+from app.models.models import Form, FormField, TournamentShift, TournamentTrack
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
@@ -40,12 +40,26 @@ EVENT_PREFERENCE_QUESTION_TYPES = {"ranked_choice", "multi_select_checkbox", "si
 LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
 LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
+# track_status_{suffix}, e.g. "track_status_volunteer_interest". The suffix
+# makes the question's stable field key independent of a catalog track, so
+# one answer can affect several tracks.
+TRACK_STATUS_FIELD_KEY_PATTERN = re.compile(r"^track_status_([a-z0-9_]+)$")
+TRACK_STATUS_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
+
 # Reserved field_key patterns (lunch excluded — it's checked separately
 # since it also needs to strip the date/category before matching), each
 # paired with the question_types it may be combined with.
 RESERVED_FIELD_KEY_PATTERNS = (
     (AVAILABILITY_FIELD_KEY_PATTERN, AVAILABILITY_QUESTION_TYPES),
     (EVENT_PREFERENCE_FIELD_KEY_PATTERN, EVENT_PREFERENCE_QUESTION_TYPES),
+    (TRACK_STATUS_FIELD_KEY_PATTERN, TRACK_STATUS_QUESTION_TYPES),
+)
+
+TOURNAMENT_PRESET_FIELD_KEY_PATTERNS = (
+    AVAILABILITY_FIELD_KEY_PATTERN,
+    EVENT_PREFERENCE_FIELD_KEY_PATTERN,
+    LUNCH_FIELD_KEY_PATTERN,
+    TRACK_STATUS_FIELD_KEY_PATTERN,
 )
 
 
@@ -71,11 +85,22 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
     except ValidationError as e:
         raise FormFieldValidationError(str(e))
 
-    return parsed.model_dump()
+    normalized = parsed.model_dump()
+    # These fields were added for track outcomes after forms already existed.
+    # Keep an omitted opt-in/mapping omitted instead of rewriting every
+    # unrelated form field the next time its form is saved.
+    source = config or {}
+    if "track_status_enabled" not in source:
+        normalized.pop("track_status_enabled", None)
+    for original, option in zip(source.get("options") or [], normalized.get("options") or []):
+        if "track_statuses" not in original:
+            option.pop("track_statuses", None)
+    return normalized
 
 
 def validate_reserved_field_key(field_key: str, question_type: str) -> None:
-    """Reserved field_keys (availability_*, event_preference_*, lunch_*) reuse
+    """Reserved field_keys (availability_*, event_preference_*, lunch_*,
+    track_status_*) reuse
     an existing structural question_type rather than introducing their own —
     reject a reserved key paired with a question_type it doesn't allow. A
     bare "availability"/"event_preference" (no date/suffix) is not a valid
@@ -96,6 +121,73 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
                 f"field_key '{field_key}' requires question_type in {sorted(allowed_types)}, got '{question_type}'",
             )
             return
+
+
+def validate_tournament_preset(field_key: str, tournament_id: int | None) -> None:
+    """Reserved presets are currently available only to tournament forms."""
+    if any(pattern.match(field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
+        _require(tournament_id is not None, f"field_key '{field_key}' requires a tournament-owned form")
+
+
+def track_status_enabled(field_key: str, config: dict) -> bool:
+    """Whether this field is allowed to carry per-option track outcomes."""
+    return bool(TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key)) or (
+        bool(AVAILABILITY_FIELD_KEY_PATTERN.match(field_key))
+        and bool(config.get("track_status_enabled"))
+    )
+
+
+def _track_status_assignments(config: dict) -> list[dict]:
+    return [
+        assignment
+        for option in config.get("options") or []
+        for assignment in option.get("track_statuses") or []
+    ]
+
+
+def validate_track_status_options(
+    db: Session,
+    tournament_id: int | None,
+    field_key: str,
+    question_type: str,
+    config: dict,
+) -> None:
+    """Validate option-level track outcomes for Track Status and opted-in
+    Availability fields. Track mappings are tournament-only and catalog IDs
+    remain valid after archival so historical fields can still be read."""
+    assignments = _track_status_assignments(config)
+    enabled = track_status_enabled(field_key, config)
+
+    _require(
+        enabled or (not assignments and not config.get("track_status_enabled")),
+        "track_statuses are only allowed on a track_status_* field or an opted-in availability field",
+    )
+    if not enabled:
+        return
+
+    _require(tournament_id is not None, "track status fields require a tournament-owned form")
+    if TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key):
+        _require(config.get("required") is True, "track status fields must be required")
+
+    track_ids = {assignment["track_id"] for assignment in assignments}
+    valid_ids = {
+        track_id
+        for (track_id,) in db.query(TournamentTrack.id)
+        .filter(TournamentTrack.tournament_id == tournament_id, TournamentTrack.id.in_(track_ids))
+        .all()
+    } if track_ids else set()
+    missing_ids = track_ids - valid_ids
+    _require(not missing_ids, f"track id(s) do not belong to this tournament: {sorted(missing_ids)}")
+
+    if question_type == "multi_select_checkbox":
+        statuses_by_track: dict[int, set[str]] = {}
+        for assignment in assignments:
+            statuses_by_track.setdefault(assignment["track_id"], set()).add(assignment["status"])
+        conflicting = sorted(track_id for track_id, statuses in statuses_by_track.items() if len(statuses) > 1)
+        _require(
+            not conflicting,
+            f"checkbox options assign conflicting statuses for track id(s): {conflicting}",
+        )
 
 
 def validate_branching_options(
@@ -174,6 +266,10 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
 
         for check in (
             lambda: validate_reserved_field_key(field.field_key, field.question_type),
+            lambda: validate_tournament_preset(field.field_key, form.tournament_id),
+            lambda: validate_track_status_options(
+                db, form.tournament_id, field.field_key, field.question_type, normalized_config
+            ),
             lambda: validate_branching_options(
                 db, form.id, field.question_type, normalized_config, field_id=field.id
             ),
