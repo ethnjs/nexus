@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
+import { Toggle } from "@/components/ui/Toggle";
 import { IconPresets } from "@/components/ui/Icons";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
@@ -14,6 +15,7 @@ import {
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
   parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
   parseLunchFieldKey, buildLunchFieldKey,
+  parseTrackStatusFieldKey, buildTrackStatusFieldKey,
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
@@ -22,6 +24,7 @@ const KIND_OPTIONS: { value: PresetKind | ""; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
   { value: "lunch", label: "Lunch" },
+  { value: "track_status", label: "Track Status" },
 ];
 
 // Reserved-key presets (availability_{date}, event_preference_{suffix},
@@ -83,6 +86,7 @@ export function PresetPopover({
     const fieldKey =
       kind === "availability" ? buildAvailabilityFieldKey(soleDay ?? "")
       : kind === "lunch" ? buildLunchFieldKey(soleDay ?? "", "")
+      : kind === "track_status" ? "track_status_"
       : "event_preference_";
     // Every preset's allowedQuestionTypes is option-bearing, so there's
     // always exactly one starter row to seed here — entity-shaped (an empty
@@ -93,7 +97,7 @@ export function PresetPopover({
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
-      config: { ...sanitizeConfigForType(field.config, questionType), options: [starterOption] },
+      config: { ...sanitizeConfigForType(field.config, questionType), required: kind === "track_status" ? true : field.config?.required ?? false, options: [starterOption] },
     });
   }
 
@@ -131,7 +135,30 @@ export function PresetPopover({
             />
           </div>
           {presetKind === "availability" && (
-            <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+            <>
+              <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
+                <Toggle
+                  checked={!!field.config?.track_status_enabled}
+                  onChange={(checked) => onFieldChange({
+                    config: {
+                      ...field.config,
+                      track_status_enabled: checked,
+                      options: field.config?.options?.map((option) => {
+                        if (checked && Array.isArray(option.value)) {
+                          return { ...option, value: { shift_ids: option.value, track_statuses: [] } };
+                        }
+                        if (!checked && typeof option.value === "object" && !Array.isArray(option.value)) {
+                          return { ...option, value: option.value.shift_ids ?? [] };
+                        }
+                        return option;
+                      }),
+                    },
+                  })}
+                />
+              </div>
+            </>
           )}
           {presetKind === "event_preference" && (
             <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
@@ -139,10 +166,25 @@ export function PresetPopover({
           {presetKind === "lunch" && (
             <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
           )}
+          {presetKind === "track_status" && (
+            <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
+          )}
         </div>
       )}
     </FormPopover>
   );
+}
+
+function TrackStatusParams({ field, onFieldChange, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
+}) {
+  const { suffix: parsedSuffix } = parseTrackStatusFieldKey(field.field_key);
+  const [suffix, setSuffix] = useState(parsedSuffix);
+  function handleChange(value: string) {
+    setSuffix(value);
+    onFieldChange({ field_key: buildTrackStatusFieldKey(value) });
+  }
+  return <Input label="Suffix" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Suffix is required." : undefined} />;
 }
 
 function DayPicker({ label, date, tournamentDates, onChange, error }: {

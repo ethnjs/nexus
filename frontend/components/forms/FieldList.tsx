@@ -512,6 +512,7 @@ export function FieldList({ form }: { form: Form }) {
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
           tournamentDates={tournamentDates}
+          presetsEnabled={form.tournament_id != null}
           onOpenPresets={loadTournament}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}

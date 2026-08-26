@@ -327,6 +327,7 @@ export function FieldCard({
                 <Toggle
                   checked={!!field.config?.required}
                   onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
+                  locked={presetKind === "track_status"}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>

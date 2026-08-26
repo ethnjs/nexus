@@ -29,6 +29,8 @@ interface ChipInputProps {
   size?: ChipInputSize;
   /** Rendered as the last item in the chip row (wraps with the chips), e.g. an "add" popover trigger. */
   addButton?: ReactNode;
+  /** Optional control rendered inside each chip, e.g. a status dropdown. */
+  renderChipTrailing?: (chip: string) => ReactNode;
 }
 
 const STATUS_STYLES: Record<ChipStatus, { background: string; color: string; border: string }> = {
@@ -91,6 +93,7 @@ function ChipRemoveButton({ onClick }: { onClick: () => void }) {
 export function ChipInput({
   value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, chipLockReason,
   getChipTooltip, variant = "primary", size = "md", addButton,
+  renderChipTrailing,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
@@ -172,6 +175,7 @@ export function ChipInput({
                   {chip}
                 </Tooltip>
               ) : chip}
+              {renderChipTrailing?.(chip)}
               {!locked && lockReason && (
                 <Tooltip variant="info" message={lockReason} showIcon={false}>
                   <span
