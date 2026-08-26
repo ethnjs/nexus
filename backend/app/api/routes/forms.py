@@ -38,6 +38,7 @@ from app.models.models import (
     FormField,
     FormResponse,
     FormResponsePendingUpdate,
+    TournamentForm,
     TournamentMembership,
     User,
     utcnow,
@@ -90,6 +91,13 @@ def create_tournament_form(
         created_by=current_user.id,
     )
     db.add(form)
+    db.flush()  # assigns form.id, needed for the companion row's FK below
+
+    # Every tournament-scoped Form gets a TournamentForm companion row —
+    # see the model docstring. is_onboarding starts False; the
+    # onboarding-forms routes flip it.
+    db.add(TournamentForm(tournament_id=tournament_id, form_id=form.id))
+
     db.commit()
     db.refresh(form)
     return form
@@ -304,6 +312,15 @@ def update_form(
             detail="A published form cannot be reverted to draft — archive it instead if it should stop accepting responses",
         )
 
+    if payload.status == "published" and form.status == "archived":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An archived form must be unarchived to draft and reviewed before it can be republished",
+        )
+
+    if payload.status == "archived":
+        _reject_if_onboarding(db, form)
+
     if payload.status == "published":
         try:
             validate_form_for_publish(db, form)
@@ -325,6 +342,21 @@ def update_form(
 
 
 # ---------------------------------------------------------------------------
+# One deliberate exception to Onboarding never being referenced by Forms
+# (Onboarding depends on Forms, never the reverse — see the TournamentForm
+# model docstring): a form still flagged is_onboarding can't be archived out
+# from under the sequence it's part of. Remove it from onboarding first.
+# ---------------------------------------------------------------------------
+def _reject_if_onboarding(db: Session, form: Form) -> None:
+    tf = db.query(TournamentForm).filter(TournamentForm.form_id == form.id).first()
+    if tf is not None and tf.is_onboarding:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This form is part of the onboarding sequence — remove it from onboarding before archiving",
+        )
+
+
+# ---------------------------------------------------------------------------
 # POST /forms/{form_id}/archive/ — soft delete via status="archived".
 # Responses and fields are left in place.
 # ---------------------------------------------------------------------------
@@ -333,6 +365,7 @@ def archive_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    _reject_if_onboarding(db, form)
     form.status = "archived"
     db.commit()
     db.refresh(form)

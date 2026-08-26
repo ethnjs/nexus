@@ -354,6 +354,7 @@ class Tournament(Base):
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
     forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
+    tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -394,6 +395,15 @@ class TournamentMembership(Base):
 
     # "interested" | "confirmed"
     status = Column(String(32), nullable=False, default="interested")
+
+    # Set once this member has answered every currently-onboarding-flagged,
+    # published TournamentForm for this tournament. Permanent once set —
+    # later removing/archiving an onboarding form never unsets it (a
+    # shrinking requirement can only help stragglers finish, never un-onboard
+    # someone already done). Adding a *new* onboarding form is the one
+    # requirement change allowed to null this back out — see the
+    # onboarding-forms POST route, which clears it tournament-wide.
+    onboarded_at = Column(DateTime(timezone=True), nullable=True)
 
     notes = Column(Text, nullable=True)
 
@@ -697,6 +707,7 @@ class Form(Base):
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
+    tournament_form = relationship("TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -712,6 +723,36 @@ class Form(Base):
     @property
     def response_count(self) -> int:
         return len(self.responses)
+
+
+# ---------------------------------------------------------------------------
+# TournamentForm — 1:1 companion row every tournament-scoped Form gets at
+# creation time (see create_tournament_form in api/routes/forms.py). Never
+# deleted while the Form exists; is_onboarding just toggles what the row
+# means rather than the row itself coming and going.
+#
+# is_onboarding + order together define the onboarding step sequence for the
+# tournament (order is only meaningful — and set — for is_onboarding=True
+# rows). Standard, non-onboarding tournament forms leave order null; the
+# eventual prerequisite/visibility mechanism for those is a later phase, not
+# built yet.
+#
+# A form linked here with is_onboarding=True cannot be archived — see the
+# guard in api/routes/forms.py's update_form/archive_form — it must be
+# removed from onboarding (is_onboarding flipped back to False) first.
+# ---------------------------------------------------------------------------
+class TournamentForm(Base):
+    __tablename__ = "tournament_forms"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False, unique=True)
+    is_onboarding = Column(Boolean, nullable=False, default=False)
+    order = Column(Integer, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    tournament = relationship("Tournament", back_populates="tournament_forms")
+    form = relationship("Form", back_populates="tournament_form")
 
 
 # ---------------------------------------------------------------------------
