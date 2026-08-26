@@ -1341,8 +1341,6 @@ export const formsApi = {
   // moment an untouched entity-backed option got saved again.
   getForEdit: (formId: string) => api.get<Form>(`/forms/${formId}/?raw=true`),
   update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
-  archive: (formId: string) => api.post<Form>(`/forms/${formId}/archive/`, {}),
-  unarchive: (formId: string) => api.post<Form>(`/forms/${formId}/unarchive/`, {}),
   // 409s if the form has any responses — check response_count client-side first.
   delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
   // Full ordered target field list — see FormFieldInput and the Edit

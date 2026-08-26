@@ -312,13 +312,7 @@ def update_form(
             detail="An archived form must be unarchived to draft and reviewed before it can be republished",
         )
 
-    if payload.status == "draft" and form.status == "archived":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Use the unarchive endpoint to restore an archived form to draft",
-        )
-
-    if payload.status in {"draft", "archived"} and form.status == "published":
+    if payload.status in {"draft", "archived"}:
         _reject_if_onboarding(db, form)
 
     if payload.status == "published":
@@ -354,44 +348,6 @@ def _reject_if_onboarding(db: Session, form: Form) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="This form is part of the onboarding sequence — remove it from onboarding before archiving",
         )
-
-
-# ---------------------------------------------------------------------------
-# POST /forms/{form_id}/archive/ — soft delete via status="archived".
-# Responses and fields are left in place.
-# ---------------------------------------------------------------------------
-@router.post("/forms/{form_id}/archive/", response_model=FormRead)
-def archive_form(
-    db: Session = Depends(get_db),
-    form: Form = Depends(require_form_manage_access),
-):
-    _reject_if_onboarding(db, form)
-    form.status = "archived"
-    db.commit()
-    db.refresh(form)
-    return form
-
-
-# ---------------------------------------------------------------------------
-# POST /forms/{form_id}/unarchive/ — restores an archived form to draft.
-# Restoring intentionally never publishes the form: a manager must review and
-# explicitly publish it before it can accept responses again.
-# ---------------------------------------------------------------------------
-@router.post("/forms/{form_id}/unarchive/", response_model=FormRead)
-def unarchive_form(
-    db: Session = Depends(get_db),
-    form: Form = Depends(require_form_manage_access),
-):
-    if form.status != "archived":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Only archived forms can be restored to draft",
-        )
-
-    form.status = "draft"
-    db.commit()
-    db.refresh(form)
-    return form
 
 
 # ---------------------------------------------------------------------------

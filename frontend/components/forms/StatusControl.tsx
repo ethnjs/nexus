@@ -31,11 +31,13 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
   }
 
   async function archive() {
-    setError(undefined);
+    setBusy(true); setError(undefined);
     try {
-      onUpdated(await formsApi.archive(form.id));
+      onUpdated(await formsApi.update(form.id, { status: "archived" }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to archive form.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -53,7 +55,7 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
   async function restore() {
     setBusy(true); setError(undefined);
     try {
-      onUpdated(await formsApi.unarchive(form.id));
+      onUpdated(await formsApi.update(form.id, { status: "draft" }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to restore form.");
     } finally {

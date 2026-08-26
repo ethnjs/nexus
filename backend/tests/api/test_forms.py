@@ -296,7 +296,7 @@ class TestGetForm:
 
 
 # ---------------------------------------------------------------------------
-# PATCH / archive / delete /forms/{form_id}/
+# PATCH / delete /forms/{form_id}/
 # ---------------------------------------------------------------------------
 
 class TestUpdateArchiveDeleteForm:
@@ -310,37 +310,23 @@ class TestUpdateArchiveDeleteForm:
         assert res.json()["name"] == "Renamed"
         assert res.json()["status"] == "published"
 
-    def test_archive_sets_status(self, client, db, td_user, td_tournament):
+    def test_patch_archives_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         db.commit()
         login(client, "td@test.com", "tdpass")
-        res = client.post(f"/forms/{form.id}/archive/")
+        res = client.patch(f"/forms/{form.id}/", json={"status": "archived"})
         assert res.status_code == 200
         assert res.json()["status"] == "archived"
 
-    def test_unarchive_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):
+    def test_patch_restores_archived_form_to_draft(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="archived")
         db.commit()
         login(client, "td@test.com", "tdpass")
 
-        res = client.post(f"/forms/{form.id}/unarchive/")
+        res = client.patch(f"/forms/{form.id}/", json={"status": "draft"})
 
         assert res.status_code == 200
         assert res.json()["status"] == "draft"
-
-    def test_unarchive_rejects_non_archived_form(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament)
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert client.post(f"/forms/{form.id}/unarchive/").status_code == 409
-
-    def test_archived_form_must_use_unarchive_endpoint(self, client, db, td_user, td_tournament):
-        form = _make_form(db, td_user, td_tournament, status="archived")
-        db.commit()
-        login(client, "td@test.com", "tdpass")
-
-        assert client.patch(f"/forms/{form.id}/", json={"status": "draft"}).status_code == 409
 
     def test_unpublish_published_form_to_draft(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")

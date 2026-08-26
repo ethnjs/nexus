@@ -159,7 +159,7 @@ def test_onboarding_form_cannot_be_archived_or_deleted_until_removed(client, db,
     db.commit()
     login(client, "td@test.com", "tdpass")
 
-    archive = client.post(f"/forms/{form.id}/archive/")
+    archive = client.patch(f"/forms/{form.id}/", json={"status": "archived"})
     delete = client.delete(f"/forms/{form.id}/")
 
     assert archive.status_code == 409
