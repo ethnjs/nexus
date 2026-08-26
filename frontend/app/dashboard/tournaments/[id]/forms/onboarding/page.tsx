@@ -7,7 +7,7 @@ import {
 } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { formsApi, onboardingFormsApi, FormListItem, OnboardingForm, ApiError } from "@/lib/api";
+import { formsApi, tournamentOnboardingApi, FormListItem, OnboardingForm, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { Card } from "@/components/ui/Card";
@@ -40,7 +40,7 @@ export default function OnboardingFormsPage() {
 
   useEffect(() => {
     if (!canManageForms) return;
-    Promise.all([formsApi.listForTournament(tournamentId), onboardingFormsApi.list(tournamentId)])
+    Promise.all([formsApi.listForTournament(tournamentId), tournamentOnboardingApi.listForms(tournamentId)])
       .then(([forms, onboarding]) => {
         setAllForms(forms);
         setBaseline(onboarding);
@@ -59,7 +59,7 @@ export default function OnboardingFormsPage() {
   const isDirty = baseline !== null && draft.map((f) => f.id).join(",") !== baseline.map((f) => f.id).join(",");
 
   async function handleAdd(formId: string) {
-    const created = await onboardingFormsApi.add(tournamentId, formId);
+    const created = await tournamentOnboardingApi.addForm(tournamentId, formId);
     const next = [...draft, created];
     setBaseline(next);
     setDraft(next);
@@ -68,7 +68,7 @@ export default function OnboardingFormsPage() {
   async function handleRemove(formId: string) {
     setRemovingId(formId);
     try {
-      await onboardingFormsApi.remove(tournamentId, formId);
+      await tournamentOnboardingApi.removeForm(tournamentId, formId);
       const next = draft.filter((f) => f.id !== formId);
       setBaseline(next);
       setDraft(next);
@@ -97,7 +97,7 @@ export default function OnboardingFormsPage() {
     setSaving(true);
     setSaveError(undefined);
     try {
-      const updated = await onboardingFormsApi.reorder(tournamentId, draft.map((f) => f.id));
+      const updated = await tournamentOnboardingApi.reorderForms(tournamentId, draft.map((f) => f.id));
       setBaseline(updated);
       setDraft(updated);
     } catch (e) {

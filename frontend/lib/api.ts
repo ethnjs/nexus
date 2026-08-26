@@ -1356,21 +1356,18 @@ export const formsApi = {
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
 }
 
-export const onboardingFormsApi = {
-  list: (tournamentId: number) =>
+export const tournamentOnboardingApi = {
+  listForms: (tournamentId: number) =>
     api.get<OnboardingForm[]>(`/tournaments/${tournamentId}/onboarding-forms/`),
-  add: (tournamentId: number, formId: string) =>
+  addForm: (tournamentId: number, formId: string) =>
     api.post<OnboardingForm>(`/tournaments/${tournamentId}/onboarding-forms/`, { form_id: formId }),
-  reorder: (tournamentId: number, formIds: string[]) =>
+  reorderForms: (tournamentId: number, formIds: string[]) =>
     api.patch<OnboardingForm[]>(
       `/tournaments/${tournamentId}/onboarding-forms/reorder/`,
       { forms: formIds.map((form_id, index) => ({ form_id, order: index + 1 })) },
     ),
-  remove: (tournamentId: number, formId: string) =>
+  removeForm: (tournamentId: number, formId: string) =>
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
-}
-
-export const tournamentOnboardingApi = {
   progress: (tournamentId: number) =>
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 }
