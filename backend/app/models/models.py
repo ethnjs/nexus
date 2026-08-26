@@ -755,6 +755,11 @@ class TournamentForm(Base):
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     is_onboarding = Column(Boolean, nullable=False, default=False)
     order = Column(Integer, nullable=True)
+    # Optional member-visibility requirements for standard tournament forms.
+    # Shape and referenced-id validation live with the manager API; evaluation
+    # lives in core/tournament/form_prerequisites.py so every future caller
+    # (member form list, rendering, and submission) shares one rule.
+    prerequisites = Column(JSON, nullable=False, default=dict)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     tournament = relationship("Tournament", back_populates="tournament_forms")
