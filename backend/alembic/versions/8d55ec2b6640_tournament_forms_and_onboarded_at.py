@@ -1,4 +1,4 @@
-"""tournament forms and onboarded_at
+"""tournament forms, onboarding, and prerequisites
 
 Revision ID: 8d55ec2b6640
 Revises: 7db31ae17e3c
@@ -15,7 +15,9 @@ relationship is strictly 1:1, so there's no "which TournamentForm" beyond
 "which Form." Deleting a Form cascades away its TournamentForm row for free.
 
 Also adds tournament_memberships.onboarded_at, set once a member has
-answered every currently-onboarding-flagged published form.
+answered every currently-onboarding-flagged published form, plus the
+TournamentForm.prerequisites JSON configuration used by standard form
+visibility rules.
 
 Backfills a tournament_forms row for every existing forms row that already
 has a tournament_id, so the 1:1 invariant holds for pre-existing data too.
@@ -38,6 +40,7 @@ def upgrade() -> None:
     sa.Column('tournament_id', sa.Integer(), nullable=False),
     sa.Column('is_onboarding', sa.Boolean(), nullable=False),
     sa.Column('order', sa.Integer(), nullable=True),
+    sa.Column('prerequisites', sa.JSON(), nullable=False, server_default=sa.text("'{}'::json")),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=True),
     sa.ForeignKeyConstraint(['form_id'], ['forms.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['tournament_id'], ['tournaments.id'], ondelete='CASCADE'),
@@ -56,6 +59,7 @@ def upgrade() -> None:
         WHERE tournament_id IS NOT NULL
         """
     )
+    op.alter_column('tournament_forms', 'prerequisites', server_default=None)
 
 
 def downgrade() -> None:
