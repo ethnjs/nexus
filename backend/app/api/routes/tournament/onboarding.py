@@ -3,20 +3,55 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.api.routes.forms import _to_list_read
+from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.memberships import resolve_memberships_or_users
+from app.core.tournament.memberships import get_membership_by_user, resolve_memberships_or_users
+from app.core.tournament.onboarding import advance_onboarding_progress
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentForm, TournamentMembership, User
-from app.schemas.tournament.onboarding import OnboardingFormAdd, OnboardingFormRead, OnboardingFormReorder
+from app.schemas.tournament.onboarding import (
+    OnboardingFormAdd,
+    OnboardingFormRead,
+    OnboardingFormReorder,
+    OnboardingProgressRead,
+)
 
 # Routes are nested: /tournaments/{tournament_id}/onboarding-forms/...
 router = APIRouter(prefix="/tournaments/{tournament_id}/onboarding-forms", tags=["tournaments"])
+member_router = APIRouter(prefix="/tournaments/{tournament_id}/onboarding", tags=["tournaments"])
 
 
 def _read(tf: TournamentForm, creator) -> OnboardingFormRead:
     base = _to_list_read(tf.form, creator)
     return OnboardingFormRead(**base.model_dump(), order=tf.order)
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/onboarding/progress/ — member-facing
+# progression after a successful form submission. It finds the next required
+# published form and snapshots onboarded_at the first time none remain.
+# ---------------------------------------------------------------------------
+@member_router.post("/progress/", response_model=OnboardingProgressRead)
+def advance_member_onboarding(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    membership = get_membership_by_user(db, tournament_id, current_user.id)
+    if membership is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
+
+    progress = advance_onboarding_progress(db, membership)
+    db.commit()
+    db.refresh(membership)
+    return OnboardingProgressRead(
+        next_form_id=progress.next_form_id,
+        onboarded_at=membership.onboarded_at,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime
 from pydantic import BaseModel, field_validator
 
 from app.schemas.form import FormListRead
@@ -33,3 +34,10 @@ class OnboardingFormRead(FormListRead):
     # `id` (inherited from FormListRead) already is the form_id — a
     # TournamentForm row's identity is its Form's identity, 1:1.
     order: int | None = None
+
+
+class OnboardingProgressRead(BaseModel):
+    """Member-facing result of advancing through the onboarding sequence."""
+
+    next_form_id: str | None = None
+    onboarded_at: datetime | None = None

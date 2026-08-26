@@ -106,6 +106,7 @@ app.include_router(tournament_admin.router,                prefix="", dependenci
 app.include_router(tournament_audit.router,                prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_setup_checklist.router,      prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_onboarding.router,            prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_onboarding.member_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])
