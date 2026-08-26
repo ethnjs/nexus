@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { invitesApi, Invite, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
@@ -10,7 +10,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { Input } from "@/components/ui/Input";
+import { EditableText } from "@/components/ui/EditableText";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconArchive, IconInvite, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
@@ -27,72 +27,16 @@ function EditableLabel({ tournamentId, invite, onUpdated }: {
   invite: Invite;
   onUpdated: (invite: Invite) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [value, setValue] = useState(invite.label ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | undefined>(undefined);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.focus();
-  }, [editing]);
-
-  function startEdit() {
-    setValue(invite.label ?? "");
-    setError(undefined);
-    setEditing(true);
-  }
-
-  async function save() {
-    const trimmed = value.trim();
-    if (trimmed === (invite.label ?? "")) {
-      setEditing(false);
-      return;
-    }
-    setSaving(true);
-    try {
-      const updated = await invitesApi.update(tournamentId, invite.id, { label: trimmed || null });
-      onUpdated(updated);
-      setEditing(false);
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Failed to update label.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (editing) {
-    return (
-      <Input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={save}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); save(); }
-          if (e.key === "Escape") { e.preventDefault(); setEditing(false); }
-        }}
-        error={error}
-        disabled={saving}
-        size="xs"
-        font="sans"
-        fullWidth
-      />
-    );
-  }
-
   return (
-    <span
-      onClick={startEdit}
-      title="Click to edit label"
-      style={{
+    <EditableText
+      value={invite.label ?? ""}
+      onSave={async (label) => onUpdated(await invitesApi.update(tournamentId, invite.id, { label }))}
+      textStyle={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-        cursor: "pointer",
       }}
-    >
-      {invite.label ?? "—"}
-    </span>
+      title="Click to edit label"
+    />
   );
 }
 
