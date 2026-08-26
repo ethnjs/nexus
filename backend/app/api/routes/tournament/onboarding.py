@@ -70,8 +70,14 @@ def add_onboarding_form(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
     if tf.is_onboarding:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This form is already part of onboarding")
-    if tf.form.status == "archived":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An archived form cannot be added to onboarding")
+    # An onboarding step must be immediately answerable. In particular,
+    # accepting a draft here would invalidate existing completions before the
+    # new requirement could actually be satisfied.
+    if tf.form.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only published forms can be added to onboarding",
+        )
 
     max_order = (
         db.query(TournamentForm.order)
@@ -117,10 +123,20 @@ def reorder_onboarding_forms(
     )
     rows_by_form_id = {r.form_id: r for r in rows}
 
-    if {item.form_id for item in payload.forms} != set(rows_by_form_id.keys()):
+    submitted_ids = [item.form_id for item in payload.forms]
+    expected_ids = set(rows_by_form_id)
+    if len(submitted_ids) != len(set(submitted_ids)) or set(submitted_ids) != expected_ids:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="forms must cover exactly the current onboarding forms, no more and no fewer",
+        )
+
+    submitted_orders = [item.order for item in payload.forms]
+    expected_orders = set(range(1, len(rows) + 1))
+    if set(submitted_orders) != expected_orders:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="orders must be a unique, contiguous sequence from 1 through the number of onboarding forms",
         )
 
     for item in payload.forms:
