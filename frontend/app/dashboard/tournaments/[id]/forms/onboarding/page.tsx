@@ -1,237 +1,309 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors } from "@dnd-kit/core";
-import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import {
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useSensor, useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { ApiError, FormListItem, OnboardingForm, formsApi, onboardingFormsApi } from "@/lib/api";
+import { formsApi, onboardingFormsApi, FormListItem, OnboardingForm, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Dropdown } from "@/components/ui/Dropdown";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconEdit, IconForms, IconGripVertical, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Combobox } from "@/components/ui/Combobox";
+import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { IconForms, IconLock, IconGripVertical, IconTrash } from "@/components/ui/Icons";
 
-function SortableOnboardingRow({ form, index, onEdit, onRemove, saving }: {
-  form: OnboardingForm;
-  index: number;
-  onEdit: () => void;
-  onRemove: () => void;
-  saving: boolean;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: form.id });
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={{
-        display: "flex", alignItems: "center", gap: "12px", padding: "12px 14px",
-        borderBottom: "1px solid var(--color-border)", background: "var(--color-surface)",
-        transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.45 : 1,
-      }}
-    >
-      <button
-        type="button"
-        aria-label={`Move ${form.name}`}
-        disabled={saving}
-        {...attributes}
-        {...listeners}
-        style={{
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "2px",
-          color: "var(--color-text-tertiary)", background: "transparent", border: "none",
-          cursor: saving ? "default" : "grab", touchAction: "none",
-        }}
-      >
-        <IconGripVertical size={16} />
-      </button>
-      <span style={{
-        width: "22px", flexShrink: 0, fontFamily: "var(--font-mono)", fontSize: "12px",
-        color: "var(--color-text-tertiary)", textAlign: "right",
-      }}>
-        {index + 1}.
-      </span>
-      <div style={{ minWidth: 0, flex: 1 }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {form.name}
-        </p>
-        {form.description && (
-          <p style={{ marginTop: "2px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {form.description}
-          </p>
-        )}
-      </div>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-        {form.response_count} responses
-      </span>
-      <div style={{ display: "flex", gap: "6px" }}>
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Edit form" onClick={onEdit}>
-          <IconEdit size={14} />
-        </Button>
-        <Button type="button" variant="ghost" size="sm" iconOnly title="Remove from onboarding" disabled={saving} onClick={onRemove}>
-          <IconTrash size={14} />
-        </Button>
-      </div>
-    </div>
-  );
-}
+const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
+  draft: "default",
+  published: "confirmed",
+  archived: "removed",
+};
 
 export default function OnboardingFormsPage() {
   const params = useParams();
-  const router = useRouter();
   const tournamentId = Number(params.id);
+
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
   const [allForms, setAllForms] = useState<FormListItem[] | null>(null);
-  const [steps, setSteps] = useState<OnboardingForm[] | null>(null);
-  const [selectedFormId, setSelectedFormId] = useState("");
+  const [baseline, setBaseline] = useState<OnboardingForm[] | null>(null);
+  const [draft, setDraft] = useState<OnboardingForm[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [addValue, setAddValue] = useState("");
+  const [adding, setAdding] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
+  const [removingId, setRemovingId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   useEffect(() => {
     if (!canManageForms) return;
     Promise.all([formsApi.listForTournament(tournamentId), onboardingFormsApi.list(tournamentId)])
       .then(([forms, onboarding]) => {
         setAllForms(forms);
-        setSteps(onboarding);
+        setBaseline(onboarding);
+        setDraft(onboarding);
       })
-      .catch((e) => {
-        setError(e instanceof ApiError ? e.message : "Failed to load onboarding forms.");
-        setAllForms([]);
-        setSteps([]);
-      });
-  }, [canManageForms, tournamentId]);
+      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load onboarding forms."));
+  }, [tournamentId, canManageForms]);
 
-  async function addForm() {
-    if (!selectedFormId) return;
-    setSaving(true);
-    setError(null);
+  // Only a published form not already an onboarding step can be added — the
+  // backend rejects anything else (see add_onboarding_form's guard).
+  const eligibleForms = useMemo(() => {
+    const onboardingIds = new Set(draft.map((f) => f.id));
+    return (allForms ?? []).filter((f) => f.status === "published" && !onboardingIds.has(f.id));
+  }, [allForms, draft]);
+
+  const isDirty = baseline !== null && draft.map((f) => f.id).join(",") !== baseline.map((f) => f.id).join(",");
+
+  async function handleAdd(formId: string) {
+    setAdding(true);
+    setAddError(null);
     try {
-      const step = await onboardingFormsApi.add(tournamentId, selectedFormId);
-      setSteps((current) => [...(current ?? []), step].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)));
-      setSelectedFormId("");
+      const created = await onboardingFormsApi.add(tournamentId, formId);
+      const next = [...draft, created];
+      setBaseline(next);
+      setDraft(next);
+      setAddValue("");
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to add the form to onboarding.");
+      setAddError(e instanceof ApiError ? e.message : "Failed to add form to onboarding.");
     } finally {
-      setSaving(false);
+      setAdding(false);
     }
   }
 
-  async function removeForm(formId: string) {
-    setSaving(true);
-    setError(null);
+  async function handleRemove(formId: string) {
+    setRemovingId(formId);
     try {
       await onboardingFormsApi.remove(tournamentId, formId);
-      setSteps((current) => (current ?? []).filter((form) => form.id !== formId).map((form, index) => ({ ...form, order: index + 1 })));
+      const next = draft.filter((f) => f.id !== formId);
+      setBaseline(next);
+      setDraft(next);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Failed to remove the form from onboarding.");
+      setLoadError(e instanceof ApiError ? e.message : "Failed to remove form from onboarding.");
+    } finally {
+      setRemovingId(null);
+    }
+  }
+
+  function handleDragStart(event: DragStartEvent) {
+    setActiveId(String(event.active.id));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    setActiveId(null);
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = draft.findIndex((f) => f.id === active.id);
+    const newIndex = draft.findIndex((f) => f.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    setDraft(arrayMove(draft, oldIndex, newIndex));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(undefined);
+    try {
+      const updated = await onboardingFormsApi.reorder(tournamentId, draft.map((f) => f.id));
+      setBaseline(updated);
+      setDraft(updated);
+    } catch (e) {
+      setSaveError(e instanceof ApiError ? e.message : "Failed to save the new order.");
     } finally {
       setSaving(false);
     }
   }
 
-  async function reorder(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id || !steps) return;
-    const oldIndex = steps.findIndex((form) => form.id === active.id);
-    const newIndex = steps.findIndex((form) => form.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-
-    const previous = steps;
-    const next = arrayMove(steps, oldIndex, newIndex).map((form, index) => ({ ...form, order: index + 1 }));
-    setSteps(next);
-    setSaving(true);
-    setError(null);
-    try {
-      const saved = await onboardingFormsApi.reorder(tournamentId, next.map((form) => form.id));
-      setSteps(saved);
-    } catch (e) {
-      setSteps(previous);
-      setError(e instanceof ApiError ? e.message : "Failed to save the new order.");
-    } finally {
-      setSaving(false);
-    }
+  function handleCancel() {
+    if (baseline) setDraft(baseline);
+    setSaveError(undefined);
   }
 
   if (membershipLoading) {
-    return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
+    return (
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
+    );
   }
 
   if (!canManageForms) {
     return (
       <Card radius="lg" style={{ padding: "8px" }}>
-        <EmptyState icon={<IconLock size={28} />} title="No access" description="You need the manage forms permission to configure onboarding." />
+        <EmptyState
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage forms permission to view this page."
+        />
       </Card>
     );
   }
 
-  if (allForms === null || steps === null) {
+  if (baseline === null || allForms === null) {
     return (
-      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
+      </div>
     );
   }
-
-  const onboardingIds = new Set(steps.map((form) => form.id));
-  const availableForms = allForms.filter((form) => form.status === "published" && !onboardingIds.has(form.id));
 
   return (
     <div>
-      {error && <p style={{ marginBottom: "12px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>}
+      <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginBottom: "16px" }}>
+        Members must complete these forms, in order, before they&rsquo;re fully onboarded to this tournament.
+        Only published forms can be added. Drag to reorder.
+      </p>
 
-      <Card radius="lg" style={{ padding: "16px", marginBottom: "16px" }}>
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}>Add an onboarding form</p>
-        <p style={{ marginTop: "3px", marginBottom: "12px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-          Only published forms are available. Adding a form asks previously completed members to complete the expanded sequence.
+      {loadError && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
+          {loadError}
         </p>
-        <div style={{ display: "flex", gap: "8px", maxWidth: "520px" }}>
-          <div style={{ flex: 1 }}>
-            <Dropdown
-              value={selectedFormId}
-              onChange={setSelectedFormId}
-              options={availableForms.map((form) => ({ value: form.id, label: form.name, subtitle: form.description ?? undefined }))}
-              placeholder={availableForms.length ? "Choose a published form" : "No published forms available"}
-              locked={saving || availableForms.length === 0}
-              fullWidth
-              searchable
-            />
-          </div>
-          <Button type="button" variant="primary" size="md" disabled={!selectedFormId || saving} loading={saving} onClick={addForm}>
-            <IconPlus size={14} /> Add
-          </Button>
-        </div>
-      </Card>
+      )}
 
-      {steps.length === 0 ? (
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState icon={<IconForms size={28} />} title="No onboarding forms" description="Add published forms above to build the member onboarding sequence." />
+      {draft.length === 0 ? (
+        <Card radius="lg" style={{ padding: "8px", marginBottom: "16px" }}>
+          <EmptyState
+            icon={<IconForms size={28} />}
+            title="No onboarding forms yet"
+            description="Add a published form below to start the onboarding sequence."
+          />
         </Card>
       ) : (
-        <Card radius="lg" style={{ overflow: "hidden" }}>
-          <div style={{ padding: "14px", borderBottom: "1px solid var(--color-border)" }}>
-            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}>Onboarding sequence</p>
-            <p style={{ marginTop: "3px", fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Drag forms to set the order members see them.</p>
-          </div>
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={reorder}>
-            <SortableContext items={steps.map((form) => form.id)} strategy={verticalListSortingStrategy}>
-              {steps.map((form, index) => (
-                <SortableOnboardingRow
+        <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDragCancel={() => setActiveId(null)}
+          >
+            <SortableContext items={draft.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+              {draft.map((form, i) => (
+                <OnboardingFormRow
                   key={form.id}
                   form={form}
-                  index={index}
-                  saving={saving}
-                  onEdit={() => router.push(`/forms/${form.id}/edit`)}
-                  onRemove={() => removeForm(form.id)}
+                  step={i + 1}
+                  removing={removingId === form.id}
+                  onRemove={() => handleRemove(form.id)}
                 />
               ))}
             </SortableContext>
+            <DragOverlay>
+              {activeId && (
+                <OnboardingFormPill form={draft.find((f) => f.id === activeId)!} dragging />
+              )}
+            </DragOverlay>
           </DndContext>
         </Card>
       )}
+
+      <Card radius="lg" style={{ padding: "16px" }}>
+        <Combobox
+          options={eligibleForms}
+          getId={(f) => f.id}
+          getLabel={(f) => f.name}
+          value={addValue}
+          onChange={(text, matched) => {
+            if (matched) {
+              handleAdd(matched.id);
+            } else {
+              setAddValue(text);
+            }
+          }}
+          allowFreeText={false}
+          placeholder="Add a published form to onboarding"
+          maxResults={eligibleForms.length}
+          error={addError ?? undefined}
+          locked={adding}
+          size="md"
+        />
+      </Card>
+
+      <FloatingSaveBar
+        visible={isDirty}
+        saving={saving}
+        error={saveError}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
+    </div>
+  );
+}
+
+function OnboardingFormPill({ form, dragging = false }: { form: OnboardingForm; dragging?: boolean }) {
+  return (
+    <div
+      style={{
+        boxSizing: "border-box",
+        display: "flex", alignItems: "center", gap: "10px",
+        height: "40px", padding: "0 12px",
+        borderRadius: "var(--radius-md)",
+        background: "var(--color-surface)",
+        boxShadow: dragging ? "var(--shadow-md, 0 4px 12px rgba(0,0,0,0.15))" : undefined,
+        cursor: dragging ? "grabbing" : "grab",
+      }}
+    >
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>{form.name}</span>
+      <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
+    </div>
+  );
+}
+
+function OnboardingFormRow({ form, step, removing, onRemove }: {
+  form: OnboardingForm;
+  step: number;
+  removing: boolean;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: form.id });
+  const style = {
+    transform: isDragging ? undefined : CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 0" }}>
+      <span style={{
+        flexShrink: 0, minWidth: "18px", textAlign: "right",
+        fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-tertiary)",
+      }}>
+        {step}.
+      </span>
+      <span {...attributes} {...listeners} style={{ display: "flex", cursor: "grab", color: "var(--color-text-tertiary)", touchAction: "none" }}>
+        <IconGripVertical size={16} />
+      </span>
+      <div ref={setNodeRef} style={{ ...style, flex: 1 }}>
+        <div style={{
+          boxSizing: "border-box",
+          display: "flex", alignItems: "center", gap: "10px",
+          height: "40px", padding: "0 12px",
+          borderRadius: "var(--radius-md)",
+          background: "var(--color-surface)",
+        }}>
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>{form.name}</span>
+          <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly loading={removing}
+            title="Remove from onboarding"
+            onClick={onRemove}
+            style={{ color: "var(--color-danger)" }}
+          >
+            <IconTrash size={13} />
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
