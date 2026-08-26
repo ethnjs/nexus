@@ -31,6 +31,7 @@ const SETTINGS_SUBITEMS = [
   { segment: "general",    label: "General" },
   { segment: "roles",      label: "Roles" },
   { segment: "invites",    label: "Invites" },
+  { segment: "tracks",     label: "Tracks" },
   { segment: "audit-log",  label: "Audit Log" },
 ];
 
@@ -59,6 +60,7 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
       (segment !== "invites" || canManageInvites) &&
+      (segment !== "tracks" || canManageTournament) &&
       (segment !== "audit-log" || canManageTournament)
   );
   const navItems = NAV_ITEMS.filter(

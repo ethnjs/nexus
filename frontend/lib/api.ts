@@ -1246,6 +1246,15 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
+export interface TournamentTrack {
+  id: number
+  tournament_id: number
+  name: string
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
 export interface MemberForm {
   id:            string
   name:          string
@@ -1404,4 +1413,15 @@ export const tournamentOnboardingApi = {
     api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
   progress: (tournamentId: number) =>
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
+}
+
+export const tournamentTracksApi = {
+  list: (tournamentId: number) =>
+    api.get<TournamentTrack[]>(`/tournaments/${tournamentId}/tracks/`),
+  create: (tournamentId: number, name: string) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, { name }),
+  update: (tournamentId: number, trackId: number, body: { name?: string; is_archived?: boolean }) =>
+    api.patch<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/`, body),
+  delete: (tournamentId: number, trackId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
 }
