@@ -327,6 +327,12 @@ def validate_availability_options(db: Session, tournament_id: int | None, config
     shift_ids: set[int] = set()
     for option in options:
         value = option.get("value")
+        if config.get("track_status_enabled"):
+            _require(
+                isinstance(value, dict) and isinstance(value.get("shift_ids"), list),
+                f"availability option value '{value}' must contain shift_ids and track_statuses when track status is enabled",
+            )
+            value = value["shift_ids"]
         _require(
             isinstance(value, list) and len(value) > 0 and all(isinstance(v, int) for v in value),
             f"availability option value '{value}' must be a non-empty list of TournamentShift ids",

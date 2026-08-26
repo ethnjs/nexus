@@ -30,11 +30,22 @@ def _unique_option_fields(options: list) -> list:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        value_key = tuple(option.value) if isinstance(option.value, list) else option.value
+        value_key = _option_value_key(option.value)
         if value_key in seen_values:
             raise ValueError(f"duplicate option value '{option.value}'")
         seen_values.add(value_key)
     return options
+
+
+def _option_value_key(value: Any):
+    """Make the supported JSON option values comparable for uniqueness."""
+    if isinstance(value, BaseModel):
+        return _option_value_key(value.model_dump())
+    if isinstance(value, list):
+        return tuple(_option_value_key(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(sorted((key, _option_value_key(item)) for key, item in value.items()))
+    return value
 
 
 class TrackStatusAssignment(BaseModel):
@@ -52,6 +63,19 @@ def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[Tra
     return assignments
 
 
+class AvailabilityTrackStatusValue(BaseModel):
+    """Raw builder value for an availability option that updates tracks."""
+    model_config = ConfigDict(extra="forbid")
+
+    shift_ids: list[int] = Field(min_length=1)
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
+
+    @field_validator("track_statuses")
+    @classmethod
+    def _unique_tracks(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
+
+
 class PlainOption(BaseModel):
     """An option with no branching — multi_select_checkbox, ranked_choice.
     extra='forbid' rejects a stray next_field_id/action on these types.
@@ -62,7 +86,7 @@ class PlainOption(BaseModel):
     expect based on the field's field_key."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] | list[TrackStatusAssignment] | dict = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
 
@@ -72,7 +96,7 @@ class BranchingOption(BaseModel):
     See PlainOption for value's dual str/list[int] shape."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] | list[TrackStatusAssignment] | dict = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
     next_field_id: str | None = None
