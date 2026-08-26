@@ -49,7 +49,7 @@ def _option_value_key(value: Any):
 
 
 class TrackStatusAssignment(BaseModel):
-    """One track outcome attached to a selectable option."""
+    """One track status attached to a selectable option."""
     model_config = ConfigDict(extra="forbid")
 
     id: int = Field(gt=0)

@@ -82,7 +82,7 @@ export function issuesFor(field: ValidatableField): string[] {
       return presetKind === "track_status" && Array.isArray(option.value) ? onlyAssignments(option.value) : [];
     };
     if (hasTrackOutcomes && options.some((option) => trackAssignmentsFor(option).some((assignment) => !assignment.status))) {
-      issues.push("Choose a status for every track outcome.");
+      issues.push("Choose a status for every track.");
     }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {
       issues.push("Ranks can't exceed the number of options.");

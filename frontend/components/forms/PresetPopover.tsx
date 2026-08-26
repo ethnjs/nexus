@@ -94,10 +94,25 @@ export function PresetPopover({
     // plain freeform for lunch — rather than leaving the TD looking at an
     // empty list with nothing to click but "Add option."
     const starterOption = isEntityBackedPreset(kind) ? newEntityOption() : newOption();
+    const supportsBranching = questionType === "single_select_radio" || questionType === "single_select_dropdown";
+    // Keep existing option rows (including their branch targets) when a
+    // preset changes. Only the value changes shape to fit the new preset.
+    const existingOptions = field.config?.options ?? [];
+    const options = existingOptions.length > 0
+      ? existingOptions.map((option) => ({
+          ...option,
+          ...(supportsBranching ? {} : { next_field_id: null, action: null }),
+          value: isEntityBackedPreset(kind)
+            ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
+            : kind === "track_status"
+              ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "object" && value !== null && "id" in value && "status" in value) ? option.value : [])
+              : typeof option.value === "string" ? option.value : option.label,
+        }))
+      : [starterOption];
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
-      config: { ...sanitizeConfigForType(field.config, questionType), required: kind === "track_status" ? true : field.config?.required ?? false, options: [starterOption] },
+      config: { ...sanitizeConfigForType(field.config, questionType), required: kind === "track_status" ? true : field.config?.required ?? false, options },
     });
   }
 
@@ -147,7 +162,10 @@ export function PresetPopover({
                       track_status_enabled: checked,
                       options: field.config?.options?.map((option) => {
                         if (checked && Array.isArray(option.value)) {
-                          return { ...option, value: { shift_ids: option.value, track_statuses: [] } };
+                          const shiftIds = option.value.every((value) => typeof value === "number")
+                            ? option.value as number[]
+                            : [];
+                          return { ...option, value: { shift_ids: shiftIds, track_statuses: [] } };
                         }
                         if (!checked && typeof option.value === "object" && !Array.isArray(option.value)) {
                           return { ...option, value: option.value.shift_ids ?? [] };

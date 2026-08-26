@@ -82,11 +82,11 @@ function shiftIdsFor(option: EditableOption): number[] {
 }
 
 // Shared options editor for entity-backed presets and Track Status. The only
-// difference is whether the row also has a shift/event picker; track outcome
-// chips live here for both Track Status and opted-in Availability fields.
+// difference is whether the row also has a shift/event picker; track chips
+// live here for both Track Status and opted-in Availability fields.
 export function EntityOptionsEditor({ fieldKey, tournament, questionType, options, onChange, displayStyle, branchTargets, errors, trackStatusEnabled = false }: EntityOptionsEditorProps) {
   const isEntity = fieldKey !== 'track_status'
-  const hasTrackOutcomes = fieldKey === 'track_status' || trackStatusEnabled
+  const hasTracks = fieldKey === 'track_status' || trackStatusEnabled
   const [entities, setEntities] = useState<Entity[] | null>(isEntity ? null : [])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
@@ -149,7 +149,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
               emptyMessage={emptyMessage}
               onToggle={(id) => toggleEntity(option.clientKey, id)}
             />}
-            {hasTrackOutcomes && <TrackOutcomePicker
+            {hasTracks && <TrackPicker
               tournament={tournament}
               option={option}
               availability={fieldKey === 'availability'}
@@ -198,7 +198,7 @@ function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessag
   />
 }
 
-function TrackOutcomePicker({ tournament, option, availability, onChange }: { tournament: Tournament; option: EditableOption; availability: boolean; onChange: (option: EditableOption) => void }) {
+function TrackPicker({ tournament, option, availability, onChange }: { tournament: Tournament; option: EditableOption; availability: boolean; onChange: (option: EditableOption) => void }) {
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
   useEffect(() => { tournamentTracksApi.list(tournament.id).then(setTracks).catch(() => {}) }, [tournament.id])
   const assignments = assignmentsFor(option, availability)
@@ -223,7 +223,6 @@ function TrackOutcomePicker({ tournament, option, availability, onChange }: { to
   }
 
   return <ChipInput
-    label="Track outcomes"
     value={selected.map((track) => track.name)}
     onChange={(names) => selected.filter((track) => !names.includes(track.name)).forEach(toggle)}
     disableInput variant="transparent" size="sm" fullWidth

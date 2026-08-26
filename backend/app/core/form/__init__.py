@@ -121,7 +121,7 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
 def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:
     """True when any field in the tournament is bound to ``track_id``.
 
-    Track outcomes store durable catalog IDs in each option's
+    Track statuses store durable catalog IDs in each option's
     ``track_statuses`` list. Archived fields are intentionally included: they
     are historical form structure and deleting the catalog entry would leave
     them unresolved.

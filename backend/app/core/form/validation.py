@@ -86,7 +86,7 @@ def validate_field_config(question_type: str, config: dict | None) -> dict:
         raise FormFieldValidationError(str(e))
 
     normalized = parsed.model_dump()
-    # These fields were added for track outcomes after forms already existed.
+    # These fields were added for track statuses after forms already existed.
     # Keep an omitted opt-in/mapping omitted instead of rewriting every
     # unrelated form field the next time its form is saved.
     source = config or {}
@@ -127,7 +127,7 @@ def validate_tournament_preset(field_key: str, tournament_id: int | None) -> Non
 
 
 def track_status_enabled(field_key: str, config: dict) -> bool:
-    """Whether this field is allowed to carry per-option track outcomes."""
+    """Whether this field is allowed to carry per-option track statuses."""
     return bool(TRACK_STATUS_FIELD_KEY_PATTERN.match(field_key)) or (
         bool(AVAILABILITY_FIELD_KEY_PATTERN.match(field_key))
         and bool(config.get("track_status_enabled"))
@@ -152,7 +152,7 @@ def validate_track_status_options(
     question_type: str,
     config: dict,
 ) -> None:
-    """Validate option-level track outcomes for Track Status and opted-in
+    """Validate option-level track statuses for Track Status and opted-in
     Availability fields. Track mappings are tournament-only and catalog IDs
     remain valid after archival so historical fields can still be read."""
     assignments = _track_status_assignments(config)
