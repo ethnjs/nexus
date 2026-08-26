@@ -632,15 +632,14 @@ class TournamentShift(Base):
 
 # ---------------------------------------------------------------------------
 # TournamentTrack — a TD-managed volunteer track such as Test Writing or
-# Day 1. `slug` is the durable reserved-field-key suffix; `name` can change
-# without invalidating historical forms or future membership-track rows.
+# Day 1. Form fields reference the track's stable database ID in their config,
+# so `name` can change without invalidating historical answers or statuses.
 # ---------------------------------------------------------------------------
 class TournamentTrack(Base):
     __tablename__ = "tournament_tracks"
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    slug = Column(String(64), nullable=False)
     name = Column(String(255), nullable=False)
     is_archived = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
@@ -649,7 +648,7 @@ class TournamentTrack(Base):
     tournament = relationship("Tournament", back_populates="tracks")
 
     __table_args__ = (
-        UniqueConstraint("tournament_id", "slug", name="uq_tournament_track_slug"),
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_track_name"),
     )
 
 

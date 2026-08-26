@@ -106,6 +106,27 @@ def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: st
     )
 
 
+def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: int) -> bool:
+    """True when any field in the tournament is bound to ``track_id``.
+
+    The track preset added later stores the durable catalog ID in config; the
+    field-key check covers the reserved ``track_{id}`` shape as well. Archived
+    fields are intentionally included: they are historical form structure and
+    deleting the catalog entry would leave them unresolved.
+    """
+    fields = (
+        db.query(FormField)
+        .join(Form, Form.id == FormField.form_id)
+        .filter(Form.tournament_id == tournament_id)
+        .all()
+    )
+    track_key = f"track_{track_id}"
+    return any(
+        field.field_key == track_key or (field.config or {}).get("track_id") == track_id
+        for field in fields
+    )
+
+
 def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
     """True if `shift_id` appears inside any non-archived availability_*
     field's option `value` (the list of grouped TournamentShift ids) on
