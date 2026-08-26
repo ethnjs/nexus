@@ -30,5 +30,6 @@ class OnboardingFormReorder(BaseModel):
 
 
 class OnboardingFormRead(FormListRead):
-    tournament_form_id: int
+    # `id` (inherited from FormListRead) already is the form_id — a
+    # TournamentForm row's identity is its Form's identity, 1:1.
     order: int | None = None

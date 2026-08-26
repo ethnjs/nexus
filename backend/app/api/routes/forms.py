@@ -389,6 +389,7 @@ def delete_form(
             status_code=status.HTTP_409_CONFLICT,
             detail="Form has existing responses — archive it instead of deleting",
         )
+    _reject_if_onboarding(db, form)
 
     db.delete(form)
     db.commit()

@@ -16,7 +16,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/onboarding-forms", tags=
 
 def _read(tf: TournamentForm, creator) -> OnboardingFormRead:
     base = _to_list_read(tf.form, creator)
-    return OnboardingFormRead(**base.model_dump(), tournament_form_id=tf.id, order=tf.order)
+    return OnboardingFormRead(**base.model_dump(), order=tf.order)
 
 
 # ---------------------------------------------------------------------------

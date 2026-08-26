@@ -737,16 +737,22 @@ class Form(Base):
 # eventual prerequisite/visibility mechanism for those is a later phase, not
 # built yet.
 #
-# A form linked here with is_onboarding=True cannot be archived — see the
-# guard in api/routes/forms.py's update_form/archive_form — it must be
-# removed from onboarding (is_onboarding flipped back to False) first.
+# A form linked here with is_onboarding=True cannot be archived or deleted —
+# see the guard in api/routes/forms.py's update_form/archive_form/
+# delete_form — it must be removed from onboarding (is_onboarding flipped
+# back to False) first.
+#
+# form_id is this row's own primary key, not a separate surrogate id — the
+# relationship is strictly 1:1, so there's no "which TournamentForm" beyond
+# "which Form." Deleting a Form (already blocked while responses exist, see
+# Form's own delete route) cascades away its TournamentForm row for free;
+# there's no independent "delete a TournamentForm" action.
 # ---------------------------------------------------------------------------
 class TournamentForm(Base):
     __tablename__ = "tournament_forms"
 
-    id = Column(Integer, primary_key=True, index=True)
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
-    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), nullable=False, unique=True)
     is_onboarding = Column(Boolean, nullable=False, default=False)
     order = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
