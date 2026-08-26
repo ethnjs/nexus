@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
 import { IconPresets } from "@/components/ui/Icons";
@@ -17,7 +17,8 @@ import {
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 
-const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
+const KIND_OPTIONS: { value: PresetKind | ""; label: string }[] = [
+  { value: "", label: "No preset" },
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
   { value: "lunch", label: "Lunch" },
@@ -105,7 +106,7 @@ export function PresetPopover({
           <IconPresets size={14} />
         </Button>
       }
-      width={320}
+      width={250}
       side="right"
       open={open}
       onOpenChange={(next) => { onOpenChange(next); if (next) onOpen?.(); }}
@@ -121,10 +122,10 @@ export function PresetPopover({
             }}>
               Preset
             </span>
-            <ButtonGroup
+            <Dropdown
               options={KIND_OPTIONS}
               value={presetKind ?? ""}
-              onChange={(v) => applyPresetKind(v === presetKind ? null : (v as PresetKind))}
+              onChange={(value) => applyPresetKind(value ? value as PresetKind : null)}
               size="sm"
               fullWidth
             />

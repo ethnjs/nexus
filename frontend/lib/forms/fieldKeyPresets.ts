@@ -54,7 +54,7 @@ const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
 // "availability_"/"event_preference_"/"lunch_" sentinel the instant a
 // preset is picked, before its date/suffix/category is filled in, and that
 // in-progress state must still read as "this preset is active" (matching
-// the ButtonGroup selection, the QuestionEditBody body it renders, etc.) —
+// the preset dropdown selection, the QuestionEditBody body it renders, etc.) —
 // otherwise picking a preset would appear to silently do nothing until
 // every parameter was filled in. Save-time validation is what actually
 // enforces the fully-parameterized shape (matches

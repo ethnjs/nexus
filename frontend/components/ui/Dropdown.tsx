@@ -90,8 +90,8 @@ const PANEL_GAP        = 4   // px between trigger edge and panel
 
 // Heights match Button/Input's scale — same size name, same height everywhere.
 const SIZE_MAP: Record<'sm' | 'md', { height: number; triggerFontSize: string; optionPadding: string; optionFontSize: string }> = {
-  sm: { height: 28, triggerFontSize: '11px', optionPadding: '5px 8px',  optionFontSize: '11px' },
-  md: { height: 36, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '13px' },
+  sm: { height: 28, triggerFontSize: '13px', optionPadding: '5px 8px',  optionFontSize: '13px' },
+  md: { height: 36, triggerFontSize: '14px', optionPadding: '7px 10px', optionFontSize: '14px' },
 }
 
 const BACKGROUND_MAP: Record<'primary' | 'secondary', string> = {
