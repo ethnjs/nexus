@@ -1164,12 +1164,21 @@ export type FormOwnerType = 'tournament' | 'chapter'
 // backend/app/core/form/__init__.py.
 export interface FormFieldOption {
   option_id:      string
-  value:          string | number[] | ResolvedShiftOption[] | ResolvedEventOption[]
+  value:          string | number[] | TrackStatusAssignment[] | AvailabilityTrackStatusValue | ResolvedTrackStatusAssignment[] | ResolvedShiftOption[] | ResolvedEventOption[]
   label:          string
   is_archived?:   boolean
   // single_select_radio/dropdown only — mutually exclusive with each other.
   next_field_id?: string | null
   action?:        'submit_form' | null
+}
+
+export type TrackStatus = "interested" | "confirmed" | "declined"
+export interface TrackStatusAssignment { id: number; status: TrackStatus }
+export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment { name: string }
+export interface AvailabilityTrackStatusValue {
+  shift_ids?: number[]
+  shifts?: ResolvedShiftOption[]
+  track_statuses: TrackStatusAssignment[] | ResolvedTrackStatusAssignment[]
 }
 
 // value shape after GET-time resolution for availability/event_preference —
@@ -1199,6 +1208,7 @@ export interface FormFieldConfig {
   // plain radio/checkbox list. single_select_dropdown has no equivalent
   // (always a closed Dropdown control, not a style choice).
   display_style?:    "buttons" | "list"
+  track_status_enabled?: boolean
 }
 
 export interface FormField {

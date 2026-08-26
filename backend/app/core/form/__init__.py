@@ -1,6 +1,18 @@
 from sqlalchemy.orm import Session
-from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, EVENT_PREFERENCE_FIELD_KEY_PATTERN
-from app.models.models import Form, FormAnswer, FormField, FormResponsePendingUpdate, TournamentEvent, TournamentShift
+from app.core.form.validation import (
+    AVAILABILITY_FIELD_KEY_PATTERN,
+    EVENT_PREFERENCE_FIELD_KEY_PATTERN,
+    TRACK_STATUS_FIELD_KEY_PATTERN,
+)
+from app.models.models import (
+    Form,
+    FormAnswer,
+    FormField,
+    FormResponsePendingUpdate,
+    TournamentEvent,
+    TournamentShift,
+    TournamentTrack,
+)
 
 import re
 import secrets
@@ -232,6 +244,27 @@ def flag_pending_updates_for_archived_options(db: Session, field: FormField, arc
             _upsert_pending_update(db, answer.response_id, field.field_key, "option_archived")
 
 
+def _resolve_track_statuses(db: Session, assignments: list[dict]) -> list[dict]:
+    """Hydrate stored track ids into responder-facing track names.
+
+    Track ids remain the durable builder representation; the normal form
+    read includes names so a renderer never needs to make a separate catalog
+    request. Preserve the configured mapping order rather than database order.
+    """
+    track_ids = [assignment.get("id") for assignment in assignments if isinstance(assignment, dict)]
+    names_by_id = {
+        track_id: name
+        for track_id, name in db.query(TournamentTrack.id, TournamentTrack.name)
+        .filter(TournamentTrack.id.in_(track_ids))
+        .all()
+    } if track_ids else {}
+    return [
+        {"id": assignment["id"], "name": names_by_id[assignment["id"]], "status": assignment["status"]}
+        for assignment in assignments
+        if isinstance(assignment, dict) and assignment.get("id") in names_by_id
+    ]
+
+
 def _resolve_availability_option(db: Session, option: dict) -> dict:
     """Responder-facing view of one availability option: `value` (normally
     the raw list[int] of grouped TournamentShift ids) is resolved in place
@@ -242,20 +275,27 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
     `option_id` is what's actually submitted back on answer (see
     write-through, which resolves it server-side against the field's stored
     config, not this rendering)."""
-    shift_ids = option.get("value") or []
+    raw_value = option.get("value") or []
+    has_track_statuses = isinstance(raw_value, dict)
+    shift_ids = (raw_value.get("shift_ids") or []) if has_track_statuses else raw_value
     rows = (
         db.query(TournamentShift.id, TournamentShift.label, TournamentShift.start, TournamentShift.end)
         .filter(TournamentShift.id.in_(shift_ids))
         .order_by(TournamentShift.start)
         .all()
     )
+    resolved_shifts = [
+        {"id": shift_id, "label": label, "start": start, "end": end}
+        for shift_id, label, start, end in rows
+    ]
+    resolved_value = {
+        "shifts": resolved_shifts,
+        "track_statuses": _resolve_track_statuses(db, raw_value.get("track_statuses") or []),
+    } if has_track_statuses else resolved_shifts
     return {
         "option_id": option["option_id"],
         "label": option["label"],
-        "value": [
-            {"id": shift_id, "label": label, "start": start, "end": end}
-            for shift_id, label, start, end in rows
-        ],
+        "value": resolved_value,
     }
 
 
@@ -309,5 +349,14 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
         return [_resolve_availability_option(db, o) for o in options]
     if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
         return [_resolve_event_preference_option(db, o) for o in options]
+    if TRACK_STATUS_FIELD_KEY_PATTERN.match(field.field_key):
+        return [
+            {
+                "option_id": option["option_id"],
+                "label": option["label"],
+                "value": _resolve_track_statuses(db, option.get("value") or []),
+            }
+            for option in options
+        ]
 
     return options

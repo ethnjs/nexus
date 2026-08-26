@@ -273,6 +273,35 @@ class TestResolveAvailabilityOptions:
 
         assert resolve_field_options(db, field) == []
 
+    def test_track_outcomes_resolve_alongside_grouped_shifts(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        shift = _make_shift(
+            db, td_tournament, "Saturday",
+            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+        )
+        from app.models.models import TournamentTrack
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Day 1")
+        db.add(track)
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            config={"options": [{
+                "option_id": "opt_1",
+                "value": {"shift_ids": [shift.id], "track_statuses": [{"id": track.id, "status": "interested"}]},
+                "label": "Saturday",
+                "is_archived": False,
+            }]},
+        )
+        db.commit()
+
+        assert resolve_field_options(db, field) == [{
+            "option_id": "opt_1", "label": "Saturday",
+            "value": {
+                "shifts": [{"id": shift.id, "label": "Saturday", "start": shift.start, "end": shift.end}],
+                "track_statuses": [{"id": track.id, "name": "Day 1", "status": "interested"}],
+            },
+        }]
+
     def test_non_availability_field_returns_raw_options(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form)  # default config, field_key="favorite_color"
@@ -285,6 +314,38 @@ class TestResolveAvailabilityOptions:
 # ---------------------------------------------------------------------------
 # resolve_field_options — event_preference resolved entities
 # ---------------------------------------------------------------------------
+
+class TestResolveTrackStatusOptions:
+    def test_track_statuses_resolve_to_id_name_and_status(self, db, td_user, td_tournament):
+        from app.models.models import TournamentTrack
+
+        form = _make_form(db, td_user, td_tournament)
+        day_one = TournamentTrack(tournament_id=td_tournament.id, name="Day 1")
+        test_writing = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+        db.add_all([day_one, test_writing])
+        db.flush()
+        field = _make_field(
+            db, form, field_key="track_status_interest", question_type="single_select_radio",
+            config={"options": [{
+                "option_id": "opt_1",
+                "value": [
+                    {"id": test_writing.id, "status": "confirmed"},
+                    {"id": day_one.id, "status": "interested"},
+                ],
+                "label": "Yes",
+                "is_archived": False,
+            }]},
+        )
+        db.commit()
+
+        assert resolve_field_options(db, field) == [{
+            "option_id": "opt_1", "label": "Yes",
+            "value": [
+                {"id": test_writing.id, "name": "Test Writing", "status": "confirmed"},
+                {"id": day_one.id, "name": "Day 1", "status": "interested"},
+            ],
+        }]
+
 
 class TestResolveEventPreferenceOptions:
     def test_grouped_events_resolve_to_id_name_and_division(self, db, td_user, td_tournament):
