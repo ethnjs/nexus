@@ -8,14 +8,12 @@ import { CSS } from "@dnd-kit/utilities";
 import { ApiError, FormListItem, OnboardingForm, formsApi, onboardingFormsApi } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconEdit, IconForms, IconGripVertical, IconLock, IconPlus, IconTrash } from "@/components/ui/Icons";
-import { FormsTabs } from "@/components/tournament/forms/FormsTabs";
 
 function SortableOnboardingRow({ form, index, onEdit, onRemove, saving }: {
   form: OnboardingForm;
@@ -166,21 +164,15 @@ export default function OnboardingFormsPage() {
 
   if (!canManageForms) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState icon={<IconLock size={28} />} title="No access" description="You need the manage forms permission to configure onboarding." />
-        </Card>
-      </div>
+      <Card radius="lg" style={{ padding: "8px" }}>
+        <EmptyState icon={<IconLock size={28} />} title="No access" description="You need the manage forms permission to configure onboarding." />
+      </Card>
     );
   }
 
   if (allForms === null || steps === null) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>
-      </div>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>
     );
   }
 
@@ -189,9 +181,6 @@ export default function OnboardingFormsPage() {
 
   return (
     <div>
-      <PageHeader heading="Forms"/>
-      <FormsTabs tournamentId={tournamentId} active="onboarding" />
-
       {error && <p style={{ marginBottom: "12px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>{error}</p>}
 
       <Card radius="lg" style={{ padding: "16px", marginBottom: "16px" }}>

@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -15,7 +14,6 @@ import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/u
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
-import { FormsTabs } from "@/components/tournament/forms/FormsTabs";
 
 // Name / Status / Creator / Responses / Updated / Actions
 const FORM_ROW_COLUMNS = "1.4fr 110px 0.275fr 100px 110px 76px";
@@ -140,26 +138,20 @@ export default function FormsPage() {
 
   if (!canManageForms) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage forms permission to view this page."
-          />
-        </Card>
-      </div>
+      <Card radius="lg" style={{ padding: "8px" }}>
+        <EmptyState
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage forms permission to view this page."
+        />
+      </Card>
     );
   }
 
   if (forms === null) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -172,16 +164,11 @@ export default function FormsPage() {
 
   return (
     <div>
-      <PageHeader
-        heading="Forms"
-        action={
-          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
-            <IconPlus size={14} /> New Form
-          </Button>
-        }
-      />
-
-      <FormsTabs tournamentId={tournamentId} active="forms" />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+        <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+          <IconPlus size={14} /> New Form
+        </Button>
+      </div>
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
