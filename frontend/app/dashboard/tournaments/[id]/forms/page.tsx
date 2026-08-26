@@ -15,6 +15,7 @@ import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/u
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
+import { FormsTabs } from "@/components/tournament/forms/FormsTabs";
 
 // Name / Status / Creator / Responses / Updated / Actions
 const FORM_ROW_COLUMNS = "1.4fr 110px 0.275fr 100px 110px 76px";
@@ -179,6 +180,8 @@ export default function FormsPage() {
           </Button>
         }
       />
+
+      <FormsTabs tournamentId={tournamentId} active="forms" />
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>

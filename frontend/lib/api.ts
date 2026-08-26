@@ -1306,6 +1306,12 @@ export interface FormResponse {
   answers:      FormAnswer[]
 }
 
+// Matches OnboardingFormRead — a tournament form selected into the ordered
+// member onboarding sequence.
+export interface OnboardingForm extends FormListItem {
+  order: number | null
+}
+
 export const formsApi = {
   listForTournament: (tournamentId: number) =>
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
@@ -1343,4 +1349,18 @@ export const formsApi = {
     api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
   listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
+}
+
+export const onboardingFormsApi = {
+  list: (tournamentId: number) =>
+    api.get<OnboardingForm[]>(`/tournaments/${tournamentId}/onboarding-forms/`),
+  add: (tournamentId: number, formId: string) =>
+    api.post<OnboardingForm>(`/tournaments/${tournamentId}/onboarding-forms/`, { form_id: formId }),
+  reorder: (tournamentId: number, formIds: string[]) =>
+    api.patch<OnboardingForm[]>(
+      `/tournaments/${tournamentId}/onboarding-forms/reorder/`,
+      { forms: formIds.map((form_id, index) => ({ form_id, order: index + 1 })) },
+    ),
+  remove: (tournamentId: number, formId: string) =>
+    api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
 }
