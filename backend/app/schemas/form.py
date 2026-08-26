@@ -190,6 +190,52 @@ class BulkFieldsUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Tournament form prerequisites
+# ---------------------------------------------------------------------------
+
+class PrerequisiteIdMatch(BaseModel):
+    """A required set of IDs and whether the member needs any or all of it."""
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[int]
+    match: Literal["any", "all"] = "any"
+
+    @field_validator("ids")
+    @classmethod
+    def _positive_unique_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError("ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("ids must not contain duplicates")
+        return values
+
+
+class AvailabilityPrerequisite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shift_ids: list[int]
+    match: Literal["any", "all"] = "any"
+
+    @field_validator("shift_ids")
+    @classmethod
+    def _positive_unique_shift_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError("shift_ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("shift_ids must not contain duplicates")
+        return values
+
+
+class TournamentFormPrerequisites(BaseModel):
+    """Optional conditions a member must all satisfy to access a standard form."""
+    model_config = ConfigDict(extra="forbid")
+
+    onboarding_complete: bool = False
+    roles: PrerequisiteIdMatch | None = None
+    availability: AvailabilityPrerequisite | None = None
+
+
+# ---------------------------------------------------------------------------
 # Form Schemas
 # ---------------------------------------------------------------------------
 
@@ -206,6 +252,7 @@ class FormRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
+    prerequisites: TournamentFormPrerequisites | None = None
     fields: list[FormFieldRead] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -232,6 +279,7 @@ class FormListRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
+    prerequisites: TournamentFormPrerequisites | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -260,6 +308,10 @@ class FormUpdate(BaseModel):
     title: str | None = None
     description: str | None = None
     status: Literal["draft", "published", "archived"] | None = None
+
+
+class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
+    """Replacement payload for a standard tournament form's prerequisites."""
 
 
 # ---------------------------------------------------------------------------

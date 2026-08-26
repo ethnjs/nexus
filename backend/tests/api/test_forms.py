@@ -19,6 +19,8 @@ from app.models.models import (
     TournamentMembership,
     TournamentMembershipAvailability,
     TournamentMembershipLunch,
+    TournamentForm,
+    TournamentRole,
     TournamentShift,
 )
 
@@ -249,6 +251,81 @@ class TestListTournamentFieldKeys:
         login(client, "other@test.com", "otherpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/
+# ---------------------------------------------------------------------------
+
+class TestTournamentFormPrerequisites:
+    def _link(self, db, form, tournament, **overrides):
+        row = TournamentForm(form_id=form.id, tournament_id=tournament.id, **overrides)
+        db.add(row)
+        db.commit()
+        return row
+
+    def test_manager_replaces_prerequisites_and_response_includes_them(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        role = db.query(TournamentRole).filter(TournamentRole.tournament_id == td_tournament.id).first()
+        now = datetime.now(timezone.utc)
+        shift = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=now, end=now + timedelta(hours=2))
+        db.add(shift)
+        db.commit()
+        self._link(db, form, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        payload = {
+            "onboarding_complete": True,
+            "roles": {"ids": [role.id], "match": "all"},
+            "availability": {"shift_ids": [shift.id], "match": "any"},
+        }
+        res = client.patch(f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/", json=payload)
+
+        assert res.status_code == 200
+        assert res.json()["prerequisites"] == payload
+        listed = client.get(f"/tournaments/{td_tournament.id}/forms/")
+        assert listed.status_code == 200
+        assert listed.json()[0]["prerequisites"] == payload
+
+    def test_rejects_role_or_shift_from_another_tournament(self, client, db, td_user, td_tournament, other_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament)
+        other_role = db.query(TournamentRole).filter(TournamentRole.tournament_id == other_tournament.id).first()
+        now = datetime.now(timezone.utc)
+        other_shift = TournamentShift(tournament_id=other_tournament.id, label="Other", start=now, end=now + timedelta(hours=2))
+        db.add(other_shift)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        role_res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json={"roles": {"ids": [other_role.id], "match": "any"}},
+        )
+        shift_res = client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json={"availability": {"shift_ids": [other_shift.id], "match": "all"}},
+        )
+
+        assert role_res.status_code == 422
+        assert shift_res.status_code == 422
+
+    def test_rejects_onboarding_form_and_member_without_manage_forms(self, client, db, td_user, td_tournament, other_user):
+        form = _make_form(db, td_user, td_tournament)
+        self._link(db, form, td_tournament, is_onboarding=True, order=1)
+        login(client, "td@test.com", "tdpass")
+        assert client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json={"onboarding_complete": True},
+        ).status_code == 409
+
+        db.query(TournamentForm).filter(TournamentForm.form_id == form.id).update({TournamentForm.is_onboarding: False, TournamentForm.order: None})
+        db.commit()
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        assert client.patch(
+            f"/tournaments/{td_tournament.id}/forms/{form.id}/prerequisites/",
+            json={"onboarding_complete": True},
+        ).status_code == 403
 
 
 # ---------------------------------------------------------------------------

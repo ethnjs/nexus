@@ -1228,6 +1228,24 @@ export interface FormFieldInput {
   config?:        FormFieldConfig | null
 }
 
+export type PrerequisiteMatch = "any" | "all"
+
+export interface IdPrerequisite {
+  ids: number[]
+  match: PrerequisiteMatch
+}
+
+export interface AvailabilityPrerequisite {
+  shift_ids: number[]
+  match: PrerequisiteMatch
+}
+
+export interface TournamentFormPrerequisites {
+  onboarding_complete: boolean
+  roles?: IdPrerequisite | null
+  availability?: AvailabilityPrerequisite | null
+}
+
 export interface Form {
   id:              string
   name:            string
@@ -1241,6 +1259,7 @@ export interface Form {
   created_at:      string
   updated_at:      string
   response_count:  number
+  prerequisites:   TournamentFormPrerequisites | null
   fields:          FormField[]
 }
 
@@ -1268,6 +1287,7 @@ export interface FormListItem {
   created_at:      string
   updated_at:      string
   response_count:  number
+  prerequisites:   TournamentFormPrerequisites | null
 }
 
 export interface FormCreateInput {
@@ -1327,6 +1347,8 @@ export const formsApi = {
   // field_key Combobox shows these as disabled options.
   listFieldKeysForTournament: (tournamentId: number) =>
     api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+  updatePrerequisites: (tournamentId: number, formId: string, prerequisites: TournamentFormPrerequisites) =>
+    api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
   createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
     api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
   createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>

@@ -724,6 +724,11 @@ class Form(Base):
     def response_count(self) -> int:
         return len(self.responses)
 
+    @property
+    def prerequisites(self) -> dict | None:
+        """TournamentForm configuration exposed on generic form responses."""
+        return self.tournament_form.prerequisites if self.tournament_form else None
+
 
 # ---------------------------------------------------------------------------
 # TournamentForm — 1:1 companion row every tournament-scoped Form gets at

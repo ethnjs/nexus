@@ -40,6 +40,8 @@ from app.models.models import (
     FormResponsePendingUpdate,
     TournamentForm,
     TournamentMembership,
+    TournamentRole,
+    TournamentShift,
     User,
     utcnow,
 )
@@ -53,6 +55,7 @@ from app.schemas.form import (
     FormResponseCreate,
     FormResponseRead,
     FormUpdate,
+    TournamentFormPrerequisitesUpdate,
 )
 from app.schemas.tournament.membership import MembershipSlimResponse
 from app.schemas.user import UserSlimResponse
@@ -255,7 +258,78 @@ def _to_list_read(form: Form, creator: MembershipSlimResponse | ChapterMemberRes
         created_at=form.created_at,
         updated_at=form.updated_at,
         response_count=form.response_count,
+        prerequisites=form.prerequisites,
     )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /tournaments/{tournament_id}/forms/{form_id}/prerequisites/ — replaces
+# prerequisite configuration for one standard tournament form. This stays
+# nested under the tournament so role/shift IDs are unambiguously scoped.
+# ---------------------------------------------------------------------------
+@router.patch(
+    "/tournaments/{tournament_id}/forms/{form_id}/prerequisites/",
+    response_model=FormRead,
+    tags=["tournaments"],
+)
+def update_tournament_form_prerequisites(
+    tournament_id: int,
+    form_id: str,
+    payload: TournamentFormPrerequisitesUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_FORMS)),
+):
+    form = (
+        db.query(Form)
+        .filter(
+            Form.id == form_id,
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+        )
+        .first()
+    )
+    if form is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
+
+    tournament_form = db.query(TournamentForm).filter(TournamentForm.form_id == form_id).first()
+    if tournament_form is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament form not found")
+    if tournament_form.is_onboarding:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Onboarding forms cannot have standard-form prerequisites",
+        )
+
+    prerequisites = payload.model_dump(exclude_none=True)
+    _validate_prerequisite_ids(db, tournament_id, prerequisites)
+    tournament_form.prerequisites = prerequisites
+    db.commit()
+    db.refresh(form)
+    return form
+
+
+def _validate_prerequisite_ids(db: Session, tournament_id: int, prerequisites: dict) -> None:
+    roles = (prerequisites.get("roles") or {}).get("ids", [])
+    shifts = (prerequisites.get("availability") or {}).get("shift_ids", [])
+
+    def _require_tournament_ids(ids: list[int], model, label: str) -> None:
+        if not ids:
+            return
+        found = {
+            row_id
+            for (row_id,) in db.query(model.id)
+            .filter(model.tournament_id == tournament_id, model.id.in_(ids))
+            .all()
+        }
+        missing = sorted(set(ids) - found)
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{label} do not belong to this tournament: {missing}",
+            )
+
+    _require_tournament_ids(roles, TournamentRole, "role IDs")
+    _require_tournament_ids(shifts, TournamentShift, "shift IDs")
 
 
 # ---------------------------------------------------------------------------
