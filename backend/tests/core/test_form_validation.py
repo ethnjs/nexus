@@ -352,12 +352,28 @@ class TestValidateTrackStatusOptions:
         db.flush()
         return track
 
+    # A track_status_* option carries its assignments *as* its value
+    # (list[TrackStatusAssignment]); an opted-in availability option nests
+    # them under a dict alongside shift_ids. Both shapes must match
+    # schemas/form.py exactly — extra='forbid' rejects anything else, so a
+    # test config that invents its own shape validates nothing.
     def _config(self, track_id, **overrides):
         config = {
             "required": True,
             "options": [{
-                "option_id": "yes", "value": "yes", "label": "Yes",
-                "track_statuses": [{"track_id": track_id, "status": "interested"}],
+                "option_id": "yes", "label": "Yes",
+                "value": [{"id": track_id, "status": "interested"}],
+            }],
+        }
+        config.update(overrides)
+        return config
+
+    def _availability_config(self, track_id, **overrides):
+        config = {
+            "required": True,
+            "options": [{
+                "option_id": "yes", "label": "Yes",
+                "value": {"shift_ids": [1], "track_statuses": [{"id": track_id, "status": "interested"}]},
             }],
         }
         config.update(overrides)
@@ -383,8 +399,8 @@ class TestValidateTrackStatusOptions:
                 {
                     "required": True,
                     "options": [{
-                        "option_id": "opt_1", "value": "a", "label": "A",
-                        "track_statuses": [{"track_id": 1, "status": "maybe"}],
+                        "option_id": "opt_1", "label": "A",
+                        "value": [{"id": 1, "status": "maybe"}],
                     }],
                 },
             )
@@ -398,7 +414,7 @@ class TestValidateTrackStatusOptions:
 
     def test_availability_requires_opt_in_for_track_outcomes(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
-        config = self._config(track.id)
+        config = self._availability_config(track.id)
         with pytest.raises(FormFieldValidationError, match="only allowed"):
             validate_track_status_options(
                 db, td_tournament.id, "availability_20260315", "single_select_radio", config
@@ -407,11 +423,25 @@ class TestValidateTrackStatusOptions:
         config["track_status_enabled"] = True
         validate_track_status_options(db, td_tournament.id, "availability_20260315", "single_select_radio", config)
 
+    def test_entity_ids_are_not_mistaken_for_track_assignments(self, db, td_user, td_tournament):
+        """A list-valued option on a non-track field holds entity ids, not
+        assignments — the "only allowed" guard must not fire on those."""
+        config = {
+            "required": True,
+            "options": [{"option_id": "one", "label": "One", "value": [1, 2, 3]}],
+        }
+        validate_track_status_options(
+            db, td_tournament.id, "event_preference_labs", "multi_select_checkbox", config
+        )
+        validate_track_status_options(
+            db, td_tournament.id, "availability_20260315", "multi_select_checkbox", config
+        )
+
     def test_checkbox_rejects_conflicting_track_statuses(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
         config = self._config(track.id, options=[
-            {"option_id": "one", "value": "one", "label": "One", "track_statuses": [{"track_id": track.id, "status": "interested"}]},
-            {"option_id": "two", "value": "two", "label": "Two", "track_statuses": [{"track_id": track.id, "status": "declined"}]},
+            {"option_id": "one", "label": "One", "value": [{"id": track.id, "status": "interested"}]},
+            {"option_id": "two", "label": "Two", "value": [{"id": track.id, "status": "declined"}]},
         ])
         with pytest.raises(FormFieldValidationError, match="conflicting statuses"):
             validate_track_status_options(db, td_tournament.id, "track_status_interest", "multi_select_checkbox", config)

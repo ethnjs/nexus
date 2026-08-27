@@ -134,14 +134,25 @@ def track_status_enabled(field_key: str, config: dict) -> bool:
     )
 
 
+def _is_assignment(item: object) -> bool:
+    """An option's `value` can legally be a list of two different things —
+    entity ids (list[int], for availability/event_preference) or track
+    assignments (list[TrackStatusAssignment]). Discriminate on the element,
+    not the container: treating every list as assignments makes a plain
+    event_preference field look like it carries track statuses."""
+    return isinstance(item, dict) and "id" in item and "status" in item
+
+
 def _track_status_assignments(config: dict) -> list[dict]:
     assignments = []
     for option in config.get("options") or []:
         value = option.get("value")
         if isinstance(value, list):
-            assignments.extend(value)
+            assignments.extend(item for item in value if _is_assignment(item))
         elif isinstance(value, dict):
-            assignments.extend(value.get("track_statuses") or [])
+            assignments.extend(
+                item for item in (value.get("track_statuses") or []) if _is_assignment(item)
+            )
     return assignments
 
 

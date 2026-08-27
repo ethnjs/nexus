@@ -359,7 +359,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
   const isEntityBackedKind = isEntityBackedPreset(presetKind)
-  const hasTrackOutcomes = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
+  const hasTracks = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
   // tournament null means the entity-backed editor has no scope to fetch
   // shifts/events from — falls through to the read-only preview at the
   // bottom instead (see the tournament prop doc on QuestionRenderer), never
@@ -376,12 +376,12 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
     return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />
   }
 
-  const usesTrackOutcomeEditor = hasTrackOutcomes && !!tournament
+  const usesTrackEditor = hasTracks && !!tournament
 
-  if (isEntity || usesTrackOutcomeEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
+  if (isEntity || usesTrackEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
     return (
       <>
-        {isEntity || usesTrackOutcomeEditor ? (
+        {isEntity || usesTrackEditor ? (
           <EntityOptionsEditor
             fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
             tournament={tournament!}
@@ -391,7 +391,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             errors={errors}
-            trackStatusEnabled={hasTrackOutcomes}
+            trackStatusEnabled={hasTracks}
           />
         ) : (
           <OptionsEditor

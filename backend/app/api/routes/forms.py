@@ -605,9 +605,23 @@ def bulk_update_fields(
     for entry in payload.fields:
         if entry.id is not None:
             field = live_by_id[entry.id]
-            normalized_config = _validate_config(entry.question_type, entry.config, field.field_key)
             type_changed = entry.question_type != field.question_type
+            # entry.field_key is None/blank when the caller isn't renaming
+            # this field at all (the common case — most edits touch label/
+            # config, not the key) — that means "leave it alone", not "set it
+            # to slugify('')", which the model's snake_case validator rejects.
+            new_field_key = slugify(entry.field_key) if entry.field_key else field.field_key
+            if new_field_key != field.field_key:
+                _check_field_key_available(new_field_key)
+            normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
 
+            # A type change that must preserve history archives this field and
+            # creates its replacement at the same list position. The
+            # replacement normally inherits the old field_key (see the Edit
+            # Lifecycle doc — deliberate continuity), but a submitted key
+            # still wins: applying a preset changes the key and the
+            # question_type in the same save, and silently keeping the old key
+            # would validate the new preset config against the wrong key.
             if type_changed and is_history_preserving:
                 field.is_archived = True
                 old_key = field.field_key
@@ -623,7 +637,7 @@ def bulk_update_fields(
                     label=entry.label,
                     description=entry.description,
                     question_type=entry.question_type,
-                    field_key=old_key,
+                    field_key=new_field_key,
                     config=normalized_config,
                     is_archived=False,
                 )
@@ -637,6 +651,7 @@ def bulk_update_fields(
                 field.label = entry.label
                 field.description = entry.description
                 field.question_type = entry.question_type
+                field.field_key = new_field_key
                 field.config = normalized_config
                 flag_modified(field, "config")
         else:

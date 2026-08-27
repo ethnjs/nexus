@@ -22,6 +22,7 @@ from app.models.models import (
     TournamentForm,
     TournamentRole,
     TournamentShift,
+    TournamentTrack,
     utcnow,
 )
 
@@ -599,6 +600,50 @@ class TestBulkUpdateFieldsPublished:
         db.refresh(field)
         assert field.is_archived is True
         assert field.field_key != "color"
+
+    def test_submitted_field_key_wins_over_inheritance_on_replacement(self, client, db, td_user, td_tournament):
+        """Applying a preset renames the field_key *and* changes the
+        question_type in one save. The replacement normally inherits the old
+        key, but here that would validate the new track_status config against
+        the pre-preset key and 422."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, order=1, field_key="interest", question_type="short_text", config={"required": False, "max_length": 50})
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+        db.add(track)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id,
+                "field_key": "track_status_volunteer_interest",
+                "label": "Interested?",
+                "question_type": "single_select_radio",
+                "config": {"required": True, "options": [
+                    {"option_id": "yes", "label": "Yes", "value": [{"id": track.id, "status": "interested"}]},
+                    {"option_id": "no", "label": "No", "value": []},
+                ]},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+        assert res.json()[0]["field_key"] == "track_status_volunteer_interest"
+
+    def test_field_key_rename_applies_in_place(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "field_key": "favorite_color", "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert res.json()[0]["id"] == field.id
+        assert res.json()[0]["field_key"] == "favorite_color"
 
     def test_removed_field_archives_not_deletes(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
