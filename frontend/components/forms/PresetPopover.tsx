@@ -9,6 +9,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { IconPresets, IconX } from "@/components/ui/Icons";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { FormQuestionType } from "@/lib/api";
 import { EditableField } from "@/lib/forms/editableField";
 import {
   PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError,
@@ -18,6 +19,35 @@ import {
   parseTrackStatusFieldKey, buildTrackStatusFieldKey,
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+
+type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
+
+function isAssignmentList(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === "object" && item !== null && "id" in item && "status" in item);
+}
+
+// The option rows a field keeps when its preset changes — including changing
+// to "no preset". Rows, labels and branch targets are the TD's work and
+// always survive; only each `value` is rewritten, since the three shapes
+// (freeform string, entity ids, track assignments) aren't interchangeable. A
+// value that can't carry into the new shape falls back to the row's own
+// label (freeform) or an empty selection (entity/track), never to a dropped
+// row. Returns a single starter row only when there was nothing to keep.
+function carryOptions(field: EditableField, kind: PresetKind | null, questionType: FormQuestionType): EditableOption[] {
+  if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
+  const supportsBranching = questionType === "single_select_radio" || questionType === "single_select_dropdown";
+  const existing = field.config?.options ?? [];
+  if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
+  return existing.map((option) => ({
+    ...option,
+    ...(supportsBranching ? {} : { next_field_id: null, action: null }),
+    value: isEntityBackedPreset(kind)
+      ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
+      : kind === "track_status"
+        ? (isAssignmentList(option.value) ? option.value : [])
+        : typeof option.value === "string" ? option.value : option.label,
+  }));
+}
 
 const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
@@ -31,10 +61,8 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 // FieldKeyPopover's plain free-text key, since a preset now needs its own
 // parameter input(s) (a date, a suffix, a date+category pair) rather than
 // being a single fixed field_key a TD picks off a list. Choosing/changing a
-// preset here always resets `options` — an entity-backed picker's
-// `value: number[]` and a freeform row's `value: string` aren't
-// interchangeable, so switching kinds (including back to "no preset")
-// can't safely keep whatever was there before.
+// preset here keeps the TD's option rows and their branch targets — only each
+// value's *shape* is rewritten to fit the new kind (see reshapeOptions).
 export function PresetPopover({
   field, onFieldChange, tournamentDates, onOpen, errors, saveAttempt, open, onOpenChange,
 }: {
@@ -69,10 +97,19 @@ export function PresetPopover({
 
   function applyPresetKind(kind: PresetKind | null) {
     if (kind === null) {
-      const options = OPTION_BEARING_TYPES.includes(field.question_type) ? [newOption()] : [];
+      // Clearing is just another kind change: keep the rows, drop back to
+      // freeform values, and only seed a starter row if there was nothing
+      // to keep. track_status_enabled goes with the preset — it's an
+      // availability-only opt-in, and the backend rejects the flag on any
+      // other key.
+      const options = carryOptions(field, null, field.question_type);
       onFieldChange({
         field_key: slugifyFieldKey(field.label),
-        config: { ...sanitizeConfigForType(field.config, field.question_type), options },
+        config: {
+          ...sanitizeConfigForType(field.config, field.question_type),
+          track_status_enabled: undefined,
+          options,
+        },
       });
       return;
     }
@@ -92,26 +129,19 @@ export function PresetPopover({
     // id array to fill in via the picker) for availability/event_preference,
     // plain freeform for lunch — rather than leaving the TD looking at an
     // empty list with nothing to click but "Add option."
-    const starterOption = isEntityBackedPreset(kind) ? newEntityOption() : newOption();
-    const supportsBranching = questionType === "single_select_radio" || questionType === "single_select_dropdown";
-    // Keep existing option rows (including their branch targets) when a
-    // preset changes. Only the value changes shape to fit the new preset.
-    const existingOptions = field.config?.options ?? [];
-    const options = existingOptions.length > 0
-      ? existingOptions.map((option) => ({
-          ...option,
-          ...(supportsBranching ? {} : { next_field_id: null, action: null }),
-          value: isEntityBackedPreset(kind)
-            ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
-            : kind === "track_status"
-              ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "object" && value !== null && "id" in value && "status" in value) ? option.value : [])
-              : typeof option.value === "string" ? option.value : option.label,
-        }))
-      : [starterOption];
+    const options = carryOptions(field, kind, questionType);
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
-      config: { ...sanitizeConfigForType(field.config, questionType), required: kind === "track_status" ? true : field.config?.required ?? false, options },
+      config: {
+        ...sanitizeConfigForType(field.config, questionType),
+        required: kind === "track_status" ? true : field.config?.required ?? false,
+        // Only availability opts into track statuses via this flag; every
+        // other kind (track_status included — its key alone enables them)
+        // must not carry it over.
+        track_status_enabled: kind === "availability" ? field.config?.track_status_enabled : undefined,
+        options,
+      },
     });
   }
 
