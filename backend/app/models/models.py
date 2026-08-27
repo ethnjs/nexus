@@ -879,6 +879,14 @@ class FormAnswer(Base):
     response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
     field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
     value = Column(JSON, nullable=False)
+    # The semantics this answer was given under. `value`'s shape is a function
+    # of (question_type, field_key) — a preset key stores entity ids where a
+    # standard key stores text — so recording both here keeps a stored answer
+    # readable after the field is edited, instead of reinterpreting history
+    # through whatever the field looks like today. Nullable only for rows
+    # predating this column; always written on new answers.
+    question_type = Column(String(32), nullable=True)
+    field_key = Column(String(64), nullable=True)
 
     response = relationship("FormResponse", back_populates="answers")
     field = relationship("FormField", back_populates="answer")
@@ -889,27 +897,33 @@ class FormAnswer(Base):
 
 
 # ---------------------------------------------------------------------------
-# FormResponsePendingUpdate — flags that a response answered a field/option
-# which a republish later archived out from under it, so a TD/respondent
-# can be shown "this answer needs another look". One row per
-# (response, field_key); reason only ever escalates option_archived ->
-# field_replaced (never the reverse) on upsert, and the row is deleted once
-# that response next submits an answer for whichever field currently holds
-# that field_key — see _apply_published_field_changes in api/routes/forms.py.
+# FormResponsePendingUpdate — flags that a response's answer to a field needs
+# another look, because the TD changed the question in a way that may have
+# invalidated it. One row per (response, field_id).
+#
+# Keyed on field_id, never field_key: a key is a TD-editable display name, so
+# keying history on it strands the flag the moment the question is renamed.
+# The field a flag points at is therefore stable across every edit.
+#
+# `reason` only ever escalates option_archived -> field_replaced, never the
+# reverse. A row is cleared when the respondent patches that field, and is
+# deleted outright if the field is retired or invalidated — a flag on a
+# question that can no longer be answered is unclearable by construction.
+# See backend/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
 
     id = Column(Integer, primary_key=True, index=True)
     response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
-    field_key = Column(String(64), nullable=False)
+    field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False)
     reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     response = relationship("FormResponse", back_populates="pending_updates")
 
     __table_args__ = (
-        UniqueConstraint("response_id", "field_key", name="uq_pending_update_per_response_field"),
+        UniqueConstraint("response_id", "field_id", name="uq_pending_update_per_response_field"),
     )
 
 

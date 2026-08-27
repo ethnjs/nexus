@@ -200,33 +200,46 @@ def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[d
     return merged, newly_archived_ids
 
 
-def _upsert_pending_update(db: Session, response_id: str, field_key: str, reason: str) -> None:
+def _upsert_pending_update(db: Session, response_id: str, field_id: str, reason: str) -> None:
     existing = (
         db.query(FormResponsePendingUpdate)
         .filter(
             FormResponsePendingUpdate.response_id == response_id,
-            FormResponsePendingUpdate.field_key == field_key,
+            FormResponsePendingUpdate.field_id == field_id,
         )
         .first()
     )
     if existing is None:
-        db.add(FormResponsePendingUpdate(response_id=response_id, field_key=field_key, reason=reason))
+        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field_id, reason=reason))
     elif existing.reason == "option_archived" and reason == "field_replaced":
         # Escalate only in this direction — see FormResponsePendingUpdate.
         existing.reason = "field_replaced"
 
 
-def flag_pending_updates_for_field(db: Session, field_id: str, field_key: str, reason: str) -> None:
-    """Upserts a pending-update row for every response that answered
-    `field_id` — used when that field was archived (removed, or archived
-    +replaced by a question_type change). Keyed on `field_key`, not
-    `field_id`, since field_key is what a respondent/TD recognizes and
-    what survives an archive+replace."""
+def flag_pending_updates_for_field(
+    db: Session, answered_field_id: str, target_field_id: str, reason: str
+) -> None:
+    """Flags every response that answered `answered_field_id`, pointing the
+    flag at `target_field_id` — the field they must answer to clear it. The
+    two differ on the archive+replace path, where the question continues as a
+    new row and the archived one can no longer be answered."""
     response_ids = {
-        rid for (rid,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field_id).all()
+        rid
+        for (rid,) in db.query(FormAnswer.response_id)
+        .filter(FormAnswer.field_id == answered_field_id)
+        .all()
     }
     for response_id in response_ids:
-        _upsert_pending_update(db, response_id, field_key, reason)
+        _upsert_pending_update(db, response_id, target_field_id, reason)
+
+
+def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
+    """Drops every open flag on `field_id` — for when the field stops being
+    answerable at all. A flag pointing at a retired field can never clear,
+    since clearing requires the respondent to answer it."""
+    db.query(FormResponsePendingUpdate).filter(
+        FormResponsePendingUpdate.field_id == field_id
+    ).delete(synchronize_session=False)
 
 
 def flag_pending_updates_for_archived_options(db: Session, field: FormField, archived_option_ids: list[str]) -> None:
@@ -241,7 +254,7 @@ def flag_pending_updates_for_archived_options(db: Session, field: FormField, arc
     answers = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all()
     for answer in answers:
         if archived_ids & selected_option_ids(field, answer.value):
-            _upsert_pending_update(db, answer.response_id, field.field_key, "option_archived")
+            _upsert_pending_update(db, answer.response_id, field.id, "option_archived")
 
 
 def _resolve_track_statuses(db: Session, assignments: list[dict]) -> list[dict]:

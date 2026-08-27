@@ -784,7 +784,7 @@ class TestBulkUpdateFieldsPublished:
 
         pending = (
             db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_key == "color")
+            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == field.id)
             .first()
         )
         assert pending is not None
@@ -841,9 +841,18 @@ class TestBulkUpdateFieldsPublished:
             json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
         )
 
+        # The type change archived the old field and created a replacement;
+        # the flag points at the replacement, since that's the field the
+        # respondent can actually answer to clear it.
+        replacement = (
+            db.query(FormField)
+            .filter(FormField.form_id == form.id, FormField.field_key == "color", FormField.is_archived == False)
+            .one()
+        )
+        assert replacement.id != field.id
         pending = (
             db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_key == "color")
+            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == replacement.id)
             .first()
         )
         assert pending is not None

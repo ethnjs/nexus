@@ -598,8 +598,12 @@ def bulk_update_fields(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         return normalized
 
-    pending_flags: list[tuple[str, str, str | None, list[str]]] = []
-    # (field_key, reason, field_id_for_answer_lookup, archived_option_ids)
+    # (field_answered, field_to_flag, reason, archived_option_ids). The two
+    # fields differ only on the archive+replace path, where responses answered
+    # the now-archived row but must be pointed at its replacement — the field
+    # they can actually answer. Held as ORM objects because a replacement has
+    # no id until the flush below.
+    pending_flags: list[tuple[FormField, FormField, str, list[str]]] = []
 
     order = 1
     for entry in payload.fields:
@@ -629,7 +633,6 @@ def bulk_update_fields(
                 # snake_case-alphanumeric validator rejects — swap it for
                 # '_' so the archived key stays valid regardless of id shape.
                 field.field_key = f"{old_key}_archived_{field.id}".replace("-", "_")
-                pending_flags.append((old_key, "field_replaced", field.id, []))
 
                 new_field = FormField(
                     form_id=form.id,
@@ -642,11 +645,12 @@ def bulk_update_fields(
                     is_archived=False,
                 )
                 db.add(new_field)
+                pending_flags.append((field, new_field, "field_replaced", []))
             else:
                 if is_history_preserving:
                     normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
                     if archived_option_ids:
-                        pending_flags.append((field.field_key, "option_archived", field.id, archived_option_ids))
+                        pending_flags.append((field, field, "option_archived", archived_option_ids))
                 field.order = order
                 field.label = entry.label
                 field.description = entry.description
@@ -675,7 +679,7 @@ def bulk_update_fields(
     for field in removed_fields:
         if is_history_preserving:
             field.is_archived = True
-            pending_flags.append((field.field_key, "field_replaced", field.id, []))
+            pending_flags.append((field, field, "field_replaced", []))
         else:
             db.delete(field)
 
@@ -686,11 +690,11 @@ def bulk_update_fields(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
 
-    for field_key, reason, field_id, archived_option_ids in pending_flags:
+    for field_answered, field_to_flag, reason, archived_option_ids in pending_flags:
         if reason == "field_replaced":
-            flag_pending_updates_for_field(db, field_id, field_key, "field_replaced")
+            flag_pending_updates_for_field(db, field_answered.id, field_to_flag.id, "field_replaced")
         else:
-            flag_pending_updates_for_archived_options(db, live_by_id[field_id], archived_option_ids)
+            flag_pending_updates_for_archived_options(db, field_answered, archived_option_ids)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
@@ -764,20 +768,29 @@ def submit_form_response(
 
     field_by_id = {field.id: field for field in active_fields}
     for answer_in in payload.answers:
-        stored_value = snapshot_answer_value(field_by_id[answer_in.field_id], answer_in.value)
-        db.add(FormAnswer(response_id=response.id, field_id=answer_in.field_id, value=stored_value))
+        field = field_by_id[answer_in.field_id]
+        stored_value = snapshot_answer_value(field, answer_in.value)
+        # question_type/field_key record the semantics this answer was given
+        # under — `value`'s shape is a function of both, so storing them keeps
+        # the answer readable after the field is edited rather than
+        # reinterpreting it through whatever the field looks like later.
+        db.add(FormAnswer(
+            response_id=response.id,
+            field_id=field.id,
+            value=stored_value,
+            question_type=field.question_type,
+            field_key=field.field_key,
+        ))
 
     # A fresh answer for a field clears any pending-update flag on it — the
-    # respondent has now seen and re-confirmed whatever changed. Keyed by
-    # field_key (not field_id) since that's what a pending-update row keys
-    # on and what survives an archive+replace (see FormResponsePendingUpdate).
-    answered_field_keys = {
-        field.field_key for field in active_fields if field.id in answers_by_field
+    # respondent has now seen and re-confirmed whatever changed.
+    answered_field_ids = {
+        field.id for field in active_fields if field.id in answers_by_field
     }
-    if answered_field_keys:
+    if answered_field_ids:
         db.query(FormResponsePendingUpdate).filter(
             FormResponsePendingUpdate.response_id == response.id,
-            FormResponsePendingUpdate.field_key.in_(answered_field_keys),
+            FormResponsePendingUpdate.field_id.in_(answered_field_ids),
         ).delete(synchronize_session=False)
 
     if form.owner_type == "tournament":
