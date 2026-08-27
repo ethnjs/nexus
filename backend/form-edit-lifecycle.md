@@ -51,17 +51,19 @@ Two read paths, deliberately different:
 
 ## When a pending update is raised
 
-`FormResponsePendingUpdate` asks a previous responder to look at a question
-again.
+A pending update asks a previous responder to look at a question again. One
+row per (response, field), carrying the set of `reasons` that opened it —
+several can apply to the same field in one save, so they union rather than
+override.
 
 **Mandatory — always raised, TD cannot suppress:**
 
-| Change | Who is flagged |
-|---|---|
-| `question_type` changes shape class (below) | everyone who answered |
-| Option added or reopened | everyone who answered |
-| Option invalidated | only those who selected it |
-| Field becomes required | only those who left it blank |
+| Change | `reason` | Who is flagged |
+|---|---|---|
+| `question_type` changes shape class (below) | `question_type_changed` | everyone who answered |
+| Option added or reopened | `option_added` | everyone who answered |
+| Option invalidated | `option_invalidated` | only those who selected it |
+| Field becomes required | `now_required` | only those who left it blank |
 
 An added option flags everyone because a previous responder may have settled
 for a lesser choice when their real answer wasn't offered. Reopening a closed
@@ -79,12 +81,12 @@ option is identical in effect, so it's treated the same.
 
 **TD's choice:**
 
-| Change | Default | Why it's a judgment call |
-|---|---|---|
-| `field_key` moves between preset and standard | **on** | Nothing changed for the respondent — the labels can be identical, and their answer is still correct. But write-through is forward-only, so their data won't reach `MembershipAvailability` / `TournamentMembershipLunch` / track statuses unless they resubmit. The TD is deciding whether they need that data for people who already answered. |
-| Question label | off | Rewording may or may not change what's being asked. |
-| Question description | off | Same. |
-| Option label (respondent-facing text) | off | Same. |
+| Change | `reason` | Default | Why it's a judgment call |
+|---|---|---|---|
+| `field_key` moves between preset and standard | `key_changed` | **on** | Nothing changed for the respondent — the labels can be identical, and their answer is still correct. But write-through is forward-only, so their data won't reach `MembershipAvailability` / `TournamentMembershipLunch` / track statuses unless they resubmit. The TD is deciding whether they need that data for people who already answered. |
+| Question label | `text_changed` | off | Rewording may or may not change what's being asked. |
+| Question description | `text_changed` | off | Same. |
+| Option label (respondent-facing text) | `text_changed` | off | Same. |
 
 The preset toggle defaults **on** because silently leaving existing responders
 out of write-through is the more surprising outcome. The confirmation modal
@@ -250,10 +252,26 @@ responses is expensive in practice.
 - `FormAnswer` records `field_id`, the selected `option_id`(s), the
   `{option_id, value, label}` snapshot, and the `question_type` / `field_key`
   the answer was given under.
-- `FormResponsePendingUpdate` is keyed on `field_id`, with `created_at` for
-  display and ordering.
 - `field_key` is unique among **live** fields within a tournament. Archived
   fields do not reserve their keys, and may share a key with a live field.
+
+### `FormResponsePendingUpdate`
+
+| Column | Notes |
+|---|---|
+| `response_id` | the flagged response |
+| `field_id` | the field to answer to clear it. Never `field_key` — a key is a TD-editable name, so keying history on it strands the flag the moment the question is renamed. |
+| `reasons` | set of the `reason` values above; unioned when several apply |
+| `created_at` | display and ordering ("flagged 3 days ago") |
+
+Unique on `(response_id, field_id)`.
+
+`field_id` points at the field the respondent can *act on*, which is not
+always the field they originally answered — where a question is replaced
+rather than edited, the flag follows the successor.
+
+A row is cleared when that field is patched, and deleted outright when the
+field is retired or invalidated.
 
 ## Track status ordering
 
