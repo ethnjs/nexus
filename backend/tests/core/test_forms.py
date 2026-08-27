@@ -24,6 +24,7 @@ from app.models.models import (
     FormField,
     FormResponse,
     TournamentEvent,
+    TournamentForm,
     TournamentShift,
 )
 
@@ -489,7 +490,21 @@ class TestAccessDependencies:
 
     def test_view_access_plain_member_passes_without_manage_permission(self, db, td_user, td_tournament, other_user):
         grant_role(db, td_tournament, other_user, "Runner")
-        form = _make_form(db, td_user, td_tournament)
+        # View access needs a form a member could actually fill out: published,
+        # with its TournamentForm companion, and not gated behind onboarding
+        # order or prerequisites. A bare draft fails before permissions are
+        # ever considered.
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.add(TournamentForm(tournament_id=td_tournament.id, form_id=form.id))
         db.commit()
         result = require_form_view_access(form.id, db, other_user)
         assert result.id == form.id
+
+    def test_view_access_plain_member_blocked_on_draft_form(self, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Runner")
+        form = _make_form(db, td_user, td_tournament)
+        db.add(TournamentForm(tournament_id=td_tournament.id, form_id=form.id))
+        db.commit()
+        with pytest.raises(HTTPException) as exc_info:
+            require_form_view_access(form.id, db, other_user)
+        assert exc_info.value.status_code == 403
