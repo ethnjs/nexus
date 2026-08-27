@@ -216,15 +216,21 @@ class FormFieldRead(BaseModel):
 class BulkFieldEntry(BaseModel):
     """One entry in a PUT /forms/{form_id}/fields/ payload. `id` absent
     means "create"; `id` present must match a currently-live field on this
-    form. `field_key` is only meaningful (and required) on create — on an
-    update it's server-controlled (immutable, or carried over onto a
-    question_type-change replacement) and any value sent here is ignored."""
+    form. `field_key` is required on create; on an update, omitting it leaves
+    the existing key alone while sending one renames the field."""
     id: str | None = None
     field_key: str | None = None
     label: str
     description: str | None = None
     question_type: str
     config: dict[str, Any] | None = None
+    # The TD's answer, for this field, to "ask previous responders to review
+    # this?" — it only governs the judgment-call changes (wording, and moving
+    # between a preset and a standard key). Changes that actually invalidate
+    # an answer prompt regardless. None means the caller didn't decide, so
+    # each such change falls back to its own default; see
+    # app/core/form/changes.py.
+    notify_responders: bool | None = None
 
 
 class BulkFieldsUpdate(BaseModel):

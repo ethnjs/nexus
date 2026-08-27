@@ -793,7 +793,7 @@ class TestBulkUpdateFieldsPublished:
             .first()
         )
         assert pending is not None
-        assert pending.reason == "option_archived"
+        assert pending.reasons == ["option_invalidated"]
 
     def test_pending_update_cleared_on_fresh_submission(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -831,7 +831,47 @@ class TestBulkUpdateFieldsPublished:
         assert res.status_code == 200
         assert db.query(FormResponsePendingUpdate).filter(FormResponsePendingUpdate.response_id == response_id).count() == 0
 
-    def test_field_replaced_flags_pending_update_for_prior_answer(self, client, db, td_user, td_tournament):
+    def _pending(self, db, response_id, field_id):
+        return (
+            db.query(FormResponsePendingUpdate)
+            .filter(
+                FormResponsePendingUpdate.response_id == response_id,
+                FormResponsePendingUpdate.field_id == field_id,
+            )
+            .first()
+        )
+
+    def test_cross_shape_type_change_flags_pending_update(self, client, db, td_user, td_tournament):
+        """short_text -> single_select_radio turns a plain string answer into
+        an option reference, so the stored answer no longer means anything."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        response_id = res.json()["id"]
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "label": "Color", "question_type": "single_select_radio",
+                "config": {"required": False, "options": [
+                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+                ]},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        # Edited in place, so the flag points at the field directly.
+        pending = self._pending(db, response_id, field.id)
+        assert pending is not None
+        assert pending.reasons == ["question_type_changed"]
+
+    def test_within_shape_type_change_flags_nobody(self, client, db, td_user, td_tournament):
+        """short_text -> long_text is a rendering choice; both store a plain
+        string, so no previous answer was invalidated."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
         db.commit()
@@ -845,15 +885,41 @@ class TestBulkUpdateFieldsPublished:
             f"/forms/{form.id}/fields/",
             json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
         )
+        assert self._pending(db, response_id, field.id) is None
 
-        # The field was edited in place, so the flag points at it directly.
-        pending = (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == field.id)
-            .first()
+    def test_retiring_a_field_deletes_its_open_flags(self, client, db, td_user, td_tournament):
+        """A flag on a question nobody can answer any more could never clear,
+        so retirement takes them with it."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        keep = _make_field(db, form, order=2, field_key="name", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": field.id, "value": "blue"},
+            {"field_id": keep.id, "value": "sam"},
+        ]})
+        response_id = res.json()["id"]
+
+        # Flag it via a cross-shape type change, then retire it.
+        client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [
+                {"id": field.id, "label": "Color", "question_type": "single_select_radio",
+                 "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]}},
+                {"id": keep.id, "label": "Name", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+            ]},
         )
-        assert pending is not None
-        assert pending.reason == "field_replaced"
+        assert self._pending(db, response_id, field.id) is not None
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": keep.id, "label": "Name", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert self._pending(db, response_id, field.id) is None
 
     def test_option_without_option_id_gets_one_generated(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)

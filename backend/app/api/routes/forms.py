@@ -9,12 +9,13 @@ from app.core.form import (
     apply_option_archiving,
     assign_option_ids,
     field_key_taken_in_tournament,
-    flag_pending_updates_for_archived_options,
-    flag_pending_updates_for_field,
+    delete_pending_updates_for_field,
+    flag_pending_updates,
     resolve_field_options,
     slugify,
     snapshot_answer_value,
 )
+from app.core.form import changes
 from app.core.form.branching import missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
@@ -604,8 +605,9 @@ def bulk_update_fields(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         return normalized
 
-    pending_flags: list[tuple[str, str, list[str]]] = []
-    # (field_id, reason, archived_option_ids)
+    # (field, reasons, removed_option_ids) — resolved into rows after the
+    # flush, so a rolled-back batch leaves no flags behind.
+    pending_flags: list[tuple[FormField, set[str], list[str]]] = []
 
     order = 1
     for entry in payload.fields:
@@ -628,13 +630,18 @@ def bulk_update_fields(
             # answers remain readable under the old semantics rather than being
             # reinterpreted through the new type. See form-edit-lifecycle.md.
             if is_history_preserving:
+                reasons = changes.classify_field_change(
+                    field,
+                    new_question_type=entry.question_type,
+                    new_field_key=new_field_key,
+                    new_config=normalized_config,
+                    new_label=entry.label,
+                    new_description=entry.description,
+                )
+                reasons = changes.resolve_reasons(reasons, entry.notify_responders)
                 normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
-                if archived_option_ids:
-                    pending_flags.append((field.id, "option_archived", archived_option_ids))
-                if type_changed:
-                    # Ordered after option_archived so the upsert escalates to
-                    # the stronger reason rather than the other way round.
-                    pending_flags.append((field.id, "field_replaced", []))
+                if reasons:
+                    pending_flags.append((field, reasons, archived_option_ids))
             field.order = order
             field.label = entry.label
             field.description = entry.description
@@ -662,8 +669,10 @@ def bulk_update_fields(
     removed_fields = [f for fid, f in live_by_id.items() if fid not in submitted_ids]
     for field in removed_fields:
         if is_history_preserving:
+            # Retiring a question raises nothing: a flag on a field that can
+            # no longer be answered could never clear. Any open ones go too.
             field.is_archived = True
-            pending_flags.append((field.id, "field_replaced", []))
+            delete_pending_updates_for_field(db, field.id)
         else:
             db.delete(field)
 
@@ -674,11 +683,8 @@ def bulk_update_fields(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
 
-    for field_id, reason, archived_option_ids in pending_flags:
-        if reason == "field_replaced":
-            flag_pending_updates_for_field(db, field_id, "field_replaced")
-        else:
-            flag_pending_updates_for_archived_options(db, live_by_id[field_id], archived_option_ids)
+    for field, reasons, removed_option_ids in pending_flags:
+        flag_pending_updates(db, field, reasons, removed_option_ids)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so

@@ -1,4 +1,5 @@
 from sqlalchemy.orm import Session
+from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
@@ -9,6 +10,7 @@ from app.models.models import (
     Form,
     FormAnswer,
     FormField,
+    FormResponse,
     FormResponsePendingUpdate,
     TournamentEvent,
     TournamentShift,
@@ -208,7 +210,9 @@ def apply_option_archiving(old_config: dict | None, new_config: dict) -> tuple[d
     return merged, newly_archived_ids
 
 
-def _upsert_pending_update(db: Session, response_id: str, field_id: str, reason: str) -> None:
+def _upsert_pending_update(db: Session, response_id: str, field_id: str, reasons: set[str]) -> None:
+    """One row per (response, field); repeat calls union their reasons rather
+    than overwriting, since several can apply to the same field in one save."""
     existing = (
         db.query(FormResponsePendingUpdate)
         .filter(
@@ -218,20 +222,57 @@ def _upsert_pending_update(db: Session, response_id: str, field_id: str, reason:
         .first()
     )
     if existing is None:
-        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field_id, reason=reason))
-    elif existing.reason == "option_archived" and reason == "field_replaced":
-        # Escalate only in this direction — see FormResponsePendingUpdate.
-        existing.reason = "field_replaced"
+        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field_id, reasons=sorted(reasons)))
+    else:
+        existing.reasons = sorted(set(existing.reasons or []) | reasons)
 
 
-def flag_pending_updates_for_field(db: Session, field_id: str, reason: str) -> None:
-    """Flags every response that answered `field_id`. A field is edited in
-    place, so the field they answered is the field they'll answer again."""
+def _responses_leaving_field_blank(db: Session, field: FormField) -> set[str]:
+    """Responses to this field's form that didn't actually answer it — no
+    answer row at all, or one holding an empty value."""
     response_ids = {
-        rid for (rid,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field_id).all()
+        rid for (rid,) in db.query(FormResponse.id).filter(FormResponse.form_id == field.form_id).all()
     }
-    for response_id in response_ids:
-        _upsert_pending_update(db, response_id, field_id, reason)
+    for answer in db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all():
+        if answer.value not in (None, "", [], {}):
+            response_ids.discard(answer.response_id)
+    return response_ids
+
+
+def flag_pending_updates(
+    db: Session, field: FormField, reasons: set[str], removed_option_ids: list[str] | None = None
+) -> None:
+    """Raise (or extend) flags on `field` for whoever each reason affects.
+
+    Audience is per-reason, not per-field: losing an option only concerns the
+    people who picked it, and a field turning required only concerns the ones
+    who skipped it. Everything else concerns everyone who answered."""
+    if not reasons:
+        return
+
+    by_response: dict[str, set[str]] = {}
+
+    def _add(response_id: str, reason_set: set[str]) -> None:
+        if reason_set:
+            by_response.setdefault(response_id, set()).update(reason_set)
+
+    broad = reasons - {changes.OPTION_INVALIDATED, changes.NOW_REQUIRED}
+    if broad:
+        for (response_id,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field.id).all():
+            _add(response_id, broad)
+
+    if changes.OPTION_INVALIDATED in reasons and removed_option_ids:
+        removed = set(removed_option_ids)
+        for answer in db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all():
+            if removed & selected_option_ids(field, answer.value):
+                _add(answer.response_id, {changes.OPTION_INVALIDATED})
+
+    if changes.NOW_REQUIRED in reasons:
+        for response_id in _responses_leaving_field_blank(db, field):
+            _add(response_id, {changes.NOW_REQUIRED})
+
+    for response_id, reason_set in by_response.items():
+        _upsert_pending_update(db, response_id, field.id, reason_set)
 
 
 def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
@@ -241,21 +282,6 @@ def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
     db.query(FormResponsePendingUpdate).filter(
         FormResponsePendingUpdate.field_id == field_id
     ).delete(synchronize_session=False)
-
-
-def flag_pending_updates_for_archived_options(db: Session, field: FormField, archived_option_ids: list[str]) -> None:
-    """Upserts option_archived for every response whose stored answer on
-    `field` (still live, unchanged type) selected one of `archived_option_ids`.
-    FormAnswer.value is a plain JSON column (not JSONB), so this is a
-    Python-side scan rather than a DB-side containment query — same
-    reasoning as the TournamentShift deletion guard's scan."""
-    if not archived_option_ids:
-        return
-    archived_ids = set(archived_option_ids)
-    answers = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).all()
-    for answer in answers:
-        if archived_ids & selected_option_ids(field, answer.value):
-            _upsert_pending_update(db, answer.response_id, field.id, "option_archived")
 
 
 def _resolve_track_statuses(db: Session, assignments: list[dict]) -> list[dict]:

@@ -913,11 +913,12 @@ class FormAnswer(Base):
 # keying history on it strands the flag the moment the question is renamed.
 # The field a flag points at is therefore stable across every edit.
 #
-# `reason` only ever escalates option_archived -> field_replaced, never the
-# reverse. A row is cleared when the respondent patches that field, and is
-# deleted outright if the field is retired or invalidated — a flag on a
-# question that can no longer be answered is unclearable by construction.
-# See backend/form-edit-lifecycle.md.
+# `reasons` is a set, not a single value: one save can legitimately trigger
+# several on the same field (an option added *and* the wording changed), so
+# they union rather than override. A row is cleared when the respondent
+# patches that field, and is deleted outright if the field is retired or
+# invalidated — a flag on a question that can no longer be answered is
+# unclearable by construction. See backend/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
@@ -925,7 +926,8 @@ class FormResponsePendingUpdate(Base):
     id = Column(Integer, primary_key=True, index=True)
     response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
     field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False)
-    reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
+    # See app/core/form/changes.py for the values and what raises each.
+    reasons = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     response = relationship("FormResponse", back_populates="pending_updates")
