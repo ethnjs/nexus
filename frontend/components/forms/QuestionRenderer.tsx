@@ -190,6 +190,12 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
   shifts?: TournamentShift[] | null
 }) {
   const config = field.config ?? {}
+  // An archived option stays in `config.options` forever so old answers
+  // referencing its option_id keep resolving (see apply_option_archiving on
+  // the backend) — it is storage, never a choice to present. Respondents
+  // whose answer pointed at one are asked to re-answer via the
+  // "option_archived" pending-update flow instead.
+  const liveOptions: FormFieldOption[] = (config.options ?? []).filter((opt) => !opt.is_archived)
 
   switch (field.question_type) {
     case 'short_text':
@@ -231,7 +237,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       )
 
     case 'single_select_radio': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? (value as string | undefined) ?? '' : ''
 
@@ -261,7 +267,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'single_select_dropdown': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       return (
         <Dropdown
           value={interactive ? (value as string | undefined) ?? '' : ''}
@@ -275,7 +281,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'multi_select_checkbox': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
@@ -310,7 +316,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'ranked_choice': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const ranks = config.ranks ?? options.length
       return (
         <RankedList
@@ -378,6 +384,17 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
 
   const usesTrackEditor = hasTracks && !!tournament
 
+  // Archived options are storage, not editable rows (see QuestionBody) — the
+  // TD can't meaningfully delete one, since the backend re-merges it from the
+  // stored config on every save to keep old answers resolvable. Hide them,
+  // but carry them back on each edit so the staged config still mirrors
+  // storage rather than relying on that re-merge to undo a silent drop.
+  const allOptions = (field.config?.options as EditableOption[] | undefined) ?? []
+  const liveOptions = allOptions.filter((option) => !option.is_archived)
+  const archivedOptions = allOptions.filter((option) => option.is_archived)
+  const setOptions = (options: EditableOption[]) =>
+    onFieldChange({ config: { ...field.config, options: [...options, ...archivedOptions] } })
+
   if (isEntity || usesTrackEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
     return (
       <>
@@ -386,8 +403,8 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
             tournament={tournament!}
             questionType={field.question_type}
-            options={(field.config?.options as EditableOption[] | undefined) ?? []}
-            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            options={liveOptions}
+            onChange={setOptions}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             errors={errors}
@@ -395,8 +412,8 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
           />
         ) : (
           <OptionsEditor
-            options={(field.config?.options as EditableOption[] | undefined) ?? []}
-            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            options={liveOptions}
+            onChange={setOptions}
             questionType={field.question_type}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
@@ -409,7 +426,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             rank mechanics are a property of the question type, not of where
             the option rows come from. */}
         {field.question_type === 'ranked_choice' && (() => {
-          const options = (field.config?.options as EditableOption[] | undefined) ?? []
+          const options = liveOptions
           const ranks = field.config?.ranks ?? 1
           // Same live-data gate as confirmError above — re-check against the
           // current option count rather than trusting the errors snapshot is
