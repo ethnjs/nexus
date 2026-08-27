@@ -61,6 +61,7 @@ again.
 | `question_type` changes shape class (below) | everyone who answered |
 | Option added or reopened | everyone who answered |
 | Option invalidated | only those who selected it |
+| Field becomes required | only those who left it blank |
 
 An added option flags everyone because a previous responder may have settled
 for a lesser choice when their real answer wasn't offered. Reopening a closed
@@ -146,9 +147,14 @@ rows in the builder. They live in storage only.
 | Action | Effect | Answers | Pending update |
 |---|---|---|---|
 | **Edit** | mutate in place; `id` preserved | untouched | per the tiers above |
-| **Retire** | `is_archived: true`; key released | kept as history | none |
+| **Retire** | `is_archived: true`; key released | kept as history | **open ones deleted** |
 | **Restore** | `is_archived: false` | re-link automatically via `field_id` | none |
-| **Invalidate** | `is_archived: true` | **purged**, with write-through cleanup | none — there's nothing left to review |
+| **Invalidate** | `is_archived: true` | **purged**, with write-through cleanup | **open ones deleted** |
+
+Retiring or invalidating a field **deletes its open pending updates.** A flag
+on a field the respondent can no longer answer is unclearable by construction
+— `PATCH` would reject the field, and the question isn't rendered. This is not
+optional cleanup; skipping it strands respondents permanently.
 
 **Restore** works because editing never changes `field_id`, so `FormAnswer`
 rows still point at the field. On restore, re-validate: `next_field_id` may
@@ -220,6 +226,13 @@ This is why answers are never rewritten when a `field_key` moves between
 preset and standard: the old answers keep their original semantics, and only
 new submissions write through under the new key.
 
+**Rows already written stay, by design.** Moving a question away from a preset
+does not remove what it previously wrote to `MembershipAvailability` or track
+statuses. Those tables are shared — multiple questions, across multiple forms,
+contribute to the same rows, so no single field owns any of them and none can
+be safely withdrawn. Lunch is the exception: keyed by (membership, category),
+it has a single owner and can be deleted.
+
 Cleanup on **Invalidate**:
 
 | Target | Rule |
@@ -232,17 +245,15 @@ A blanket "reset all availability" is a separate, explicit TD action, not a
 side effect of editing one field. It should stay rare — re-collecting form
 responses is expensive in practice.
 
-## Schema requirements
+## Storage
 
-- `FormAnswer.question_type` and `FormAnswer.field_key` — the semantics the
-  answer was recorded under.
-- `FormResponsePendingUpdate.field_id` replaces `field_key` — identity, not
-  name. `created_at` already exists and becomes the clearing mechanism.
-- `field_key` uniqueness narrows to live fields per tournament; archived keys
-  are released.
-
-No lineage column is needed. In-place mutation keeps `field_id` stable, which
-is what a lineage column would otherwise have to reconstruct.
+- `FormAnswer` records `field_id`, the selected `option_id`(s), the
+  `{option_id, value, label}` snapshot, and the `question_type` / `field_key`
+  the answer was given under.
+- `FormResponsePendingUpdate` is keyed on `field_id`, with `created_at` for
+  display and ordering.
+- `field_key` is unique among **live** fields within a tournament. Archived
+  fields do not reserve their keys, and may share a key with a live field.
 
 ## Track status ordering
 
@@ -265,4 +276,9 @@ This requires a deliberate TD action on that specific question, so it's
 visible rather than silent — but it is not prevented.
 
 Closing it fully needs write-through to record which response last set each
-track status and reject an out-of-order write. Deferred, not solved.
+track status and reject an out-of-order write.
+
+## Out of scope
+
+A TD editing another user's response. Responses are locked to flagged fields
+and there is no TD override.
