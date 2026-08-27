@@ -10,9 +10,8 @@ import { eventNameWithDivision } from '@/lib/eventDisplay'
 import { formatDayLabel, formatTime, toDateInput } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
 import { ChipInput } from '@/components/ui/ChipInput'
-import { Dropdown } from '@/components/ui/Dropdown'
 import { Popover } from '@/components/ui/Popover'
-import { IconPlus, IconSearch } from '@/components/ui/Icons'
+import { IconChevronDown, IconPlus, IconSearch } from '@/components/ui/Icons'
 import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
 import { EventOptionsPickerModal } from '@/components/forms/EventOptionsPickerModal'
 
@@ -31,12 +30,17 @@ interface EntityOptionsEditorProps {
   trackStatusEnabled?: boolean
 }
 
-const STATUS_OPTIONS = [
-  { value: '', label: 'Choose status' },
+const STATUS_OPTIONS: { value: TrackStatus; label: string }[] = [
   { value: 'interested', label: 'Interested' },
   { value: 'confirmed', label: 'Confirmed' },
   { value: 'declined', label: 'Declined' },
 ]
+const STATUS_LABEL: Record<TrackStatus | '', string> = {
+  '': 'Set status',
+  interested: 'Interested',
+  confirmed: 'Confirmed',
+  declined: 'Declined',
+}
 
 function entityLabel(fieldKey: Exclude<EntityFieldKey, 'track_status'>, entity: Entity, isMultiDay: boolean): string {
   if (fieldKey === 'availability') {
@@ -230,8 +234,49 @@ function TrackPicker({ tournament, option, availability, onChange }: { tournamen
     renderChipTrailing={(name) => {
       const track = byName.get(name)
       const assignment = assignments.find((item) => item.id === track?.id)
-      return track && assignment ? <Dropdown value={assignment.status} onChange={(status) => setStatus(track.id, status)} options={STATUS_OPTIONS} size="sm" width={132} /> : null
+      return track && assignment ? <TrackStatusMenu status={assignment.status} onChange={(status) => setStatus(track.id, status)} /> : null
     }}
     addButton={<Popover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> Tracks</Button>} items={tracks.filter((track) => !track.is_archived)} getKey={(track) => track.id} renderLabel={(track) => track.name} onSelect={toggle} checklist isSelected={(track) => assignments.some((item) => item.id === track.id)} emptyMessage="No active tracks." width={300} />}
   />
+}
+
+const STATUS_PILL_STYLE: Record<TrackStatus | '', { background: string; color: string; border: string }> = {
+  '':          { background: 'var(--color-bg)', color: 'var(--color-text-tertiary)', border: 'var(--color-border-strong)' },
+  interested:  { background: 'transparent', color: 'var(--color-text-secondary)', border: 'var(--color-border-strong)' },
+  confirmed:   { background: 'var(--color-success-subtle)', color: 'var(--color-success)', border: 'var(--color-success)' },
+  declined:    { background: 'var(--color-danger-subtle)', color: 'var(--color-danger)', border: 'var(--color-danger)' },
+}
+
+// Right-hand segment of the track chip — a plain clickable pill + chevron
+// (not a bordered Dropdown) so it reads as part of the chip itself, not a
+// boxed control embedded inside one. Keeps the chip a single fixed height
+// matching its neighbors (the Tracks add button) instead of growing to fit
+// a full-size Dropdown's own chrome. Colored per status so the chip reads
+// at a glance, same palette as Badge's interested/confirmed/declined variants.
+function TrackStatusMenu({ status, onChange }: { status: TrackStatus | ''; onChange: (status: TrackStatus) => void }) {
+  const [open, setOpen] = useState(false)
+  const pill = STATUS_PILL_STYLE[status]
+  return (
+    <Popover
+      trigger={
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: '2px', boxSizing: 'border-box',
+          padding: '1px 6px', borderRadius: '999px', border: `1px solid ${pill.border}`,
+          background: pill.background, color: pill.color,
+          fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+          cursor: 'pointer', whiteSpace: 'nowrap',
+        }}>
+          {STATUS_LABEL[status]}
+          <IconChevronDown size={9} style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
+        </span>
+      }
+      items={STATUS_OPTIONS}
+      getKey={(opt) => opt.value}
+      renderLabel={(opt) => opt.label}
+      onSelect={(opt) => onChange(opt.value)}
+      onOpenChange={setOpen}
+      width={140}
+      align="left"
+    />
+  )
 }
