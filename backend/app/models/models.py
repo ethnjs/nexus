@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index, text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
@@ -834,7 +834,15 @@ class FormField(Base):
     answer = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
-        UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
+        # Live fields only. An archived field doesn't reserve its key — see
+        # field_key_taken_in_tournament — so a retired question and the one
+        # replacing it can share a name. A plain UniqueConstraint here would
+        # block that at the DB even though the application allows it.
+        Index(
+            "uq_form_field_key", "form_id", "field_key",
+            unique=True,
+            postgresql_where=text("is_archived = false"),
+        ),
     )
 
     @validates("field_key")

@@ -232,12 +232,14 @@ def list_my_tournament_forms(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key
-# already in use across this tournament's forms (archived fields included —
-# an archived key isn't released for reuse, see field_key_taken_in_tournament
-# in app/core/form). Lets the builder's field_key Combobox show these as
-# visible options before Save, rather than only discovering a collision via
-# the 409 that PUT .../fields/ would otherwise return.
+# GET /tournaments/{tournament_id}/forms/field-keys/ — every field_key in use
+# by a live field across this tournament's forms. Lets the builder's field_key
+# Combobox show these before Save, rather than only discovering a collision
+# via the 409 that PUT .../fields/ would otherwise return.
+#
+# Archived fields are excluded deliberately: they don't reserve their keys
+# (see field_key_taken_in_tournament), so listing them here would make the
+# builder block a key the API would happily accept.
 # ---------------------------------------------------------------------------
 @router.get(
     "/tournaments/{tournament_id}/forms/field-keys/",
@@ -252,7 +254,7 @@ def list_tournament_field_keys(
     rows = (
         db.query(FormField.field_key)
         .join(Form, Form.id == FormField.form_id)
-        .filter(Form.tournament_id == tournament_id)
+        .filter(Form.tournament_id == tournament_id, FormField.is_archived == False)
         .distinct()
         .all()
     )
@@ -571,7 +573,11 @@ def bulk_update_fields(
         else:
             taken = (
                 db.query(FormField)
-                .filter(FormField.form_id == form.id, FormField.field_key == field_key)
+                .filter(
+                    FormField.form_id == form.id,
+                    FormField.field_key == field_key,
+                    FormField.is_archived == False,
+                )
                 .first()
                 is not None
             )
@@ -598,12 +604,8 @@ def bulk_update_fields(
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
         return normalized
 
-    # (field_answered, field_to_flag, reason, archived_option_ids). The two
-    # fields differ only on the archive+replace path, where responses answered
-    # the now-archived row but must be pointed at its replacement — the field
-    # they can actually answer. Held as ORM objects because a replacement has
-    # no id until the flush below.
-    pending_flags: list[tuple[FormField, FormField, str, list[str]]] = []
+    pending_flags: list[tuple[str, str, list[str]]] = []
+    # (field_id, reason, archived_option_ids)
 
     order = 1
     for entry in payload.fields:
@@ -619,45 +621,27 @@ def bulk_update_fields(
                 _check_field_key_available(new_field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
 
-            # A type change that must preserve history archives this field and
-            # creates its replacement at the same list position. The
-            # replacement normally inherits the old field_key (see the Edit
-            # Lifecycle doc — deliberate continuity), but a submitted key
-            # still wins: applying a preset changes the key and the
-            # question_type in the same save, and silently keeping the old key
-            # would validate the new preset config against the wrong key.
-            if type_changed and is_history_preserving:
-                field.is_archived = True
-                old_key = field.field_key
-                # field.id is a nanoid and can contain '-', which field_key's
-                # snake_case-alphanumeric validator rejects — swap it for
-                # '_' so the archived key stays valid regardless of id shape.
-                field.field_key = f"{old_key}_archived_{field.id}".replace("-", "_")
-
-                new_field = FormField(
-                    form_id=form.id,
-                    order=order,
-                    label=entry.label,
-                    description=entry.description,
-                    question_type=entry.question_type,
-                    field_key=new_field_key,
-                    config=normalized_config,
-                    is_archived=False,
-                )
-                db.add(new_field)
-                pending_flags.append((field, new_field, "field_replaced", []))
-            else:
-                if is_history_preserving:
-                    normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
-                    if archived_option_ids:
-                        pending_flags.append((field, field, "option_archived", archived_option_ids))
-                field.order = order
-                field.label = entry.label
-                field.description = entry.description
-                field.question_type = entry.question_type
-                field.field_key = new_field_key
-                field.config = normalized_config
-                flag_modified(field, "config")
+            # Every edit applies to the field itself — a question_type change
+            # included. The field keeps its id, so answers and pending updates
+            # stay attached without any lineage bookkeeping; FormAnswer records
+            # the question_type/field_key each answer was given under, so past
+            # answers remain readable under the old semantics rather than being
+            # reinterpreted through the new type. See form-edit-lifecycle.md.
+            if is_history_preserving:
+                normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
+                if archived_option_ids:
+                    pending_flags.append((field.id, "option_archived", archived_option_ids))
+                if type_changed:
+                    # Ordered after option_archived so the upsert escalates to
+                    # the stronger reason rather than the other way round.
+                    pending_flags.append((field.id, "field_replaced", []))
+            field.order = order
+            field.label = entry.label
+            field.description = entry.description
+            field.question_type = entry.question_type
+            field.field_key = new_field_key
+            field.config = normalized_config
+            flag_modified(field, "config")
         else:
             field_key = slugify(entry.field_key or "")
             _check_field_key_available(field_key)
@@ -679,7 +663,7 @@ def bulk_update_fields(
     for field in removed_fields:
         if is_history_preserving:
             field.is_archived = True
-            pending_flags.append((field, field, "field_replaced", []))
+            pending_flags.append((field.id, "field_replaced", []))
         else:
             db.delete(field)
 
@@ -690,11 +674,11 @@ def bulk_update_fields(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="; ".join(errors))
 
-    for field_answered, field_to_flag, reason, archived_option_ids in pending_flags:
+    for field_id, reason, archived_option_ids in pending_flags:
         if reason == "field_replaced":
-            flag_pending_updates_for_field(db, field_answered.id, field_to_flag.id, "field_replaced")
+            flag_pending_updates_for_field(db, field_id, "field_replaced")
         else:
-            flag_pending_updates_for_archived_options(db, field_answered, archived_option_ids)
+            flag_pending_updates_for_archived_options(db, live_by_id[field_id], archived_option_ids)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so

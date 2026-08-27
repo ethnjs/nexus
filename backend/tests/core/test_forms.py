@@ -430,12 +430,22 @@ class TestSlugifyAndUniqueness:
 
         assert field_key_taken_in_tournament(db, other_tournament.id, "only_here") is False
 
-    def test_field_key_taken_true_when_archived(self, db, td_user, td_tournament):
+    def test_field_key_released_when_archived(self, db, td_user, td_tournament):
+        """A key is a display name, not an identity — retiring a question
+        frees its name, so a TD who deletes one by mistake can add it back."""
         form = _make_form(db, td_user, td_tournament)
         _make_field(db, form, field_key="was_used", is_archived=True)
         db.commit()
 
-        assert field_key_taken_in_tournament(db, td_tournament.id, "was_used") is True
+        assert field_key_taken_in_tournament(db, td_tournament.id, "was_used") is False
+
+    def test_field_key_taken_when_live_field_shares_key_with_archived(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        _make_field(db, form, field_key="reused", is_archived=True)
+        _make_field(db, form, order=2, field_key="reused")
+        db.commit()
+
+        assert field_key_taken_in_tournament(db, td_tournament.id, "reused") is True
 
 
 # ---------------------------------------------------------------------------

@@ -224,7 +224,9 @@ class TestListForms:
 # ---------------------------------------------------------------------------
 
 class TestListTournamentFieldKeys:
-    def test_lists_distinct_keys_across_forms_including_archived(self, client, db, td_user, td_tournament):
+    def test_lists_distinct_live_keys_across_forms(self, client, db, td_user, td_tournament):
+        """Archived keys are excluded — they're reusable, so listing them
+        would make the builder block a key the API accepts."""
         form_a = _make_form(db, td_user, td_tournament, name="A")
         form_b = _make_form(db, td_user, td_tournament, name="B")
         _make_field(db, form_a, field_key="favorite_color")
@@ -235,7 +237,7 @@ class TestListTournamentFieldKeys:
         login(client, "td@test.com", "tdpass")
         res = client.get(f"/tournaments/{td_tournament.id}/forms/field-keys/")
         assert res.status_code == 200
-        assert set(res.json()) == {"favorite_color", "shirt_size", "archived_key"}
+        assert set(res.json()) == {"favorite_color", "shirt_size"}
 
     def test_excludes_chapter_forms(self, client, db, td_user, td_tournament, chapter):
         form_a = _make_form(db, td_user, td_tournament, name="A")
@@ -579,7 +581,10 @@ class TestBulkUpdateFieldsPublished:
         assert res.json()[0]["id"] == field.id
         assert res.json()[0]["label"] == "New label"
 
-    def test_question_type_change_archives_and_replaces_same_key(self, client, db, td_user, td_tournament):
+    def test_question_type_change_applies_in_place(self, client, db, td_user, td_tournament):
+        """A type change edits the field rather than archiving and replacing
+        it, so the id survives and answers stay attached without any lineage
+        bookkeeping."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form, order=1, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
         db.commit()
@@ -593,19 +598,19 @@ class TestBulkUpdateFieldsPublished:
         assert res.status_code == 200
         data = res.json()
         assert len(data) == 1
-        assert data[0]["id"] != field.id
+        assert data[0]["id"] == field.id
         assert data[0]["field_key"] == "color"
         assert data[0]["question_type"] == "long_text"
 
         db.refresh(field)
-        assert field.is_archived is True
-        assert field.field_key != "color"
+        assert field.is_archived is False
+        assert field.field_key == "color"
+        assert db.query(FormField).filter(FormField.form_id == form.id).count() == 1
 
-    def test_submitted_field_key_wins_over_inheritance_on_replacement(self, client, db, td_user, td_tournament):
+    def test_preset_applied_to_existing_field_uses_submitted_key(self, client, db, td_user, td_tournament):
         """Applying a preset renames the field_key *and* changes the
-        question_type in one save. The replacement normally inherits the old
-        key, but here that would validate the new track_status config against
-        the pre-preset key and 422."""
+        question_type in one save. The new config must be validated against
+        the submitted key, not the pre-preset one, or it 422s."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(db, form, order=1, field_key="interest", question_type="short_text", config={"required": False, "max_length": 50})
         track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
@@ -841,18 +846,10 @@ class TestBulkUpdateFieldsPublished:
             json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
         )
 
-        # The type change archived the old field and created a replacement;
-        # the flag points at the replacement, since that's the field the
-        # respondent can actually answer to clear it.
-        replacement = (
-            db.query(FormField)
-            .filter(FormField.form_id == form.id, FormField.field_key == "color", FormField.is_archived == False)
-            .one()
-        )
-        assert replacement.id != field.id
+        # The field was edited in place, so the flag points at it directly.
         pending = (
             db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == replacement.id)
+            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == field.id)
             .first()
         )
         assert pending is not None

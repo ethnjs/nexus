@@ -106,14 +106,22 @@ def assign_option_ids(config: dict | None) -> dict | None:
 
 
 def field_key_taken_in_tournament(db: Session, tournament_id: int, field_key: str) -> bool:
-    """True if `field_key` is already used by any FormField — archived
-    included, an archived key isn't released for reuse — belonging to any
-    Form owned by `tournament_id`. field_key is the TD-visible dashboard
-    lookup key, so it's unique tournament-wide, not just per form."""
+    """True if `field_key` is in use by a **live** FormField on any Form owned
+    by `tournament_id`. field_key is the TD-visible dashboard lookup key, so
+    it's unique tournament-wide, not just per form.
+
+    Archived fields don't reserve their keys: a key is a display name, not an
+    identity (that's field_id), so retiring a question releases its name for
+    reuse — including by the question a TD adds back after deleting one by
+    mistake. An archived field may therefore share a key with a live one."""
     return (
         db.query(FormField)
         .join(Form, Form.id == FormField.form_id)
-        .filter(Form.tournament_id == tournament_id, FormField.field_key == field_key)
+        .filter(
+            Form.tournament_id == tournament_id,
+            FormField.field_key == field_key,
+            FormField.is_archived == False,
+        )
         .first()
         is not None
     )
@@ -216,21 +224,14 @@ def _upsert_pending_update(db: Session, response_id: str, field_id: str, reason:
         existing.reason = "field_replaced"
 
 
-def flag_pending_updates_for_field(
-    db: Session, answered_field_id: str, target_field_id: str, reason: str
-) -> None:
-    """Flags every response that answered `answered_field_id`, pointing the
-    flag at `target_field_id` — the field they must answer to clear it. The
-    two differ on the archive+replace path, where the question continues as a
-    new row and the archived one can no longer be answered."""
+def flag_pending_updates_for_field(db: Session, field_id: str, reason: str) -> None:
+    """Flags every response that answered `field_id`. A field is edited in
+    place, so the field they answered is the field they'll answer again."""
     response_ids = {
-        rid
-        for (rid,) in db.query(FormAnswer.response_id)
-        .filter(FormAnswer.field_id == answered_field_id)
-        .all()
+        rid for (rid,) in db.query(FormAnswer.response_id).filter(FormAnswer.field_id == field_id).all()
     }
     for response_id in response_ids:
-        _upsert_pending_update(db, response_id, target_field_id, reason)
+        _upsert_pending_update(db, response_id, field_id, reason)
 
 
 def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
