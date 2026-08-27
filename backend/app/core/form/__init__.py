@@ -3,6 +3,7 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     TRACK_STATUS_FIELD_KEY_PATTERN,
+    track_status_assignments,
 )
 from app.models.models import (
     Form,
@@ -135,8 +136,7 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
     return any(
         any(
             assignment.get("id") == track_id
-            for option in (field.config or {}).get("options") or []
-            for assignment in (option.get("value") if isinstance(option.get("value"), list) else (option.get("value") or {}).get("track_statuses", []))
+            for assignment in track_status_assignments(field.config or {})
         )
         for field in fields
     )

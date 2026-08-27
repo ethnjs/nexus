@@ -143,7 +143,10 @@ def _is_assignment(item: object) -> bool:
     return isinstance(item, dict) and "id" in item and "status" in item
 
 
-def _track_status_assignments(config: dict) -> list[dict]:
+def track_status_assignments(config: dict) -> list[dict]:
+    """Every track assignment carried by a field's options, whichever shape
+    holds them. The single place that knows how to dig them out — callers
+    that hand-roll it get the value shapes wrong (see _is_assignment)."""
     assignments = []
     for option in config.get("options") or []:
         value = option.get("value")
@@ -166,7 +169,7 @@ def validate_track_status_options(
     """Validate option-level track statuses for Track Status and opted-in
     Availability fields. Track mappings are tournament-only and catalog IDs
     remain valid after archival so historical fields can still be read."""
-    assignments = _track_status_assignments(config)
+    assignments = track_status_assignments(config)
     enabled = track_status_enabled(field_key, config)
 
     _require(

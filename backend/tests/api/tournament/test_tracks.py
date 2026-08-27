@@ -88,8 +88,8 @@ def test_unused_track_can_be_deleted_but_referenced_track_cannot(client, db, td_
         config={
             "required": True,
             "options": [{
-                "option_id": "interested", "value": "interested", "label": "Interested",
-                "track_statuses": [{"track_id": referenced["id"], "status": "interested"}],
+                "option_id": "interested", "label": "Interested",
+                "value": [{"id": referenced["id"], "status": "interested"}],
             }],
         },
     ))
