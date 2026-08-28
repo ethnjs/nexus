@@ -1,9 +1,13 @@
 """Diff-sync for the structural tables that a form response's reserved-key
-answers (`availability`, `lunch_{date}_{category}`) write through to on
-tournament-owned forms — see form-question-types-reference.md. Each function
-diffs the submitted values against what's already stored and applies only
-the delta (insert new, delete removed) rather than replace-all, so an
-untouched row (e.g. a different lunch date/category) is never disturbed.
+answers (`availability`, `lunch_{date}_{category}`, `track_status_{suffix}`)
+write through to on tournament-owned forms — see
+form-question-types-reference.md. Each function diffs the submitted values
+against what's already stored and applies only the delta (insert new, delete
+removed) rather than replace-all, so an untouched row (e.g. a different lunch
+date/category) is never disturbed.
+
+Track status is the exception to "diff": it only ever upserts, and a write can
+be refused outright by the transition rule. See sync_track_statuses.
 
 Callers commit — these only add/delete/flush, so the write-through and the
 FormAnswer rows it's derived from land in the same transaction."""
@@ -16,6 +20,7 @@ from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, LUNCH_FIELD
 from app.models.models import (
     TournamentMembershipAvailability,
     TournamentMembershipLunch,
+    TournamentMembershipTrackStatus,
     TournamentShift,
 )
 
@@ -122,5 +127,85 @@ def sync_lunch(
                 label=item["label"],
             )
         )
+
+    db.flush()
+
+
+TRACK_STATUSES = ("interested", "confirmed", "declined")
+
+
+def can_set_track_status(current: str | None, incoming: str) -> bool:
+    """Whether a write may move a track from `current` to `incoming`.
+
+    The whole rule: **a track never falls back to `interested` once it's moved
+    past it.** Everything else is permitted — interested→confirmed, either→
+    declined, declined→confirmed for someone who changes their mind, and any
+    status re-written as itself.
+
+    This is what keeps track statuses ordered, in place of comparing submission
+    times. Write-through is forward-only, but a TD can still raise a pending
+    update on a track question in an *older* form, and that patch would
+    otherwise demote a track a newer form already confirmed. Since the only
+    damage an out-of-order write can do is a demotion, refusing demotions
+    closes it without any notion of "which response is newer".
+
+    The cost is that no form can walk a mistaken `confirmed` back down to
+    `interested` — that needs a path that bypasses this guard."""
+    return incoming != "interested" or current in (None, "interested")
+
+
+def sync_track_statuses(
+    db: Session,
+    membership_id: int,
+    intended: dict[int, dict],
+    response_id: str | None = None,
+) -> None:
+    """Upserts one submission's track statuses.
+
+    `intended` maps track_id -> {"status": ..., "field_id": ...}, already
+    resolved to a single status per track by the caller (see
+    _write_through_reserved_fields — later fields in document order win).
+
+    **Never deletes.** Every track_status_* question across every form writes
+    into these rows, so no field owns one and none can withdraw its
+    contribution after the fact — a member who stops selecting an option keeps
+    the status it granted. Same reasoning as availability, minus availability's
+    day boundary: there's no equivalent scope that would make a removal safe.
+
+    A write the transition rule refuses is skipped silently rather than
+    raising. It's a legitimate outcome of the rules — a respondent answering
+    what they were asked — not a client error worth failing the submission
+    over."""
+    if not intended:
+        return
+
+    existing_by_track = {
+        row.track_id: row
+        for row in db.query(TournamentMembershipTrackStatus).filter(
+            TournamentMembershipTrackStatus.membership_id == membership_id,
+            TournamentMembershipTrackStatus.track_id.in_(intended),
+        )
+    }
+
+    for track_id, write in intended.items():
+        status = write["status"]
+        row = existing_by_track.get(track_id)
+        if not can_set_track_status(row.status if row else None, status):
+            continue
+
+        if row is None:
+            db.add(
+                TournamentMembershipTrackStatus(
+                    membership_id=membership_id,
+                    track_id=track_id,
+                    status=status,
+                    source_response_id=response_id,
+                    source_field_id=write.get("field_id"),
+                )
+            )
+        else:
+            row.status = status
+            row.source_response_id = response_id
+            row.source_field_id = write.get("field_id")
 
     db.flush()

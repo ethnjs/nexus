@@ -994,9 +994,9 @@ class TournamentMembershipLunch(Base):
 # ever upserts here, never deletes (see backend/form-edit-lifecycle.md).
 #
 # Writes are guarded by a transition rule rather than by submission ordering:
-# `interested` may only be entered from unset, so a stale answer replayed out
-# of order can never demote a track someone already confirmed. See
-# can_set_track_status in app/core/form/write_through.py.
+# a track never falls back to `interested` once it's moved past it, so a stale
+# answer replayed out of order can never demote a track someone already
+# confirmed. See can_set_track_status in app/core/form/write_through.py.
 # ---------------------------------------------------------------------------
 class TournamentMembershipTrackStatus(Base):
     __tablename__ = "tournament_membership_track_statuses"
