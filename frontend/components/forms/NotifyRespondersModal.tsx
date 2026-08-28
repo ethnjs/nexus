@@ -4,9 +4,8 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { IconLock } from "@/components/ui/Icons";
-import {
-  ClassifiedChange, REASON_CONSEQUENCES, REASON_LABELS, isMandatory,
-} from "@/lib/forms/changeClassification";
+import { FieldChange } from "@/lib/api";
+import { REASON_CONSEQUENCES, REASON_LABELS } from "@/lib/forms/changeClassification";
 
 // Last stop before a save asks people to redo work. Shown only on a form that
 // already has responses, and only for questions whose edits could actually
@@ -19,15 +18,16 @@ import {
 export function NotifyRespondersModal({
   changes, notify, onToggle, onCancel, onConfirm, saving,
 }: {
-  changes: ClassifiedChange[];
-  /** clientKey -> whether to ask previous responders about this question. */
+  /** The server's verdict for this save — see formsApi.classifyFieldChanges. */
+  changes: FieldChange[];
+  /** field_id -> whether to ask previous responders about this question. */
   notify: Record<string, boolean>;
-  onToggle: (clientKey: string, value: boolean) => void;
+  onToggle: (fieldId: string, value: boolean) => void;
   onCancel: () => void;
   onConfirm: () => void;
   saving: boolean;
 }) {
-  const asking = changes.filter((c) => notify[c.clientKey]).length;
+  const asking = changes.filter((c) => notify[c.field_id]).length;
 
   return (
     <Modal title="Ask responders to review?" onClose={onCancel} width={560}>
@@ -39,9 +39,9 @@ export function NotifyRespondersModal({
 
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
           {changes.map((change) => {
-            const on = !!notify[change.clientKey];
+            const on = !!notify[change.field_id];
             return (
-              <div key={change.clientKey} style={{
+              <div key={change.field_id} style={{
                 display: "flex", alignItems: "flex-start", justifyContent: "space-between",
                 gap: "16px", padding: "12px 14px",
                 border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
@@ -81,7 +81,7 @@ export function NotifyRespondersModal({
                       <IconLock size={12} />
                     </span>
                   )}
-                  <Toggle checked={on} onChange={(v) => onToggle(change.clientKey, v)} locked={change.locked} />
+                  <Toggle checked={on} onChange={(v) => onToggle(change.field_id, v)} locked={change.locked} />
                 </div>
               </div>
             );

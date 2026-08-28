@@ -1145,6 +1145,108 @@ class TestBulkUpdateFieldsPublished:
 # POST /forms/{form_id}/responses/ — submission and resubmission
 # ---------------------------------------------------------------------------
 
+class TestClassifyFieldChanges:
+    """POST /forms/{id}/fields/classify/ — the dry run behind the builder's
+    save confirmation. Writes nothing."""
+
+    def _entry(self, field, **overrides):
+        # description included deliberately: omitting it means "clear it",
+        # which is itself a text change — the builder always sends it.
+        entry = {
+            "id": field.id,
+            "label": field.label,
+            "description": field.description,
+            "question_type": field.question_type,
+            "config": field.config,
+        }
+        entry.update(overrides)
+        return entry
+
+    def test_draft_form_reports_nothing(self, client, db, td_user, td_tournament):
+        """Nobody has answered, so no edit can strand anyone."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/fields/classify/", json={
+            "fields": [self._entry(field, question_type="single_select_radio", config={
+                "required": False, "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
+            })],
+        })
+        assert res.status_code == 200
+        assert res.json() == []
+
+    def test_mandatory_change_is_locked_and_defaults_on(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/fields/classify/", json={
+            "fields": [self._entry(field, question_type="single_select_radio", config={
+                "required": False, "options": [{"option_id": "opt_a", "value": "a", "label": "A"}],
+            })],
+        })
+        assert res.status_code == 200
+        assert res.json() == [{
+            "field_id": field.id, "label": "Favorite color",
+            "reasons": ["question_type_changed"], "locked": True, "notify_default": True,
+        }]
+
+    def test_wording_change_is_unlocked_and_defaults_off(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/fields/classify/", json={
+            "fields": [self._entry(field, label="What colour?")],
+        })
+        assert res.json() == [{
+            "field_id": field.id, "label": "What colour?",
+            "reasons": ["text_changed"], "locked": False, "notify_default": False,
+        }]
+
+    def test_unchanged_and_new_fields_are_omitted(self, client, db, td_user, td_tournament):
+        """The confirmation lists consequences, not a diff of the save."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/fields/classify/", json={
+            "fields": [
+                self._entry(field),
+                {"field_key": "brand_new", "label": "New", "question_type": "short_text",
+                 "config": {"required": False, "max_length": 50}},
+            ],
+        })
+        assert res.json() == []
+
+    def test_writes_nothing(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+
+        client.post(f"/forms/{form.id}/fields/classify/", json={
+            "fields": [self._entry(field, label="What colour?")],
+        })
+
+        db.refresh(field)
+        assert field.label == "Favorite color"
+        assert db.query(FormResponsePendingUpdate).count() == 0
+
+    def test_requires_manage_access(self, client, db, td_user, td_tournament, other_user):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.commit()
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        assert client.post(f"/forms/{form.id}/fields/classify/", json={"fields": []}).status_code == 403
+
+
 class TestListArchivedFields:
     def test_lists_only_archived_fields(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")

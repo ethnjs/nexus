@@ -1365,6 +1365,19 @@ export type PendingUpdateReason =
   | "key_changed"
   | "text_changed"
 
+/** One question a proposed save would ask previous responders to review —
+    the server's verdict, from classifyFieldChanges. */
+export interface FieldChange {
+  field_id:       string
+  label:          string
+  reasons:        PendingUpdateReason[]
+  /** At least one reason is mandatory: the TD sees it but can't switch it
+      off, because the change invalidated the stored answer. */
+  locked:         boolean
+  /** What notify_responders should default to if the TD doesn't touch it. */
+  notify_default: boolean
+}
+
 /** A question this response is being asked to revisit. `field_id` is the only
     thing `patchResponse` will accept — everything else on the response is
     locked. */
@@ -1439,6 +1452,11 @@ export const formsApi = {
   // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  // Dry run for the save confirmation: given the same payload putFields
+  // takes, which questions would be sent back to previous responders and
+  // why. Writes nothing, and returns [] on a form nobody has answered.
+  classifyFieldChanges: (formId: string, fields: FormFieldInput[]) =>
+    api.post<FieldChange[]>(`/forms/${formId}/fields/classify/`, { fields }),
   // Questions taken out of use. Config comes back raw, so an entry can go
   // straight back into putFields — which is how a question is unarchived.
   listArchivedFields: (formId: string) =>

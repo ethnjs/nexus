@@ -63,6 +63,7 @@ from app.models.models import (
 from app.schemas.chapter.membership import ChapterMemberResponse
 from app.schemas.form import (
     BulkFieldsUpdate,
+    FieldChangeRead,
     FormCreate,
     FormFieldRead,
     FormListRead,
@@ -446,6 +447,71 @@ def get_form_for_rendering(
 
 
 # ---------------------------------------------------------------------------
+# POST /forms/{form_id}/fields/classify/ — dry run for the builder's save
+# confirmation: given a proposed field list, which questions would ask
+# previous responders to look again, and why.
+#
+# Nothing is written. This exists so the confirmation shows the server's own
+# verdict rather than a second implementation of the rules living in the
+# client — the modal's whole promise is "this is what saving will do", and a
+# mirrored rule set can quietly under-report the moment the two drift.
+#
+# Empty on a form nobody has answered: there's no one to notify, so a save
+# there never raises anything.
+# ---------------------------------------------------------------------------
+@router.post("/forms/{form_id}/fields/classify/", response_model=list[FieldChangeRead])
+def classify_field_changes(
+    payload: BulkFieldsUpdate,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    if not _is_history_preserving(db, form):
+        return []
+
+    existing_by_id = {
+        f.id: f for f in db.query(FormField).filter(FormField.form_id == form.id).all()
+    }
+
+    result = []
+    for entry in payload.fields:
+        field = existing_by_id.get(entry.id) if entry.id else None
+        # A new question has nobody to notify, and an unarchived one comes
+        # back exactly as it was left.
+        if field is None or field.is_archived:
+            continue
+
+        reasons = changes.classify_field_change(
+            field,
+            new_question_type=entry.question_type,
+            # Same fallback as the save path: an omitted key means "leave it".
+            new_field_key=slugify(entry.field_key) if entry.field_key else field.field_key,
+            # Options the TD just added have no option_id yet; assigning here
+            # keeps the diff from tripping over a missing key. The ids differ
+            # from the ones the real save will mint, which doesn't matter —
+            # either way they're absent from the old config, so they read as
+            # added.
+            new_config=assign_option_ids(entry.config),
+            new_label=entry.label,
+            new_description=entry.description,
+        )
+        if not reasons:
+            continue
+
+        optional = reasons - changes.MANDATORY_REASONS
+        locked = bool(reasons & changes.MANDATORY_REASONS)
+        result.append(FieldChangeRead(
+            field_id=field.id,
+            label=entry.label,
+            reasons=sorted(reasons),
+            locked=locked,
+            notify_default=locked or any(
+                changes.OPTIONAL_REASON_DEFAULTS.get(reason, False) for reason in optional
+            ),
+        ))
+    return result
+
+
+# ---------------------------------------------------------------------------
 # GET /forms/{form_id}/fields/archived/ — questions taken out of use, for the
 # builder's archived section. Manage access, and separate from the form read
 # above deliberately: that one is what a respondent renders, and archived
@@ -571,11 +637,7 @@ def bulk_update_fields(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
-    # An unpublish/restore makes the form editable as a draft, but it must
-    # never reopen the destructive draft-edit path after answers exist.
-    is_history_preserving = form.status == "published" or (
-        db.query(FormResponse.id).filter(FormResponse.form_id == form.id).first() is not None
-    )
+    is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
     # unarchives it. The payload is the target state, and a question the TD
@@ -749,6 +811,15 @@ def bulk_update_fields(
         .filter(FormField.form_id == form.id, FormField.is_archived == False)
         .order_by(FormField.order)
         .all()
+    )
+
+
+def _is_history_preserving(db: Session, form: Form) -> bool:
+    """Whether edits must preserve what's already been answered. An
+    unpublish/restore makes a form editable as a draft again, but it must
+    never reopen the destructive draft-edit path once answers exist."""
+    return form.status == "published" or (
+        db.query(FormResponse.id).filter(FormResponse.form_id == form.id).first() is not None
     )
 
 

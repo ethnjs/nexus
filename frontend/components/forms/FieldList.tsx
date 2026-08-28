@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
+import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, FieldChange, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -26,7 +26,7 @@ import {
   EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
-import { ClassifiedChange, classifyEdits, defaultNotify } from "@/lib/forms/changeClassification";
+
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
@@ -77,16 +77,12 @@ export function FieldList({ form }: { form: Form }) {
   // Set when a save on a form with responses turns out to change something
   // consequential — the save waits here until the TD decides who gets asked
   // to re-answer. null means no save is pending confirmation.
-  const [pendingChanges, setPendingChanges] = useState<ClassifiedChange[] | null>(null);
+  const [pendingChanges, setPendingChanges] = useState<FieldChange[] | null>(null);
   const [notifyByKey, setNotifyByKey] = useState<Record<string, boolean>>({});
-  // Only these questions have a TD decision attached; everything else in the
-  // payload omits notify_responders and takes the server's defaults.
+  // field_id -> the TD's decision. Only these questions carry one; everything
+  // else in the payload omits notify_responders and takes the server's
+  // defaults.
   const notifyRef = useRef<Record<string, boolean>>({});
-  // What the server last confirmed, which is what an edit is judged against.
-  // The `form` prop is the initial load and never updates, so a second save in
-  // the same session would otherwise classify against stale fields and
-  // re-report changes already saved.
-  const savedFieldsRef = useRef<FormField[]>(form.fields);
   useEffect(() => {
     formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
   }, [form.id]);
@@ -400,11 +396,27 @@ export function FieldList({ form }: { form: Form }) {
     }
 
     if (hasResponses && pendingChanges === null) {
-      const changes = classifyEdits(savedFieldsRef.current, fields);
-      if (changes.length > 0) {
-        setNotifyByKey(Object.fromEntries(changes.map((c) => [c.clientKey, defaultNotify(c)])));
-        setPendingChanges(changes);
+      // The server owns the rules — see backend/app/core/form/changes.py. The
+      // round trip is affordable because this only happens on a deliberate
+      // save of a form that already has responses.
+      setSaving(true);
+      validation.setSaveError("");
+      try {
+        const changes = await formsApi.classifyFieldChanges(form.id, fields.map((f) => toFieldInput(f)));
+        if (changes.length > 0) {
+          setNotifyByKey(Object.fromEntries(changes.map((c) => [c.field_id, c.notify_default])));
+          setPendingChanges(changes);
+          return;
+        }
+      } catch {
+        // Stop rather than save anyway. The PUT would apply each change's
+        // default, which is exactly the decision this step exists to give the
+        // TD — saving past a failed check would quietly take it away. Nothing
+        // has been written, so pressing Save again just retries.
+        validation.setSaveError("Couldn't check which questions changed, so nothing was saved. Try saving again.");
         return;
+      } finally {
+        setSaving(false);
       }
     }
     await commitSave();
@@ -421,7 +433,7 @@ export function FieldList({ form }: { form: Form }) {
       const decided = notifyRef.current;
       const updated = await formsApi.putFields(
         form.id,
-        fields.map((f) => toFieldInput(f, decided[f.clientKey])),
+        fields.map((f) => toFieldInput(f, f.id ? decided[f.id] : undefined)),
       );
       const next = updated
         .filter((f) => !f.is_archived)
@@ -433,7 +445,6 @@ export function FieldList({ form }: { form: Form }) {
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
       baselineRef.current = JSON.stringify(next);
-      savedFieldsRef.current = updated;
       validation.clearAll();
       // The response only carries live fields, so anything this save archived
       // (or unarchived) has to be re-read rather than derived from it.
@@ -591,7 +602,7 @@ export function FieldList({ form }: { form: Form }) {
         <NotifyRespondersModal
           changes={pendingChanges}
           notify={notifyByKey}
-          onToggle={(clientKey, value) => setNotifyByKey((prev) => ({ ...prev, [clientKey]: value }))}
+          onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
           onCancel={() => setPendingChanges(null)}
           onConfirm={() => { notifyRef.current = notifyByKey; commitSave(); }}
           saving={saving}
@@ -607,7 +618,6 @@ export function FieldList({ form }: { form: Form }) {
           // can sit in both, and a staged id the server no longer has makes
           // every subsequent save fail on an id the TD can't act on.
           setFields((prev) => prev.filter((f) => f.id !== fieldId));
-          savedFieldsRef.current = savedFieldsRef.current.filter((f) => f.id !== fieldId);
         }}
       />
       <FloatingSaveBar

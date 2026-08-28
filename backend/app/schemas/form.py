@@ -227,6 +227,21 @@ class BulkFieldEntry(BaseModel):
     notify_responders: bool | None = None
 
 
+class FieldChangeRead(BaseModel):
+    """One question a proposed save would ask previous responders to review.
+    Returned by the classify dry-run so the builder's confirmation can show
+    the server's own verdict instead of re-deriving the rules client-side."""
+    field_id: str
+    label: str
+    reasons: list[str]
+    # True when at least one reason is mandatory — the TD can see it but not
+    # switch it off, because the change invalidated the stored answer.
+    locked: bool
+    # What notify_responders should default to for this field if the TD
+    # doesn't touch it.
+    notify_default: bool
+
+
 class BulkFieldsUpdate(BaseModel):
     fields: list[BulkFieldEntry]
 
