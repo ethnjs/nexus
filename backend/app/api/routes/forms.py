@@ -446,6 +446,29 @@ def get_form_for_rendering(
 
 
 # ---------------------------------------------------------------------------
+# GET /forms/{form_id}/fields/archived/ — questions taken out of use, for the
+# builder's archived section. Manage access, and separate from the form read
+# above deliberately: that one is what a respondent renders, and archived
+# questions are not part of a form anyone fills out.
+#
+# Config comes back raw (unresolved), like `?raw=true` — an archived field is
+# only ever read here to be sent straight back to PUT .../fields/, which
+# unarchives it.
+# ---------------------------------------------------------------------------
+@router.get("/forms/{form_id}/fields/archived/", response_model=list[FormFieldRead])
+def list_archived_fields(
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    return (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == True)
+        .order_by(FormField.updated_at.desc())
+        .all()
+    )
+
+
+# ---------------------------------------------------------------------------
 # PATCH /forms/{form_id}/ — name/description/status.
 # ---------------------------------------------------------------------------
 @router.patch("/forms/{form_id}/", response_model=FormRead)

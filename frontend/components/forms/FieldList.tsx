@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, tournamentsApi, tournamentShiftsApi, Form, Tournament, TournamentShift } from "@/lib/api";
+import { formsApi, tournamentsApi, tournamentShiftsApi, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -19,6 +19,7 @@ import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
 import { FieldToolbar } from "@/components/forms/FieldToolbar";
+import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
   EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
@@ -67,6 +68,13 @@ export function FieldList({ form }: { form: Form }) {
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
   // too, but only while a field is actually expanded/being edited.
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
+  // Questions taken out of use. Not part of `fields` — they must not join the
+  // ordered list or read as branch targets — so they're fetched separately and
+  // move between the two lists only when the TD restores one.
+  const [archivedFields, setArchivedFields] = useState<FormField[]>([]);
+  useEffect(() => {
+    formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
+  }, [form.id]);
   useEffect(() => {
     if (form.tournament_id == null) return;
     tournamentShiftsApi.list(form.tournament_id).then(setShifts).catch(() => {});
@@ -289,6 +297,24 @@ export function FieldList({ form }: { form: Form }) {
   // Cleared field_key on the copy — a reserved key (availability, ...) can
   // only exist once per tournament, and a freeform key the TD chose
   // deliberately shouldn't silently duplicate either.
+  // Restoring is staged, not a request: the field joins the target list and
+  // the next Save unarchives it. Keeping it in the same batch means it goes
+  // through the same key-availability check as everything else — an archived
+  // field doesn't reserve its key, so another question may have taken it.
+  function restoreField(field: FormField) {
+    setArchivedFields((prev) => prev.filter((f) => f.id !== field.id));
+    const restored: EditableField = {
+      ...withOptionClientKeys(field),
+      clientKey: String(field.id),
+      showDescription: !!field.description,
+      branchingEnabled: deriveBranchingEnabled(field),
+      customValuesEnabled: deriveCustomValuesEnabled(field),
+    };
+    setFields((prev) => [...prev, restored]);
+    setExpandedKey(restored.clientKey);
+    setPendingScrollKey(restored.clientKey);
+  }
+
   function duplicateField(clientKey: string) {
     const source = fields.find((f) => f.clientKey === clientKey);
     if (!source) return;
@@ -354,6 +380,9 @@ export function FieldList({ form }: { form: Form }) {
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
       baselineRef.current = JSON.stringify(next);
       validation.clearAll();
+      // The response only carries live fields, so anything this save archived
+      // (or unarchived) has to be re-read rather than derived from it.
+      formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
     } catch (err) {
       validation.handle422(err);
     } finally {
@@ -487,6 +516,12 @@ export function FieldList({ form }: { form: Form }) {
           </DragOverlay>
         </DndContext>
       )}
+      <ArchivedFieldsSection
+        formId={form.id}
+        fields={archivedFields}
+        onRestore={restoreField}
+        onDeleted={(fieldId) => setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId))}
+      />
       <FloatingSaveBar
         visible={isDirty}
         saving={saving}

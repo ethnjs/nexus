@@ -1145,6 +1145,51 @@ class TestBulkUpdateFieldsPublished:
 # POST /forms/{form_id}/responses/ — submission and resubmission
 # ---------------------------------------------------------------------------
 
+class TestListArchivedFields:
+    def test_lists_only_archived_fields(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        live = _make_field(db, form, field_key="live_one")
+        archived = _make_field(db, form, order=2, field_key="archived_one", is_archived=True)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.get(f"/forms/{form.id}/fields/archived/")
+        assert res.status_code == 200
+        assert [f["id"] for f in res.json()] == [archived.id]
+        assert live.id not in {f["id"] for f in res.json()}
+
+    def test_config_comes_back_unresolved(self, client, db, td_user, td_tournament):
+        """It's read only to be sent straight back to PUT .../fields/, so the
+        option values must be the round-trippable ids, not a rendering."""
+        shift = TournamentShift(
+            tournament_id=td_tournament.id, label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
+        )
+        db.add(shift)
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        _make_field(
+            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            is_archived=True,
+            config={"required": False, "options": [
+                {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
+            ]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.get(f"/forms/{form.id}/fields/archived/")
+        assert res.json()[0]["config"]["options"][0]["value"] == [shift.id]
+
+    def test_requires_manage_access(self, client, db, td_user, td_tournament, other_user):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.commit()
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        assert client.get(f"/forms/{form.id}/fields/archived/").status_code == 403
+
+
 class TestInvalidateField:
     """DELETE /forms/{id}/fields/{field_id}/ — the one destructive field
     action: archive the question *and* destroy what it collected."""

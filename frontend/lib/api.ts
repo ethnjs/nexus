@@ -1439,6 +1439,10 @@ export const formsApi = {
   // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  // Questions taken out of use. Config comes back raw, so an entry can go
+  // straight back into putFields — which is how a question is unarchived.
+  listArchivedFields: (formId: string) =>
+    api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
   // Destroys the question and every answer to it, permanently. Archiving —
   // omitting the field from putFields — is the undoable alternative. 409s
   // while another question's option still branches to this one.
