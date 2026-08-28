@@ -195,7 +195,11 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     // card is simultaneously dropping its Continue button. Wait through both
     // the next paint and the card-height animation window before measuring.
     let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Plain number, and window.clearTimeout to match: @types/node merges its
+    // own setTimeout into globalThis, so both the bare global and
+    // window.setTimeout type as returning NodeJS.Timeout here — while the
+    // browser hands back a numeric handle.
+    let timer: number | undefined;
     const apply = () => {
       const safeTop = TOPBAR_HEIGHT + 12;
       const safeBottom = window.innerHeight - submitBarHeight;
@@ -223,7 +227,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
 
     return () => {
       cancelAnimationFrame(frame);
-      if (timer !== undefined) clearTimeout(timer);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [pendingBarClearanceId, submitBarHeight]);
 
