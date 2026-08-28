@@ -14,6 +14,8 @@ import re
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from datetime import datetime
+
 from app.models.models import Form, FormField, TournamentShift, TournamentTrack
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
@@ -295,7 +297,10 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
 
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
             try:
-                validate_availability_options(db, form.tournament_id, normalized_config)
+                validate_availability_options(
+                    db, form.tournament_id, normalized_config,
+                    availability_field_date(field.field_key),
+                )
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
@@ -319,7 +324,16 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
     _require(not errors, "; ".join(errors))
 
 
-def validate_availability_options(db: Session, tournament_id: int | None, config: dict) -> None:
+def availability_field_date(field_key: str):
+    """The day an `availability_{YYYYMMDD}` question covers, or None if the
+    key isn't one."""
+    match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
+    return datetime.strptime(match.group(1), "%Y%m%d").date() if match else None
+
+
+def validate_availability_options(
+    db: Session, tournament_id: int | None, config: dict, field_date=None
+) -> None:
     """A field with field_key matching AVAILABILITY_FIELD_KEY_PATTERN
     (single_select_radio or multi_select_checkbox) must have every option's
     `value` be a non-empty
@@ -327,6 +341,10 @@ def validate_availability_options(db: Session, tournament_id: int | None, config
     tournament — one option groups one or more shifts under a single
     TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). Validated strictly
     since a bad value directly corrupts MembershipAvailability write-through.
+
+    `field_date` additionally pins every referenced shift to the day in the
+    field_key; see the check itself for why a stray shift from another day is
+    not merely untidy.
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
@@ -353,14 +371,26 @@ def validate_availability_options(db: Session, tournament_id: int | None, config
         )
         shift_ids.update(value)
 
-    valid_ids = {
-        shift_id
-        for (shift_id,) in db.query(TournamentShift.id)
+    rows = (
+        db.query(TournamentShift.id, TournamentShift.start)
         .filter(TournamentShift.tournament_id == tournament_id, TournamentShift.id.in_(shift_ids))
         .all()
-    }
-    missing = shift_ids - valid_ids
+    )
+    missing = shift_ids - {shift_id for shift_id, _ in rows}
     _require(
         not missing,
         f"availability option value(s) do not reference a real TournamentShift on this tournament: {sorted(missing)}",
     )
+
+    # An availability question owns its day: write-through may add or remove
+    # exactly the shifts falling on the date in its field_key, so a shift from
+    # another day listed here would be added by this question and then removed
+    # by that day's own question, or the reverse, depending on submission
+    # order. Reject it rather than let the two fight.
+    if field_date is not None:
+        wrong_day = sorted(shift_id for shift_id, start in rows if start.date() != field_date)
+        _require(
+            not wrong_day,
+            f"availability option value(s) reference shifts outside this question's date "
+            f"({field_date.isoformat()}): {wrong_day}",
+        )

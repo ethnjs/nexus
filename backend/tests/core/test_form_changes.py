@@ -199,3 +199,44 @@ class TestShapeChangeSubsumesOptionDiffs:
         ]}
         reasons = _classify(field, new_question_type="single_select_dropdown", new_config=config)
         assert reasons == {changes.OPTION_ADDED}
+
+
+class TestEntityRegrouping:
+    """On an entity-backed preset, an option's `value` is the shift/event ids
+    it groups — the substance of the question, not display text."""
+
+    def _availability(self, groups):
+        return _field(
+            field_key="availability_20260315",
+            question_type="multi_select_checkbox",
+            config={"required": False, "options": [
+                {"option_id": option_id, "value": list(value), "label": option_id.title()}
+                for option_id, value in groups.items()
+            ]},
+        )
+
+    def test_regrouping_shifts_flags(self):
+        field = self._availability({"morning": [1, 2], "afternoon": [3]})
+        config = {**field.config, "options": [
+            {"option_id": "morning", "value": [2], "label": "Morning"},
+            {"option_id": "afternoon", "value": [3], "label": "Afternoon"},
+        ]}
+        assert changes.OPTION_REGROUPED in _classify(field, new_config=config)
+
+    def test_reordering_ids_within_an_option_is_not_a_change(self):
+        field = self._availability({"morning": [1, 2]})
+        config = {**field.config, "options": [
+            {"option_id": "morning", "value": [2, 1], "label": "Morning"},
+        ]}
+        assert _classify(field, new_config=config) == set()
+
+    def test_regrouping_is_mandatory(self):
+        """A respondent's stored answer now commits them to shifts they never
+        picked, so the TD can't opt out of asking."""
+        assert changes.OPTION_REGROUPED in changes.MANDATORY_REASONS
+
+    def test_plain_question_value_edit_stays_cosmetic(self):
+        """Same edit shape on a non-preset key is just TD-facing text."""
+        field = _field(field_key="favorite_color")
+        options = [{**field.config["options"][0], "value": "crimson"}, field.config["options"][1]]
+        assert _classify(field, new_config={**field.config, "options": options}) == set()

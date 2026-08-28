@@ -34,11 +34,14 @@ SHAPE_CLASSES: dict[str, str] = {
 QUESTION_TYPE_CHANGED = "question_type_changed"
 OPTION_ADDED = "option_added"
 OPTION_INVALIDATED = "option_invalidated"
+OPTION_REGROUPED = "option_regrouped"
 NOW_REQUIRED = "now_required"
 KEY_CHANGED = "key_changed"
 TEXT_CHANGED = "text_changed"
 
-MANDATORY_REASONS = frozenset({QUESTION_TYPE_CHANGED, OPTION_ADDED, OPTION_INVALIDATED, NOW_REQUIRED})
+MANDATORY_REASONS = frozenset({
+    QUESTION_TYPE_CHANGED, OPTION_ADDED, OPTION_INVALIDATED, OPTION_REGROUPED, NOW_REQUIRED,
+})
 
 # Default for each judgment call when the caller doesn't send one. key_changed
 # defaults on because the consequence of skipping it is invisible: those
@@ -82,6 +85,19 @@ def _labels_by_option_id(config: dict | None) -> dict[str, str]:
     }
 
 
+def _entity_ids_by_option_id(config: dict | None) -> dict[str, tuple]:
+    """What each option resolves to on an entity-backed preset. On those,
+    `value` holds the shift/event ids the option groups — the substance of
+    the question, not display text — so a change here means the option now
+    means something different from what a respondent agreed to."""
+    grouped = {}
+    for option in (config or {}).get("options") or []:
+        value = option.get("value")
+        if isinstance(value, list) and all(isinstance(item, int) for item in value):
+            grouped[option["option_id"]] = tuple(sorted(value))
+    return grouped
+
+
 def classify_field_change(
     old_field,
     new_question_type: str,
@@ -109,6 +125,20 @@ def classify_field_change(
             reasons.add(OPTION_ADDED)
         if old_ids - new_ids:
             reasons.add(OPTION_INVALIDATED)
+
+        # On an entity-backed preset, regrouping which shifts/events an option
+        # covers changes what picking it means — "Morning" quietly stops
+        # including the 7am shift. The option_id and label are untouched, so
+        # nothing above catches it, but a previous answer now commits the
+        # respondent to something they didn't choose.
+        if is_preset_key(new_field_key):
+            old_groups = _entity_ids_by_option_id(old_config)
+            new_groups = _entity_ids_by_option_id(new_config)
+            if any(
+                option_id in old_groups and old_groups[option_id] != group
+                for option_id, group in new_groups.items()
+            ):
+                reasons.add(OPTION_REGROUPED)
 
     if new_config and new_config.get("required") and not old_config.get("required"):
         reasons.add(NOW_REQUIRED)

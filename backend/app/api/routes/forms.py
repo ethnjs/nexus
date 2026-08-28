@@ -25,6 +25,7 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
+    availability_field_date,
     collect_active_field_errors,
     validate_availability_options,
     validate_field_config,
@@ -608,7 +609,9 @@ def bulk_update_fields(
             validate_reserved_field_key(field_key, question_type)
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
-                validate_availability_options(db, form.tournament_id, normalized)
+                validate_availability_options(
+                    db, form.tournament_id, normalized, availability_field_date(field_key),
+                )
             validate_track_status_options(db, form.tournament_id, field_key, question_type, normalized)
         except FormFieldValidationError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))

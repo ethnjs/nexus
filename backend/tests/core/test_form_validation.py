@@ -3,7 +3,7 @@
 field_key pairing, branching option targets, availability's TournamentShift
 resolution, and the aggregate whole-form publish pass. See
 tests/api/test_forms.py for the route-level wiring of these checks."""
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -80,12 +80,13 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
     return field
 
 
-def _make_shift(db, tournament, label="Saturday"):
+def _make_shift(db, tournament, label="Saturday", day=None):
+    start = datetime(2026, 3, 15, tzinfo=timezone.utc) if day is None else day
     shift = TournamentShift(
         tournament_id=tournament.id,
         label=label,
-        start=datetime.now(timezone.utc),
-        end=datetime.now(timezone.utc) + timedelta(hours=8),
+        start=start,
+        end=start + timedelta(hours=8),
     )
     db.add(shift)
     db.flush()
@@ -329,6 +330,28 @@ class TestValidateAvailabilityOptions:
         config = {"options": [{"value": [shift.id], "label": shift.label}]}
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
+
+    def test_shift_from_another_day_rejected(self, db, td_user, td_tournament):
+        """Availability write-through owns a whole day: a stray shift from a
+        different date would be added by this question and removed by that
+        day's own question, or the reverse, depending on submission order."""
+        wrong_day = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        db.commit()
+        config = {"options": [{"value": [wrong_day.id], "label": "Sunday"}]}
+        with pytest.raises(FormFieldValidationError, match="outside this question's date"):
+            validate_availability_options(db, td_tournament.id, config, date(2026, 3, 15))
+
+    def test_shift_on_the_field_date_passes(self, db, td_user, td_tournament):
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=timezone.utc))
+        db.commit()
+        config = {"options": [{"value": [shift.id], "label": "Morning"}]}
+        validate_availability_options(db, td_tournament.id, config, date(2026, 3, 15))  # no raise
+
+    def test_date_check_skipped_when_no_field_date_given(self, db, td_user, td_tournament):
+        shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+        db.commit()
+        config = {"options": [{"value": [shift.id], "label": "Whenever"}]}
+        validate_availability_options(db, td_tournament.id, config)  # no raise
 
     def test_non_list_value_rejected(self, db, td_user, td_tournament):
         config = {"options": [{"value": "not_a_list", "label": "Whenever"}]}
