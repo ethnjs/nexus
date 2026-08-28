@@ -63,11 +63,19 @@ override.
 | `question_type` changes shape class (below) | `question_type_changed` | everyone who answered |
 | Option added or reopened | `option_added` | everyone who answered |
 | Option invalidated | `option_invalidated` | only those who selected it |
+| Option regrouped (preset keys) | `option_regrouped` | everyone who answered |
 | Field becomes required | `now_required` | only those who left it blank |
 
 An added option flags everyone because a previous responder may have settled
 for a lesser choice when their real answer wasn't offered. Reopening a closed
 option is identical in effect, so it's treated the same.
+
+**Regrouping** applies to entity-backed presets only, where an option's `value`
+is the set of shifts or events it covers rather than display text. Changing it
+leaves the `option_id` and the label alone, so nothing else notices — but
+"Morning" quietly stops including the 7am shift, and a stored answer now
+commits the respondent to something they never picked. On a plain question the
+same edit is cosmetic and raises nothing.
 
 **Never raised:**
 
@@ -187,8 +195,9 @@ what the TD asked them to revisit, enforced server-side rather than by the UI.
 - Only the patched fields' answers are replaced. Everything else is untouched.
 - Required-field validation applies to the patched fields only — the rest
   already satisfied it at creation.
-- Write-through runs for the patched fields only.
 - Each patched field's pending update is cleared.
+- Write-through is re-derived, bounded by what the patched questions govern —
+  see below. It is *not* limited to the patched fields themselves.
 
 ## Clearing a pending update
 
@@ -228,6 +237,35 @@ This is why answers are never rewritten when a `field_key` moves between
 preset and standard: the old answers keep their original semantics, and only
 new submissions write through under the new key.
 
+### Availability is bounded by day, not by field or form
+
+Every `availability_*` question across every form feeds one shared
+`MembershipAvailability` pool, so a submission must not be allowed to disturb
+shifts it didn't ask about — answering a Sunday form has to leave the Saturday
+availability another form collected exactly as it was.
+
+The boundary is the **day**: an `availability_{YYYYMMDD}` question governs
+every tournament shift falling on that date. A submission may add the shifts
+its selected options cover, and remove only shifts on the days it asked about.
+Everything outside is untouched.
+
+Day, rather than "the shifts this question's options currently list" — those
+are not the same set. If a TD regroups an option so it no longer mentions a
+shift, that shift still belongs to the day being asked about, so a respondent
+who drops it must actually lose it. Ownership by option contents would leave it
+claimed by nothing and stuck in the pool forever.
+
+Two consequences:
+
+- An `availability_{date}` question's options may only reference shifts on that
+  date. A stray shift from another day would be added by one question and
+  removed by that day's own question, order deciding the winner; it's rejected
+  at validation instead.
+- Several availability questions in one submission are unioned — both their
+  selections and the days they cover — before a single write. Applied one at a
+  time, a later question's removals could undo an earlier one's additions where
+  their days overlap.
+
 **Rows already written stay, by design.** Moving a question away from a preset
 does not remove what it previously wrote to `MembershipAvailability` or track
 statuses. Those tables are shared — multiple questions, across multiple forms,
@@ -240,7 +278,7 @@ Cleanup on **Invalidate**:
 | Target | Rule |
 |---|---|
 | `TournamentMembershipLunch` | keyed by (membership, category) — delete the field's rows |
-| `MembershipAvailability` | **never deleted.** Rows are a union across every active `availability_*` field; per-field deletion is undefined. |
+| `MembershipAvailability` | **never deleted.** Another question may cover the same day, and the invalidated field's own contribution can't be separated from theirs after the fact. |
 | Track statuses | **never deleted.** A track's state may have been set by a later form; removing this field's contribution can't be done without replay. |
 
 A blanket "reset all availability" is a separate, explicit TD action, not a
