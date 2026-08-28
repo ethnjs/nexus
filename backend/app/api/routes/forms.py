@@ -12,6 +12,7 @@ from app.core.form import (
     delete_pending_updates_for_field,
     flag_pending_updates,
     resolve_field_options,
+    selected_option_ids,
     slugify,
     snapshot_answer_value,
 )
@@ -701,11 +702,62 @@ def bulk_update_fields(
     )
 
 
+def _require_published(form: Form) -> None:
+    if form.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Form is '{form.status}', not published — responses aren't accepted",
+        )
+
+
+def _active_fields(db: Session, form: Form) -> list[FormField]:
+    return (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .all()
+    )
+
+
+def _stored_answer_option_ids(db: Session, response: FormResponse, active_fields: list[FormField]) -> dict:
+    """The response's answers as option_id lists, in the shape write-through
+    expects. A submitted payload carries bare option_ids, but most stored
+    answers hold {option_id, value, label} snapshots instead — so replaying
+    from storage has to unwrap them first."""
+    stored = {
+        answer.field_id: answer.value
+        for answer in db.query(FormAnswer).filter(FormAnswer.response_id == response.id).all()
+    }
+    return {
+        field.id: sorted(selected_option_ids(field, stored[field.id]))
+        for field in active_fields
+        if field.id in stored
+    }
+
+
+def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answers: list) -> None:
+    for answer_in in answers:
+        field = fields_by_id[answer_in.field_id]
+        # question_type/field_key record the semantics this answer was given
+        # under — `value`'s shape is a function of both, so storing them keeps
+        # the answer readable after the field is edited rather than
+        # reinterpreting it through whatever the field looks like later.
+        db.add(FormAnswer(
+            response_id=response.id,
+            field_id=field.id,
+            value=snapshot_answer_value(field, answer_in.value),
+            question_type=field.question_type,
+            field_key=field.field_key,
+        ))
+
+
 # ---------------------------------------------------------------------------
-# POST /forms/{form_id}/responses/ — submit or resubmit. One row per
-# (form, user); resubmitting replaces all of that user's answers in place
-# (no submission history). View access, not manage — this is what the
-# person filling the form out calls.
+# POST /forms/{form_id}/responses/ — first submission only. One row per
+# (form, user); a second POST is a 409, not a resubmit. Editing an existing
+# response goes through PATCH below, which only accepts the questions a TD
+# flagged — an unrestricted rewrite of an old response re-fires write-through
+# for fields the respondent never touched, overwriting state a newer form may
+# have set (see form-edit-lifecycle.md). View access, not manage — this is
+# what the person filling the form out calls.
 # ---------------------------------------------------------------------------
 @router.post("/forms/{form_id}/responses/", response_model=FormResponseRead)
 def submit_form_response(
@@ -714,21 +766,21 @@ def submit_form_response(
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
-    if form.status != "published":
+    _require_published(form)
+
+    existing = (
+        db.query(FormResponse)
+        .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
+        .first()
+    )
+    if existing is not None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Form is '{form.status}', not published — responses aren't accepted",
+            detail="You have already responded to this form — use PATCH to update flagged questions",
         )
 
-    active_fields = (
-        db.query(FormField)
-        .filter(FormField.form_id == form.id, FormField.is_archived == False)
-        .all()
-    )
-    valid_field_ids = {field.id for field in active_fields}
-
-    field_ids = [answer_in.field_id for answer_in in payload.answers]
-    invalid_field_ids = set(field_ids) - valid_field_ids
+    active_fields = _active_fields(db, form)
+    invalid_field_ids = {a.field_id for a in payload.answers} - {f.id for f in active_fields}
     if invalid_field_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -743,48 +795,114 @@ def submit_form_response(
             detail=f"Missing required field(s): {sorted(missing_required)}",
         )
 
+    response = FormResponse(form_id=form.id, user_id=current_user.id)
+    db.add(response)
+    db.flush()
+
+    _store_answers(db, response, {f.id: f for f in active_fields}, payload.answers)
+
+    if form.owner_type == "tournament":
+        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user)
+
+    db.commit()
+    db.refresh(response)
+    return response
+
+
+# ---------------------------------------------------------------------------
+# PATCH /forms/{form_id}/responses/me/ — edit a submitted response, limited to
+# the questions carrying a pending update. A respondent can't freely revise an
+# old response: replaying answers that didn't change can overwrite state a
+# newer form already set (see the track status ordering note in
+# form-edit-lifecycle.md). The gate is enforced here, not in the UI.
+#
+# Only the patched fields are replaced, validated, written through, and
+# cleared; the rest of the response is untouched.
+# ---------------------------------------------------------------------------
+@router.patch("/forms/{form_id}/responses/me/", response_model=FormResponseRead)
+def patch_form_response(
+    payload: FormResponseCreate,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_view_access),
+    current_user: User = Depends(get_current_user),
+):
+    _require_published(form)
+
     response = (
         db.query(FormResponse)
         .filter(FormResponse.form_id == form.id, FormResponse.user_id == current_user.id)
         .first()
     )
     if response is None:
-        response = FormResponse(form_id=form.id, user_id=current_user.id)
-        db.add(response)
-        db.flush()
-    else:
-        db.query(FormAnswer).filter(FormAnswer.response_id == response.id).delete()
-        response.updated_at = utcnow()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No response to update — submit the form first",
+        )
 
-    field_by_id = {field.id: field for field in active_fields}
-    for answer_in in payload.answers:
-        field = field_by_id[answer_in.field_id]
-        stored_value = snapshot_answer_value(field, answer_in.value)
-        # question_type/field_key record the semantics this answer was given
-        # under — `value`'s shape is a function of both, so storing them keeps
-        # the answer readable after the field is edited rather than
-        # reinterpreting it through whatever the field looks like later.
-        db.add(FormAnswer(
-            response_id=response.id,
-            field_id=field.id,
-            value=stored_value,
-            question_type=field.question_type,
-            field_key=field.field_key,
-        ))
+    patched_ids = {answer_in.field_id for answer_in in payload.answers}
+    if not patched_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No answers to update")
 
-    # A fresh answer for a field clears any pending-update flag on it — the
-    # respondent has now seen and re-confirmed whatever changed.
-    answered_field_ids = {
-        field.id for field in active_fields if field.id in answers_by_field
+    flagged_ids = {
+        field_id
+        for (field_id,) in db.query(FormResponsePendingUpdate.field_id).filter(
+            FormResponsePendingUpdate.response_id == response.id
+        )
     }
-    if answered_field_ids:
-        db.query(FormResponsePendingUpdate).filter(
-            FormResponsePendingUpdate.response_id == response.id,
-            FormResponsePendingUpdate.field_id.in_(answered_field_ids),
-        ).delete(synchronize_session=False)
+    ungated = patched_ids - flagged_ids
+    if ungated:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"These questions aren't open for editing: {sorted(ungated)}",
+        )
+
+    fields_by_id = {f.id: f for f in _active_fields(db, form) if f.id in patched_ids}
+    # A flag should only ever point at a live field; anything missing here
+    # means one was retired without its flags being cleaned up.
+    missing = patched_ids - set(fields_by_id)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid field_id(s) for this form: {sorted(missing)}",
+        )
+
+    answers_by_field = {answer_in.field_id: answer_in.value for answer_in in payload.answers}
+    # Only over what's being patched — the rest of the response already
+    # satisfied required validation when it was submitted.
+    missing_required = missing_required_field_keys(list(fields_by_id.values()), answers_by_field)
+    if missing_required:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Missing required field(s): {sorted(missing_required)}",
+        )
+
+    db.query(FormAnswer).filter(
+        FormAnswer.response_id == response.id, FormAnswer.field_id.in_(patched_ids)
+    ).delete(synchronize_session=False)
+    _store_answers(db, response, fields_by_id, payload.answers)
+
+    db.query(FormResponsePendingUpdate).filter(
+        FormResponsePendingUpdate.response_id == response.id,
+        FormResponsePendingUpdate.field_id.in_(patched_ids),
+    ).delete(synchronize_session=False)
+
+    response.updated_at = utcnow()
 
     if form.owner_type == "tournament":
-        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user)
+        # Deliberately *not* scoped to the patched fields. Availability is a
+        # union across every availability_* field on the form, diffed against
+        # the membership's whole set — handing it a subset would delete the
+        # shifts the unpatched fields contribute. Recomputing from the full
+        # response is safe because that diff is idempotent: unpatched fields
+        # resolve to the same ids they already produced.
+        #
+        # A last-write-wins target (track status, when it lands) would *not*
+        # be safe this way and will need real per-field scoping.
+        db.flush()
+        active_fields = _active_fields(db, form)
+        _write_through_reserved_fields(
+            db, form, active_fields, _stored_answer_option_ids(db, response, active_fields), current_user
+        )
 
     db.commit()
     db.refresh(response)
