@@ -277,7 +277,7 @@ def flag_pending_updates(
 
 def delete_pending_updates_for_field(db: Session, field_id: str) -> None:
     """Drops every open flag on `field_id` — for when the field stops being
-    answerable at all. A flag pointing at a retired field can never clear,
+    answerable at all. A flag pointing at an archived field can never clear,
     since clearing requires the respondent to answer it."""
     db.query(FormResponsePendingUpdate).filter(
         FormResponsePendingUpdate.field_id == field_id

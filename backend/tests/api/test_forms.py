@@ -735,66 +735,124 @@ class TestBulkUpdateFieldsPublished:
         db.refresh(other_field)
         assert other_field.label != "New label that should not stick"
 
-    def test_option_removed_archives_not_dropped(self, client, db, td_user, td_tournament):
+    OPTIONS = [
+        {"option_id": "opt_red", "value": "red", "label": "Red"},
+        {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
+    ]
+
+    def _colour_field(self, db, form):
+        return _make_field(
+            db, form, field_key="color", question_type="multi_select_checkbox",
+            config={"required": False, "options": [dict(o) for o in self.OPTIONS]},
+        )
+
+    def _save_options(self, client, form, field, options):
+        return client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "label": "Favorite color",
+                "question_type": "multi_select_checkbox",
+                "config": {"required": False, "options": options},
+            }]},
+        )
+
+    def test_archiving_an_option_keeps_it_and_flags_nobody(self, client, db, td_user, td_tournament):
+        """Archive means "we ran out" — the option stops being offered, but
+        everyone who already picked it still has a valid answer."""
+        form = _make_form(db, td_user, td_tournament)
+        field = self._colour_field(db, form)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        response_id = res.json()["id"]
+
+        res = self._save_options(client, form, field, [
+            {**self.OPTIONS[0], "is_archived": True},
+            self.OPTIONS[1],
+        ])
+        assert res.status_code == 200, res.json()
+
+        # PUT returns the raw config (the editor's view): the archived option
+        # is still there, just marked.
+        returned = {o["option_id"]: o["is_archived"] for o in res.json()[0]["config"]["options"]}
+        assert returned == {"opt_red": True, "opt_blue": False}
+
+        # GET (the respondent-facing render) filters it out.
+        res = client.get(f"/forms/{form.id}/")
+        assert {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]} == {"opt_blue"}
+
+        assert self._pending(db, response_id, field.id) is None
+
+    def test_invalidating_an_option_removes_it_and_flags_who_picked_it(self, client, db, td_user, td_tournament):
+        """Omitting an option entirely is the invalidate verb: it leaves
+        storage, and whoever chose it is asked to answer again."""
+        form = _make_form(db, td_user, td_tournament)
+        field = self._colour_field(db, form)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
+        response_id = res.json()["id"]
+
+        res = self._save_options(client, form, field, [self.OPTIONS[1]])
+        assert res.status_code == 200, res.json()
+        assert {o["option_id"] for o in res.json()[0]["config"]["options"]} == {"opt_blue"}
+
+        db.refresh(field)
+        assert {o["option_id"] for o in field.config["options"]} == {"opt_blue"}
+
+        # The stored answer still renders from its own snapshot — flagged as
+        # stale, not corrupted.
+        answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
+        assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
+
+        pending = self._pending(db, response_id, field.id)
+        assert pending is not None
+        assert pending.reasons == ["option_invalidated"]
+
+    def test_invalidating_an_option_spares_who_did_not_pick_it(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament)
+        field = self._colour_field(db, form)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
+        response_id = res.json()["id"]
+
+        self._save_options(client, form, field, [self.OPTIONS[1]])
+        assert self._pending(db, response_id, field.id) is None
+
+    def test_unarchiving_an_option_flags_everyone(self, client, db, td_user, td_tournament):
+        """An option coming back is the same as a new one: someone may have
+        settled for a lesser choice while it was unavailable."""
         form = _make_form(db, td_user, td_tournament)
         field = _make_field(
             db, form, field_key="color", question_type="multi_select_checkbox",
-            config={
-                "required": False,
-                "options": [
-                    {"option_id": "opt_red", "value": "red", "label": "Red"},
-                    {"option_id": "opt_blue", "value": "blue", "label": "Blue"},
-                ],
-            },
+            config={"required": False, "options": [
+                {**self.OPTIONS[0], "is_archived": True},
+                dict(self.OPTIONS[1]),
+            ]},
         )
         db.commit()
         login(client, "td@test.com", "tdpass")
         self._publish(client, form)
 
-        # A response answers with the option we're about to remove.
-        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_red"]}]})
-        assert res.status_code == 200
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_blue"]}]})
         response_id = res.json()["id"]
 
-        res = client.put(
-            f"/forms/{form.id}/fields/",
-            json={
-                "fields": [
-                    {
-                        "id": field.id, "label": "Favorite color", "question_type": "multi_select_checkbox",
-                        "config": {"required": False, "options": [{"option_id": "opt_blue", "value": "blue", "label": "Blue"}]},
-                    },
-                ]
-            },
-        )
-        assert res.status_code == 200
-        # PUT returns the raw config (the editor's view) — archived options
-        # stay present with is_archived: true, not silently dropped.
-        returned_ids = {o["option_id"]: o["is_archived"] for o in res.json()[0]["config"]["options"]}
-        assert returned_ids == {"opt_blue": False, "opt_red": True}
+        res = self._save_options(client, form, field, [
+            {**self.OPTIONS[0], "is_archived": False},
+            self.OPTIONS[1],
+        ])
+        assert res.status_code == 200, res.json()
 
-        db.refresh(field)
-        stored_ids = {o["option_id"]: o["is_archived"] for o in field.config["options"]}
-        assert stored_ids == {"opt_blue": False, "opt_red": True}
-
-        # But GET (the respondent-facing render) filters archived options out.
-        res = client.get(f"/forms/{form.id}/")
-        rendered_ids = {o["option_id"] for o in res.json()["fields"][0]["config"]["options"]}
-        assert rendered_ids == {"opt_blue"}
-
-        # The prior answer referencing opt_red is untouched in storage — it
-        # keeps the value/label snapshot from when it was submitted, even
-        # though the option itself is now archived.
-        answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
-        assert answer.value == [{"option_id": "opt_red", "value": "red", "label": "Red"}]
-
-        pending = (
-            db.query(FormResponsePendingUpdate)
-            .filter(FormResponsePendingUpdate.response_id == response_id, FormResponsePendingUpdate.field_id == field.id)
-            .first()
-        )
+        pending = self._pending(db, response_id, field.id)
         assert pending is not None
-        assert pending.reasons == ["option_invalidated"]
+        assert pending.reasons == ["option_added"]
 
     def test_pending_update_cleared_on_fresh_submission(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -889,6 +947,82 @@ class TestBulkUpdateFieldsPublished:
             json={"fields": [{"id": field.id, "label": "Color", "question_type": "long_text", "config": {"required": False, "max_length": 500}}]},
         )
         assert self._pending(db, response_id, field.id) is None
+
+    def test_archived_field_can_be_unarchived_and_keeps_its_answers(self, client, db, td_user, td_tournament):
+        """A question deleted by mistake comes back by naming it in the
+        payload. It never lost its id, so its answers re-link with no work."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+
+        # Archive it by leaving it out.
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+        assert res.status_code == 200
+        db.refresh(field)
+        assert field.is_archived is True
+
+        # Name it again to bring it back.
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert res.status_code == 200, res.json()
+        assert [f["id"] for f in res.json()] == [field.id]
+
+        db.refresh(field)
+        assert field.is_archived is False
+        answer = db.query(FormAnswer).filter(FormAnswer.field_id == field.id).one()
+        assert answer.value == "blue"
+
+    def test_unarchiving_raises_no_pending_update(self, client, db, td_user, td_tournament):
+        """The question is exactly as it was left, so there's nothing for a
+        previous responder to review."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+        response_id = res.json()["id"]
+
+        client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+        client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert self._pending(db, response_id, field.id) is None
+
+    def test_unarchiving_rejected_when_key_was_claimed(self, client, db, td_user, td_tournament):
+        """An archived field doesn't reserve its key, so the name may be gone
+        by the time the TD wants the question back."""
+        form = _make_form(db, td_user, td_tournament)
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        self._publish(client, form)
+        client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+
+        # A new question takes the freed key.
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{"field_key": "color", "label": "Colour", "question_type": "short_text", "config": {"required": False, "max_length": 50}}]},
+        )
+        assert res.status_code == 200
+        replacement_id = res.json()[0]["id"]
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [
+                {"id": replacement_id, "label": "Colour", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+                {"id": field.id, "label": "Color", "question_type": "short_text", "config": {"required": False, "max_length": 50}},
+            ]},
+        )
+        assert res.status_code == 409
 
     def test_retiring_a_field_deletes_its_open_flags(self, client, db, td_user, td_tournament):
         """A flag on a question nobody can answer any more could never clear,
@@ -1010,6 +1144,130 @@ class TestBulkUpdateFieldsPublished:
 # ---------------------------------------------------------------------------
 # POST /forms/{form_id}/responses/ — submission and resubmission
 # ---------------------------------------------------------------------------
+
+class TestInvalidateField:
+    """DELETE /forms/{id}/fields/{field_id}/ — the one destructive field
+    action: archive the question *and* destroy what it collected."""
+
+    def test_answers_and_flags_are_purged(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        keep = _make_field(db, form, order=2, field_key="name", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": field.id, "value": "blue"},
+            {"field_id": keep.id, "value": "sam"},
+        ]})
+        response_id = res.json()["id"]
+        db.add(FormResponsePendingUpdate(response_id=response_id, field_id=field.id, reasons=["text_changed"]))
+        db.commit()
+
+        field_id = field.id
+        res = client.delete(f"/forms/{form.id}/fields/{field_id}/")
+        assert res.status_code == 204
+
+        assert db.query(FormField).filter(FormField.id == field_id).first() is None
+        assert db.query(FormAnswer).filter(FormAnswer.field_id == field_id).count() == 0
+        assert db.query(FormResponsePendingUpdate).filter(
+            FormResponsePendingUpdate.field_id == field_id
+        ).count() == 0
+
+        # Only that question's data goes.
+        assert db.query(FormAnswer).filter(FormAnswer.field_id == keep.id).count() == 1
+
+    def test_archiving_instead_keeps_the_field_and_answers(self, client, db, td_user, td_tournament):
+        """The contrast that makes the separate route worth having: leaving a
+        field out of the bulk payload retires it without touching history, and
+        stays undoable."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color", question_type="short_text", config={"required": False, "max_length": 50})
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "blue"}]})
+
+        res = client.put(f"/forms/{form.id}/fields/", json={"fields": []})
+        assert res.status_code == 200
+        db.refresh(field)
+        assert field.is_archived is True
+        assert db.query(FormAnswer).filter(FormAnswer.field_id == field.id).count() == 1
+
+    def test_lunch_write_through_is_cleared(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            config={"required": False, "options": [
+                {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+            ]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_chicken"}]})
+        assert db.query(TournamentMembershipLunch).count() == 1
+
+        res = client.delete(f"/forms/{form.id}/fields/{field.id}/")
+        assert res.status_code == 204
+        assert db.query(TournamentMembershipLunch).count() == 0
+
+    def test_availability_write_through_is_left_alone(self, client, db, td_user, td_tournament):
+        """Availability rows are shared with whatever else covers that day, so
+        this field's contribution can't be separated out after the fact."""
+        shift = TournamentShift(
+            tournament_id=td_tournament.id, label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
+        )
+        db.add(shift)
+        db.flush()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            config={"required": False, "options": [
+                {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
+            ]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": ["opt_morning"]}]})
+        assert db.query(TournamentMembershipAvailability).count() == 1
+
+        res = client.delete(f"/forms/{form.id}/fields/{field.id}/")
+        assert res.status_code == 204
+        assert db.query(TournamentMembershipAvailability).count() == 1
+
+    def test_rejected_when_a_live_option_branches_to_it(self, client, db, td_user, td_tournament):
+        """Deleting the row would leave a dangling next_field_id and make the
+        form unpublishable, with nothing on screen explaining why."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        target = _make_field(db, form, order=2, field_key="target", question_type="short_text", config={"required": False, "max_length": 50})
+        _make_field(
+            db, form, order=1, field_key="chooser", question_type="single_select_radio",
+            config={"required": False, "options": [
+                {"option_id": "opt_yes", "value": "yes", "label": "Yes", "next_field_id": target.id},
+            ]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.delete(f"/forms/{form.id}/fields/{target.id}/")
+        assert res.status_code == 409
+        assert db.query(FormField).filter(FormField.id == target.id).first() is not None
+
+    def test_unknown_field_is_404(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.delete(f"/forms/{form.id}/fields/nonexistent1/").status_code == 404
+
+    def test_requires_manage_access(self, client, db, td_user, td_tournament, other_user):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form, field_key="color")
+        db.commit()
+        grant_role(db, td_tournament, other_user, "Runner")
+        login(client, "other@test.com", "otherpass")
+        assert client.delete(f"/forms/{form.id}/fields/{field.id}/").status_code == 403
+
 
 class TestPatchResponse:
     """PATCH /forms/{id}/responses/me/ — the only way to change a submitted

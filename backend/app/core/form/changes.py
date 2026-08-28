@@ -68,13 +68,15 @@ def shape_class(question_type: str) -> str | None:
     return SHAPE_CLASSES.get(question_type)
 
 
-def _option_ids(config: dict | None) -> set[str]:
-    """Live option ids only — an archived option isn't offered to anyone, so
-    it can't be what a respondent 'gained' or 'lost'."""
+def _option_ids(config: dict | None, *, live_only: bool = True) -> set[str]:
+    """Option ids, by default only the ones actually offered to a respondent.
+
+    `live_only=False` includes archived options, which still exist in storage
+    — that difference is what separates archiving an option from deleting it."""
     return {
         option["option_id"]
         for option in (config or {}).get("options") or []
-        if not option.get("is_archived")
+        if not (live_only and option.get("is_archived"))
     }
 
 
@@ -96,6 +98,12 @@ def _entity_ids_by_option_id(config: dict | None) -> dict[str, tuple]:
         if isinstance(value, list) and all(isinstance(item, int) for item in value):
             grouped[option["option_id"]] = tuple(sorted(value))
     return grouped
+
+
+def removed_option_ids(old_config: dict | None, new_config: dict | None) -> set[str]:
+    """Options the edit drops from storage entirely — invalidated, not
+    archived. Their answers are what OPTION_INVALIDATED flags."""
+    return _option_ids(old_config, live_only=False) - _option_ids(new_config, live_only=False)
 
 
 def classify_field_change(
@@ -120,10 +128,18 @@ def classify_field_change(
     # Reporting "an option was added" alongside the type change would be noise
     # describing a consequence of it, not a separate thing to review.
     if not shape_changed:
-        old_ids, new_ids = _option_ids(old_config), _option_ids(new_config)
-        if new_ids - old_ids:
+        # Four verbs, distinguished by whether an option is present at all and
+        # whether it's archived — see form-edit-lifecycle.md:
+        #   add         absent   -> live       flag everyone
+        #   unarchive   archived -> live       flag everyone (same as add)
+        #   archive     live     -> archived   flag nobody; answers stay valid
+        #   invalidate  present  -> absent     flag whoever picked it
+        old_live, old_all = _option_ids(old_config), _option_ids(old_config, live_only=False)
+        new_live, new_all = _option_ids(new_config), _option_ids(new_config, live_only=False)
+
+        if new_live - old_live:
             reasons.add(OPTION_ADDED)
-        if old_ids - new_ids:
+        if old_all - new_all:
             reasons.add(OPTION_INVALIDATED)
 
         # On an entity-backed preset, regrouping which shifts/events an option

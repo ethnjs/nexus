@@ -7,8 +7,8 @@ which covers config/option shapes.
 ## Principles
 
 1. **Edits mutate in place.** A field keeps its `id` across every edit —
-   `question_type`, `field_key`, options, all of it. Archiving is for
-   retirement, not for editing.
+   `question_type`, `field_key`, options, all of it. Archiving is for taking
+   a question out of use, never a step in changing one.
 2. **Answers are self-describing.** A stored answer records the shape it was
    answered under, so reading history never depends on the field's current
    configuration.
@@ -61,13 +61,13 @@ override.
 | Change | `reason` | Who is flagged |
 |---|---|---|
 | `question_type` changes shape class (below) | `question_type_changed` | everyone who answered |
-| Option added or reopened | `option_added` | everyone who answered |
+| Option added or unarchived | `option_added` | everyone who answered |
 | Option invalidated | `option_invalidated` | only those who selected it |
 | Option regrouped (preset keys) | `option_regrouped` | everyone who answered |
 | Field becomes required | `now_required` | only those who left it blank |
 
 An added option flags everyone because a previous responder may have settled
-for a lesser choice when their real answer wasn't offered. Reopening a closed
+for a lesser choice when their real answer wasn't offered. Unarchiving an
 option is identical in effect, so it's treated the same.
 
 **Regrouping** applies to entity-backed presets only, where an option's `value`
@@ -83,8 +83,8 @@ same edit is cosmetic and raises nothing.
 |---|
 | `question_type` changes within its shape class |
 | Option `value` edited (TD-facing text only) |
-| Option closed |
-| Field retired |
+| Option archived |
+| Field archived |
 | Field order, `display_style`, branching targets |
 
 **TD's choice:**
@@ -141,15 +141,15 @@ Four verbs. The TD picks; the system never guesses.
 | Verb | Meaning | Storage | Pending update |
 |---|---|---|---|
 | **Add** | new choice available | appended | everyone |
-| **Close** | ran out; existing answers still valid | `is_archived: true` | nobody |
-| **Reopen** | a closed option is available again | `is_archived: false` | everyone |
+| **Archive** | ran out; existing answers still valid | `is_archived: true` | nobody |
+| **Unarchive** | an archived option is available again | `is_archived: false` | everyone |
 | **Invalidate** | never valid; existing answers are wrong | removed | only those who selected it |
 
 All four keep the same `field_id` — the question didn't change, its choices
 did. An invalidated option's past answers still render from their snapshot;
 they're flagged as stale, not corrupted.
 
-Closed options are never shown to respondents and never appear as editable
+Archived options are never shown to respondents and never appear as editable
 rows in the builder. They live in storage only.
 
 ## Field lifecycle
@@ -157,27 +157,34 @@ rows in the builder. They live in storage only.
 | Action | Effect | Answers | Pending update |
 |---|---|---|---|
 | **Edit** | mutate in place; `id` preserved | untouched | per the tiers above |
-| **Retire** | `is_archived: true`; key released | kept as history | **open ones deleted** |
-| **Restore** | `is_archived: false` | re-link automatically via `field_id` | none |
-| **Invalidate** | `is_archived: true` | **purged**, with write-through cleanup | **open ones deleted** |
+| **Archive** | `is_archived: true`; key released | kept as history | **open ones deleted** |
+| **Unarchive** | `is_archived: false` | re-link automatically via `field_id` | none |
+| **Invalidate** | row **deleted** | **purged**, with write-through cleanup | deleted with the field |
 
-Retiring or invalidating a field **deletes its open pending updates.** A flag
+Archiving or invalidating a field **deletes its open pending updates.** A flag
 on a field the respondent can no longer answer is unclearable by construction
 — `PATCH` would reject the field, and the question isn't rendered. This is not
 optional cleanup; skipping it strands respondents permanently.
 
-**Restore** works because editing never changes `field_id`, so `FormAnswer`
-rows still point at the field. On restore, re-validate: `next_field_id` may
-point at something since retired, and the `field_key` may have been claimed by
+**Unarchive** works because editing never changes `field_id`, so `FormAnswer`
+rows still point at the field. On unarchive, re-validate: `next_field_id` may
+point at something since archived, and the `field_key` may have been claimed by
 a live field while it was gone.
 
-**Invalidate** is the only destructive action. It's for a question that should
-never have been asked — the answers are not history worth keeping. Requires
-explicit confirmation.
+**Invalidate** is the only destructive action, and the only one that can't be
+undone: the field row and its answers are gone. It's for a question that should
+never have been asked, whose answers aren't history worth keeping. It has its
+own endpoint rather than a flag in the bulk update, so a client can't reach it
+by accident, and it requires explicit confirmation.
+
+It's refused when a live option still branches to the field. The row would
+stop existing while something still pointed at it, leaving the form
+unpublishable for a reason nothing on screen would explain — better to make
+the TD clear the branch first.
 
 Archived fields appear in the builder in a collapsed **Archived questions**
 section, never inline — they must not participate in `order` or be selectable
-as branching targets. Restoring appends to the end of `order`.
+as branching targets. Unarchiving appends to the end of `order`.
 
 ## Response routes
 
@@ -309,7 +316,7 @@ always the field they originally answered — where a question is replaced
 rather than edited, the flag follows the successor.
 
 A row is cleared when that field is patched, and deleted outright when the
-field is retired or invalidated.
+field is archived or invalidated.
 
 ## Track status ordering
 

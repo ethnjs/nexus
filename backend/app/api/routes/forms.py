@@ -8,7 +8,6 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
 from app.core.form import (
-    apply_option_archiving,
     assign_option_ids,
     field_key_taken_in_tournament,
     delete_pending_updates_for_field,
@@ -555,15 +554,17 @@ def bulk_update_fields(
         db.query(FormResponse.id).filter(FormResponse.form_id == form.id).first() is not None
     )
 
-    live_fields = (
-        db.query(FormField)
-        .filter(FormField.form_id == form.id, FormField.is_archived == False)
-        .all()
-    )
-    live_by_id = {f.id: f for f in live_fields}
+    # Archived fields are addressable here too: naming one in the payload
+    # unarchives it. The payload is the target state, and a question the TD
+    # wants back is part of that state — it keeps its id, so its answers
+    # re-link with no extra work.
+    existing_by_id = {
+        f.id: f for f in db.query(FormField).filter(FormField.form_id == form.id).all()
+    }
+    live_by_id = {fid: f for fid, f in existing_by_id.items() if not f.is_archived}
 
     submitted_ids = {e.id for e in payload.fields if e.id is not None}
-    unknown_ids = submitted_ids - set(live_by_id)
+    unknown_ids = submitted_ids - set(existing_by_id)
     if unknown_ids:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -624,14 +625,21 @@ def bulk_update_fields(
     order = 1
     for entry in payload.fields:
         if entry.id is not None:
-            field = live_by_id[entry.id]
+            field = existing_by_id[entry.id]
+            # A previously archived field named in the payload is coming back.
+            # Nothing is flagged: the question and its answers are exactly as
+            # they were left, so there's nothing for a responder to review.
+            unarchiving = field.is_archived
             type_changed = entry.question_type != field.question_type
             # entry.field_key is None/blank when the caller isn't renaming
             # this field at all (the common case — most edits touch label/
             # config, not the key) — that means "leave it alone", not "set it
             # to slugify('')", which the model's snake_case validator rejects.
             new_field_key = slugify(entry.field_key) if entry.field_key else field.field_key
-            if new_field_key != field.field_key:
+            # An archived field doesn't reserve its key, so another question
+            # may have taken it meanwhile — coming back needs the same
+            # availability check as a rename.
+            if new_field_key != field.field_key or unarchiving:
                 _check_field_key_available(new_field_key)
             normalized_config = _validate_config(entry.question_type, entry.config, new_field_key)
 
@@ -641,7 +649,7 @@ def bulk_update_fields(
             # the question_type/field_key each answer was given under, so past
             # answers remain readable under the old semantics rather than being
             # reinterpreted through the new type. See form-edit-lifecycle.md.
-            if is_history_preserving:
+            if is_history_preserving and not unarchiving:
                 reasons = changes.classify_field_change(
                     field,
                     new_question_type=entry.question_type,
@@ -651,9 +659,17 @@ def bulk_update_fields(
                     new_description=entry.description,
                 )
                 reasons = changes.resolve_reasons(reasons, entry.notify_responders)
-                normalized_config, archived_option_ids = apply_option_archiving(field.config, normalized_config)
+                # The submitted option list is authoritative, including its
+                # is_archived flags — closing an option means sending it back
+                # marked archived, so an option the payload omits was
+                # deliberately invalidated and really does leave storage.
+                # Whoever picked it is flagged before it goes.
+                removed_option_ids = sorted(
+                    changes.removed_option_ids(field.config, normalized_config)
+                )
                 if reasons:
-                    pending_flags.append((field, reasons, archived_option_ids))
+                    pending_flags.append((field, reasons, removed_option_ids))
+            field.is_archived = False
             field.order = order
             field.label = entry.label
             field.description = entry.description
@@ -869,7 +885,7 @@ def patch_form_response(
 
     fields_by_id = {f.id: f for f in _active_fields(db, form) if f.id in patched_ids}
     # A flag should only ever point at a live field; anything missing here
-    # means one was retired without its flags being cleaned up.
+    # means one was archived without its flags being cleaned up.
     missing = patched_ids - set(fields_by_id)
     if missing:
         raise HTTPException(
@@ -1002,6 +1018,87 @@ def _write_through_reserved_fields(
             availability_shift_ids,
             shift_ids_on_dates(db, form.tournament_id, availability_dates),
         )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /forms/{form_id}/fields/{field_id}/ — invalidate a question: erase it
+# and everything it collected.
+#
+# Deliberately its own route rather than a flag on the bulk update. This is the
+# only destructive action in the field lifecycle, and burying it in a target
+# field list would mean a client bug could reach it; here it takes a single
+# explicit call naming one field.
+#
+# Use archive (omit the field from the bulk payload) to retire a question and
+# keep its history — that stays undoable. Invalidate is for a question that
+# should never have been asked, whose answers are not worth keeping, and it
+# cannot be undone.
+#
+# Write-through rows are handled per target: lunch has a single owner and can
+# be cleared, while availability and track statuses are shared with other
+# questions and are left alone — see form-edit-lifecycle.md.
+# ---------------------------------------------------------------------------
+@router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
+def invalidate_form_field(
+    field_id: str,
+    db: Session = Depends(get_db),
+    form: Form = Depends(require_form_manage_access),
+):
+    field = (
+        db.query(FormField)
+        .filter(FormField.form_id == form.id, FormField.id == field_id)
+        .first()
+    )
+    if field is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form")
+
+    if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
+        lunch_date, category = parse_lunch_field_key(field.field_key)
+        _clear_lunch_write_through(db, form, field, lunch_date, category)
+
+    # FormAnswer's FK has no ON DELETE, so its rows go first; pending updates
+    # cascade with the field.
+    db.query(FormAnswer).filter(FormAnswer.field_id == field.id).delete(synchronize_session=False)
+    db.delete(field)
+    db.flush()
+
+    # Same whole-form pass the bulk update runs. The row is gone, so a live
+    # option still branching to it would leave the form unpublishable —
+    # reject rather than commit a form nobody can fix without finding it.
+    errors = collect_active_field_errors(db, form)
+    if errors:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Deleting this field would break the form: {'; '.join(errors)}",
+        )
+
+    form.updated_at = utcnow()
+    db.commit()
+
+
+def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_date, category) -> None:
+    """Drops the lunch rows this field produced, for every member who answered
+    it. Keyed by (membership, date, category), so no other question can be
+    contributing the same rows."""
+    user_ids = {
+        user_id
+        for (user_id,) in db.query(FormResponse.user_id)
+        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
+        .filter(FormAnswer.field_id == field.id)
+        .all()
+    }
+    if not user_ids:
+        return
+    membership_ids = {
+        membership_id
+        for (membership_id,) in db.query(TournamentMembership.id).filter(
+            TournamentMembership.tournament_id == form.tournament_id,
+            TournamentMembership.user_id.in_(user_ids),
+        )
+    }
+    for membership_id in membership_ids:
+        sync_lunch(db, membership_id, lunch_date, category, [])
 
 
 # ---------------------------------------------------------------------------

@@ -835,7 +835,7 @@ class FormField(Base):
 
     __table_args__ = (
         # Live fields only. An archived field doesn't reserve its key — see
-        # field_key_taken_in_tournament — so a retired question and the one
+        # field_key_taken_in_tournament — so an archived question and the one
         # replacing it can share a name. A plain UniqueConstraint here would
         # block that at the DB even though the application allows it.
         Index(
@@ -916,7 +916,7 @@ class FormAnswer(Base):
 # `reasons` is a set, not a single value: one save can legitimately trigger
 # several on the same field (an option added *and* the wording changed), so
 # they union rather than override. A row is cleared when the respondent
-# patches that field, and is deleted outright if the field is retired or
+# patches that field, and is deleted outright if the field is archived or
 # invalidated — a flag on a question that can no longer be answered is
 # unclearable by construction. See backend/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
