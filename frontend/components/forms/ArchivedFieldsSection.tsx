@@ -17,14 +17,14 @@ const TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((o) => [o.value
 // somewhere a TD works.
 //
 // Two actions, deliberately unequal in weight:
-//   Restore — puts the question back, answers and all. Reversible.
-//   Delete  — erases the question and every answer to it. Permanent.
-export function ArchivedFieldsSection({ formId, fields, onRestore, onDeleted }: {
+//   Unarchive — puts the question back, answers and all. Reversible.
+//   Delete    — erases the question and every answer to it. Permanent.
+export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted }: {
   formId: string;
   fields: FormField[];
   /** Hands the field to the builder, which unarchives it on the next Save —
-      restoring isn't its own request, it's part of the target field list. */
-  onRestore: (field: FormField) => void;
+      it isn't its own request, it's part of the target field list. */
+  onUnarchive: (field: FormField) => void;
   onDeleted: (fieldId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -87,8 +87,8 @@ export function ArchivedFieldsSection({ formId, fields, onRestore, onDeleted }: 
                 </div>
               </div>
               <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                <Button type="button" variant="secondary" size="xs" onClick={() => onRestore(field)}>
-                  <IconRestore size={12} /> Restore
+                <Button type="button" variant="secondary" size="xs" onClick={() => onUnarchive(field)}>
+                  <IconRestore size={12} /> Unarchive
                 </Button>
                 <Button
                   type="button" variant="ghost" size="xs" iconOnly

@@ -312,11 +312,11 @@ export function FieldList({ form }: { form: Form }) {
   // Cleared field_key on the copy — a reserved key (availability, ...) can
   // only exist once per tournament, and a freeform key the TD chose
   // deliberately shouldn't silently duplicate either.
-  // Restoring is staged, not a request: the field joins the target list and
+  // Unarchiving is staged, not a request: the field joins the target list and
   // the next Save unarchives it. Keeping it in the same batch means it goes
   // through the same key-availability check as everything else — an archived
   // field doesn't reserve its key, so another question may have taken it.
-  function restoreField(field: FormField) {
+  function unarchiveField(field: FormField) {
     setArchivedFields((prev) => prev.filter((f) => f.id !== field.id));
     const restored: EditableField = {
       ...withOptionClientKeys(field),
@@ -352,16 +352,25 @@ export function FieldList({ form }: { form: Form }) {
     setPendingScrollKey(copy.clientKey);
   }
 
-  // Deleting the expanded card would otherwise drop the open count to zero —
+  // Archiving the expanded card would otherwise drop the open count to zero —
   // fall back to whatever's now at its old index (its old neighbor below),
   // or the one above if it was last.
-  function deleteField(clientKey: string) {
+  function archiveField(clientKey: string) {
     const deletedIndex = fields.findIndex((f) => f.clientKey === clientKey);
+    const target = fields[deletedIndex];
     const next = fields.filter((f) => f.clientKey !== clientKey);
     setFields(next);
     if (expandedKey === clientKey) {
       const fallback = next[deletedIndex] ?? next[deletedIndex - 1];
       setExpandedKey(fallback ? fallback.clientKey : null);
+    }
+    // Move it into the archived section right away rather than letting it
+    // vanish until the next Save. A field that was never saved has no
+    // archived state to go to — it just goes. The staged version is kept, not
+    // the server's, so edits made before archiving survive an unarchive.
+    if (target?.id) {
+      const { clientKey: _c, showDescription: _s, branchingEnabled: _b, customValuesEnabled: _v, ...stored } = target;
+      setArchivedFields((prev) => [{ ...stored, id: target.id as string, is_archived: true }, ...prev]);
     }
   }
 
@@ -561,7 +570,7 @@ export function FieldList({ form }: { form: Form }) {
                 focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
                 onFieldChange={(updates) => updateField(field.clientKey, updates)}
                 onDuplicate={() => duplicateField(field.clientKey)}
-                onDelete={() => deleteField(field.clientKey)}
+                onDelete={() => archiveField(field.clientKey)}
                 tournament={tournament}
                 shifts={shifts}
                 allFields={fields}
@@ -591,7 +600,7 @@ export function FieldList({ form }: { form: Form }) {
       <ArchivedFieldsSection
         formId={form.id}
         fields={archivedFields}
-        onRestore={restoreField}
+        onUnarchive={unarchiveField}
         onDeleted={(fieldId) => {
           setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
           // Also drop it from the staged list. A restored-then-deleted field

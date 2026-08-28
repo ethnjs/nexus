@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownOption } from '@/components/ui/Dropdown'
 import { RadioCircle } from '@/components/ui/RadioCircle'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { IconArchive, IconGripVertical, IconRestore, IconX, IconPlus } from '@/components/ui/Icons'
+import { IconGripVertical, IconRestore, IconX, IconPlus } from '@/components/ui/Icons'
 
 // Same option shape the backend expects, plus a client-only stable id for
 // React/dnd-kit — option_id itself is blank ("") for a not-yet-saved option
@@ -312,8 +312,9 @@ export function OptionsEditor({
               allowArchive={allowArchive}
               autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
-              onRemove={() => removeOption(option.clientKey)}
-              onArchive={() => setArchived(option.clientKey, true)}
+              onRemove={() => (allowArchive
+                ? setArchived(option.clientKey, true)
+                : removeOption(option.clientKey))}
               onEnter={() => addOptionAfter(option.clientKey)}
             />
           ))}
@@ -329,10 +330,10 @@ export function OptionsEditor({
   )
 }
 
-// Options no longer offered, kept so past answers still resolve. Listed apart
-// from the live rows rather than dimmed in place: they don't belong in the
-// drag order or the bullet numbering, and mixing them in makes it hard to see
-// what the question actually asks now.
+// Archived options, kept so past answers still resolve. Listed apart from the
+// live rows rather than dimmed in place: they don't belong in the drag order
+// or the bullet numbering, and mixing them in makes it hard to see what the
+// question actually asks now.
 function ArchivedOptions({ options, onUnarchive, onRemove }: {
   options: EditableOption[]
   onUnarchive: (clientKey: string) => void
@@ -346,7 +347,7 @@ function ArchivedOptions({ options, onUnarchive, onRemove }: {
         textTransform: 'uppercase', letterSpacing: '0.07em',
         color: 'var(--color-text-tertiary)', marginBottom: '2px',
       }}>
-        No longer offered
+        Archived
       </span>
       {options.map((option) => (
         <div key={option.clientKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 0' }}>
@@ -358,7 +359,7 @@ function ArchivedOptions({ options, onUnarchive, onRemove }: {
             {option.label || 'Untitled option'}
           </span>
           <Button type="button" variant="ghost" size="xs" onClick={() => onUnarchive(option.clientKey)}>
-            <IconRestore size={11} /> Offer again
+            <IconRestore size={11} /> Unarchive
           </Button>
           <Button
             type="button" variant="ghost" size="xs" iconOnly
@@ -406,7 +407,7 @@ function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, allowArchive, autoFocus, onChange, onRemove, onArchive, onEnter }: {
+function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, allowArchive, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
@@ -416,14 +417,15 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
   extra?: ReactNode
   error?: string
   canRemove: boolean
-  /** Whether "stop offering" is on the table — only meaningful once the form
-      has responses worth preserving. */
+  /** Whether archiving is on the table — only meaningful once the form has
+      responses worth preserving. */
   allowArchive: boolean
   /** True for the row just inserted by pressing Enter in the row above it. */
   autoFocus: boolean
   onChange: (label: string) => void
+  /** Archives or deletes depending on allowArchive — the row only knows it's
+      the "take this out of the list" action. */
   onRemove: () => void
-  onArchive: () => void
   onEnter: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: option.clientKey })
@@ -495,26 +497,14 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           fullWidth
         />
         {trailing}
-        {/* Two verbs, shown together rather than behind a menu: both are one
-            click, and seeing them side by side is what makes the difference
-            legible. Before any responses exist there's nothing to preserve,
-            so only the plain remove appears. */}
-        {canRemove && allowArchive && (
-          <Button
-            type="button" variant="ghost" size="md" iconOnly
-            title="Stop offering this option — existing answers stay valid"
-            onClick={onArchive}
-            style={{ flexShrink: 0 }}
-          >
-            <IconArchive size={12} />
-          </Button>
-        )}
+        {/* One control. Once the form has responses this archives rather than
+            deletes — removing an option for good is a second, deliberate step
+            from the archived group below, so it can't happen on a stray click
+            while tidying up the list. */}
         {canRemove && (
           <Button
             type="button" variant="ghost" size="md" iconOnly
-            title={allowArchive
-              ? "Remove this option — anyone who picked it will be asked to answer again"
-              : "Delete option"}
+            title={allowArchive ? "Archive option — existing answers stay valid" : "Delete option"}
             onClick={onRemove}
             style={{ flexShrink: 0 }}
           >
