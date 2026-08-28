@@ -145,20 +145,38 @@ def _is_assignment(item: object) -> bool:
     return isinstance(item, dict) and "id" in item and "status" in item
 
 
+def option_track_assignments(option: dict) -> list[dict]:
+    """The track assignments one option carries, whichever shape holds them —
+    `value` *is* the list on a track_status_* field, or `value.track_statuses`
+    on an opted-in availability field. The single place that knows how to dig
+    them out; callers that hand-roll it get the value shapes wrong (see
+    _is_assignment)."""
+    value = option.get("value")
+    if isinstance(value, list):
+        return [item for item in value if _is_assignment(item)]
+    if isinstance(value, dict):
+        return [item for item in (value.get("track_statuses") or []) if _is_assignment(item)]
+    return []
+
+
+def option_shift_ids(option: dict) -> list[int]:
+    """The TournamentShift ids one availability option groups. `value` is that
+    list directly, or sits under `shift_ids` once the option also carries track
+    statuses — read it through here rather than off `value`, or the opted-in
+    shape yields the dict's keys instead of ids."""
+    value = option.get("value")
+    if isinstance(value, dict):
+        value = value.get("shift_ids")
+    return [item for item in (value or []) if isinstance(item, int)]
+
+
 def track_status_assignments(config: dict) -> list[dict]:
-    """Every track assignment carried by a field's options, whichever shape
-    holds them. The single place that knows how to dig them out — callers
-    that hand-roll it get the value shapes wrong (see _is_assignment)."""
-    assignments = []
-    for option in config.get("options") or []:
-        value = option.get("value")
-        if isinstance(value, list):
-            assignments.extend(item for item in value if _is_assignment(item))
-        elif isinstance(value, dict):
-            assignments.extend(
-                item for item in (value.get("track_statuses") or []) if _is_assignment(item)
-            )
-    return assignments
+    """Every track assignment carried by a field's options."""
+    return [
+        assignment
+        for option in config.get("options") or []
+        for assignment in option_track_assignments(option)
+    ]
 
 
 def validate_track_status_options(

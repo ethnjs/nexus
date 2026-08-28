@@ -26,6 +26,7 @@ from app.core.form.validation import (
     FormFieldValidationError,
     availability_field_date,
     collect_active_field_errors,
+    option_shift_ids,
     validate_availability_options,
     validate_field_config,
     validate_form_for_publish,
@@ -1077,15 +1078,16 @@ def _write_through_reserved_fields(
         selected = value if isinstance(value, list) else ([value] if value else [])
 
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
-            # `selected` is the chosen option_id(s) — each option's `value`
-            # is the list of real TournamentShift ids it groups together
-            # (see validate_availability_options); expand and flatten
-            # before diffing, so overlapping shifts across multiple
+            # `selected` is the chosen option_id(s) — each option groups real
+            # TournamentShift ids (see validate_availability_options); expand
+            # and flatten before diffing, so overlapping shifts across multiple
             # selected options (within or across fields) naturally dedupe
-            # via set union.
+            # via set union. Read through option_shift_ids, not off `value`:
+            # once the option also carries track statuses the ids move under
+            # a `shift_ids` key.
             options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
             for option_id in selected:
-                availability_shift_ids.update(options_by_id.get(option_id, {}).get("value") or [])
+                availability_shift_ids.update(option_shift_ids(options_by_id.get(option_id) or {}))
             # The day is what this question governs, independent of which
             # shifts its options currently name — so regrouping an option
             # can't strand a shift the member should have lost.

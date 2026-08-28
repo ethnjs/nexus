@@ -1718,6 +1718,43 @@ class TestWriteThroughOnSubmit:
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
 
+    def test_opted_in_availability_option_still_writes_its_shifts(self, client, db, td_user, td_tournament):
+        """With track_status_enabled, an availability option's shift ids move
+        under a `shift_ids` key instead of being `value` itself. Reading them
+        off `value` directly iterated the dict's keys and fed the strings
+        "shift_ids"/"track_statuses" into the shift set."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        shift = TournamentShift(
+            tournament_id=td_tournament.id, label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
+        )
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Day 1")
+        db.add_all([shift, track])
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            config={
+                "required": False,
+                "track_status_enabled": True,
+                "options": [{
+                    "option_id": "opt_morning", "label": "Morning",
+                    "value": {
+                        "shift_ids": [shift.id],
+                        "track_statuses": [{"id": track.id, "status": "confirmed"}],
+                    },
+                }],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_morning"}]})
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {shift.id}
+
     def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))

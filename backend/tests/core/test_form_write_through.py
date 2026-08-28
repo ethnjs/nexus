@@ -67,7 +67,7 @@ class TestSyncAvailability:
         s2 = _make_shift(db, td_tournament, "Afternoon")
         db.commit()
 
-        sync_availability(db, membership.id, [s1.id, s2.id])
+        sync_availability(db, membership.id, {s1.id, s2.id}, {s1.id, s2.id})
         db.commit()
 
         assert _availability_shift_ids(db, membership.id) == {s1.id, s2.id}
@@ -76,10 +76,10 @@ class TestSyncAvailability:
         s1 = _make_shift(db, td_tournament, "Morning")
         s2 = _make_shift(db, td_tournament, "Afternoon")
         db.commit()
-        sync_availability(db, membership.id, [s1.id, s2.id])
+        sync_availability(db, membership.id, {s1.id, s2.id}, {s1.id, s2.id})
         db.commit()
 
-        sync_availability(db, membership.id, [])
+        sync_availability(db, membership.id, set(), {s1.id, s2.id})
         db.commit()
 
         assert _availability_shift_ids(db, membership.id) == set()
@@ -88,12 +88,13 @@ class TestSyncAvailability:
         s1 = _make_shift(db, td_tournament, "Morning")
         s2 = _make_shift(db, td_tournament, "Afternoon")
         s3 = _make_shift(db, td_tournament, "Evening")
+        owned = {s1.id, s2.id, s3.id}
         db.commit()
-        sync_availability(db, membership.id, [s1.id, s2.id])
+        sync_availability(db, membership.id, {s1.id, s2.id}, owned)
         db.commit()
 
         # Drop s1, keep s2, add s3.
-        sync_availability(db, membership.id, [s2.id, s3.id])
+        sync_availability(db, membership.id, {s2.id, s3.id}, owned)
         db.commit()
 
         assert _availability_shift_ids(db, membership.id) == {s2.id, s3.id}
@@ -101,13 +102,28 @@ class TestSyncAvailability:
     def test_resync_with_same_ids_is_a_noop(self, db, td_tournament, membership):
         s1 = _make_shift(db, td_tournament, "Morning")
         db.commit()
-        sync_availability(db, membership.id, [s1.id])
+        sync_availability(db, membership.id, {s1.id}, {s1.id})
         db.commit()
 
-        sync_availability(db, membership.id, [s1.id])
+        sync_availability(db, membership.id, {s1.id}, {s1.id})
         db.commit()
 
         assert _availability_shift_ids(db, membership.id) == {s1.id}
+
+    def test_shifts_outside_the_owned_set_survive(self, db, td_tournament, membership):
+        """The boundary is the day, not the answer: a shift this submission
+        didn't ask about belongs to another day's question and stays put."""
+        mine = _make_shift(db, td_tournament, "Saturday")
+        theirs = _make_shift(db, td_tournament, "Sunday")
+        db.commit()
+        sync_availability(db, membership.id, {mine.id, theirs.id}, {mine.id, theirs.id})
+        db.commit()
+
+        # Answer only the day `mine` falls on, selecting nothing.
+        sync_availability(db, membership.id, set(), {mine.id})
+        db.commit()
+
+        assert _availability_shift_ids(db, membership.id) == {theirs.id}
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,8 @@ from tests.api.chapter._helpers import make_chapter, make_university
 
 from app.core.form.validation import (
     FormFieldValidationError,
+    option_shift_ids,
+    option_track_assignments,
     validate_availability_options,
     validate_branching_options,
     validate_field_config,
@@ -400,6 +402,39 @@ class TestValidateAvailabilityOptions:
 # ---------------------------------------------------------------------------
 # validate_track_status_options
 # ---------------------------------------------------------------------------
+
+class TestOptionValueReaders:
+    """option_track_assignments / option_shift_ids are the shared readers for
+    an option's `value`, whose shape depends on the field_key. Getting the
+    discrimination wrong is the bug they exist to prevent: a plain
+    event_preference option's list[int] must not read as assignments, and an
+    opted-in availability option's dict must not read as shift ids."""
+
+    def test_assignments_as_the_value_itself(self):
+        option = {"value": [{"id": 7, "status": "confirmed"}]}
+        assert option_track_assignments(option) == [{"id": 7, "status": "confirmed"}]
+
+    def test_assignments_nested_under_availability_value(self):
+        option = {"value": {"shift_ids": [1, 2], "track_statuses": [{"id": 7, "status": "declined"}]}}
+        assert option_track_assignments(option) == [{"id": 7, "status": "declined"}]
+
+    def test_grouped_entity_ids_are_not_assignments(self):
+        assert option_track_assignments({"value": [5, 9]}) == []
+
+    def test_plain_text_value_has_no_assignments(self):
+        assert option_track_assignments({"value": "vegetarian"}) == []
+
+    def test_shift_ids_from_a_plain_availability_option(self):
+        assert option_shift_ids({"value": [3, 2, 5]}) == [3, 2, 5]
+
+    def test_shift_ids_from_an_opted_in_availability_option(self):
+        option = {"value": {"shift_ids": [3, 2], "track_statuses": [{"id": 7, "status": "confirmed"}]}}
+        assert option_shift_ids(option) == [3, 2]
+
+    def test_missing_value_yields_nothing(self):
+        assert option_shift_ids({}) == []
+        assert option_track_assignments({}) == []
+
 
 class TestValidateTrackStatusOptions:
     def _track(self, db, tournament):
