@@ -28,6 +28,9 @@ interface EntityOptionsEditorProps {
   branchTargets?: BranchTarget[]
   errors?: string[]
   trackStatusEnabled?: boolean
+  /** Forwarded to OptionsEditor — whether archiving an option is offered
+      alongside removing it. */
+  allowArchive?: boolean
 }
 
 const STATUS_OPTIONS: { value: TrackStatus; label: string }[] = [
@@ -88,7 +91,7 @@ function shiftIdsFor(option: EditableOption): number[] {
 // Shared options editor for entity-backed presets and Track Status. The only
 // difference is whether the row also has a shift/event picker; track chips
 // live here for both Track Status and opted-in Availability fields.
-export function EntityOptionsEditor({ fieldKey, tournament, questionType, options, onChange, displayStyle, branchTargets, errors, trackStatusEnabled = false }: EntityOptionsEditorProps) {
+export function EntityOptionsEditor({ fieldKey, tournament, questionType, options, onChange, displayStyle, branchTargets, errors, trackStatusEnabled = false, allowArchive = false }: EntityOptionsEditorProps) {
   const isEntity = fieldKey !== 'track_status'
   const hasTracks = fieldKey === 'track_status' || trackStatusEnabled
   const [entities, setEntities] = useState<Entity[] | null>(isEntity ? null : [])
@@ -137,6 +140,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
       <OptionsEditor
         options={options}
         onChange={onChange}
+        allowArchive={allowArchive}
         questionType={questionType}
         createOption={isEntity ? newEntityOption : undefined}
         syncValueWithLabel={false}

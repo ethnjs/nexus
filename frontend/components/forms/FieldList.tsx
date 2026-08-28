@@ -566,6 +566,7 @@ export function FieldList({ form }: { form: Form }) {
                 shifts={shifts}
                 allFields={fields}
                 errors={validation.errorsFor(field.clientKey)}
+                allowArchive={hasResponses}
               />
             ))}
           </SortableContext>

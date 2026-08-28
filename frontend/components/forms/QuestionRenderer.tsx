@@ -78,6 +78,11 @@ interface QuestionRendererProps {
       their value is always the picked entity ids). Toggle lives in
       FieldToolbar, same as branchingEnabled. */
   customValuesEnabled?: boolean
+  /** edit mode only — whether archiving an option is a meaningful choice,
+      i.e. the form already has responses. On a form nobody has answered
+      there's nothing to preserve, so removing an option just removes it and
+      the extra control would be noise. */
+  allowArchive?: boolean
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -98,6 +103,7 @@ interface QuestionRendererProps {
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
+  allowArchive = false,
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -129,6 +135,7 @@ export function QuestionRenderer({
           branchingEnabled={branchingEnabled}
           customValuesEnabled={customValuesEnabled}
           errors={errors}
+          allowArchive={allowArchive}
         />
       ) : (
         <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
@@ -353,7 +360,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [] }: {
+function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournament: Tournament | null
@@ -361,6 +368,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   branchingEnabled?: boolean
   customValuesEnabled?: boolean
   errors?: string[]
+  allowArchive?: boolean
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
@@ -384,16 +392,15 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
 
   const usesTrackEditor = hasTracks && !!tournament
 
-  // Archived options are storage, not editable rows (see QuestionBody) — the
-  // TD can't meaningfully delete one, since the backend re-merges it from the
-  // stored config on every save to keep old answers resolvable. Hide them,
-  // but carry them back on each edit so the staged config still mirrors
-  // storage rather than relying on that re-merge to undo a silent drop.
+  // Archived options reach the editor now that there's something to do with
+  // them — OptionsEditor lists them separately with a restore action. They're
+  // still never shown to a respondent; that filtering lives in QuestionBody.
+  // The submitted list is authoritative, so an archived option dropped here
+  // would be deleted outright rather than merely hidden.
   const allOptions = (field.config?.options as EditableOption[] | undefined) ?? []
   const liveOptions = allOptions.filter((option) => !option.is_archived)
-  const archivedOptions = allOptions.filter((option) => option.is_archived)
   const setOptions = (options: EditableOption[]) =>
-    onFieldChange({ config: { ...field.config, options: [...options, ...archivedOptions] } })
+    onFieldChange({ config: { ...field.config, options } })
 
   if (isEntity || usesTrackEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
     return (
@@ -403,17 +410,19 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
             tournament={tournament!}
             questionType={field.question_type}
-            options={liveOptions}
+            options={allOptions}
             onChange={setOptions}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             errors={errors}
             trackStatusEnabled={hasTracks}
+            allowArchive={allowArchive}
           />
         ) : (
           <OptionsEditor
-            options={liveOptions}
+            options={allOptions}
             onChange={setOptions}
+            allowArchive={allowArchive}
             questionType={field.question_type}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
