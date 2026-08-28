@@ -107,6 +107,11 @@ def update_track(
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/tracks/{track_id}/ — only tracks with
 # no form-field references may be removed. Referenced tracks must be archived.
+#
+# Every member's status on the track goes with it (CASCADE). That's deliberate:
+# a track no form points at is being removed for good, and leaving orphaned
+# statuses behind would mean a re-created track of the same name silently
+# inherits them.
 # ---------------------------------------------------------------------------
 @router.delete("/{track_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_track(

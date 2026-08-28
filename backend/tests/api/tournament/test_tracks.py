@@ -1,6 +1,12 @@
 from tests.conftest import grant_role, login
 
-from app.models.models import Form, FormField, TournamentTrack
+from app.models.models import (
+    Form,
+    FormField,
+    TournamentMembership,
+    TournamentMembershipTrackStatus,
+    TournamentTrack,
+)
 
 
 def _create_track(client, tournament_id: int, name: str):
@@ -97,3 +103,28 @@ def test_unused_track_can_be_deleted_but_referenced_track_cannot(client, db, td_
 
     blocked = client.delete(f"/tournaments/{td_tournament.id}/tracks/{referenced['id']}/")
     assert blocked.status_code == 409
+
+
+def test_deleting_a_track_takes_its_member_statuses_with_it(client, db, td_user, td_tournament):
+    """No form references it, so the TD is removing it for good — leaving
+    orphaned statuses would let a re-created track of the same name inherit
+    them."""
+    login(client, "td@test.com", "tdpass")
+    track = _create_track(client, td_tournament.id, "Day 1").json()
+    membership = (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == td_user.id,
+            TournamentMembership.tournament_id == td_tournament.id,
+        )
+        .one()
+    )
+    db.add(TournamentMembershipTrackStatus(
+        membership_id=membership.id, track_id=track["id"], status="confirmed",
+    ))
+    db.commit()
+
+    assert client.delete(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/").status_code == 204
+    assert db.query(TournamentMembershipTrackStatus).filter(
+        TournamentMembershipTrackStatus.track_id == track["id"]
+    ).count() == 0

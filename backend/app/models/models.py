@@ -418,6 +418,7 @@ class TournamentMembership(Base):
     join_code = relationship("JoinCode")
     availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
     lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
+    track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
@@ -646,6 +647,9 @@ class TournamentTrack(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="tracks")
+    member_statuses = relationship(
+        "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_track_name"),
@@ -976,4 +980,51 @@ class TournamentMembershipLunch(Base):
 
     __table_args__ = (
         UniqueConstraint("membership_id", "date", "category", "value", name="uq_membership_lunch_selection"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipTrackStatus — write-through target for a form's
+# "track_status_{suffix}" answers, and for "availability_{date}" answers on a
+# field that opted in via config.track_status_enabled.
+#
+# One row per (membership, track): a track's status is a single current fact,
+# not a history. Several questions across several forms feed the same row, so
+# no field owns it and none can withdraw its contribution — write-through only
+# ever upserts here, never deletes (see backend/form-edit-lifecycle.md).
+#
+# Writes are guarded by a transition rule rather than by submission ordering:
+# `interested` may only be entered from unset, so a stale answer replayed out
+# of order can never demote a track someone already confirmed. See
+# can_set_track_status in app/core/form/write_through.py.
+# ---------------------------------------------------------------------------
+class TournamentMembershipTrackStatus(Base):
+    __tablename__ = "tournament_membership_track_statuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    # CASCADE, unlike a form field's reference to a track: a TD who hard-deletes
+    # a track is removing it for good, and delete_track already refuses while
+    # any form field still references it.
+    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), nullable=False)
+
+    # "interested" | "confirmed" | "declined"
+    status = Column(String(32), nullable=False)
+
+    # Where this status came from, recorded for debugging and TD-facing
+    # provenance only — the transition rule, not this, is what keeps writes
+    # ordered. Both SET NULL: invalidating the question that set a status must
+    # not take the status with it. NULL also means "not set by a form", which
+    # is what a future member self-edit path will write.
+    source_response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="SET NULL"), nullable=True)
+    source_field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    membership = relationship("TournamentMembership", back_populates="track_statuses")
+    track = relationship("TournamentTrack", back_populates="member_statuses")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "track_id", name="uq_membership_track_status"),
     )
