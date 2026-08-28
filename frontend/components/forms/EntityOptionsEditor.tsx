@@ -95,12 +95,21 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
   const isEntity = fieldKey !== 'track_status'
   const hasTracks = fieldKey === 'track_status' || trackStatusEnabled
   const [entities, setEntities] = useState<Entity[] | null>(isEntity ? null : [])
+  // Fetched here rather than inside TrackPicker: that renders once per
+  // option, so a field with eight choices was making eight identical
+  // requests for the same catalog.
+  const [tracks, setTracks] = useState<TournamentTrack[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
   const existingEventIds = useMemo(
     () => new Set(options.flatMap((option) => fieldKey === 'event_preference' ? shiftIdsFor(option) : [])),
     [fieldKey, options],
   )
+
+  useEffect(() => {
+    if (!hasTracks) return
+    tournamentTracksApi.list(tournament.id).then(setTracks).catch(() => {})
+  }, [hasTracks, tournament.id])
 
   useEffect(() => {
     if (!isEntity) return
@@ -158,7 +167,7 @@ export function EntityOptionsEditor({ fieldKey, tournament, questionType, option
               onToggle={(id) => toggleEntity(option.clientKey, id)}
             />}
             {hasTracks && <TrackPicker
-              tournament={tournament}
+              tracks={tracks}
               option={option}
               availability={fieldKey === 'availability'}
               onChange={(next) => onChange(options.map((item) => item.clientKey === next.clientKey ? next : item))}
@@ -206,9 +215,7 @@ function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessag
   />
 }
 
-function TrackPicker({ tournament, option, availability, onChange }: { tournament: Tournament; option: EditableOption; availability: boolean; onChange: (option: EditableOption) => void }) {
-  const [tracks, setTracks] = useState<TournamentTrack[]>([])
-  useEffect(() => { tournamentTracksApi.list(tournament.id).then(setTracks).catch(() => {}) }, [tournament.id])
+function TrackPicker({ tracks, option, availability, onChange }: { tracks: TournamentTrack[]; option: EditableOption; availability: boolean; onChange: (option: EditableOption) => void }) {
   const assignments = assignmentsFor(option, availability)
   const selected = tracks.filter((track) => assignments.some((assignment) => assignment.id === track.id))
   const byName = new Map(selected.map((track) => [track.name, track]))
