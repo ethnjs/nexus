@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, tournamentsApi, tournamentShiftsApi, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
+import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -365,6 +365,14 @@ export function FieldList({ form }: { form: Form }) {
     }
   }
 
+  // The server names the offending ids in its 400 detail; parsing them back
+  // out is ugly but it's the only signal that distinguishes "your draft
+  // references a dead row" from an ordinary validation failure.
+  function unknownFieldIds(err: unknown): string[] {
+    if (!(err instanceof ApiError) || !err.message.includes("field id(s) not found")) return [];
+    return [...err.message.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  }
+
   // A form nobody has answered can't strand anyone, so edits apply silently;
   // once responses exist, every consequential edit is the TD's call.
   const hasResponses = form.status === "published" || form.response_count > 0;
@@ -422,7 +430,21 @@ export function FieldList({ form }: { form: Form }) {
       // (or unarchived) has to be re-read rather than derived from it.
       formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
     } catch (err) {
-      validation.handle422(err);
+      // A staged field the server has never heard of can't be fixed by
+      // retrying — it was hard-deleted (here, in another tab, or as a draft
+      // removal), and every save will fail on it until it's out of the list.
+      // Drop it and say which question went, instead of leaving the TD
+      // wedged on a raw id with no action available but a page reload.
+      const orphanIds = unknownFieldIds(err);
+      if (orphanIds.length > 0) {
+        const lost = fields.filter((f) => f.id && orphanIds.includes(f.id));
+        setFields((prev) => prev.filter((f) => !(f.id && orphanIds.includes(f.id))));
+        validation.setSaveError(
+          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`
+        );
+      } else {
+        validation.handle422(err);
+      }
     } finally {
       notifyRef.current = {};
       setSaving(false);
@@ -569,7 +591,14 @@ export function FieldList({ form }: { form: Form }) {
         formId={form.id}
         fields={archivedFields}
         onRestore={restoreField}
-        onDeleted={(fieldId) => setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId))}
+        onDeleted={(fieldId) => {
+          setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
+          // Also drop it from the staged list. A restored-then-deleted field
+          // can sit in both, and a staged id the server no longer has makes
+          // every subsequent save fail on an id the TD can't act on.
+          setFields((prev) => prev.filter((f) => f.id !== fieldId));
+          savedFieldsRef.current = savedFieldsRef.current.filter((f) => f.id !== fieldId);
+        }}
       />
       <FloatingSaveBar
         visible={isDirty}
