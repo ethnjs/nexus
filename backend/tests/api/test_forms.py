@@ -20,6 +20,7 @@ from app.models.models import (
     TournamentMembership,
     TournamentMembershipAvailability,
     TournamentMembershipLunch,
+    TournamentMembershipTrackStatus,
     TournamentForm,
     TournamentRole,
     TournamentShift,
@@ -1782,6 +1783,158 @@ class TestWriteThroughOnSubmit:
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {morning.id, afternoon.id}
+
+    def _track(self, db, tournament, name="Test Writing"):
+        track = TournamentTrack(tournament_id=tournament.id, name=name)
+        db.add(track)
+        db.flush()
+        return track
+
+    def _track_status(self, db, membership_id, track_id):
+        row = (
+            db.query(TournamentMembershipTrackStatus)
+            .filter(
+                TournamentMembershipTrackStatus.membership_id == membership_id,
+                TournamentMembershipTrackStatus.track_id == track_id,
+            )
+            .one_or_none()
+        )
+        return row.status if row else None
+
+    def _track_field(self, db, form, track, *, order=1, field_key="track_status_interest", statuses=None):
+        """A track_status_* question: "Yes" assigns the given statuses, "No"
+        assigns nothing."""
+        return _make_field(
+            db, form, order=order, field_key=field_key, question_type="single_select_radio",
+            config={
+                "required": True,
+                "options": [
+                    {"option_id": "opt_yes", "label": "Yes",
+                     "value": statuses if statuses is not None else [{"id": track.id, "status": "interested"}]},
+                    {"option_id": "opt_no", "label": "No", "value": []},
+                ],
+            },
+        )
+
+    def test_track_status_write_through_on_submit(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        track = self._track(db, td_tournament)
+        field = self._track_field(db, form, track, statuses=[{"id": track.id, "status": "confirmed"}])
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_yes"}]})
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._track_status(db, membership_id, track.id) == "confirmed"
+
+    def test_selecting_an_option_with_no_assignments_writes_nothing(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        track = self._track(db, td_tournament)
+        field = self._track_field(db, form, track)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_no"}]})
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._track_status(db, membership_id, track.id) is None
+
+    def test_later_field_wins_when_two_name_the_same_track(self, client, db, td_user, td_tournament):
+        """Document order decides intent — the second question's answer is the
+        one the respondent gave last."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        track = self._track(db, td_tournament)
+        first = self._track_field(
+            db, form, track, order=1, field_key="track_status_first",
+            statuses=[{"id": track.id, "status": "declined"}],
+        )
+        second = self._track_field(
+            db, form, track, order=2, field_key="track_status_second",
+            statuses=[{"id": track.id, "status": "confirmed"}],
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": first.id, "value": "opt_yes"},
+            {"field_id": second.id, "value": "opt_yes"},
+        ]})
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._track_status(db, membership_id, track.id) == "confirmed"
+
+    def test_patch_does_not_refire_an_unpatched_field(self, client, db, td_user, td_tournament):
+        """Track status is last-write-wins with no idempotent diff, so a PATCH
+        must only write for the fields it actually carried. The unpatched
+        field here would re-assert `confirmed` over the patched `declined`."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        track = self._track(db, td_tournament)
+        stale = self._track_field(
+            db, form, track, order=1, field_key="track_status_stale",
+            statuses=[{"id": track.id, "status": "confirmed"}],
+        )
+        patched = self._track_field(
+            db, form, track, order=2, field_key="track_status_patched",
+            statuses=[{"id": track.id, "status": "declined"}],
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": stale.id, "value": "opt_yes"},
+            {"field_id": patched.id, "value": "opt_no"},
+        ]})
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._track_status(db, membership_id, track.id) == "confirmed"
+
+        self._flag(db, form, td_user, patched)
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": patched.id, "value": "opt_yes"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        assert self._track_status(db, membership_id, track.id) == "declined"
+
+    def test_opted_in_availability_writes_shifts_and_statuses(self, client, db, td_user, td_tournament):
+        """One field, both targets — the track opt-in doesn't displace the
+        availability write-through."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        shift = TournamentShift(
+            tournament_id=td_tournament.id, label="Morning",
+            start=datetime(2026, 3, 15, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
+        )
+        track = self._track(db, td_tournament, "Day 1")
+        db.add(shift)
+        db.flush()
+        field = _make_field(
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            config={
+                "required": False,
+                "track_status_enabled": True,
+                "options": [{
+                    "option_id": "opt_morning", "label": "Morning",
+                    "value": {
+                        "shift_ids": [shift.id],
+                        "track_statuses": [{"id": track.id, "status": "confirmed"}],
+                    },
+                }],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [{"field_id": field.id, "value": "opt_morning"}]})
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert self._shift_ids(db, membership_id) == {shift.id}
+        assert self._track_status(db, membership_id, track.id) == "confirmed"
 
     def _flag(self, db, form, user, field):
         """Open a pending update on `field` so PATCH will accept it. Which

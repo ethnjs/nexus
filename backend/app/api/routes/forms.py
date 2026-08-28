@@ -27,6 +27,8 @@ from app.core.form.validation import (
     availability_field_date,
     collect_active_field_errors,
     option_shift_ids,
+    option_track_assignments,
+    track_status_enabled,
     validate_availability_options,
     validate_field_config,
     validate_form_for_publish,
@@ -40,6 +42,7 @@ from app.core.form.write_through import (
     shift_ids_on_dates,
     sync_availability,
     sync_lunch,
+    sync_track_statuses,
 )
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user
@@ -833,9 +836,12 @@ def _require_published(form: Form) -> None:
 
 
 def _active_fields(db: Session, form: Form) -> list[FormField]:
+    # Ordered because track status write-through resolves two fields naming
+    # the same track by document order — see _write_through_reserved_fields.
     return (
         db.query(FormField)
         .filter(FormField.form_id == form.id, FormField.is_archived == False)
+        .order_by(FormField.order)
         .all()
     )
 
@@ -924,7 +930,9 @@ def submit_form_response(
     _store_answers(db, response, {f.id: f for f in active_fields}, payload.answers)
 
     if form.owner_type == "tournament":
-        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user)
+        # No track scope — a first submission answers the whole form, so every
+        # field is legitimately writing for the first time.
+        _write_through_reserved_fields(db, form, active_fields, answers_by_field, current_user, response)
 
     db.commit()
     db.refresh(response)
@@ -1011,19 +1019,22 @@ def patch_form_response(
     response.updated_at = utcnow()
 
     if form.owner_type == "tournament":
-        # Deliberately *not* scoped to the patched fields. Availability is a
-        # union across every availability_* field on the form, diffed against
-        # the membership's whole set — handing it a subset would delete the
-        # shifts the unpatched fields contribute. Recomputing from the full
-        # response is safe because that diff is idempotent: unpatched fields
-        # resolve to the same ids they already produced.
+        # Availability is recomputed from the *whole* response, not just the
+        # patched fields: it's a union across every availability_* field,
+        # diffed against the membership's whole set, so handing it a subset
+        # would delete the shifts the unpatched fields contribute. That's safe
+        # because the diff is idempotent — unpatched fields resolve to the same
+        # ids they already produced.
         #
-        # A last-write-wins target (track status, when it lands) would *not*
-        # be safe this way and will need real per-field scoping.
+        # Track status is last-write-wins with no such diff, so it *is* scoped
+        # to the patched fields. Replaying an unpatched field would re-fire a
+        # write the respondent didn't make here, and the transition rule only
+        # blocks demotions — a stale "confirmed" would still land.
         db.flush()
         active_fields = _active_fields(db, form)
         _write_through_reserved_fields(
-            db, form, active_fields, _stored_answer_option_ids(db, response, active_fields), current_user
+            db, form, active_fields, _stored_answer_option_ids(db, response, active_fields), current_user,
+            response, track_scope_field_ids=patched_ids,
         )
 
     db.commit()
@@ -1037,9 +1048,11 @@ def _write_through_reserved_fields(
     active_fields: list[FormField],
     answers_by_field: dict[str, object],
     current_user: User,
+    response: FormResponse,
+    track_scope_field_ids: set[str] | None = None,
 ) -> None:
-    """Syncs `availability_{date}`/`lunch_{date}_{category}` answers into
-    their structural tables — tournament-owned forms only (see
+    """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`
+    answers into their structural tables — tournament-owned forms only (see
     form-question-types-reference.md). Runs over every active field, not
     just answered ones, so a reserved field left blank clears any
     previously-synced rows rather than leaving them stale.
@@ -1055,7 +1068,15 @@ def _write_through_reserved_fields(
 
     Fields are unioned before that single call rather than synced one at a
     time: two questions covering the same day would otherwise have the second
-    call's removal undo the first call's addition."""
+    call's removal undo the first call's addition.
+
+    `track_scope_field_ids` limits which fields may write track statuses; None
+    means all of them. PATCH passes only the fields it patched, because track
+    status is last-write-wins with no idempotent diff to fall back on —
+    replaying an untouched field would re-fire a write the respondent didn't
+    make on this request. Availability deliberately has no such limit: its diff
+    is idempotent, and narrowing it would delete the shifts the unpatched
+    fields contribute."""
     membership = (
         db.query(TournamentMembership)
         .filter(
@@ -1072,10 +1093,26 @@ def _write_through_reserved_fields(
 
     availability_shift_ids: set[int] = set()
     availability_dates: set[date] = set()
+    # track_id -> {"status", "field_id"}. Later fields overwrite earlier ones,
+    # so document order decides which question wins when two name the same
+    # track — hence _active_fields' order_by. Whether that intent actually
+    # lands is then up to sync_track_statuses' transition rule.
+    intended_track_statuses: dict[int, dict] = {}
 
     for field in active_fields:
         value = answers_by_field.get(field.id)
         selected = value if isinstance(value, list) else ([value] if value else [])
+        options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+
+        # Not an elif with the branches below: an availability field can opt
+        # into track statuses, so it feeds both this and the shift pool.
+        in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
+        if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
+            for option_id in selected:
+                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
+                    intended_track_statuses[assignment["id"]] = {
+                        "status": assignment["status"], "field_id": field.id,
+                    }
 
         if AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key):
             # `selected` is the chosen option_id(s) — each option groups real
@@ -1085,7 +1122,6 @@ def _write_through_reserved_fields(
             # via set union. Read through option_shift_ids, not off `value`:
             # once the option also carries track statuses the ids move under
             # a `shift_ids` key.
-            options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
             for option_id in selected:
                 availability_shift_ids.update(option_shift_ids(options_by_id.get(option_id) or {}))
             # The day is what this question governs, independent of which
@@ -1099,7 +1135,6 @@ def _write_through_reserved_fields(
             # `selected` is now option_id(s) (see branching.py's matching and
             # PlainOption/BranchingOption's option_id) — resolve each back to
             # its stored value/label snapshot before write-through.
-            options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
             values = [
                 {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
                 for v in selected
@@ -1114,6 +1149,8 @@ def _write_through_reserved_fields(
             availability_shift_ids,
             shift_ids_on_dates(db, form.tournament_id, availability_dates),
         )
+
+    sync_track_statuses(db, membership.id, intended_track_statuses, response.id)
 
 
 # ---------------------------------------------------------------------------
