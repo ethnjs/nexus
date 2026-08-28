@@ -17,35 +17,29 @@ from app.schemas.chapter.membership import ChapterMemberResponse
 # ---------------------------------------------------------------------------
 
 def _unique_option_fields(options: list) -> list:
-    """option_id and value each need to be unique within a field's option
-    list — option_id is the durable identity (edit-lifecycle archiving,
-    write-through, branching match), value is the TD-facing stored/matched
-    payload. A collision on either would make selection ambiguous. value is
-    normally a string, but an entity-backed reserved field_key (e.g.
-    availability grouping several TournamentShifts, event_preference
-    grouping several TournamentEvents under one option) may set it to a
-    list[int] instead — hashed as a tuple here since lists aren't hashable."""
+    """option_id must be unique within a field's option list — it's the
+    durable identity behind edit-lifecycle archiving, write-through and
+    branching match, so a collision there really would make selection
+    ambiguous.
+
+    `value` is only checked when it's a plain string. On a freeform question
+    that string *is* the stored answer, so two options sharing it can't be
+    told apart. On an entity-backed reserved field_key it isn't: the answer
+    records option_id, and value is the set of shifts/events the option
+    groups. Two options grouping the same entities are redundant, not
+    ambiguous — and requiring them to differ would reject the ordinary
+    in-progress state where several options have nothing picked yet and are
+    all still empty."""
     seen_ids, seen_values = set(), set()
     for option in options:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        value_key = _option_value_key(option.value)
-        if value_key in seen_values:
-            raise ValueError(f"duplicate option value '{option.value}'")
-        seen_values.add(value_key)
+        if isinstance(option.value, str):
+            if option.value in seen_values:
+                raise ValueError(f"duplicate option value '{option.value}'")
+            seen_values.add(option.value)
     return options
-
-
-def _option_value_key(value: Any):
-    """Make the supported JSON option values comparable for uniqueness."""
-    if isinstance(value, BaseModel):
-        return _option_value_key(value.model_dump())
-    if isinstance(value, list):
-        return tuple(_option_value_key(item) for item in value)
-    if isinstance(value, dict):
-        return tuple(sorted((key, _option_value_key(item)) for key, item in value.items()))
-    return value
 
 
 class TrackStatusAssignment(BaseModel):

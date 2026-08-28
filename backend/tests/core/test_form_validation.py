@@ -137,6 +137,39 @@ class TestValidateFieldConfig:
                 },
             )
 
+    def test_entity_backed_options_may_share_a_value(self):
+        """On an availability/event_preference question the answer records
+        option_id, so two options grouping the same entities are redundant
+        rather than ambiguous — and several empty ones is the ordinary state
+        while the TD is still picking."""
+        validate_field_config(
+            "multi_select_checkbox",
+            {
+                "required": False,
+                "options": [
+                    {"option_id": "opt_1", "value": [], "label": "Morning"},
+                    {"option_id": "opt_2", "value": [], "label": "Afternoon"},
+                    {"option_id": "opt_3", "value": [3, 2], "label": "All day"},
+                    {"option_id": "opt_4", "value": [3, 2], "label": "Both halves"},
+                ],
+            },
+        )
+
+    def test_duplicate_option_id_still_rejected(self):
+        """option_id is the durable identity — a collision there really does
+        make selection ambiguous."""
+        with pytest.raises(FormFieldValidationError, match="duplicate option_id"):
+            validate_field_config(
+                "multi_select_checkbox",
+                {
+                    "required": False,
+                    "options": [
+                        {"option_id": "same", "value": [1], "label": "One"},
+                        {"option_id": "same", "value": [2], "label": "Two"},
+                    ],
+                },
+            )
+
     def test_single_select_option_missing_value_rejected(self):
         with pytest.raises(FormFieldValidationError):
             validate_field_config(
