@@ -1225,10 +1225,11 @@ export interface FormField {
   updated_at:    string
 }
 
-// One entry in a PUT .../fields/ bulk-update payload. `id` omitted = create;
-// `id` present must match a currently-live field. `field_key` only matters
-// on create — the server ignores/derives it otherwise (see BulkFieldEntry
-// in backend/app/schemas/form.py).
+// One entry in a PUT .../fields/ bulk-update payload — the full target state
+// for one question. `id` omitted = create. `id` present names an existing
+// field, archived ones included: naming an archived field unarchives it.
+// Omitting `field_key` on an update leaves the key alone; sending one renames.
+// See BulkFieldEntry in backend/app/schemas/form.py.
 export interface FormFieldInput {
   id?:            string
   field_key?:     string
@@ -1236,6 +1237,12 @@ export interface FormFieldInput {
   description?:   string | null
   question_type:  FormQuestionType
   config?:        FormFieldConfig | null
+  /** The TD's answer, for this question, to "ask previous responders to
+      review this?" — collected by the save-time confirmation modal.
+      Governs only the judgment-call changes (wording, and moving between a
+      preset and a standard key); changes that actually invalidate an answer
+      prompt regardless. Omit to accept each change's own default. */
+  notify_responders?: boolean | null
 }
 
 export type PrerequisiteMatch = "any" | "all"
@@ -1347,13 +1354,34 @@ export interface FormAnswerInput {
   value:    unknown
 }
 
+/** Why a question was flagged for another look. Several can apply at once —
+    one save can add an option *and* reword the question. */
+export type PendingUpdateReason =
+  | "question_type_changed"
+  | "option_added"
+  | "option_invalidated"
+  | "option_regrouped"
+  | "now_required"
+  | "key_changed"
+  | "text_changed"
+
+/** A question this response is being asked to revisit. `field_id` is the only
+    thing `patchResponse` will accept — everything else on the response is
+    locked. */
+export interface FormPendingUpdate {
+  field_id:   string
+  reasons:    PendingUpdateReason[]
+  created_at: string
+}
+
 export interface FormResponse {
-  id:           string
-  form_id:      string
-  user_id:      number
-  submitted_at: string
-  updated_at:   string
-  answers:      FormAnswer[]
+  id:              string
+  form_id:         string
+  user_id:         number
+  submitted_at:    string
+  updated_at:      string
+  answers:         FormAnswer[]
+  pending_updates: FormPendingUpdate[]
 }
 
 // Matches OnboardingFormRead — a tournament form selected into the ordered
@@ -1397,14 +1425,34 @@ export const formsApi = {
   update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
   // 409s if the form has any responses — check response_count client-side first.
   delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
-  // Full ordered target field list — see FormFieldInput and the Edit
-  // Lifecycle section of form-question-types-reference.md. On a published
-  // form, an existing option missing from the submitted config must still
-  // be echoed back (via its option_id) or the server archives it.
+  // Full ordered target field list — see FormFieldInput and
+  // backend/form-edit-lifecycle.md.
+  //
+  // The submitted config is authoritative, options included. An existing
+  // option must be echoed back by its option_id — send it with
+  // `is_archived: true` to archive it (stops being offered, past answers stay
+  // valid); leave it out entirely and it's *invalidated*, removed from storage
+  // with whoever picked it asked to answer again. Dropping archived options
+  // before saving therefore destroys them.
+  //
+  // A live field omitted from the list is archived; naming an archived field
+  // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  // Destroys the question and every answer to it, permanently. Archiving —
+  // omitting the field from putFields — is the undoable alternative. 409s
+  // while another question's option still branches to this one.
+  deleteField: (formId: string, fieldId: string) =>
+    api.delete<void>(`/forms/${formId}/fields/${fieldId}/`),
+  // First submission only; 409s once a response exists. Later edits go
+  // through patchResponse.
   submitResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
+  // Edits a submitted response, limited to questions carrying a pending
+  // update — anything else 403s. Send only the questions being changed; the
+  // rest of the response is left alone, not overwritten.
+  patchResponse: (formId: string, answers: FormAnswerInput[]) =>
+    api.patch<FormResponse>(`/forms/${formId}/responses/me/`, { answers }),
   listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
 }

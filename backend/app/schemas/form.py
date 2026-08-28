@@ -397,6 +397,17 @@ class FormResponseCreate(BaseModel):
     answers: list[FormAnswerCreate]
 
 
+class FormPendingUpdateRead(BaseModel):
+    """A question this response is being asked to look at again. `field_id` is
+    the only field PATCH .../responses/me/ will accept — see
+    backend/form-edit-lifecycle.md."""
+    field_id: str
+    reasons: list[str] = []
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FormResponseRead(BaseModel):
     id: str
     form_id: str
@@ -404,5 +415,6 @@ class FormResponseRead(BaseModel):
     submitted_at: datetime
     updated_at: datetime
     answers: list[FormAnswerRead] = []
+    pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
