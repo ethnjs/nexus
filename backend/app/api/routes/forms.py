@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -31,7 +33,13 @@ from app.core.form.validation import (
     validate_tournament_preset,
     validate_track_status_options,
 )
-from app.core.form.write_through import parse_lunch_field_key, sync_availability, sync_lunch
+from app.core.form.write_through import (
+    parse_availability_field_key,
+    parse_lunch_field_key,
+    shift_ids_on_dates,
+    sync_availability,
+    sync_lunch,
+)
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user
 from app.core.tournament.onboarding import next_required_onboarding_form_id
@@ -919,17 +927,21 @@ def _write_through_reserved_fields(
     """Syncs `availability_{date}`/`lunch_{date}_{category}` answers into
     their structural tables — tournament-owned forms only (see
     form-question-types-reference.md). Runs over every active field, not
-    just answered ones, so a reserved field left blank on resubmit clears
-    any previously-synced rows rather than leaving them stale.
+    just answered ones, so a reserved field left blank clears any
+    previously-synced rows rather than leaving them stale.
 
-    A tournament can have multiple `availability_*` fields (one per date),
-    but they all write into the same centralized
-    TournamentMembershipAvailability pool for this membership — so their
-    selected shift ids are unioned across every matching field first, and
-    `sync_availability` (which diffs against *all* of the membership's
-    existing rows, not per-field) is called exactly once. Calling it once
-    per field instead would have each call's diff wipe out the shift ids
-    contributed by the previous field's call."""
+    Availability write-through is scoped by *day*, not by form or field. Every
+    `availability_*` field across every form feeds one centralized
+    TournamentMembershipAvailability pool, so a submission may only touch the
+    shifts belonging to the days it actually asked about — otherwise answering
+    a Sunday form would wipe the Saturday availability a different form
+    collected. The days covered here are unioned and handed to
+    sync_availability as the boundary of what it may change; everything
+    outside is left alone.
+
+    Fields are unioned before that single call rather than synced one at a
+    time: two questions covering the same day would otherwise have the second
+    call's removal undo the first call's addition."""
     membership = (
         db.query(TournamentMembership)
         .filter(
@@ -945,6 +957,7 @@ def _write_through_reserved_fields(
         )
 
     availability_shift_ids: set[int] = set()
+    availability_dates: set[date] = set()
 
     for field in active_fields:
         value = answers_by_field.get(field.id)
@@ -960,6 +973,10 @@ def _write_through_reserved_fields(
             options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
             for option_id in selected:
                 availability_shift_ids.update(options_by_id.get(option_id, {}).get("value") or [])
+            # The day is what this question governs, independent of which
+            # shifts its options currently name — so regrouping an option
+            # can't strand a shift the member should have lost.
+            availability_dates.add(parse_availability_field_key(field.field_key))
             continue
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
@@ -975,8 +992,13 @@ def _write_through_reserved_fields(
             ]
             sync_lunch(db, membership.id, lunch_date, category, values)
 
-    if any(AVAILABILITY_FIELD_KEY_PATTERN.match(field.field_key) for field in active_fields):
-        sync_availability(db, membership.id, list(availability_shift_ids))
+    if availability_dates:
+        sync_availability(
+            db,
+            membership.id,
+            availability_shift_ids,
+            shift_ids_on_dates(db, form.tournament_id, availability_dates),
+        )
 
 
 # ---------------------------------------------------------------------------

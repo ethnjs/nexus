@@ -12,8 +12,12 @@ from datetime import date as date_type, datetime
 
 from sqlalchemy.orm import Session
 
-from app.core.form.validation import LUNCH_FIELD_KEY_PATTERN
-from app.models.models import TournamentMembershipAvailability, TournamentMembershipLunch
+from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN
+from app.models.models import (
+    TournamentMembershipAvailability,
+    TournamentMembershipLunch,
+    TournamentShift,
+)
 
 
 def parse_lunch_field_key(field_key: str) -> tuple[date_type, str]:
@@ -24,25 +28,57 @@ def parse_lunch_field_key(field_key: str) -> tuple[date_type, str]:
     return datetime.strptime(date_str, "%Y%m%d").date(), category
 
 
-def sync_availability(db: Session, membership_id: int, tournament_shift_ids: list[int]) -> None:
-    """Diffs `tournament_shift_ids` against this membership's existing
-    TournamentMembershipAvailability rows and applies only the delta."""
+def parse_availability_field_key(field_key: str) -> date_type:
+    """The date an `availability_{YYYYMMDD}` field covers (already known to
+    match AVAILABILITY_FIELD_KEY_PATTERN)."""
+    match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
+    return datetime.strptime(match.group(1), "%Y%m%d").date()
+
+
+def shift_ids_on_dates(db: Session, tournament_id: int, dates: set[date_type]) -> set[int]:
+    """Every shift the given tournament days contain — the set an
+    availability question for those days is answering about, whether or not
+    its options currently reference each one."""
+    if not dates:
+        return set()
+    return {
+        shift_id
+        for shift_id, start in db.query(TournamentShift.id, TournamentShift.start)
+        .filter(TournamentShift.tournament_id == tournament_id)
+        .all()
+        if start.date() in dates
+    }
+
+
+def sync_availability(
+    db: Session, membership_id: int, selected_shift_ids: set[int], owned_shift_ids: set[int]
+) -> None:
+    """Applies one availability answer as a delta over the shifts it governs.
+
+    `owned_shift_ids` is every shift on the day(s) the answered question(s)
+    cover — not just the ones its options happen to group right now. Shifts
+    outside that set belong to a different day's question, possibly on a
+    different form, and are left exactly as they are.
+
+    Scoping by day rather than by the options' current contents matters: if a
+    TD regroups an option so it no longer mentions some shift, that shift is
+    still part of the day being answered about, so a member who drops it must
+    actually lose it instead of keeping it forever as an orphan."""
     existing_ids = {
         shift_id
         for (shift_id,) in db.query(TournamentMembershipAvailability.tournament_shift_id)
         .filter(TournamentMembershipAvailability.membership_id == membership_id)
         .all()
     }
-    incoming_ids = set(tournament_shift_ids)
 
-    to_remove = existing_ids - incoming_ids
+    to_remove = (existing_ids & owned_shift_ids) - selected_shift_ids
     if to_remove:
         db.query(TournamentMembershipAvailability).filter(
             TournamentMembershipAvailability.membership_id == membership_id,
             TournamentMembershipAvailability.tournament_shift_id.in_(to_remove),
         ).delete(synchronize_session=False)
 
-    for shift_id in incoming_ids - existing_ids:
+    for shift_id in selected_shift_ids - existing_ids:
         db.add(TournamentMembershipAvailability(membership_id=membership_id, tournament_shift_id=shift_id))
 
     db.flush()
