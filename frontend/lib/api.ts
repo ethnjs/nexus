@@ -610,8 +610,6 @@ export const seasonEventsApi = {
 // -------------------------------------------------------------------------
 // Memberships
 // -------------------------------------------------------------------------
-export type MembershipStatus = 'interested' | 'confirmed'
-
 // How a membership was created. "manual" covers staff-add, owner-on-create,
 // and sync import — collapsed into one value until manual add-by-staff is
 // actually removed.
@@ -655,7 +653,6 @@ export interface MembershipJoinCodeInfo {
 export interface MembershipSlim {
   id:         number
   source:     MembershipSource
-  status:     MembershipStatus
   join_code:  MembershipJoinCodeInfo | null
   // When they joined THIS tournament — distinct from user.created_at
   // (their NEXUS account age).
@@ -669,7 +666,6 @@ export interface MembershipSlim {
 export interface MembershipFull {
   id:                number
   tournament_id:     number
-  status:            MembershipStatus
   role_preference:   string[] | null
   event_preference:  string[] | null
   availability:      AvailabilitySlot[] | null
@@ -703,7 +699,6 @@ export interface MembershipCoordinatorUpdate {
 export interface MembershipMe {
   membership_id: number | null
   is_owner:       boolean
-  status:         MembershipStatus | null
   roles:          Role[]
   permissions:    Permission[]
 }

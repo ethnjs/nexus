@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration, formatDateTime } from "@/lib/timeFormat";
-import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -13,7 +12,6 @@ import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -34,10 +32,10 @@ import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX } from "@/components/ui/Icons";
 
-// Name / Email / Phone / Account Age / Join Date / Join Method / Status / Roles / Actions
-const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 2.6fr 70px";
+// Name / Email / Phone / Account Age / Join Date / Join Method / Roles / Actions
+const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 2.6fr 70px";
 // Roles dropped — the fr tracks below just absorb its share automatically.
-const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 90px 70px";
+const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
@@ -57,11 +55,6 @@ const SORT_FIELD_OPTIONS = [
   { value: "last_name", label: "Last name" },
   { value: "joined", label: "Joined" },
   { value: "account_age", label: "Account age" },
-];
-
-const STATUS_FILTER_OPTIONS = [
-  { value: "interested", label: "Interested" },
-  { value: "confirmed", label: "Confirmed" },
 ];
 
 function memberName(m: MembershipSlim): string {
@@ -185,9 +178,6 @@ function MemberRow({
       <DurationCell iso={user.created_at} />
       <DurationCell iso={membership.created_at} />
       <JoinMethodCell membership={membership} style={{ justifySelf: "center" }} />
-      <Badge variant={STATUS_VARIANT[membership.status] ?? "default"} style={{ justifySelf: "center" }}>
-        {membership.status}
-      </Badge>
       {!panelOpen && (
         // Stops row clicks (select toggle / focus switch) from firing when
         // the intent was to pick a role chip.
@@ -287,7 +277,6 @@ export default function MembersPage() {
       // unassigned members, not hide them along with everyone else.
       const roleKeys = m.roles.map((r) => String(r.id));
       if (roleKeys.length > 0 && roleKeys.every((k) => filters.role.has(k))) return false;
-      if (filters.status.has(m.status)) return false;
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {
@@ -541,7 +530,6 @@ export default function MembersPage() {
               <span style={{ textAlign: "center" }}>Account Age</span>
               <span style={{ textAlign: "center" }}>Joined</span>
               <span style={{ textAlign: "center" }}>Method</span>
-              <span style={{ textAlign: "center" }}>Status</span>
               {!panelOpen && <span>Roles</span>}
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
@@ -585,7 +573,6 @@ export default function MembersPage() {
       {showFilterModal && (
         <MembersFilterModal
           roleOptions={roleFilterOptions}
-          statusOptions={STATUS_FILTER_OPTIONS}
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}

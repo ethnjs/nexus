@@ -101,8 +101,8 @@ def redeem_join_code(
 
 
 def _redeem_tournament_code(join_code: JoinCode, current_user: User, db: Session) -> JoinRedeemResponse:
-    """Creates a bare TournamentMembership with no roles, status='interested' —
-    staff assign roles afterward."""
+    """Creates a bare TournamentMembership with no roles — staff assign roles
+    afterward, and per-track participation comes from form write-through."""
     existing = (
         db.query(TournamentMembership)
         .filter(
@@ -117,7 +117,6 @@ def _redeem_tournament_code(join_code: JoinCode, current_user: User, db: Session
     membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=join_code.tournament_id,
-        status="interested",
         source="join_code",
         join_code_id=join_code.id,
     )

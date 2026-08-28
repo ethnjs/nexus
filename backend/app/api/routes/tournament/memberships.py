@@ -167,11 +167,11 @@ def get_my_membership(
     # already granted access via its admin bypass.
     if not membership:
         return MembershipMeResponse(
-            membership_id=None, is_owner=is_owner, status=None, roles=[], permissions=permissions,
+            membership_id=None, is_owner=is_owner, roles=[], permissions=permissions,
         )
 
     return MembershipMeResponse(
-        membership_id=membership.id, is_owner=is_owner, status=membership.status,
+        membership_id=membership.id, is_owner=is_owner,
         roles=membership.roles, permissions=permissions,
     )
 

@@ -71,7 +71,6 @@ def test_join_tournament_success_creates_interested_membership(client, td_user, 
         TournamentMembership.tournament_id == td_tournament.id,
     ).first()
     assert membership is not None
-    assert membership.status == "interested"
     assert membership.roles == []
     assert data["membership_id"] == membership.id
 

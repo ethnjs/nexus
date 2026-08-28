@@ -394,9 +394,6 @@ class TournamentMembership(Base):
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
     )
 
-    # "interested" | "confirmed"
-    status = Column(String(32), nullable=False, default="interested")
-
     # Set once this member has answered every currently-onboarding-flagged,
     # published TournamentForm for this tournament. Permanent once set —
     # later removing/archiving an onboarding form never unsets it (a

@@ -6,9 +6,7 @@ import {
   canonicalEventsApi, membershipsApi,
 } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
-import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { DockedPanel } from "@/components/layout/DockedPanel";
-import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -94,16 +92,6 @@ export function MemberPanel({
               </h3>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <div>
-                  <div style={{
-                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--color-text-tertiary)", marginBottom: "5px",
-                  }}>
-                    Status
-                  </div>
-                  <Badge variant={STATUS_VARIANT[full.status] ?? "default"}>{full.status}</Badge>
-                </div>
                 <div>
                   <div style={{
                     fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,

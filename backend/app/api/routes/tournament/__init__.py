@@ -97,12 +97,11 @@ def create_tournament(
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
-    # Confirmed membership for the creator, no roles yet — owner_id alone
-    # already grants full permissions.
+    # Membership for the creator, no roles yet — owner_id alone already grants
+    # full permissions.
     membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=tournament.id,
-        status="confirmed",
         source="manual",
     )
     db.add(membership)

@@ -66,7 +66,6 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     """List view — members page roster. No onboarding/logistics fields."""
     id: int
     source: str
-    status: str
     # Resolved server-side — see MembershipJoinCodeInfo. None when source
     # isn't "join_code". Supersedes the bare join_code_id FK.
     join_code: MembershipJoinCodeInfo | None = None
@@ -82,7 +81,6 @@ class MembershipMeResponse(_MembershipRolesMixin):
     """GET .../memberships/me/ — current user's membership + effective permissions."""
     membership_id: int | None
     is_owner: bool
-    status: str | None = None
     permissions: list[str] = []
 
 
@@ -90,7 +88,6 @@ class MembershipFullResponse(_MembershipRolesMixin):
     """Detail view — the expanded side panel for a single member."""
     id: int
     tournament_id: int
-    status: str
     notes: Optional[str] = None
     source: str
     join_code: MembershipJoinCodeInfo | None = None

@@ -38,7 +38,7 @@ def _make_event(client, tournament_id):
 def _make_membership(db, tournament_id, user_id, **overrides):
     """Create a membership directly in the DB — memberships are created via
     join codes or sync now, there's no manual-create route anymore."""
-    defaults = {"user_id": user_id, "tournament_id": tournament_id, "status": "interested", "source": "manual"}
+    defaults = {"user_id": user_id, "tournament_id": tournament_id, "source": "manual"}
     defaults.update(overrides)
     membership = TournamentMembership(**defaults)
     db.add(membership)
@@ -74,7 +74,6 @@ def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
     assert row["user"]["email"] == u["email"]
     assert row["roles"] == []
     assert "notes" not in row
-    assert row["status"] == "interested"
 
 
 def test_list_memberships_requires_manage_members(
@@ -259,7 +258,6 @@ def test_get_membership(client, td_user, td_tournament, db):
     data = response.json()
     assert data["id"] == m.id
     assert data["notes"] == "Allergic to nuts"
-    assert data["status"] == "interested"
     assert data["user"]["email"] == u["email"]
 
 
@@ -313,7 +311,6 @@ def test_get_my_membership_owner(client, td_user, td_tournament):
     assert response.status_code == 200
     data = response.json()
     assert data["is_owner"] is True
-    assert data["status"] == "confirmed"
     assert data["membership_id"] is not None
     assert [r["label"] for r in data["roles"]] == ["Tournament Director"]
     assert len(data["permissions"]) > 0
@@ -341,7 +338,7 @@ def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
 
 def test_get_my_membership_admin_without_membership(client, admin_user, td_tournament):
     """A site admin who never joined the tournament still gets in via
-    require_membership()'s admin bypass — membership_id/status/roles are
+    require_membership()'s admin bypass — membership_id/roles are
     null/empty but permissions come back as the full admin set."""
     login(client, "admin@test.com", "adminpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
@@ -349,7 +346,6 @@ def test_get_my_membership_admin_without_membership(client, admin_user, td_tourn
     data = response.json()
     assert data["membership_id"] is None
     assert data["is_owner"] is False
-    assert data["status"] is None
     assert data["roles"] == []
     assert len(data["permissions"]) > 0
 
@@ -393,7 +389,6 @@ def test_update_my_membership_ignores_all_fields(client, td_tournament, db):
     assert response.status_code == 200
     data = response.json()
     assert data["notes"] is None
-    assert data["status"] == "interested"
 
 
 def test_update_my_membership_not_found(client, td_tournament, td_user):
