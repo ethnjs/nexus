@@ -117,49 +117,56 @@ export function MemberPanel({
                 </div>
               </div>
 
-              {full.track_statuses.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                {full.track_statuses.length > 0 && (
+                  <div>
+                    <div style={{
+                      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                      color: "var(--color-text-tertiary)", marginBottom: "5px",
+                    }}>
+                      Tracks
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {full.track_statuses.map((ts) => (
+                        // An archived track's statuses stay readable — the
+                        // catalog entry is retired, the commitment still
+                        // happened — so it's dimmed rather than hidden.
+                        <div
+                          key={ts.track_id}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                            opacity: ts.is_archived ? 0.55 : undefined,
+                          }}
+                          title={ts.is_archived ? "Archived track" : undefined}
+                        >
+                          <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
+                            {ts.name}
+                          </span>
+                          <Badge variant={ts.status}>{ts.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <div style={{
                     fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
                     textTransform: "uppercase", letterSpacing: "0.06em",
                     color: "var(--color-text-tertiary)", marginBottom: "5px",
                   }}>
-                    Tracks
+                    Roles
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                    {full.track_statuses.map((ts) => (
-                      // An archived track's statuses stay readable — the
-                      // catalog entry is retired, the commitment still
-                      // happened — so it's dimmed rather than hidden.
-                      <Badge
-                        key={ts.track_id}
-                        variant={ts.status}
-                        style={ts.is_archived ? { opacity: 0.55 } : undefined}
-                        title={ts.is_archived ? "Archived track" : undefined}
-                      >
-                        {ts.name} · {ts.status}
-                      </Badge>
-                    ))}
-                  </div>
+                  <RolesCell
+                    tournamentId={tournamentId}
+                    membership={full}
+                    allRoles={allRoles}
+                    canTouchRole={canTouchRole}
+                    locked={!canEditMember(full)}
+                    onUpdated={handleRolesUpdated}
+                  />
                 </div>
-              )}
-
-              <div>
-                <div style={{
-                  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.06em",
-                  color: "var(--color-text-tertiary)", marginBottom: "5px",
-                }}>
-                  Roles
-                </div>
-                <RolesCell
-                  tournamentId={tournamentId}
-                  membership={full}
-                  allRoles={allRoles}
-                  canTouchRole={canTouchRole}
-                  locked={!canEditMember(full)}
-                  onUpdated={handleRolesUpdated}
-                />
               </div>
             </ProfileCard>
 
