@@ -196,8 +196,8 @@ class User(Base):
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     memberships = relationship(
         "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
@@ -334,8 +334,8 @@ class Tournament(Base):
     # won't re-archive it. Cleared on re-archive.
     archive_override_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
     sheet_configs = relationship(
@@ -405,8 +405,8 @@ class TournamentMembership(Base):
 
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="memberships")
@@ -569,8 +569,8 @@ class TournamentEvent(Base):
     start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     tournament = relationship("Tournament", back_populates="events")
     event = relationship("Event")
@@ -694,8 +694,8 @@ class SheetConfig(Base):
     column_mappings = Column(JSON, nullable=False, default=dict)
     is_active = Column(Boolean, default=True)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
 
@@ -708,7 +708,10 @@ class SheetConfig(Base):
 class Form(Base):
     __tablename__ = "forms"
 
-    id = Column(String(12), primary_key=True, default=generate_public_id)
+    # index=True is redundant beside the primary key, but 7db31ae17e3c created
+    # ix_forms_id and prod has it — declared here so the model matches the
+    # migrations rather than silently drifting from them.
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
     owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)

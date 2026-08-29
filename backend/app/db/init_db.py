@@ -1,24 +1,48 @@
 """
 Database initialization utilities.
 
-Run directly to create tables:
+Run directly to bring the schema up to date:
     python -m app.db.init_db
 
 Or called automatically from app startup lifespan.
 """
 
+from pathlib import Path
+
 from sqlalchemy.orm import Session
-from app.db.session import engine, Base
 from app.models import models  # noqa: F401 — must import so Base sees the models
 from app.core.config import get_settings
 
 settings = get_settings()
 
+# backend/ — where alembic.ini and the alembic/ directory live.
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+
 
 def init_db() -> None:
-    """Create all tables defined on Base metadata."""
-    Base.metadata.create_all(bind=engine)
-    print("✓ Database tables created.")
+    """Bring the database up to the migration head.
+
+    This used to be Base.metadata.create_all(), which was a quiet source of
+    drift: create_all builds any *missing* table straight from the models, so
+    a migration's schema half would appear to have been applied while its data
+    half never ran. That's how every tournament-owned form ended up without
+    its tournament_forms companion row — the table existed, the backfill in
+    8d55ec2b6640 never executed, and nothing errored. create_all also can't
+    express an ALTER, so column-level changes never reached an existing dev
+    database at all.
+
+    Running the migrations instead makes alembic the single source of truth
+    for schema in every environment. Note this is only wired up for
+    development/preview (see app/main.py's lifespan) — production applies
+    migrations as its own deploy step, not on boot.
+    """
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
+    cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
+    command.upgrade(cfg, "head")
+    print("✓ Database migrated to head.")
 
 
 def seed_dev_data(db: Session) -> None:
