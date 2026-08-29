@@ -334,6 +334,14 @@ class Tournament(Base):
     # won't re-archive it. Cleared on re-archive.
     archive_override_at = Column(DateTime(timezone=True), nullable=True)
 
+    # TD opt-in to collecting each age threshold. Off by default — a member
+    # never has to disclose either flag unless the TD turns this on, and even
+    # then only after the member explicitly consents (see
+    # TournamentMembership.age_disclosure). Independent of each other: a TD
+    # can collect just one.
+    collect_is_over_18 = Column(Boolean, nullable=False, default=False)
+    collect_is_over_21 = Column(Boolean, nullable=False, default=False)
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
