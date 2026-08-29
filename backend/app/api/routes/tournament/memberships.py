@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
@@ -14,17 +15,43 @@ from app.core.tournament.permissions import (
 from app.core.tournament.roles import validate_member_target
 from app.db.session import get_db
 from app.models.models import (
+    Tournament,
     TournamentMembership,
     TournamentMembershipRole,
     TournamentRole,
     User,
 )
 from app.schemas.tournament.membership import (
-    MembershipAvailabilityRead, MembershipCoordinatorUpdate,
+    AgeDisclosureRequest, MembershipAvailabilityRead, MembershipCoordinatorUpdate,
     MembershipEventPreferenceRead, MembershipFullResponse, MembershipLunchRead, MembershipMeResponse,
     MembershipMeUpdate, MembershipSlimResponse,
 )
 from app.schemas.tournament.track import MembershipTrackStatusRead
+
+
+def _build_me_response(
+    db: Session, tournament: Tournament, membership: TournamentMembership, current_user: User,
+) -> JSONResponse:
+    """Shared by GET .../me/ and POST .../me/age-disclosure/ — both return
+    the same shape for the caller's own membership."""
+    permissions = sorted(get_user_permissions(current_user, tournament.id, db))
+    is_owner = current_user.id == tournament.owner_id
+    needs_age_consent = (
+        (tournament.collect_is_over_18 or tournament.collect_is_over_21)
+        and membership.age_disclosure is None
+    )
+    resp = MembershipMeResponse(
+        membership_id=membership.id, is_owner=is_owner,
+        roles=membership.roles, permissions=permissions,
+        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
+        needs_age_consent=needs_age_consent,
+        track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
+        event_preferences=MembershipEventPreferenceRead.group_rows(membership.event_preferences),
+        availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
+        lunch=[MembershipLunchRead.model_validate(row) for row in membership.lunch_selections],
+        custom_responses=get_custom_form_answers(db, tournament.id, current_user.id),
+    )
+    return JSONResponse(gate_age_flags(membership, resp.model_dump(mode="json")))
 
 
 def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
@@ -176,22 +203,41 @@ def get_my_membership(
         )
         return JSONResponse(gate_age_flags(None, resp.model_dump(mode="json")))
 
-    needs_age_consent = (
-        (tournament.collect_is_over_18 or tournament.collect_is_over_21)
-        and membership.age_disclosure is None
+    return _build_me_response(db, tournament, membership, current_user)
+
+
+# ---------------------------------------------------------------------------
+# POST /tournaments/{tournament_id}/memberships/me/age-disclosure/ — self-service
+# Answers (or re-answers) the age-disclosure prompt. Decline is a *soft*
+# decline: it only ever sets a status column, never touches availability,
+# lunch, track statuses, or event preferences. Re-consenting from the same
+# modal flips the member straight back to active with that data still
+# there — no rejoin, no re-onboarding. (2.4d wires "declined" into the
+# roster/active-membership queries that must exclude it.)
+# ---------------------------------------------------------------------------
+@router.post("/me/age-disclosure/", response_model=MembershipMeResponse)
+def set_my_age_disclosure(
+    tournament_id: int,
+    payload: AgeDisclosureRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    membership = get_membership_by_user(
+        db, tournament_id, current_user.id,
+        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
     )
-    resp = MembershipMeResponse(
-        membership_id=membership.id, is_owner=is_owner,
-        roles=membership.roles, permissions=permissions,
-        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
-        needs_age_consent=needs_age_consent,
-        track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
-        event_preferences=MembershipEventPreferenceRead.group_rows(membership.event_preferences),
-        availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
-        lunch=[MembershipLunchRead.model_validate(row) for row in membership.lunch_selections],
-        custom_responses=get_custom_form_answers(db, tournament_id, current_user.id),
-    )
-    return JSONResponse(gate_age_flags(membership, resp.model_dump(mode="json")))
+    if not membership:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    membership.age_disclosure = "consented" if payload.consent else "declined"
+    membership.age_disclosure_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(membership)
+
+    return _build_me_response(db, tournament, membership, current_user)
 
 
 # ---------------------------------------------------------------------------

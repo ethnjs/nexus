@@ -21,6 +21,12 @@ class MembershipMeUpdate(BaseModel):
     pass
 
 
+class AgeDisclosureRequest(BaseModel):
+    """POST .../memberships/me/age-disclosure/ — one answer covers both
+    is_over_18 and is_over_21, there is no partial consent."""
+    consent: bool
+
+
 class MembershipCoordinatorUpdate(BaseModel):
     """manage_members override — day-of logistics only, not onboarding data."""
     notes: Optional[str] = None
