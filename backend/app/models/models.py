@@ -416,6 +416,7 @@ class TournamentMembership(Base):
     availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
     lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
     track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
+    event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
@@ -1030,4 +1031,36 @@ class TournamentMembershipTrackStatus(Base):
 
     __table_args__ = (
         UniqueConstraint("membership_id", "track_id", name="uq_membership_track_status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipEventPreference — write-through target for a form's
+# "event_preference_{suffix}" answers. One row per (membership, key, event):
+# an event may only appear in one option per field (see
+# validate_event_preference_options), and a ranked_choice event_preference
+# field is required to have allow_duplicates=false, so an event can never
+# legitimately need two rows under the same key — rank is stored per row but
+# isn't part of the uniqueness, unlike a naive (membership, key, event, rank)
+# scheme would need.
+# ---------------------------------------------------------------------------
+class TournamentMembershipEventPreference(Base):
+    __tablename__ = "tournament_membership_event_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False)
+
+    key = Column(String(64), nullable=False)  # the event_preference_{suffix} suffix
+
+    # ranked_choice: the submitted rank; single_select: 1; checkbox: null.
+    rank = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="event_preferences")
+    tournament_event = relationship("TournamentEvent")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "key", "tournament_event_id", name="uq_membership_event_preference"),
     )
