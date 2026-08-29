@@ -342,6 +342,15 @@ class Tournament(Base):
     collect_is_over_18 = Column(Boolean, nullable=False, default=False)
     collect_is_over_21 = Column(Boolean, nullable=False, default=False)
 
+    # Per-tournament (not per-viewer) UI display config, keyed by surface —
+    # {"members_panel": {"hidden": ["track:3", "lunch_category:entree"]}, ...}.
+    # Namespaced hidden-item strings (track:, lunch_category:, event_pref:,
+    # form_field:) so one list covers all four kinds. No search/filtering on
+    # this, so a JSON column beats a table. Unknown surface keys and unknown
+    # namespaces are ignored on read, never an error — a deleted track leaves
+    # a dangling "track:3" behind and that must not 500 the members page.
+    display_config = Column(JSON, nullable=False, default=dict)
+
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
