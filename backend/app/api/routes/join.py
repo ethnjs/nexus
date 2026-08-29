@@ -63,6 +63,8 @@ def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTou
         level=tournament.level,
         division=tournament.division,
         is_verified=tournament.is_verified,
+        collect_is_over_18=tournament.collect_is_over_18,
+        collect_is_over_21=tournament.collect_is_over_21,
     )
 
 

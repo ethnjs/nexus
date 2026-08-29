@@ -324,6 +324,62 @@ def test_update_tournament_is_public(client, td_user, td_tournament):
     assert response.json()["is_public"] is True
 
 
+# ---------------------------------------------------------------------------
+# Age disclosure collection toggles — manage_tournament read/write
+# ---------------------------------------------------------------------------
+
+def test_update_tournament_sets_collection_toggles(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/",
+        json={"collect_is_over_18": True, "collect_is_over_21": True},
+    )
+    assert response.status_code == 200
+    assert response.json()["collect_is_over_18"] is True
+    assert response.json()["collect_is_over_21"] is True
+
+
+def test_update_tournament_toggles_default_false(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/").json()
+    assert data["collect_is_over_18"] is False
+    assert data["collect_is_over_21"] is False
+
+
+def test_update_tournament_toggles_require_manage_tournament(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.patch(
+        f"/tournaments/{other_tournament.id}/", json={"collect_is_over_18": True},
+    )
+    assert response.status_code == 403
+
+
+def test_turning_toggle_on_does_not_retroactively_expose_unconsented_members(
+    client, td_user, td_tournament, other_user, db,
+):
+    """The whole privacy promise of this feature: an existing member who
+    never answered the consent prompt stays hidden the instant a TD flips
+    the toggle on — 2.3's gate keys off consent, not collection alone, but
+    this proves the two combine correctly end to end."""
+    other_user.date_of_birth = date(2000, 1, 1)
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+
+    # Before: not collected, unanswered — omitted either way.
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" not in data
+
+    # TD turns it on.
+    response = client.patch(f"/tournaments/{td_tournament.id}/", json={"collect_is_over_18": True})
+    assert response.status_code == 200
+
+    # After: collected now, but still never consented — still omitted, not null.
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" not in data
+
+
 def test_update_tournament_both_location_and_university_id_rejected(client, td_user, td_tournament, db):
     university = University(name="MIT")
     db.add(university)

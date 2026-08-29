@@ -131,6 +131,8 @@ class TournamentUpdate(TournamentFieldValidators, BaseModel):
     level: str | None = None
     division: list[str] | None = None
     is_public: bool | None = None
+    collect_is_over_18: bool | None = None
+    collect_is_over_21: bool | None = None
 
     @model_validator(mode="after")
     def validate_dates(self) -> TournamentUpdate:
@@ -168,6 +170,10 @@ class TournamentRead(BaseModel):
     is_archived: bool
     owner_id: int
     roles: list[RoleRead] = []
+    # TD opt-in to collecting each age threshold — see TournamentMembership's
+    # age_disclosure for the per-member consent this gates.
+    collect_is_over_18: bool = False
+    collect_is_over_21: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -196,6 +202,11 @@ class TournamentPublic(BaseModel):
     level: str
     division: list[str]
     is_verified: bool
+    # Surfaced here (not just on TournamentRead) so an unauthenticated join
+    # preview can tell whether to show the age-disclosure consent step
+    # before the visitor even signs in.
+    collect_is_over_18: bool = False
+    collect_is_over_21: bool = False
 
     model_config = {"from_attributes": True}
 

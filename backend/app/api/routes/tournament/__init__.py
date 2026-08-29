@@ -44,6 +44,8 @@ def _serialize(tournament: Tournament) -> dict:
         "is_archived": tournament.is_archived,
         "owner_id": tournament.owner_id,
         "roles": tournament.roles,
+        "collect_is_over_18": tournament.collect_is_over_18,
+        "collect_is_over_21": tournament.collect_is_over_21,
         "created_at": tournament.created_at,
         "updated_at": tournament.updated_at,
     }

@@ -53,6 +53,25 @@ def test_join_rejects_code_that_does_not_exist(client, td_user, code):
 
 
 # ---------------------------------------------------------------------------
+# GET /join/preview/ — public, no auth
+# ---------------------------------------------------------------------------
+
+def test_preview_tournament_code_includes_age_disclosure_flags(client, td_user, td_tournament, db):
+    """Unauthenticated preview must expose whether the tournament collects an
+    age flag — the frontend join flow needs this before the visitor even
+    signs in, to decide whether to show the consent step at all."""
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    make_tournament_join_code(db, td_tournament.id, td_user.id, code="PREVIEW1")
+
+    response = client.get("/join/preview/?code=PREVIEW1")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["collect_is_over_18"] is True
+    assert data["collect_is_over_21"] is False
+
+
+# ---------------------------------------------------------------------------
 # Tournament codes
 # ---------------------------------------------------------------------------
 
