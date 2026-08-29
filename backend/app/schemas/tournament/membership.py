@@ -161,6 +161,16 @@ class _MembershipRolesMixin(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def _flatten_track_statuses(v):
+    """Shared by MembershipSlimResponse and MembershipFullResponse: the ORM
+    rows don't carry the track name, it's a relationship hop away. Routes
+    that build this from a TournamentMembership get the flattening for free;
+    anything passing already-built schema objects passes straight through."""
+    if v and hasattr(v[0], "track"):
+        return [MembershipTrackStatusRead.from_row(row) for row in v]
+    return v
+
+
 class MembershipSlimResponse(_MembershipRolesMixin):
     """List view — members page roster. No onboarding/logistics fields."""
     id: int
@@ -176,8 +186,17 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     # declined members (GET .../memberships/?include_declined=true) can tell
     # them apart from active ones; excluded from the roster by default.
     age_disclosure: Optional[str] = None
+    # Powers the roster table's Tracks column (3.5) — same display_config
+    # "members_panel" surface/hidden-item filtering as the detail panel, so a
+    # TD who hides a track sees it disappear from both.
+    track_statuses: list[MembershipTrackStatusRead] = []
 
     user: UserSlimResponse
+
+    @field_validator("track_statuses", mode="before")
+    @classmethod
+    def _validate_track_statuses(cls, v):
+        return _flatten_track_statuses(v)
 
 
 class MembershipMeResponse(_MembershipRolesMixin):
@@ -232,16 +251,10 @@ class MembershipFullResponse(_MembershipRolesMixin):
 
     user: UserFullResponse
 
-    # Same shape problem as _unwrap_roles: the ORM rows don't carry the track
-    # name, it's a relationship hop away. Routes that build this from a
-    # TournamentMembership get the flattening for free; anything passing
-    # already-built schema objects passes straight through.
     @field_validator("track_statuses", mode="before")
     @classmethod
-    def _flatten_track_statuses(cls, v):
-        if v and hasattr(v[0], "track"):
-            return [MembershipTrackStatusRead.from_row(row) for row in v]
-        return v
+    def _validate_track_statuses(cls, v):
+        return _flatten_track_statuses(v)
 
     # Same treatment for event preferences — the flat per-event rows need
     # grouping by key before they match this schema's shape.

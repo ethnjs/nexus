@@ -114,6 +114,47 @@ def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
     assert "notes" not in row
 
 
+def test_list_memberships_includes_track_statuses(client, td_user, td_tournament, db):
+    """3.5 — the roster table's Tracks column reads off the same list
+    response, not a per-row detail fetch."""
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
+    assert row["track_statuses"] == [{
+        "track_id": track.id, "name": "Test Writing", "is_archived": False,
+        "status": "confirmed", "updated_at": row["track_statuses"][0]["updated_at"],
+    }]
+
+
+def test_list_memberships_applies_members_panel_display_config(client, td_user, td_tournament, db):
+    """Hiding a track via display_config drops it from the roster table too
+    — same "members_panel" surface the detail panel (3.3) already respects,
+    not a second, independent hiding mechanism."""
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    td_tournament.display_config = {"members_panel": {"hidden": [f"track:{track.id}"]}}
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
+    assert row["track_statuses"] == []
+
+
 def test_list_memberships_requires_manage_members(
     client, td_user, other_tournament, db
 ):

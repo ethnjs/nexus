@@ -6,7 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.display_config import apply_display_config
+from app.core.tournament.display_config import MEMBERS_PANEL, apply_display_config
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, gate_age_flags, get_custom_form_answers, get_membership_by_user,
     resolve_memberships_or_users,
@@ -78,7 +78,10 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tou
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/memberships/ — manage_members
-# Members-page roster: slim user identity + roles only.
+# Members-page roster: slim user identity + roles, plus track_statuses (3.5)
+# for the table's Tracks column. Filtered through the same "members_panel"
+# display_config surface as the detail panel (3.3/3.4) — hiding a track
+# there hides it here too, since both read from the same underlying data.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[MembershipSlimResponse])
 def list_memberships(
@@ -87,7 +90,7 @@ def list_memberships(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
-    get_tournament(tournament_id, db)
+    tournament = get_tournament(tournament_id, db)
 
     query = (
         db.query(TournamentMembership)
@@ -95,6 +98,7 @@ def list_memberships(
             joinedload(TournamentMembership.user),
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
             joinedload(TournamentMembership.join_code),
+            joinedload(TournamentMembership.track_statuses),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
@@ -103,7 +107,11 @@ def list_memberships(
     memberships = query.order_by(TournamentMembership.id).all()
     responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    return responses
+    data = [
+        apply_display_config(tournament, MEMBERS_PANEL, resp.model_dump(mode="json"))
+        for resp in responses
+    ]
+    return JSONResponse(data)
 
 
 # ---------------------------------------------------------------------------

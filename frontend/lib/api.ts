@@ -731,6 +731,9 @@ export interface MembershipSlim {
   // wider type used interchangeably in a few places) doesn't carry it.
   age_disclosure?: 'consented' | 'declined' | null
   roles:      Role[]
+  // Roster table's Tracks column (3.5) — already filtered server-side by the
+  // tournament's "members_panel" display_config surface.
+  track_statuses: MembershipTrackStatus[]
   user:       UserSlim
 }
 
