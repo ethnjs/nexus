@@ -49,7 +49,7 @@ from app.core.form.write_through import (
     sync_track_statuses,
 )
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
-from app.core.tournament.memberships import get_membership_by_user
+from app.core.tournament.memberships import get_membership_by_user, is_declined
 from app.core.tournament.onboarding import next_required_onboarding_form_id
 from app.core.tournament.memberships import resolve_memberships_or_users
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
@@ -209,7 +209,7 @@ def list_my_tournament_forms(
     current_user: User = Depends(get_current_user),
 ):
     membership = get_membership_by_user(db, tournament_id, current_user.id)
-    if membership is None:
+    if membership is None or is_declined(membership):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
 
     rows = (

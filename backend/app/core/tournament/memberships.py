@@ -1,9 +1,30 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.models.models import TournamentMembership, User
+
+# A declined membership's row survives (2.4c is a soft decline), but it must
+# read as inactive everywhere a roster/count/access-check enumerates members.
+# NULL-safe on purpose: most rows have `age_disclosure IS NULL` (never
+# collected, or unanswered), and a plain `!= "declined"` filter would silently
+# drop every one of those too, since SQL NULL comparisons are never true —
+# this would have hidden almost the entire roster. Use this in every
+# SQL-level filter; is_declined() below is the equivalent for an
+# already-loaded ORM object.
+ACTIVE_MEMBERSHIP_CLAUSE = or_(
+    TournamentMembership.age_disclosure.is_(None),
+    TournamentMembership.age_disclosure != "declined",
+)
+
+
+def is_declined(membership: "TournamentMembership") -> bool:
+    """Python-side equivalent of ACTIVE_MEMBERSHIP_CLAUSE for an
+    already-loaded row — no NULL-comparison hazard here since this is a
+    plain Python `==`, not SQL."""
+    return membership.age_disclosure == "declined"
 
 if TYPE_CHECKING:
     # Deferred to a lazy import inside resolve_memberships_or_users() below —
@@ -59,10 +80,19 @@ def resolve_memberships_or_users(
 
 
 def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
-    """Return True if the user has any membership in `tournament_id`."""
+    """Return True if the user has any *active* membership in
+    `tournament_id`. A declined membership counts as none — this is the
+    central choke point behind require_membership()/require_permission(),
+    so a declined member is blocked from tournament pages generally
+    (events, forms, roster, staff routes) without every call site needing
+    its own check. The one deliberate exception is GET/POST
+    .../memberships/me/(age-disclosure)/, which bypass this dependency
+    entirely so a declined member can still see their own status and
+    re-consent — see those routes."""
     if user.role == "admin":
         return True
-    return get_membership_by_user(db, tournament_id, user.id) is not None
+    membership = get_membership_by_user(db, tournament_id, user.id)
+    return membership is not None and not is_declined(membership)
 
 
 def gate_age_flags(membership: TournamentMembership | None, data: dict) -> dict:

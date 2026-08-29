@@ -718,6 +718,11 @@ export interface MembershipSlim {
   // (their NEXUS account age).
   created_at: string
   updated_at: string
+  // null/"consented"/"declined" — only meaningful when the roster was
+  // fetched with include_declined=true; a default fetch never returns a
+  // declined row at all. Optional since MembershipFull (a structurally
+  // wider type used interchangeably in a few places) doesn't carry it.
+  age_disclosure?: 'consented' | 'declined' | null
   roles:      Role[]
   user:       UserSlim
 }
@@ -768,8 +773,10 @@ export interface MembershipMe {
 }
 
 export const membershipsApi = {
-  list: (tournamentId: number) =>
-    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`),
+  // include_declined defaults to false server-side — a declined membership
+  // is excluded from the roster unless a TD explicitly opts in.
+  list: (tournamentId: number, includeDeclined = false) =>
+    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/?include_declined=${includeDeclined}`),
   get: (tournamentId: number, id: number) =>
     api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
   getMe: (tournamentId: number) =>

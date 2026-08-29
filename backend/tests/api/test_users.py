@@ -600,3 +600,16 @@ class TestListUserTournamentMemberships:
 
     def test_unauthenticated_forbidden(self, client, td_user):
         assert client.get(f"/users/{td_user.id}/tournament-memberships/").status_code == 401
+
+    def test_declined_membership_excluded_even_for_self(self, client, td_tournament, other_user, db):
+        """A declined membership is inactive — hidden from the profile-page
+        enrichment listing even for the member's own profile. Their status
+        is still readable via GET .../memberships/me/, which this endpoint
+        doesn't replace."""
+        membership = grant_role(db, td_tournament, other_user, "Volunteer")
+        membership.age_disclosure = "declined"
+        db.commit()
+        login(client, "other@test.com", "otherpass")
+        res = client.get(f"/users/{other_user.id}/tournament-memberships/")
+        assert res.status_code == 200
+        assert res.json() == []

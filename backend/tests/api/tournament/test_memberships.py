@@ -130,6 +130,34 @@ def test_list_memberships_no_membership_in_tournament(client, td_user):
     assert client.get("/tournaments/9999/memberships/").status_code == 404
 
 
+def test_list_memberships_excludes_declined_by_default(client, td_user, td_tournament, other_user, db):
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()]
+    assert membership.id not in ids
+
+
+def test_list_memberships_includes_declined_when_opted_in(client, td_user, td_tournament, other_user, db):
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?include_declined=true")
+    row = next(m for m in response.json() if m["id"] == membership.id)
+    assert row["age_disclosure"] == "declined"
+
+
+def test_search_memberships_excludes_declined(client, td_user, td_tournament, other_user, db):
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/search/").json()]
+    assert membership.id not in ids
+
+
 def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
     """Roles are unwrapped from TournamentMembershipRole to RoleRead in the slim response too."""
     from app.models.models import User as UserModel
@@ -557,13 +585,30 @@ def test_get_my_membership_admin_without_membership(client, admin_user, td_tourn
     assert len(data["permissions"]) > 0
 
 
-def test_get_my_membership_requires_membership(client, td_user, other_tournament):
-    """No membership at all in the tournament — 404, not 403, so existence
-    isn't leaked."""
+def test_get_my_membership_no_membership_returns_null_id(client, td_user, other_tournament):
+    """No membership at all in the tournament — 200 with membership_id=None,
+    same shape as the site-admin-without-a-row case. This route deliberately
+    doesn't gate on require_membership() (see 2.4d): a declined member must
+    still be able to check their own status here, and there's no way to
+    special-case "declined" from "never joined" without also opening the
+    door to "never joined"."""
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/me/"
-    ).status_code == 404
+    response = client.get(f"/tournaments/{other_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    assert response.json()["membership_id"] is None
+
+
+def test_get_my_membership_still_reachable_when_declined(client, td_tournament, other_user, db):
+    """The escape hatch 2.4d relies on: a declined member can still see
+    their own row (not just membership_id=None) to know they're declined
+    and re-consent via POST .../me/age-disclosure/."""
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    assert response.json()["membership_id"] == membership.id
 
 
 def test_get_my_membership_not_found_tournament(client, td_user):

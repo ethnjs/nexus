@@ -84,6 +84,27 @@ def test_list_my_tournaments_returns_summary_shape(
     assert "owner_id" not in summary
 
 
+def test_list_my_tournaments_excludes_declined_membership(client, td_tournament, other_user, db):
+    """A declined membership is inactive — blocked from the dashboard listing
+    just like every other tournament page."""
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    ids = [t["id"] for t in client.get("/tournaments/me/").json()]
+    assert td_tournament.id not in ids
+
+
+def test_volunteer_count_excludes_declined_membership(client, td_user, td_tournament, other_user, db):
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get("/tournaments/me/").json()
+    summary = next(t for t in data if t["id"] == td_tournament.id)
+    assert summary["volunteer_count"] == 1  # just the owner — other_user declined
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/ — any authenticated user
 # ---------------------------------------------------------------------------
@@ -256,6 +277,16 @@ def test_get_tournament_volunteer_member_can_access(
 def test_get_tournament_not_found(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.get("/tournaments/9999/").status_code == 404
+
+
+def test_get_tournament_declined_member_gets_404(client, other_tournament, other_user, db):
+    """A declined membership doesn't count for require_membership() — blocked
+    from tournament pages generally, not just the roster."""
+    membership = grant_role(db, other_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/").status_code == 404
 
 
 # ---------------------------------------------------------------------------
@@ -563,6 +594,20 @@ def test_transfer_ownership_owner_can_transfer(client, td_user, td_tournament, o
 
 def test_transfer_ownership_requires_new_owner_membership(client, td_user, td_tournament, other_user):
     """Can't hand a tournament to someone who isn't in it."""
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+    assert response.status_code == 400
+
+
+def test_transfer_ownership_rejects_declined_new_owner(client, td_user, td_tournament, other_user, db):
+    """A declined membership doesn't count as "already a member" for
+    transfer eligibility — same treatment as everywhere else declined."""
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
     login(client, "td@test.com", "tdpass")
     response = client.post(
         f"/tournaments/{td_tournament.id}/transfer-ownership/",

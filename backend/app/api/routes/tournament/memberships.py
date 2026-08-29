@@ -7,10 +7,11 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.memberships import (
-    gate_age_flags, get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
+    ACTIVE_MEMBERSHIP_CLAUSE, gate_age_flags, get_custom_form_answers, get_membership_by_user,
+    resolve_memberships_or_users,
 )
 from app.core.tournament.permissions import (
-    MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
+    MANAGE_MEMBERS, get_user_permissions, require_permission,
 )
 from app.core.tournament.roles import validate_member_target
 from app.db.session import get_db
@@ -81,12 +82,13 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tou
 @router.get("/", response_model=list[MembershipSlimResponse])
 def list_memberships(
     tournament_id: int,
+    include_declined: bool = Query(False),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
 
-    memberships = (
+    query = (
         db.query(TournamentMembership)
         .options(
             joinedload(TournamentMembership.user),
@@ -94,9 +96,10 @@ def list_memberships(
             joinedload(TournamentMembership.join_code),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
-        .order_by(TournamentMembership.id)
-        .all()
     )
+    if not include_declined:
+        query = query.filter(ACTIVE_MEMBERSHIP_CLAUSE)
+    memberships = query.order_by(TournamentMembership.id).all()
     responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
     return responses
@@ -127,10 +130,12 @@ def search_memberships(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
+    # No opt-in here (unlike the roster list) — this powers role-assignment
+    # pickers, and a declined member can't meaningfully hold a role anyway.
     query = (
         db.query(TournamentMembership)
         .join(User, User.id == TournamentMembership.user_id)
-        .filter(TournamentMembership.tournament_id == tournament_id)
+        .filter(TournamentMembership.tournament_id == tournament_id, ACTIVE_MEMBERSHIP_CLAUSE)
     )
     if q:
         like = f"%{q}%"
@@ -184,8 +189,14 @@ def search_memberships(
 def get_my_membership(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_membership()),
+    current_user: User = Depends(get_current_user),
 ):
+    # Deliberately not require_membership() — that now excludes a declined
+    # membership (see has_any_membership), and this route is the escape
+    # hatch a declined member needs to see their own status and re-consent.
+    # Any authenticated user can reach this; a non-member just gets back
+    # membership_id=None, same shape already used for the site-admin-with-
+    # no-row case below.
     tournament = get_tournament(tournament_id, db)
 
     membership = get_membership_by_user(
@@ -195,8 +206,9 @@ def get_my_membership(
     permissions = sorted(get_user_permissions(current_user, tournament_id, db))
     is_owner = current_user.id == tournament.owner_id
 
-    # No row only for a site admin who never joined — require_membership()
-    # already granted access via its admin bypass.
+    # No row: a site admin who never joined, or any other authenticated user
+    # with no relationship to this tournament (this route no longer gates on
+    # require_membership() — see above).
     if not membership:
         resp = MembershipMeResponse(
             membership_id=None, is_owner=is_owner, roles=[], permissions=permissions,

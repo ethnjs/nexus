@@ -71,6 +71,18 @@ def test_list_roles_ordered_by_rank(client, td_user, td_tournament):
     assert ranks == sorted(ranks)
 
 
+def test_list_roles_member_count_excludes_declined(client, td_user, td_tournament, other_user, db):
+    """A declined member's role-assignment row survives (soft decline), but
+    they shouldn't inflate the role's member_count — they're inactive."""
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    roles = client.get(f"/tournaments/{td_tournament.id}/roles/").json()
+    volunteer = next(r for r in roles if r["label"] == "Volunteer")
+    assert volunteer["member_count"] == 0
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/roles/apply-template/ — manage_roles,
 # empty-state only (409 once any role exists)

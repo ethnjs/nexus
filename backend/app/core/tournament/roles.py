@@ -23,12 +23,14 @@ def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["Tour
     reads it via from_attributes. One grouped count query regardless of how
     many roles are passed in, so callers stay off the N+1 path.
     """
-    from app.models.models import TournamentMembershipRole
+    from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
+    from app.models.models import TournamentMembership, TournamentMembershipRole
 
     role_ids = [r.id for r in roles]
     counts = dict(
         db.query(TournamentMembershipRole.role_id, func.count(TournamentMembershipRole.id))
-        .filter(TournamentMembershipRole.role_id.in_(role_ids))
+        .join(TournamentMembership, TournamentMembership.id == TournamentMembershipRole.membership_id)
+        .filter(TournamentMembershipRole.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
         .group_by(TournamentMembershipRole.role_id)
         .all()
     ) if role_ids else {}

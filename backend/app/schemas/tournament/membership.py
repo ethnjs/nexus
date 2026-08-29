@@ -168,6 +168,10 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     # (their NEXUS account age).
     created_at: datetime
     updated_at: datetime
+    # null/"consented"/"declined" — surfaced so a TD who opts into seeing
+    # declined members (GET .../memberships/?include_declined=true) can tell
+    # them apart from active ones; excluded from the roster by default.
+    age_disclosure: Optional[str] = None
 
     user: UserSlimResponse
 
