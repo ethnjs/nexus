@@ -110,13 +110,15 @@ Rank a fixed number of options in order of preference.
 Answer value: dict of rank → option `option_id`, e.g. `{"1": "a1b2c3d4e5", "2": "f6e5d4c3b2"}` — stored as rank → `{option_id, value, label}` snapshot.
 Branching: not supported.
 
+`allow_duplicates: false` is enforced at submission/patch time, not just advisory for the picker UI: an answer that selects the same `option_id` at more than one rank is rejected with a 400 (`duplicate_ranked_choice_field_keys`). `allow_duplicates: true` allows it.
+
 **Reserved-key note (`event_preference`):** allowed on this type, `multi_select_checkbox`, or `single_select_dropdown`. An option's stored `value` may be `list[int]` — one or more real `TournamentEvent` ids grouped under a single label (the same grouping pattern as availability's shift ids), auto-loadable from the tournament's event catalog. `GET`-rendering resolves `value` in place into one `{id, name, division}` entry per event, ordered by id (`resolve_field_options`'s event_preference branch) — same "reuse `value`, one entry per grouped entity" treatment as availability:
 
 ```json
 { "option_id": "a1b2c3d4e5", "label": "Life Science", "value": [{ "id": 5, "name": "Anatomy and Physiology", "division": "B" }, { "id": 9, "name": "Disease Detectives", "division": "C" }] }
 ```
 
-A `value` that's still a plain string (a single legacy id) passes through unresolved — strict validation that every `event_preference` option's ids are real `TournamentEvent`s isn't built yet, unlike `availability`'s strict shift-id check.
+Strictly validated (`validate_event_preference_options`): every id must be a non-empty `list[int]` of real `TournamentEvent`s belonging to the field's own tournament, and no event id may appear in more than one option on the same field. On this question type specifically, `allow_duplicates` must be `false` — ranking the same event at two ranks is never meaningful, and options are already guaranteed mutually exclusive by event, so the general `allow_duplicates` answer-time check above is what actually blocks a repeat. The builder hides the "Allow duplicate ranks" toggle for an `event_preference` ranked-choice field rather than showing a control that can never be turned on.
 
 ## `short_text` / `long_text`
 Free text — `short_text` single line, `long_text` multi-line.
@@ -144,7 +146,7 @@ Only `single_select_radio` and `single_select_dropdown` options may carry branch
 |---|---|---|
 | `availability_{date}` — e.g. `availability_20260315` (`^availability_\d{8}$`), one per date; a bare `availability` (no date) is **not** a valid reserved key | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipAvailability` (tournament-owned forms only); selected option_id(s) across **every** active `availability_*` field on the response are expanded into their grouped `TournamentShift` ids, unioned, and diffed as one set — every date's question feeds the same centralized "shifts this member is available for" pool, not a per-date table. With `track_status_enabled: true` the option's shift ids move under a `shift_ids` key and the field additionally writes track statuses — read them through `option_shift_ids` / `option_track_assignments` rather than off `value`, whose shape is only interpretable alongside `field_key`. |
 | `lunch_{date}_{category}` — e.g. `lunch_20270213_protein` (`^lunch_\d{8}_[a-z0-9_]+$`), one per (date, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); selected option_id(s) resolve to their stored `value`/`label`, no catalog table — stores whatever option was selected, keyed by category string |
-| `event_preference_{suffix}` — e.g. `event_preference_morning` (`^event_preference_[a-z0-9_]+$`), one per independently-ranked axis; a bare `event_preference` (no suffix) is **not** a valid reserved key | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | none — generic `FormAnswer`, same as any custom question (option `value` may be `list[int]` of real `TournamentEvent` ids, resolved on render; not yet strictly validated against real events). Unlike `availability`, different suffixes are **not** merged into one pool — each suffix is read as its own axis by querying `FormAnswer` directly wherever event preferences are needed downstream, rather than being synced into a dedicated structural table. `TournamentMembership` once carried manual-entry `event_preference` / `role_preference` / `availability` / `lunch_order` / `extra_data` columns; those are gone, as is `status` — per-track participation now lives in `TournamentMembershipTrackStatus`. |
+| `event_preference_{suffix}` — e.g. `event_preference_morning` (`^event_preference_[a-z0-9_]+$`), one per independently-ranked axis; a bare `event_preference` (no suffix) is **not** a valid reserved key | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | `TournamentMembershipEventPreference` (tournament-owned forms only), one row per (membership, key, event) — the suffix is one field's exclusive key, so unlike `availability` there's no cross-field union: each field's answer diff-replaces only its own key's rows (`sync_event_preferences`). Selected option(s) expand into `{tournament_event_id, rank}` rows: `ranked_choice` writes each option's rank; `single_select_dropdown` writes rank `1`; `multi_select_checkbox` writes rank `null`. Options are validated mutually exclusive by event and `allow_duplicates` is required `false` on `ranked_choice` (see above), so `(membership_id, key, tournament_event_id)` is a plain unique constraint — no rank in the key. `TournamentMembership` once carried manual-entry `event_preference` / `role_preference` / `availability` / `lunch_order` / `extra_data` columns; those are gone, as is `status` — per-track participation now lives in `TournamentMembershipTrackStatus`. |
 | `track_status_{suffix}` — e.g. `track_status_volunteer_interest` (`^track_status_[a-z0-9_]+$`), one per independently named status question | `single_select_radio` or `multi_select_checkbox`, and `required` **must** be `true` | `TournamentMembershipTrackStatus` (tournament-owned forms only), one row per (membership, track); each option's `value` is the list of track assignments it applies (shape below). An `availability_*` field may carry assignments too, but only with `track_status_enabled: true` — that field then writes to **both** targets, its shifts and its statuses. **Upsert-only, never deleted**, and guarded by a transition rule (a track never falls back to `interested`); where two fields name one track, later document order wins. Checkbox options may repeat a track only when they assign it the same status. See `form-edit-lifecycle.md`'s "Track status ordering". |
 | any TD-typed slug | any type | none — generic `FormAnswer` |
 
@@ -183,7 +185,9 @@ non-empty.
 ```
 
 **3. `event_preference_{suffix}`.** `value` is the `TournamentEvent` ids
-grouped under one label. Not yet strictly validated against real events.
+grouped under one label, strictly validated: every id must be real and belong
+to the field's own tournament, and no event may appear in more than one
+option. On `ranked_choice`, `allow_duplicates` must be `false`.
 
 ```json
 { "required": true, "ranks": 3, "allow_duplicates": false, "options": [

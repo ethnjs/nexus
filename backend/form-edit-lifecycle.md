@@ -91,7 +91,7 @@ same edit is cosmetic and raises nothing.
 
 | Change | `reason` | Default | Why it's a judgment call |
 |---|---|---|---|
-| `field_key` moves between preset and standard | `key_changed` | **on** | Nothing changed for the respondent — the labels can be identical, and their answer is still correct. But write-through is forward-only, so their data won't reach `MembershipAvailability` / `TournamentMembershipLunch` / track statuses unless they resubmit. The TD is deciding whether they need that data for people who already answered. |
+| `field_key` moves between preset and standard | `key_changed` | **on** | Nothing changed for the respondent — the labels can be identical, and their answer is still correct. But write-through is forward-only, so their data won't reach `MembershipAvailability` / `TournamentMembershipLunch` / `TournamentMembershipEventPreference` / track statuses unless they resubmit. The TD is deciding whether they need that data for people who already answered. |
 | Question label | `text_changed` | off | Rewording may or may not change what's being asked. |
 | Question description | `text_changed` | off | Same. |
 | Option label (respondent-facing text) | `text_changed` | off | Same. |
@@ -277,14 +277,17 @@ Two consequences:
 does not remove what it previously wrote to `MembershipAvailability` or track
 statuses. Those tables are shared — multiple questions, across multiple forms,
 contribute to the same rows, so no single field owns any of them and none can
-be safely withdrawn. Lunch is the exception: keyed by (membership, category),
-it has a single owner and can be deleted.
+be safely withdrawn. Lunch and event preference are the exception: each is
+keyed by a value only one field can ever produce — (membership, category) for
+lunch, (membership, suffix) for event preference — so each has a single owner
+and can be deleted.
 
 Cleanup on **Invalidate**:
 
 | Target | Rule |
 |---|---|
 | `TournamentMembershipLunch` | keyed by (membership, category) — delete the field's rows |
+| `TournamentMembershipEventPreference` | keyed by (membership, suffix) — delete the field's rows |
 | `MembershipAvailability` | **never deleted.** Another question may cover the same day, and the invalidated field's own contribution can't be separated from theirs after the fact. |
 | Track statuses | **never deleted.** A track's state may have been set by a later form; removing this field's contribution can't be done without replay. |
 
