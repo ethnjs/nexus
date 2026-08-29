@@ -1059,7 +1059,9 @@ class TournamentMembershipEventPreference(Base):
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     membership = relationship("TournamentMembership", back_populates="event_preferences")
-    tournament_event = relationship("TournamentEvent")
+    # lazy="joined": every read of a preference row wants the event's name/
+    # division to render it, same reasoning as TrackStatus.track.
+    tournament_event = relationship("TournamentEvent", lazy="joined")
 
     __table_args__ = (
         UniqueConstraint("membership_id", "key", "tournament_event_id", name="uq_membership_event_preference"),

@@ -44,6 +44,52 @@ class MembershipJoinCodeInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MembershipEventPreferenceEventRead(BaseModel):
+    """One event within a preference group — same {id, name, division} shape
+    resolve_field_options gives an event_preference option's events, so a
+    renderer can reuse the same event-display component either way."""
+    id: int
+    name: str | None = None
+    division: str | None = None
+    rank: int | None = None
+
+
+class MembershipEventPreferenceRead(BaseModel):
+    """One event_preference_{suffix} question's answer, grouped by key with
+    its events resolved. Each suffix is its own independent axis — see
+    form-question-types-reference.md — so this is a list, not a single
+    preference."""
+    key: str
+    events: list[MembershipEventPreferenceEventRead]
+
+    @classmethod
+    def group_rows(cls, rows) -> list["MembershipEventPreferenceRead"]:
+        """Groups flat TournamentMembershipEventPreference rows (one per
+        event) into one entry per key, ordered by key then by rank (nulls
+        last) then event id within each key."""
+        by_key: dict[str, list] = {}
+        for row in rows:
+            by_key.setdefault(row.key, []).append(row)
+        return [
+            cls(
+                key=key,
+                events=[
+                    MembershipEventPreferenceEventRead(
+                        id=row.tournament_event_id,
+                        name=row.tournament_event.name,
+                        division=row.tournament_event.division,
+                        rank=row.rank,
+                    )
+                    for row in sorted(
+                        by_key[key],
+                        key=lambda r: (r.rank is None, r.rank or 0, r.tournament_event_id),
+                    )
+                ],
+            )
+            for key in sorted(by_key)
+        ]
+
+
 class _MembershipRolesMixin(BaseModel):
     """Shared roles handling for response schemas.
 
@@ -86,6 +132,7 @@ class MembershipMeResponse(_MembershipRolesMixin):
     # Their own per-track statuses — readable without manage_members, unlike
     # the tournament-wide roster.
     track_statuses: list[MembershipTrackStatusRead] = []
+    event_preferences: list[MembershipEventPreferenceRead] = []
 
 
 class MembershipFullResponse(_MembershipRolesMixin):
@@ -103,6 +150,7 @@ class MembershipFullResponse(_MembershipRolesMixin):
     updated_at: datetime
 
     track_statuses: list[MembershipTrackStatusRead] = []
+    event_preferences: list[MembershipEventPreferenceRead] = []
 
     user: UserFullResponse
 
@@ -115,4 +163,13 @@ class MembershipFullResponse(_MembershipRolesMixin):
     def _flatten_track_statuses(cls, v):
         if v and hasattr(v[0], "track"):
             return [MembershipTrackStatusRead.from_row(row) for row in v]
+        return v
+
+    # Same treatment for event preferences — the flat per-event rows need
+    # grouping by key before they match this schema's shape.
+    @field_validator("event_preferences", mode="before")
+    @classmethod
+    def _group_event_preferences(cls, v):
+        if v and hasattr(v[0], "tournament_event_id"):
+            return MembershipEventPreferenceRead.group_rows(v)
         return v

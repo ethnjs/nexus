@@ -296,3 +296,98 @@ def test_delete_event(client, td_user, td_tournament):
 def test_delete_event_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.delete(f"/tournaments/{td_tournament.id}/events/9999/").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Membership event preferences — grouped read on memberships/me/ and
+# memberships/{id}/. See app/schemas/tournament/membership.py's
+# MembershipEventPreferenceRead.
+# ---------------------------------------------------------------------------
+
+def _td_membership(db, td_user, td_tournament):
+    from app.models.models import TournamentMembership
+    return (
+        db.query(TournamentMembership)
+        .filter(
+            TournamentMembership.user_id == td_user.id,
+            TournamentMembership.tournament_id == td_tournament.id,
+        )
+        .one()
+    )
+
+
+def _add_preference(db, membership_id, key, event_id, rank):
+    from app.models.models import TournamentMembershipEventPreference
+    db.add(TournamentMembershipEventPreference(
+        membership_id=membership_id, key=key, tournament_event_id=event_id, rank=rank,
+    ))
+    db.commit()
+
+
+def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
+    e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
+    membership = _td_membership(db, td_user, td_tournament)
+    # Ranked entries deliberately out of order to check the response sorts.
+    _add_preference(db, membership.id, "morning", e2["id"], 2)
+    _add_preference(db, membership.id, "morning", e1["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert res.status_code == 200
+    assert res.json()["event_preferences"] == [{
+        "key": "morning",
+        "events": [
+            {"id": e1["id"], "name": "Anatomy", "division": "C", "rank": 1},
+            {"id": e2["id"], "name": "Astronomy", "division": "C", "rank": 2},
+        ],
+    }]
+
+def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
+    e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
+    membership = _td_membership(db, td_user, td_tournament)
+    # Inserted in reverse id order — checkbox rows carry no rank, so they
+    # must fall back to ordering by event id.
+    _add_preference(db, membership.id, "afternoon", e2["id"], None)
+    _add_preference(db, membership.id, "afternoon", e1["id"], None)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert res.status_code == 200
+    ids = [e["id"] for e in res.json()["event_preferences"][0]["events"]]
+    assert ids == sorted([e1["id"], e2["id"]])
+
+def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id).json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_preference(db, membership.id, "morning", event["id"], 1)
+    _add_preference(db, membership.id, "afternoon", event["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert res.status_code == 200
+    assert [g["key"] for g in res.json()["event_preferences"]] == ["afternoon", "morning"]
+
+def test_member_detail_carries_event_preferences(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id, name="Anatomy").json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_preference(db, membership.id, "morning", event["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    assert res.status_code == 200
+    assert res.json()["event_preferences"] == [{
+        "key": "morning", "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+    }]
+
+def test_member_slim_response_has_no_event_preferences(client, db, td_user, td_tournament):
+    """Roster/search stays unchanged — the grouped shape is a full-response-only field."""
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id).json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_preference(db, membership.id, "morning", event["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    assert res.status_code == 200
+    assert "event_preferences" not in res.json()[0]
