@@ -445,6 +445,8 @@ export interface TournamentUpdate {
   level?:         TournamentLevel
   division?:      TournamentDivision[]
   is_public?:     boolean
+  collect_is_over_18?: boolean
+  collect_is_over_21?: boolean
 }
 
 export const tournamentsApi = {

@@ -18,6 +18,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Badge } from "@/components/ui/Badge";
+import { Toggle } from "@/components/ui/Toggle";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
@@ -25,6 +26,7 @@ import { TransferOwnershipModal } from "@/components/tournament/settings/Transfe
 import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
 import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
+import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
@@ -79,6 +81,8 @@ export default function GeneralSettingsPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [pendingAgeToggle, setPendingAgeToggle] = useState<"collect_is_over_18" | "collect_is_over_21" | null>(null);
+  const [ageToggleError, setAgeToggleError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (selectedTournament) {
@@ -103,6 +107,23 @@ export default function GeneralSettingsPage() {
     if (!selectedTournament || !draft) return false;
     return JSON.stringify(draft) !== JSON.stringify(toDraft(selectedTournament));
   }, [draft, selectedTournament]);
+
+  // Turning collection ON needs the type-to-confirm modal (real
+  // consequences for existing members); turning it OFF applies immediately —
+  // nothing is destroyed and no one loses access.
+  async function handleAgeToggleChange(flag: "collect_is_over_18" | "collect_is_over_21", checked: boolean) {
+    if (checked) {
+      setPendingAgeToggle(flag);
+      return;
+    }
+    setAgeToggleError(undefined);
+    try {
+      const updated = await tournamentsApi.update(tournamentId, { [flag]: false });
+      setSelectedTournament(updated);
+    } catch (err: unknown) {
+      setAgeToggleError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    }
+  }
 
   function toggleDivision(d: TournamentDivision) {
     setDraft((cur) => cur && {
@@ -322,6 +343,37 @@ export default function GeneralSettingsPage() {
         </SettingsSection>
       )}
 
+      {canEdit && (
+        <SettingsSection title="Age Disclosure">
+          <SettingsRow
+            label="Collect 18+ status"
+            helper="Members consent before this is shared — their date of birth is never sent."
+          >
+            <Toggle
+              checked={selectedTournament.collect_is_over_18}
+              onChange={(v) => handleAgeToggleChange("collect_is_over_18", v)}
+              locked={isArchived}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Collect 21+ status"
+            helper="Members consent before this is shared — their date of birth is never sent."
+            last
+          >
+            <Toggle
+              checked={selectedTournament.collect_is_over_21}
+              onChange={(v) => handleAgeToggleChange("collect_is_over_21", v)}
+              locked={isArchived}
+            />
+          </SettingsRow>
+          {ageToggleError && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+              {ageToggleError}
+            </p>
+          )}
+        </SettingsSection>
+      )}
+
       <SettingsSection title="Danger Zone" variant="danger">
         {isOwnerOrAdmin && (
           <SettingsRow
@@ -430,6 +482,16 @@ export default function GeneralSettingsPage() {
         <StaffInviteModal
           tournamentId={tournamentId}
           onClose={() => setShowInviteModal(false)}
+        />
+      )}
+
+      {pendingAgeToggle && (
+        <AgeDisclosureToggleModal
+          tournamentId={tournamentId}
+          flag={pendingAgeToggle}
+          thresholdLabel={pendingAgeToggle === "collect_is_over_18" ? "18+" : "21+"}
+          onClose={() => setPendingAgeToggle(null)}
+          onDone={(updated) => { setSelectedTournament(updated); setPendingAgeToggle(null); }}
         />
       )}
     </div>
