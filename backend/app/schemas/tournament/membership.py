@@ -184,6 +184,12 @@ class MembershipMeResponse(_MembershipRolesMixin):
     availability: list[MembershipAvailabilityRead] = []
     lunch: list[MembershipLunchRead] = []
     custom_responses: list[MembershipCustomAnswerRead] = []
+    # True when the tournament collects an age flag and this member hasn't
+    # answered yet (age_disclosure is null) — drives the blocking consent
+    # modal for existing members after a TD turns collection on. False (not
+    # just omitted) once answered either way, and always False with no
+    # membership row — nothing to consent to.
+    needs_age_consent: bool = False
 
 
 class MembershipFullResponse(_MembershipRolesMixin):

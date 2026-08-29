@@ -176,10 +176,15 @@ def get_my_membership(
         )
         return JSONResponse(gate_age_flags(None, resp.model_dump(mode="json")))
 
+    needs_age_consent = (
+        (tournament.collect_is_over_18 or tournament.collect_is_over_21)
+        and membership.age_disclosure is None
+    )
     resp = MembershipMeResponse(
         membership_id=membership.id, is_owner=is_owner,
         roles=membership.roles, permissions=permissions,
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
+        needs_age_consent=needs_age_consent,
         track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
         event_preferences=MembershipEventPreferenceRead.group_rows(membership.event_preferences),
         availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],

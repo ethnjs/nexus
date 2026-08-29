@@ -516,6 +516,33 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     assert data["custom_responses"] == []
 
 
+def test_get_my_membership_needs_age_consent_when_collected_and_unanswered(client, td_tournament, other_user, db):
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "other@test.com", "otherpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    assert data["needs_age_consent"] is True
+
+
+def test_get_my_membership_needs_age_consent_false_once_answered(client, td_tournament, other_user, db):
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "other@test.com", "otherpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    assert data["needs_age_consent"] is False
+
+
+def test_get_my_membership_needs_age_consent_false_when_not_collected(client, td_tournament, other_user, db):
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "other@test.com", "otherpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    assert data["needs_age_consent"] is False
+
+
 def test_get_my_membership_admin_without_membership(client, admin_user, td_tournament):
     """A site admin who never joined the tournament still gets in via
     require_membership()'s admin bypass — membership_id/roles are
