@@ -16,9 +16,14 @@ from datetime import date as date_type, datetime
 
 from sqlalchemy.orm import Session
 
-from app.core.form.validation import AVAILABILITY_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN
+from app.core.form.validation import (
+    AVAILABILITY_FIELD_KEY_PATTERN,
+    EVENT_PREFERENCE_FIELD_KEY_PATTERN,
+    LUNCH_FIELD_KEY_PATTERN,
+)
 from app.models.models import (
     TournamentMembershipAvailability,
+    TournamentMembershipEventPreference,
     TournamentMembershipLunch,
     TournamentMembershipTrackStatus,
     TournamentShift,
@@ -38,6 +43,12 @@ def parse_availability_field_key(field_key: str) -> date_type:
     match AVAILABILITY_FIELD_KEY_PATTERN)."""
     match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
     return datetime.strptime(match.group(1), "%Y%m%d").date()
+
+
+def parse_event_preference_field_key(field_key: str) -> str:
+    """The suffix an `event_preference_{suffix}` field carries (already known
+    to match EVENT_PREFERENCE_FIELD_KEY_PATTERN)."""
+    return EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key).group(1)
 
 
 def shift_ids_on_dates(db: Session, tournament_id: int, dates: set[date_type]) -> set[int]:
@@ -125,6 +136,54 @@ def sync_lunch(
                 category=category,
                 value=value,
                 label=item["label"],
+            )
+        )
+
+    db.flush()
+
+
+def sync_event_preferences(
+    db: Session,
+    membership_id: int,
+    key: str,
+    items: list[dict],
+) -> None:
+    """Diffs `items` (each `{"tournament_event_id": ..., "rank": ...}`)
+    against this membership's existing TournamentMembershipEventPreference
+    rows for this `key` only — rows for any other suffix on the same
+    membership are never touched. A suffix is one field's exclusive key
+    (unlike availability's shared day pool), so this can safely delete
+    outright rather than needing an owned-scope parameter.
+
+    Unlike sync_lunch, an existing row whose event stays selected but whose
+    rank changed (a ranked-choice re-ranking) is updated in place rather than
+    deleted and re-inserted — lunch's value/label have no equivalent
+    "same selection, different detail" case."""
+    existing_rows = (
+        db.query(TournamentMembershipEventPreference)
+        .filter(
+            TournamentMembershipEventPreference.membership_id == membership_id,
+            TournamentMembershipEventPreference.key == key,
+        )
+        .all()
+    )
+    existing_by_event = {row.tournament_event_id: row for row in existing_rows}
+    incoming_by_event = {item["tournament_event_id"]: item for item in items}
+
+    for event_id, row in existing_by_event.items():
+        if event_id not in incoming_by_event:
+            db.delete(row)
+        elif row.rank != incoming_by_event[event_id]["rank"]:
+            row.rank = incoming_by_event[event_id]["rank"]
+
+    for event_id in set(incoming_by_event) - set(existing_by_event):
+        item = incoming_by_event[event_id]
+        db.add(
+            TournamentMembershipEventPreference(
+                membership_id=membership_id,
+                key=key,
+                tournament_event_id=event_id,
+                rank=item["rank"],
             )
         )
 

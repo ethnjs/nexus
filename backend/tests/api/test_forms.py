@@ -17,8 +17,10 @@ from app.models.models import (
     FormField,
     FormResponse,
     FormResponsePendingUpdate,
+    TournamentEvent,
     TournamentMembership,
     TournamentMembershipAvailability,
+    TournamentMembershipEventPreference,
     TournamentMembershipLunch,
     TournamentMembershipTrackStatus,
     TournamentForm,
@@ -98,6 +100,13 @@ def _chapter_lead(db, chapter, email="chapterlead@test.com", password="LeadPass1
     db.add(ChapterMembership(chapter_id=chapter.id, user_id=user.id, role="lead"))
     db.commit()
     return user
+
+
+def _make_event(db, tournament, name="Anatomy", division="B"):
+    event = TournamentEvent(tournament_id=tournament.id, name=name, division=division)
+    db.add(event)
+    db.flush()
+    return event
 
 
 # ---------------------------------------------------------------------------
@@ -2175,6 +2184,119 @@ class TestWriteThroughOnSubmit:
         assert rows[0].label == "Chicken"
         assert rows[0].category == "protein"
         assert rows[0].date == date(2027, 2, 13)
+
+    def test_event_preference_write_through_ranked_choice(self, client, db, td_user, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="event_preference_morning", question_type="ranked_choice",
+            config={
+                "required": False, "ranks": 2, "allow_duplicates": False,
+                "options": [
+                    {"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"},
+                    {"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"},
+                ],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": {"1": "opt_e1", "2": "opt_e2"}}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        rows = {
+            row.tournament_event_id: row.rank
+            for row in db.query(TournamentMembershipEventPreference).filter(
+                TournamentMembershipEventPreference.membership_id == membership_id
+            ).all()
+        }
+        assert rows == {e1.id: 1, e2.id: 2}
+
+    def test_event_preference_write_through_checkbox_grouped_events(self, client, db, td_user, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            config={
+                "required": False,
+                "options": [{"option_id": "opt_life", "value": [e1.id, e2.id], "label": "Life Science"}],
+            },
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_life"]}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        rows = db.query(TournamentMembershipEventPreference).filter(
+            TournamentMembershipEventPreference.membership_id == membership_id
+        ).all()
+        assert {row.tournament_event_id for row in rows} == {e1.id, e2.id}
+        assert all(row.rank is None for row in rows)
+
+    def test_event_preference_patch_clears_selection_and_preserves_other_key(self, client, db, td_user, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        morning = _make_field(
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"}]},
+        )
+        afternoon = _make_field(
+            db, form, order=2, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": morning.id, "value": ["opt_e1"]},
+            {"field_id": afternoon.id, "value": ["opt_e2"]},
+        ]})
+        assert res.status_code == 200, res.json()
+        membership_id = self._membership_id(db, td_user, td_tournament)
+
+        self._flag(db, form, td_user, morning)
+        res = client.patch(
+            f"/forms/{form.id}/responses/me/",
+            json={"answers": [{"field_id": morning.id, "value": []}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        rows = db.query(TournamentMembershipEventPreference).filter(
+            TournamentMembershipEventPreference.membership_id == membership_id
+        ).all()
+        assert {row.tournament_event_id for row in rows} == {e2.id}
+
+    def test_event_preference_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
+        form = _make_chapter_form(db, td_user, chapter, status="published")
+        field = _make_field(
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_1", "value": ["not_a_real_event_id"], "label": "Whenever"}]},
+        )
+        db.commit()
+        _chapter_lead(db, chapter)
+        login(client, "chapterlead@test.com", "LeadPass123!")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": ["opt_1"]}]},
+        )
+        assert res.status_code == 200
+        assert db.query(TournamentMembershipEventPreference).count() == 0
 
     def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
         form = _make_chapter_form(db, td_user, chapter, status="published")

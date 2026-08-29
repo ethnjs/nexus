@@ -40,9 +40,11 @@ from app.core.form.validation import (
 )
 from app.core.form.write_through import (
     parse_availability_field_key,
+    parse_event_preference_field_key,
     parse_lunch_field_key,
     shift_ids_on_dates,
     sync_availability,
+    sync_event_preferences,
     sync_lunch,
     sync_track_statuses,
 )
@@ -854,16 +856,31 @@ def _stored_answer_option_ids(db: Session, response: FormResponse, active_fields
     """The response's answers as option_id lists, in the shape write-through
     expects. A submitted payload carries bare option_ids, but most stored
     answers hold {option_id, value, label} snapshots instead — so replaying
-    from storage has to unwrap them first."""
+    from storage has to unwrap them first.
+
+    ranked_choice is the one exception: it's flattened to a rank -> option_id
+    dict (matching the shape a submitted payload carries) instead of the
+    unordered option_id list every other type gets, since event_preference
+    write-through needs each option's rank, not just whether it was picked —
+    unlike track status, the only other reserved consumer of ranked_choice
+    answers, which only cares which options were selected."""
     stored = {
         answer.field_id: answer.value
         for answer in db.query(FormAnswer).filter(FormAnswer.response_id == response.id).all()
     }
-    return {
-        field.id: sorted(selected_option_ids(field, stored[field.id]))
-        for field in active_fields
-        if field.id in stored
-    }
+    result = {}
+    for field in active_fields:
+        if field.id not in stored:
+            continue
+        value = stored[field.id]
+        if field.question_type == "ranked_choice" and isinstance(value, dict):
+            result[field.id] = {
+                rank: (item.get("option_id") if isinstance(item, dict) else item)
+                for rank, item in value.items()
+            }
+        else:
+            result[field.id] = sorted(selected_option_ids(field, value))
+    return result
 
 
 def _store_answers(db: Session, response: FormResponse, fields_by_id: dict, answers: list) -> None:
@@ -1069,11 +1086,11 @@ def _write_through_reserved_fields(
     response: FormResponse,
     track_scope_field_ids: set[str] | None = None,
 ) -> None:
-    """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`
-    answers into their structural tables — tournament-owned forms only (see
-    form-question-types-reference.md). Runs over every active field, not
-    just answered ones, so a reserved field left blank clears any
-    previously-synced rows rather than leaving them stale.
+    """Syncs `availability_{date}`/`lunch_{date}_{category}`/`track_status_*`/
+    `event_preference_{suffix}` answers into their structural tables —
+    tournament-owned forms only (see form-question-types-reference.md). Runs
+    over every active field, not just answered ones, so a reserved field left
+    blank clears any previously-synced rows rather than leaving them stale.
 
     Availability write-through is scoped by *day*, not by form or field. Every
     `availability_*` field across every form feeds one centralized
@@ -1159,6 +1176,41 @@ def _write_through_reserved_fields(
                 if v in options_by_id
             ]
             sync_lunch(db, membership.id, lunch_date, category, values)
+            continue
+
+        if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
+            suffix = parse_event_preference_field_key(field.field_key)
+            items: list[dict] = []
+            if field.question_type == "ranked_choice":
+                # `value` here is a rank -> option_id dict (see the raw
+                # payload shape and _stored_answer_option_ids' ranked_choice
+                # exception), not the flattened `selected` list every other
+                # branch reads — ranked_choice never matches any other
+                # reserved pattern, so this is the only place it needs one.
+                for rank, option_id in (value if isinstance(value, dict) else {}).items():
+                    option = options_by_id.get(option_id)
+                    if option is None:
+                        continue
+                    for event_id in option.get("value") or []:
+                        items.append({"tournament_event_id": event_id, "rank": int(rank)})
+            else:
+                # single_select_dropdown: one option at rank 1.
+                # multi_select_checkbox: every selected option, unranked —
+                # options are mutually exclusive by event (see
+                # validate_event_preference_options), so no event can
+                # collide across two selected options here.
+                rank = 1 if field.question_type == "single_select_dropdown" else None
+                for option_id in selected:
+                    option = options_by_id.get(option_id)
+                    if option is None:
+                        continue
+                    for event_id in option.get("value") or []:
+                        items.append({"tournament_event_id": event_id, "rank": rank})
+            # A suffix is one field's exclusive key (unlike availability's
+            # shared day pool), so this can sync straight from this field's
+            # answer with no cross-field union needed.
+            sync_event_preferences(db, membership.id, suffix, items)
+            continue
 
     if availability_dates:
         sync_availability(

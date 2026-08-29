@@ -10,6 +10,7 @@ from app.core.form.write_through import (
     can_set_track_status,
     parse_lunch_field_key,
     sync_availability,
+    sync_event_preferences,
     sync_lunch,
     sync_track_statuses,
 )
@@ -17,8 +18,10 @@ from app.models.models import (
     Form,
     FormField,
     FormResponse,
+    TournamentEvent,
     TournamentMembership,
     TournamentMembershipAvailability,
+    TournamentMembershipEventPreference,
     TournamentMembershipLunch,
     TournamentMembershipTrackStatus,
     TournamentShift,
@@ -63,6 +66,24 @@ def _lunch_rows(db, membership_id, lunch_date, category):
             TournamentMembershipLunch.membership_id == membership_id,
             TournamentMembershipLunch.date == lunch_date,
             TournamentMembershipLunch.category == category,
+        )
+        .all()
+    )
+
+
+def _make_event(db, tournament, name="Anatomy", division="B"):
+    event = TournamentEvent(tournament_id=tournament.id, name=name, division=division)
+    db.add(event)
+    db.flush()
+    return event
+
+
+def _event_preference_rows(db, membership_id, key):
+    return (
+        db.query(TournamentMembershipEventPreference)
+        .filter(
+            TournamentMembershipEventPreference.membership_id == membership_id,
+            TournamentMembershipEventPreference.key == key,
         )
         .all()
     )
@@ -208,6 +229,112 @@ class TestSyncLunch:
         assert _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein") == []
         other_rows = _lunch_rows(db, membership.id, other_date, "protein")
         assert {row.value for row in other_rows} == {"tofu"}
+
+
+# ---------------------------------------------------------------------------
+# sync_event_preferences
+# ---------------------------------------------------------------------------
+
+class TestSyncEventPreferences:
+    def test_insert_only(self, db, membership, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+
+        sync_event_preferences(
+            db, membership.id, "morning",
+            [{"tournament_event_id": e1.id, "rank": 1}, {"tournament_event_id": e2.id, "rank": 2}],
+        )
+        db.commit()
+
+        rows = {row.tournament_event_id: row.rank for row in _event_preference_rows(db, membership.id, "morning")}
+        assert rows == {e1.id: 1, e2.id: 2}
+
+    def test_delete_only(self, db, membership, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": None}])
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [])
+        db.commit()
+
+        assert _event_preference_rows(db, membership.id, "morning") == []
+
+    def test_mixed_diff(self, db, membership, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        e3 = _make_event(db, td_tournament, "Chemistry")
+        db.commit()
+
+        sync_event_preferences(
+            db, membership.id, "morning",
+            [{"tournament_event_id": e1.id, "rank": None}, {"tournament_event_id": e2.id, "rank": None}],
+        )
+        db.commit()
+
+        # Drop e1, keep e2, add e3.
+        sync_event_preferences(
+            db, membership.id, "morning",
+            [{"tournament_event_id": e2.id, "rank": None}, {"tournament_event_id": e3.id, "rank": None}],
+        )
+        db.commit()
+
+        rows = {row.tournament_event_id for row in _event_preference_rows(db, membership.id, "morning")}
+        assert rows == {e2.id, e3.id}
+
+    def test_rank_change_on_unchanged_event_updates_in_place(self, db, membership, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": 1}])
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": 2}])
+        db.commit()
+
+        rows = _event_preference_rows(db, membership.id, "morning")
+        assert len(rows) == 1
+        assert rows[0].rank == 2
+
+    def test_key_isolation(self, db, membership, td_tournament):
+        """Syncing one suffix never touches another suffix's rows for the
+        same membership."""
+        morning_event = _make_event(db, td_tournament, "Anatomy")
+        afternoon_event = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": morning_event.id, "rank": None}])
+        sync_event_preferences(db, membership.id, "afternoon", [{"tournament_event_id": afternoon_event.id, "rank": None}])
+        db.commit()
+
+        sync_event_preferences(db, membership.id, "morning", [])
+        db.commit()
+
+        assert _event_preference_rows(db, membership.id, "morning") == []
+        afternoon_rows = _event_preference_rows(db, membership.id, "afternoon")
+        assert {row.tournament_event_id for row in afternoon_rows} == {afternoon_event.id}
+
+    def test_repeated_ranked_selection_across_ranks_allowed(self, db, membership, td_tournament):
+        """sync_event_preferences itself doesn't enforce the no-repeat-rank
+        rule — that's validate_event_preference_options'/
+        duplicate_ranked_choice_field_keys' job, upstream of write-through.
+        A caller handing it the same event at two ranks (e.g. before that
+        validation existed, or from a stale answer) diffs by event id, so the
+        second item just overwrites the first's rank rather than producing
+        two rows."""
+        event = _make_event(db, td_tournament)
+        db.commit()
+
+        sync_event_preferences(
+            db, membership.id, "morning",
+            [{"tournament_event_id": event.id, "rank": 1}, {"tournament_event_id": event.id, "rank": 2}],
+        )
+        db.commit()
+
+        rows = _event_preference_rows(db, membership.id, "morning")
+        assert len(rows) == 1
 
 
 # ---------------------------------------------------------------------------
