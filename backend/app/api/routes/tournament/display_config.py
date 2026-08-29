@@ -4,13 +4,28 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.display_config import KNOWN_SURFACES, is_known_namespace
+from app.core.tournament.display_config import KNOWN_SURFACES, build_catalog, is_known_namespace
 from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
 from app.db.session import get_db
 from app.models.models import User
-from app.schemas.tournament.display_config import DisplayConfigSurface
+from app.schemas.tournament.display_config import DisplayConfigCatalog, DisplayConfigSurface
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/display-config", tags=["tournaments"])
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/display-config/catalog/ — manage_members
+# Every item the config modal can offer a Toggle for, independent of any one
+# surface's saved hidden set (see build_catalog's docstring).
+# ---------------------------------------------------------------------------
+@router.get("/catalog/", response_model=DisplayConfigCatalog)
+def get_display_config_catalog(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    get_tournament(tournament_id, db)
+    return build_catalog(db, tournament_id)
 
 
 # ---------------------------------------------------------------------------

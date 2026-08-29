@@ -13,3 +13,20 @@ class DisplayConfigSurface(BaseModel):
     handles a plain dict type as both a request body and a response model.
     """
     hidden: list[str] = []
+
+
+class DisplayConfigCatalogItem(BaseModel):
+    """One toggleable item in the config modal's catalog — key is the exact
+    namespaced string a Toggle writes into `hidden`, label is what's shown."""
+    key: str
+    label: str
+
+
+class DisplayConfigCatalog(BaseModel):
+    """Every hideable item, grouped by kind — surface-agnostic (see
+    build_catalog's docstring); the modal applies whichever surface's saved
+    `hidden` set is relevant to check these against."""
+    tracks: list[DisplayConfigCatalogItem] = []
+    lunch_categories: list[DisplayConfigCatalogItem] = []
+    event_preferences: list[DisplayConfigCatalogItem] = []
+    custom_fields: list[DisplayConfigCatalogItem] = []

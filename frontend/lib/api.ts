@@ -788,8 +788,10 @@ export const membershipsApi = {
   // is excluded from the roster unless a TD explicitly opts in.
   list: (tournamentId: number, includeDeclined = false) =>
     api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/?include_declined=${includeDeclined}`),
-  get: (tournamentId: number, id: number) =>
-    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
+  // surface applies display_config's hidden-item filtering server-side for
+  // that UI location — omit it to get the unfiltered response.
+  get: (tournamentId: number, id: number, surface?: string) =>
+    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/${surface ? `?surface=${surface}` : ""}`),
   getMe: (tournamentId: number) =>
     api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
   // consent=false is a soft decline — the row and all its data survive;
@@ -1587,4 +1589,34 @@ export const tournamentTracksApi = {
     api.patch<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/`, body),
   delete: (tournamentId: number, trackId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
+}
+
+// Namespaced strings — "track:3", "lunch_category:entree", "event_pref:key",
+// "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+export interface DisplayConfigSurface {
+  hidden: string[]
+}
+
+export type DisplayConfig = Record<string, DisplayConfigSurface>
+
+export interface DisplayConfigCatalogItem {
+  key: string
+  label: string
+}
+
+export interface DisplayConfigCatalog {
+  tracks: DisplayConfigCatalogItem[]
+  lunch_categories: DisplayConfigCatalogItem[]
+  event_preferences: DisplayConfigCatalogItem[]
+  custom_fields: DisplayConfigCatalogItem[]
+}
+
+export const displayConfigApi = {
+  get: (tournamentId: number) =>
+    api.get<DisplayConfig>(`/tournaments/${tournamentId}/display-config/`),
+  set: (tournamentId: number, config: DisplayConfig) =>
+    api.put<DisplayConfig>(`/tournaments/${tournamentId}/display-config/`, config),
+  // Every item a TD could hide — surface-agnostic, see build_catalog's docstring.
+  getCatalog: (tournamentId: number) =>
+    api.get<DisplayConfigCatalog>(`/tournaments/${tournamentId}/display-config/catalog/`),
 }

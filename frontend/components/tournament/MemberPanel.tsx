@@ -23,6 +23,7 @@ import { AvailabilitySection } from "@/components/tournament/sections/Availabili
 import { LunchSection } from "@/components/tournament/sections/LunchSection";
 import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
 import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
+import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -59,7 +60,7 @@ export function MemberPanel({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    membershipsApi.get(tournamentId, membershipId)
+    membershipsApi.get(tournamentId, membershipId, MEMBERS_PANEL)
       .then(setFull)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
     canonicalEventsApi.list().then(setEvents).catch(() => {});

@@ -30,7 +30,9 @@ import { SelectionBar } from "@/components/ui/SelectionBar";
 import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
-import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX } from "@/components/ui/Icons";
+import { DisplayConfigModal } from "@/components/tournament/DisplayConfigModal";
+import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
 // Name / Email / Phone / Account Age / Join Date / Join Method / Roles / Actions
 const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 2.6fr 70px";
@@ -233,6 +235,10 @@ export default function MembersPage() {
   // Committed filters only — the modal keeps its own draft until Apply.
   const [filters, applyFilters] = usePersistedFilter("members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showDisplayConfigModal, setShowDisplayConfigModal] = useState(false);
+  // Bumped on save so the open MemberPanel remounts and refetches with the
+  // just-changed hidden set — its own effect only re-runs on id changes.
+  const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -325,7 +331,7 @@ export default function MembersPage() {
       if (!membership) { clearFocus(); return; }
       setPanel(
         <MemberPanel
-          key={membership.id}
+          key={`${membership.id}-${displayConfigVersion}`}
           tournamentId={tournamentId}
           membershipId={membership.id}
           allRoles={allRoles}
@@ -348,7 +354,7 @@ export default function MembersPage() {
     if (massPanelOpen && selectedMembers.length === 1) {
       setPanel(
         <MemberPanel
-          key={selectedMembers[0].id}
+          key={`${selectedMembers[0].id}-${displayConfigVersion}`}
           tournamentId={tournamentId}
           membershipId={selectedMembers[0].id}
           allRoles={allRoles}
@@ -381,7 +387,7 @@ export default function MembersPage() {
     clearPanel();
   }, [
     focusedId, members, massPanelOpen, selectedMembers, tournamentId, allRoles,
-    prevId, nextId, hasPrev, hasNext, focusItem, setPanelDirty,
+    prevId, nextId, hasPrev, hasNext, focusItem, setPanelDirty, displayConfigVersion,
     canTouchRoleStable, canEditMemberStable, handleMemberUpdated,
     clearFocus, clearSelection, setPanel, clearPanel,
   ]);
@@ -474,6 +480,12 @@ export default function MembersPage() {
                 <IconX size={16} /> Clear filters
               </Button>
             )}
+            <Button
+              type="button" variant="secondary" size="md"
+              onClick={() => setShowDisplayConfigModal(true)}
+            >
+              <IconEye size={16} /> Display
+            </Button>
             <Dropdown
               label="Sort by"
               value={sortField}
@@ -576,6 +588,16 @@ export default function MembersPage() {
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
+        />
+      )}
+
+      {showDisplayConfigModal && (
+        <DisplayConfigModal
+          tournamentId={tournamentId}
+          surface={MEMBERS_PANEL}
+          title="Configure member panel"
+          onSaved={() => setDisplayConfigVersion((v) => v + 1)}
+          onClose={() => setShowDisplayConfigModal(false)}
         />
       )}
 
