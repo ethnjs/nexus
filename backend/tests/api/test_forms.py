@@ -1367,6 +1367,45 @@ class TestInvalidateField:
         assert res.status_code == 204
         assert db.query(TournamentMembershipLunch).count() == 0
 
+    def test_event_preference_write_through_is_cleared(self, client, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        form = _make_form(db, td_user, td_tournament, status="published")
+        target = _make_field(
+            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
+        )
+        other = _make_field(
+            db, form, order=2, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        client.post(f"/forms/{form.id}/responses/", json={"answers": [
+            {"field_id": target.id, "value": ["opt_e1"]},
+            {"field_id": other.id, "value": ["opt_e1"]},
+        ]})
+        membership_id = self._membership_id(db, td_user, td_tournament)
+        assert db.query(TournamentMembershipEventPreference).filter(
+            TournamentMembershipEventPreference.membership_id == membership_id
+        ).count() == 2
+
+        res = client.delete(f"/forms/{form.id}/fields/{target.id}/")
+        assert res.status_code == 204
+
+        rows = db.query(TournamentMembershipEventPreference).filter(
+            TournamentMembershipEventPreference.membership_id == membership_id
+        ).all()
+        assert [row.key for row in rows] == ["afternoon"]
+
+    def _membership_id(self, db, user, tournament):
+        return (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == user.id, TournamentMembership.tournament_id == tournament.id)
+            .first()
+            .id
+        )
+
     def test_availability_write_through_is_left_alone(self, client, db, td_user, td_tournament):
         """Availability rows are shared with whatever else covers that day, so
         this field's contribution can't be separated out after the fact."""

@@ -1237,9 +1237,10 @@ def _write_through_reserved_fields(
 # should never have been asked, whose answers are not worth keeping, and it
 # cannot be undone.
 #
-# Write-through rows are handled per target: lunch has a single owner and can
-# be cleared, while availability and track statuses are shared with other
-# questions and are left alone — see form-edit-lifecycle.md.
+# Write-through rows are handled per target: lunch and event preference each
+# have a single owning field and can be cleared, while availability and track
+# statuses are shared with other questions and are left alone — see
+# form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 @router.delete("/forms/{form_id}/fields/{field_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def invalidate_form_field(
@@ -1258,6 +1259,9 @@ def invalidate_form_field(
     if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
         lunch_date, category = parse_lunch_field_key(field.field_key)
         _clear_lunch_write_through(db, form, field, lunch_date, category)
+
+    if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
+        _clear_event_preference_write_through(db, form, field)
 
     # FormAnswer's FK has no ON DELETE, so its rows go first; pending updates
     # cascade with the field.
@@ -1302,6 +1306,32 @@ def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_
     }
     for membership_id in membership_ids:
         sync_lunch(db, membership_id, lunch_date, category, [])
+
+
+def _clear_event_preference_write_through(db: Session, form: Form, field: FormField) -> None:
+    """Drops the event preference rows this field produced, for every member
+    who answered it. Keyed by (membership, suffix), and a suffix is one
+    field's exclusive key, so no other question can be contributing the same
+    rows — same reasoning as lunch's (membership, date, category)."""
+    user_ids = {
+        user_id
+        for (user_id,) in db.query(FormResponse.user_id)
+        .join(FormAnswer, FormAnswer.response_id == FormResponse.id)
+        .filter(FormAnswer.field_id == field.id)
+        .all()
+    }
+    if not user_ids:
+        return
+    membership_ids = {
+        membership_id
+        for (membership_id,) in db.query(TournamentMembership.id).filter(
+            TournamentMembership.tournament_id == form.tournament_id,
+            TournamentMembership.user_id.in_(user_ids),
+        )
+    }
+    suffix = parse_event_preference_field_key(field.field_key)
+    for membership_id in membership_ids:
+        sync_event_preferences(db, membership_id, suffix, [])
 
 
 # ---------------------------------------------------------------------------
