@@ -430,10 +430,14 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             errors={errors}
           />
         )}
-        {/* Ranks/duplicates apply to ranked_choice regardless of whether its
-            options are entity-backed (event_preference) or freeform — the
-            rank mechanics are a property of the question type, not of where
-            the option rows come from. */}
+        {/* Ranks applies to ranked_choice regardless of whether its options
+            are entity-backed (event_preference) or freeform — the rank
+            mechanics are a property of the question type, not of where the
+            option rows come from. Duplicate ranks are different: an
+            event_preference field can never allow them (ranking the same
+            event twice is meaningless, and the backend rejects the config
+            outright — see validate_event_preference_options), so the toggle
+            is hidden rather than shown disabled. */}
         {field.question_type === 'ranked_choice' && (() => {
           const options = liveOptions
           const ranks = field.config?.ranks ?? 1
@@ -456,15 +460,17 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
                 fullWidth
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '9px' }}>
-              <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                Allow duplicate ranks
-              </span>
-              <Toggle
-                checked={!!field.config?.allow_duplicates}
-                onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
-              />
-            </div>
+            {presetKind !== 'event_preference' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '9px' }}>
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                  Allow duplicate ranks
+                </span>
+                <Toggle
+                  checked={!!field.config?.allow_duplicates}
+                  onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
+                />
+              </div>
+            )}
           </div>
           )
         })()}
