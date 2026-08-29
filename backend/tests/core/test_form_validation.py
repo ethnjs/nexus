@@ -15,13 +15,14 @@ from app.core.form.validation import (
     option_track_assignments,
     validate_availability_options,
     validate_branching_options,
+    validate_event_preference_options,
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
     validate_track_status_options,
     validate_tournament_preset,
 )
-from app.models.models import Form, FormField, TournamentShift, TournamentTrack
+from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
 
 
 # ---------------------------------------------------------------------------
@@ -93,6 +94,13 @@ def _make_shift(db, tournament, label="Saturday", day=None):
     db.add(shift)
     db.flush()
     return shift
+
+
+def _make_event(db, tournament, name="Anatomy", division="B"):
+    event = TournamentEvent(tournament_id=tournament.id, name=name, division=division)
+    db.add(event)
+    db.flush()
+    return event
 
 
 @pytest.fixture
@@ -397,6 +405,75 @@ class TestValidateAvailabilityOptions:
         config = {"options": [{"value": [], "label": "Whenever"}]}
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
+
+
+# ---------------------------------------------------------------------------
+# validate_event_preference_options
+# ---------------------------------------------------------------------------
+
+class TestValidateEventPreferenceOptions:
+    def test_chapter_owned_form_skips_check(self, db):
+        config = {"options": [{"value": ["not_a_real_event_id"], "label": "Whenever"}]}
+        validate_event_preference_options(db, None, "multi_select_checkbox", config)  # no raise
+
+    def test_valid_event_ids_pass(self, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        config = {"options": [{"value": [event.id], "label": event.name}]}
+        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
+
+    def test_grouped_event_ids_all_validated(self, db, td_user, td_tournament):
+        e1 = _make_event(db, td_tournament, "Anatomy")
+        e2 = _make_event(db, td_tournament, "Astronomy")
+        db.commit()
+        config = {"options": [{"value": [e1.id, e2.id], "label": "Life Science"}]}
+        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
+
+    def test_event_id_not_on_tournament_rejected(self, db, td_user, td_tournament, other_tournament):
+        event = _make_event(db, other_tournament)
+        db.commit()
+        config = {"options": [{"value": [event.id], "label": event.name}]}
+        with pytest.raises(FormFieldValidationError):
+            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+
+    def test_non_list_value_rejected(self, db, td_user, td_tournament):
+        config = {"options": [{"value": "not_a_list", "label": "Whenever"}]}
+        with pytest.raises(FormFieldValidationError):
+            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+
+    def test_empty_list_value_rejected(self, db, td_user, td_tournament):
+        config = {"options": [{"value": [], "label": "Whenever"}]}
+        with pytest.raises(FormFieldValidationError):
+            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+
+    def test_event_in_two_options_rejected(self, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        config = {"options": [
+            {"value": [event.id], "label": "Option A"},
+            {"value": [event.id], "label": "Option B"},
+        ]}
+        with pytest.raises(FormFieldValidationError, match="more than one option"):
+            validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)
+
+    def test_ranked_choice_allow_duplicates_true_rejected(self, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        config = {"allow_duplicates": True, "options": [{"value": [event.id], "label": event.name}]}
+        with pytest.raises(FormFieldValidationError, match="allow_duplicates"):
+            validate_event_preference_options(db, td_tournament.id, "ranked_choice", config)
+
+    def test_ranked_choice_allow_duplicates_false_passes(self, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        config = {"allow_duplicates": False, "options": [{"value": [event.id], "label": event.name}]}
+        validate_event_preference_options(db, td_tournament.id, "ranked_choice", config)  # no raise
+
+    def test_non_ranked_choice_ignores_allow_duplicates(self, db, td_user, td_tournament):
+        event = _make_event(db, td_tournament)
+        db.commit()
+        config = {"allow_duplicates": True, "options": [{"value": [event.id], "label": event.name}]}
+        validate_event_preference_options(db, td_tournament.id, "multi_select_checkbox", config)  # no raise
 
 
 # ---------------------------------------------------------------------------

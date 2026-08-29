@@ -22,6 +22,7 @@ from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
+    EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
     FormFieldValidationError,
     availability_field_date,
@@ -30,6 +31,7 @@ from app.core.form.validation import (
     option_track_assignments,
     track_status_enabled,
     validate_availability_options,
+    validate_event_preference_options,
     validate_field_config,
     validate_form_for_publish,
     validate_reserved_field_key,
@@ -702,6 +704,8 @@ def bulk_update_fields(
                 validate_availability_options(
                     db, form.tournament_id, normalized, availability_field_date(field_key),
                 )
+            if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key):
+                validate_event_preference_options(db, form.tournament_id, question_type, normalized)
             validate_track_status_options(db, form.tournament_id, field_key, question_type, normalized)
         except FormFieldValidationError as e:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))

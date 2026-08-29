@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from datetime import datetime
 
-from app.models.models import Form, FormField, TournamentShift, TournamentTrack
+from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
 from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
@@ -322,6 +322,12 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
+        if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
+            try:
+                validate_event_preference_options(db, form.tournament_id, field.question_type, normalized_config)
+            except FormFieldValidationError as e:
+                errors.append(f"field '{field.field_key}': {e}")
+
     return errors
 
 
@@ -412,3 +418,70 @@ def validate_availability_options(
             f"availability option value(s) reference shifts outside this question's date "
             f"({field_date.isoformat()}): {wrong_day}",
         )
+
+
+def validate_event_preference_options(
+    db: Session, tournament_id: int | None, question_type: str, config: dict
+) -> None:
+    """A field with field_key matching EVENT_PREFERENCE_FIELD_KEY_PATTERN must
+    have every option's `value` be a non-empty list[int] of real
+    TournamentEvent ids belonging to the field's own tournament — one option
+    groups one or more events under a single TD-labeled choice.
+
+    Unlike availability (where a shift may appear in multiple options), an
+    event may not appear in more than one option: write-through expands each
+    selected option into rows keyed by event id, so an event split across
+    options would make "which option did they pick" ambiguous.
+
+    A ranked_choice event_preference field must also have
+    `allow_duplicates: false` — ranking the same event at two ranks is never
+    meaningful, and it's what lets the write-through table use a plain
+    (membership, key, event) unique constraint with no rank in it. Options are
+    already guaranteed mutually exclusive by the check above, so this is
+    enforced at answer time too (see duplicate_ranked_choice_field_keys) —
+    this is just the config-time half of the same rule.
+
+    Chapter-owned forms have no tournament event catalog to validate against,
+    so this is a no-op there, same as availability."""
+    if tournament_id is None:
+        return
+
+    if question_type == "ranked_choice":
+        _require(
+            not config.get("allow_duplicates"),
+            "event_preference ranked_choice fields must have allow_duplicates set to false",
+        )
+
+    options = config.get("options") or []
+    if not options:
+        return
+
+    event_ids: set[int] = set()
+    seen_ids: set[int] = set()
+    duplicated: set[int] = set()
+    for option in options:
+        value = option.get("value")
+        _require(
+            isinstance(value, list) and len(value) > 0 and all(isinstance(v, int) for v in value),
+            f"event_preference option value '{value}' must be a non-empty list of TournamentEvent ids",
+        )
+        duplicated |= seen_ids & set(value)
+        seen_ids |= set(value)
+        event_ids.update(value)
+
+    _require(
+        not duplicated,
+        f"event_preference option value(s) reference the same event in more than one option: {sorted(duplicated)}",
+    )
+
+    valid_ids = {
+        event_id
+        for (event_id,) in db.query(TournamentEvent.id)
+        .filter(TournamentEvent.tournament_id == tournament_id, TournamentEvent.id.in_(event_ids))
+        .all()
+    }
+    missing = event_ids - valid_ids
+    _require(
+        not missing,
+        f"event_preference option value(s) do not reference a real TournamentEvent on this tournament: {sorted(missing)}",
+    )
