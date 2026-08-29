@@ -20,6 +20,7 @@ from app.schemas.tournament.membership import (
     MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
     MembershipMeUpdate, MembershipSlimResponse,
 )
+from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
 def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
@@ -173,6 +174,7 @@ def get_my_membership(
     return MembershipMeResponse(
         membership_id=membership.id, is_owner=is_owner,
         roles=membership.roles, permissions=permissions,
+        track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
     )
 
 

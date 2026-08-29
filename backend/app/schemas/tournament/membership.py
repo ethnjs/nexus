@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 from app.schemas.tournament.role import RoleRead
+from app.schemas.tournament.track import MembershipTrackStatusRead
 from app.schemas.user import UserFullResponse, UserSlimResponse
 
 
@@ -82,6 +83,9 @@ class MembershipMeResponse(_MembershipRolesMixin):
     membership_id: int | None
     is_owner: bool
     permissions: list[str] = []
+    # Their own per-track statuses — readable without manage_members, unlike
+    # the tournament-wide roster.
+    track_statuses: list[MembershipTrackStatusRead] = []
 
 
 class MembershipFullResponse(_MembershipRolesMixin):
@@ -98,4 +102,17 @@ class MembershipFullResponse(_MembershipRolesMixin):
     created_at: datetime
     updated_at: datetime
 
+    track_statuses: list[MembershipTrackStatusRead] = []
+
     user: UserFullResponse
+
+    # Same shape problem as _unwrap_roles: the ORM rows don't carry the track
+    # name, it's a relationship hop away. Routes that build this from a
+    # TournamentMembership get the flattening for free; anything passing
+    # already-built schema objects passes straight through.
+    @field_validator("track_statuses", mode="before")
+    @classmethod
+    def _flatten_track_statuses(cls, v):
+        if v and hasattr(v[0], "track"):
+            return [MembershipTrackStatusRead.from_row(row) for row in v]
+        return v

@@ -610,6 +610,17 @@ export const seasonEventsApi = {
 // -------------------------------------------------------------------------
 // Memberships
 // -------------------------------------------------------------------------
+// One member's status on one track — matches MembershipTrackStatusRead.
+// Carries the track's name so a renderer needs no separate catalog fetch, and
+// is_archived so a retired track's history can be shown as such.
+export interface MembershipTrackStatus {
+  track_id:    number
+  name:        string
+  is_archived: boolean
+  status:      TrackStatus
+  updated_at:  string
+}
+
 // How a membership was created. "manual" covers staff-add, owner-on-create,
 // and sync import — collapsed into one value until manual add-by-staff is
 // actually removed.
@@ -678,6 +689,7 @@ export interface MembershipFull {
   is_over_21:        boolean | null
   created_at:        string
   updated_at:        string
+  track_statuses:    MembershipTrackStatus[]
   roles:             Role[]
   user:              UserFull
 }
@@ -701,6 +713,7 @@ export interface MembershipMe {
   is_owner:       boolean
   roles:          Role[]
   permissions:    Permission[]
+  track_statuses: MembershipTrackStatus[]
 }
 
 export const membershipsApi = {

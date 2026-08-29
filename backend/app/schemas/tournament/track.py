@@ -49,3 +49,31 @@ class TournamentTrackRead(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class MembershipTrackStatusRead(BaseModel):
+    """One member's status on one track. Carries the track's `name` alongside
+    its id so a renderer never needs a second catalog request — same treatment
+    resolve_field_options gives track assignments on a form field.
+
+    `is_archived` comes along because an archived track's statuses stay
+    readable: the catalog entry is retired, but the fact that someone
+    confirmed for it is still history worth showing."""
+    track_id: int
+    name: str
+    is_archived: bool
+    status: str
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row) -> "MembershipTrackStatusRead":
+        """Flattens the track relationship — `name`/`is_archived` live on
+        TournamentTrack, not on the status row itself, so from_attributes
+        alone can't build this."""
+        return cls(
+            track_id=row.track_id,
+            name=row.track.name,
+            is_archived=row.track.is_archived,
+            status=row.status,
+            updated_at=row.updated_at,
+        )

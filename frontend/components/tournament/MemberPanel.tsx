@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
+import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -115,6 +116,33 @@ export function MemberPanel({
                   <JoinMethodCell membership={full} />
                 </div>
               </div>
+
+              {full.track_statuses.length > 0 && (
+                <div>
+                  <div style={{
+                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    color: "var(--color-text-tertiary)", marginBottom: "5px",
+                  }}>
+                    Tracks
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {full.track_statuses.map((ts) => (
+                      // An archived track's statuses stay readable — the
+                      // catalog entry is retired, the commitment still
+                      // happened — so it's dimmed rather than hidden.
+                      <Badge
+                        key={ts.track_id}
+                        variant={ts.status}
+                        style={ts.is_archived ? { opacity: 0.55 } : undefined}
+                        title={ts.is_archived ? "Archived track" : undefined}
+                      >
+                        {ts.name} · {ts.status}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <div style={{

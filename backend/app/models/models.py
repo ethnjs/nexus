@@ -1020,7 +1020,10 @@ class TournamentMembershipTrackStatus(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     membership = relationship("TournamentMembership", back_populates="track_statuses")
-    track = relationship("TournamentTrack", back_populates="member_statuses")
+    # lazy="joined": every read of a status row wants the track's name to
+    # render it, so the hop is worth folding into the same query rather than
+    # N+1-ing per row through the shared get_scoped_or_404 path.
+    track = relationship("TournamentTrack", back_populates="member_statuses", lazy="joined")
 
     __table_args__ = (
         UniqueConstraint("membership_id", "track_id", name="uq_membership_track_status"),
