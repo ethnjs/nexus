@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import date, datetime
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.tournament.role import RoleRead
@@ -119,6 +119,19 @@ class MembershipLunchRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MembershipCustomAnswerRead(BaseModel):
+    """One answer to a non-reserved (not availability_/lunch_/track_status_/
+    event_preference_) form field — everything that doesn't have a dedicated
+    structural field of its own. Built by
+    app.core.tournament.memberships.get_custom_form_answers, which runs the
+    cross-model query this can't do from a plain TournamentMembership
+    relationship alone."""
+    form_title: str
+    field_label: str
+    question_type: str
+    value: Any
+
+
 class _MembershipRolesMixin(BaseModel):
     """Shared roles handling for response schemas.
 
@@ -184,6 +197,9 @@ class MembershipFullResponse(_MembershipRolesMixin):
     # validation_alias points from_attributes at the actual attribute names.
     availability: list[MembershipAvailabilityRead] = Field(default=[], validation_alias="availability_shifts")
     lunch: list[MembershipLunchRead] = Field(default=[], validation_alias="lunch_selections")
+    # Not a TournamentMembership relationship — populated by the route via
+    # get_custom_form_answers after the rest of this response is built.
+    custom_responses: list[MembershipCustomAnswerRead] = []
 
     user: UserFullResponse
 

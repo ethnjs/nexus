@@ -4,7 +4,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.memberships import get_membership_by_user, resolve_memberships_or_users
+from app.core.tournament.memberships import get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
@@ -191,6 +191,7 @@ def get_membership(
 ):
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
     resp = MembershipFullResponse.model_validate(m)
+    resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     return resp
 
@@ -221,7 +222,9 @@ def update_my_membership(
 
     db.commit()
     db.refresh(m)
-    return MembershipFullResponse.model_validate(m)
+    resp = MembershipFullResponse.model_validate(m)
+    resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    return resp
 
 
 # ---------------------------------------------------------------------------
@@ -250,7 +253,9 @@ def update_membership(
 
     db.commit()
     db.refresh(m)
-    return MembershipFullResponse.model_validate(m)
+    resp = MembershipFullResponse.model_validate(m)
+    resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    return resp
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,10 @@ from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from app.core.tournament.permissions import MANAGE_MEMBERS
-from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole
+from app.models.models import (
+    Form, FormAnswer, FormField, FormResponse,
+    TournamentMembership, TournamentMembershipRole, TournamentRole,
+)
 from tests.conftest import grant_role, login
 
 
@@ -45,6 +48,40 @@ def _make_membership(db, tournament_id, user_id, **overrides):
     db.commit()
     db.refresh(membership)
     return membership
+
+
+def _make_form(db, user, tournament_id, **overrides):
+    defaults = dict(
+        owner_type="tournament", tournament_id=tournament_id, chapter_id=None,
+        name="Test form", title="Test form", status="published", created_by=user.id,
+    )
+    defaults.update(overrides)
+    form = Form(**defaults)
+    db.add(form)
+    db.flush()
+    return form
+
+
+def _make_field(db, form, *, order=1, field_key="favorite_color", question_type="single_select_dropdown", **overrides):
+    defaults = dict(
+        form_id=form.id, order=order, label="Favorite color", question_type=question_type,
+        field_key=field_key, config={"required": False, "options": []},
+    )
+    defaults.update(overrides)
+    field = FormField(**defaults)
+    db.add(field)
+    db.flush()
+    return field
+
+
+def _make_answer(db, user_id, form, field, value):
+    response = FormResponse(form_id=form.id, user_id=user_id)
+    db.add(response)
+    db.flush()
+    answer = FormAnswer(response_id=response.id, field_id=field.id, value=value)
+    db.add(answer)
+    db.commit()
+    return answer
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +379,60 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
 
     assert len(data["lunch"]) == 1
     assert data["lunch"][0] == {"date": "2026-05-21", "category": "entree", "label": "Pizza"}
+
+
+def test_get_membership_custom_responses_empty(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    assert response.json()["custom_responses"] == []
+
+
+def test_get_membership_custom_responses_populated(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id, title="Volunteer interest")
+    field = _make_field(db, form, field_key="favorite_color", label="Favorite color")
+    _make_answer(db, u["id"], form, field, "opt_1")
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    custom = response.json()["custom_responses"]
+    assert custom == [{
+        "form_title": "Volunteer interest", "field_label": "Favorite color",
+        "question_type": "single_select_dropdown", "value": "opt_1",
+    }]
+
+
+def test_get_membership_custom_responses_excludes_reserved_field_keys(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id)
+    reserved = _make_field(
+        db, form, field_key="track_status_writer", question_type="single_select_radio",
+    )
+    _make_answer(db, u["id"], form, reserved, "confirmed")
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    assert response.json()["custom_responses"] == []
+
+
+def test_get_membership_custom_responses_excludes_unpublished_forms(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    draft_form = _make_form(db, td_user, td_tournament.id, status="draft")
+    field = _make_field(db, draft_form)
+    _make_answer(db, u["id"], draft_form, field, "opt_1")
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    assert response.json()["custom_responses"] == []
 
 
 # ---------------------------------------------------------------------------

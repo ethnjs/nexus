@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     # Deferred to a lazy import inside resolve_memberships_or_users() below —
     # schemas/tournament/membership.py -> schemas/tournament/role.py ->
     # core/tournament/permissions.py -> back to this module at import time.
-    from app.schemas.tournament.membership import MembershipSlimResponse
+    from app.schemas.tournament.membership import MembershipCustomAnswerRead, MembershipSlimResponse
     from app.schemas.user import UserSlimResponse
 
 def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
@@ -63,3 +63,41 @@ def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
     if user.role == "admin":
         return True
     return get_membership_by_user(db, tournament_id, user.id) is not None
+
+
+def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list["MembershipCustomAnswerRead"]:
+    """This user's answers to non-reserved fields on published,
+    tournament-owned forms in `tournament_id`. 'Custom' = field_key matches
+    none of the availability_/event_preference_/lunch_/track_status_
+    presets — those already have dedicated structural fields elsewhere on
+    MembershipFullResponse. FormResponse is keyed by user_id, not
+    membership_id (see TASK.md's known pre-existing issue note), so this
+    joins on the user directly rather than through the membership."""
+    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+    from app.models.models import Form, FormAnswer, FormField, FormResponse
+    from app.schemas.tournament.membership import MembershipCustomAnswerRead
+
+    rows = (
+        db.query(FormAnswer, FormField, Form)
+        .join(FormField, FormAnswer.field_id == FormField.id)
+        .join(Form, FormField.form_id == Form.id)
+        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
+        .filter(
+            FormResponse.user_id == user_id,
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            Form.status == "published",
+        )
+        .all()
+    )
+
+    return [
+        MembershipCustomAnswerRead(
+            form_title=form.title or form.name,
+            field_label=field.label,
+            question_type=field.question_type,
+            value=answer.value,
+        )
+        for answer, field, form in rows
+        if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
+    ]
