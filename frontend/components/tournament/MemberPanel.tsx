@@ -17,6 +17,7 @@ import { VolunteerExperienceSection } from "@/components/profile/sections/Volunt
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
+import { PanelField } from "@/components/tournament/PanelField";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -93,40 +94,19 @@ export function MemberPanel({
               </h3>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <div>
-                  <div style={{
-                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--color-text-tertiary)", marginBottom: "5px",
-                  }}>
-                    Joined
-                  </div>
+                <PanelField label="Joined">
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
                     {formatDate(full.created_at)}
                   </span>
-                </div>
-                <div>
-                  <div style={{
-                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--color-text-tertiary)", marginBottom: "5px",
-                  }}>
-                    Join Method
-                  </div>
+                </PanelField>
+                <PanelField label="Join Method">
                   <JoinMethodCell membership={full} />
-                </div>
+                </PanelField>
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
                 {full.track_statuses.length > 0 && (
-                  <div>
-                    <div style={{
-                      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                      textTransform: "uppercase", letterSpacing: "0.06em",
-                      color: "var(--color-text-tertiary)", marginBottom: "5px",
-                    }}>
-                      Tracks
-                    </div>
+                  <PanelField label="Tracks">
                     <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                       {full.track_statuses.map((ts) => (
                         // An archived track's statuses stay readable — the
@@ -147,17 +127,10 @@ export function MemberPanel({
                         </div>
                       ))}
                     </div>
-                  </div>
+                  </PanelField>
                 )}
 
-                <div>
-                  <div style={{
-                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--color-text-tertiary)", marginBottom: "5px",
-                  }}>
-                    Roles
-                  </div>
+                <PanelField label="Roles">
                   <RolesCell
                     tournamentId={tournamentId}
                     membership={full}
@@ -166,7 +139,7 @@ export function MemberPanel({
                     locked={!canEditMember(full)}
                     onUpdated={handleRolesUpdated}
                   />
-                </div>
+                </PanelField>
               </div>
             </ProfileCard>
 
