@@ -387,6 +387,11 @@ export interface TournamentPublic {
   level:       TournamentLevel
   division:    TournamentDivision[]
   is_verified: boolean
+  // TD opt-in to collecting each age threshold — surfaced here (not just on
+  // Tournament) so the join flow can decide whether to show the consent
+  // step before the visitor even signs in.
+  collect_is_over_18: boolean
+  collect_is_over_21: boolean
 }
 
 export interface Tournament extends TournamentPublic {
@@ -1041,8 +1046,10 @@ export interface JoinPreviewChapter {
 export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter
 
 export const joinApi = {
-  redeem: (code: string) =>
-    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {}),
+  redeem: (code: string, ageDisclosureConsent = false) =>
+    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {
+      age_disclosure_consent: ageDisclosureConsent,
+    }),
   preview: (code: string) =>
     api.get<JoinPreviewResponse>(`/join/preview/?code=${encodeURIComponent(code)}`),
 }
