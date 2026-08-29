@@ -5,7 +5,7 @@ import {
   ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role,
   canonicalEventsApi, membershipsApi,
 } from "@/lib/api";
-import { formatDate } from "@/lib/timeFormat";
+import { formatDate, formatTime } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
@@ -141,7 +141,99 @@ export function MemberPanel({
                   />
                 </PanelField>
               </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                <PanelField label="Age Flags">
+                  {full.is_over_18 === null && full.is_over_21 === null ? (
+                    <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-tertiary)" }}>
+                      Unknown
+                    </span>
+                  ) : (
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <Badge variant={full.is_over_18 === null ? "default" : full.is_over_18 ? "confirmed" : "declined"}>
+                        {full.is_over_18 === null ? "18+ Unknown" : full.is_over_18 ? "18+" : "Under 18"}
+                      </Badge>
+                      <Badge variant={full.is_over_21 === null ? "default" : full.is_over_21 ? "confirmed" : "declined"}>
+                        {full.is_over_21 === null ? "21+ Unknown" : full.is_over_21 ? "21+" : "Under 21"}
+                      </Badge>
+                    </div>
+                  )}
+                </PanelField>
+              </div>
             </ProfileCard>
+
+            {full.availability.length > 0 && (
+              <ProfileCard>
+                <h3 style={{
+                  fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+                  color: "var(--color-text-primary)", marginBottom: "4px",
+                }}>
+                  Availability
+                </h3>
+                <PanelField label="Shifts">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {full.availability.map((slot) => (
+                      <span
+                        key={slot.shift_id}
+                        style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}
+                      >
+                        {slot.label} — {formatDate(slot.start)}, {formatTime(slot.start)}–{formatTime(slot.end)}
+                      </span>
+                    ))}
+                  </div>
+                </PanelField>
+              </ProfileCard>
+            )}
+
+            {full.lunch.length > 0 && (
+              <ProfileCard>
+                <h3 style={{
+                  fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+                  color: "var(--color-text-primary)", marginBottom: "4px",
+                }}>
+                  Lunch
+                </h3>
+                <PanelField label="Selections">
+                  <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                    {full.lunch.map((sel, i) => (
+                      <span
+                        key={i}
+                        style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}
+                      >
+                        {formatDate(sel.date)} — {sel.category}: {sel.label}
+                      </span>
+                    ))}
+                  </div>
+                </PanelField>
+              </ProfileCard>
+            )}
+
+            {full.event_preferences.length > 0 && (
+              <ProfileCard>
+                <h3 style={{
+                  fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+                  color: "var(--color-text-primary)", marginBottom: "4px",
+                }}>
+                  Event Preferences
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                  {full.event_preferences.map((pref) => (
+                    <PanelField key={pref.key} label={pref.key.replace(/_/g, " ")}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                        {pref.events.map((ev) => (
+                          <span
+                            key={ev.id}
+                            style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}
+                          >
+                            {ev.rank !== null ? `${ev.rank}. ` : ""}{ev.name ?? "Unknown event"}{ev.division ? ` (${ev.division})` : ""}
+                          </span>
+                        ))}
+                      </div>
+                    </PanelField>
+                  ))}
+                </div>
+              </ProfileCard>
+            )}
 
             <ProfileCard><EducationCareerSection user={full.user} /></ProfileCard>
 

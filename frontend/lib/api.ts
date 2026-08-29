@@ -632,6 +632,47 @@ export interface AvailabilitySlot {
   end:   string
 }
 
+// Matches MembershipAvailabilityRead — a shift a member marked themselves
+// available for, resolved to its label/start/end (the row itself only
+// carries the shift id).
+export interface MembershipAvailability {
+  shift_id: number
+  label:    string
+  start:    string
+  end:      string
+}
+
+// Matches MembershipLunchRead
+export interface MembershipLunch {
+  date:     string
+  category: string
+  label:    string
+}
+
+// Matches MembershipEventPreferenceEventRead
+export interface MembershipEventPreferenceEvent {
+  id:       number
+  name:     string | null
+  division: string | null
+  rank:     number | null
+}
+
+// Matches MembershipEventPreferenceRead — one event_preference_{suffix}
+// question's answer, events already ordered by rank.
+export interface MembershipEventPreference {
+  key:    string
+  events: MembershipEventPreferenceEvent[]
+}
+
+// Matches MembershipCustomAnswerRead — one answer to a form field that
+// isn't availability/lunch/track_status/event_preference.
+export interface MembershipCustomAnswer {
+  form_title:    string
+  field_label:   string
+  question_type: string
+  value:         unknown
+}
+
 // Matches RoleRead
 export interface Role {
   id:             number
@@ -677,12 +718,7 @@ export interface MembershipSlim {
 export interface MembershipFull {
   id:                number
   tournament_id:     number
-  role_preference:   string[] | null
-  event_preference:  string[] | null
-  availability:      AvailabilitySlot[] | null
-  lunch_order:       Record<string, unknown> | string | null
   notes:             string | null
-  extra_data:        Record<string, unknown> | null
   source:            MembershipSource
   join_code:         MembershipJoinCodeInfo | null
   is_over_18:        boolean | null
@@ -690,6 +726,10 @@ export interface MembershipFull {
   created_at:        string
   updated_at:        string
   track_statuses:    MembershipTrackStatus[]
+  event_preferences: MembershipEventPreference[]
+  availability:      MembershipAvailability[]
+  lunch:             MembershipLunch[]
+  custom_responses:  MembershipCustomAnswer[]
   roles:             Role[]
   user:              UserFull
 }
