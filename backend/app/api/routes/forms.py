@@ -18,7 +18,7 @@ from app.core.form import (
     snapshot_answer_value,
 )
 from app.core.form import changes
-from app.core.form.branching import missing_required_field_keys
+from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
 from app.core.form.permissions import require_form_manage_access, require_form_view_access
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -923,6 +923,13 @@ def submit_form_response(
             detail=f"Missing required field(s): {sorted(missing_required)}",
         )
 
+    duplicate_ranks = duplicate_ranked_choice_field_keys(active_fields, answers_by_field)
+    if duplicate_ranks:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
+        )
+
     response = FormResponse(form_id=form.id, user_id=current_user.id)
     db.add(response)
     db.flush()
@@ -1004,6 +1011,13 @@ def patch_form_response(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Missing required field(s): {sorted(missing_required)}",
+        )
+
+    duplicate_ranks = duplicate_ranked_choice_field_keys(list(fields_by_id.values()), answers_by_field)
+    if duplicate_ranks:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Duplicate option selected at multiple ranks: {sorted(duplicate_ranks)}",
         )
 
     db.query(FormAnswer).filter(

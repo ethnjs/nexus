@@ -3,7 +3,11 @@ branching graph used to enforce `required` only on fields a respondent
 could actually reach. Fields here are built directly (not through the DB)
 since compute_reachable_field_ids/missing_required_field_keys are pure
 functions over a field list + an answers dict."""
-from app.core.form.branching import compute_reachable_field_ids, missing_required_field_keys
+from app.core.form.branching import (
+    compute_reachable_field_ids,
+    duplicate_ranked_choice_field_keys,
+    missing_required_field_keys,
+)
 from app.models.models import FormField
 
 
@@ -173,3 +177,37 @@ class TestMissingRequiredFieldKeys:
     def test_non_blank_answer_satisfies_required(self):
         fields = [_field(1, 1, config={"required": True})]
         assert missing_required_field_keys(fields, {1: "hello"}) == []
+
+
+class TestDuplicateRankedChoiceFieldKeys:
+    def _ranked_field(self, id, allow_duplicates=False, field_key=None):
+        return _field(
+            id, 1, question_type="ranked_choice",
+            config={"required": False, "ranks": 3, "allow_duplicates": allow_duplicates, "options": []},
+            field_key=field_key,
+        )
+
+    def test_repeated_option_across_ranks_rejected_by_default(self):
+        fields = [self._ranked_field(1)]
+        assert duplicate_ranked_choice_field_keys(fields, {1: {"1": "opt_a", "2": "opt_b", "3": "opt_a"}}) == ["field_1"]
+
+    def test_repeated_option_allowed_when_config_permits(self):
+        fields = [self._ranked_field(1, allow_duplicates=True)]
+        assert duplicate_ranked_choice_field_keys(fields, {1: {"1": "opt_a", "2": "opt_a"}}) == []
+
+    def test_no_repeats_passes(self):
+        fields = [self._ranked_field(1)]
+        assert duplicate_ranked_choice_field_keys(fields, {1: {"1": "opt_a", "2": "opt_b"}}) == []
+
+    def test_non_ranked_choice_fields_untouched(self):
+        fields = [_field(1, 1, question_type="multi_select_checkbox", config={"required": False})]
+        assert duplicate_ranked_choice_field_keys(fields, {1: ["opt_a", "opt_a"]}) == []
+
+    def test_unanswered_ranked_field_not_reported(self):
+        fields = [self._ranked_field(1)]
+        assert duplicate_ranked_choice_field_keys(fields, {}) == []
+
+    def test_multiple_offending_fields_all_reported(self):
+        fields = [self._ranked_field(1, field_key="field_1"), self._ranked_field(2, field_key="field_2")]
+        answers = {1: {"1": "opt_a", "2": "opt_a"}, 2: {"1": "opt_b", "2": "opt_b"}}
+        assert duplicate_ranked_choice_field_keys(fields, answers) == ["field_1", "field_2"]

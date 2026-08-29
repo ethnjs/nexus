@@ -70,3 +70,23 @@ def missing_required_field_keys(fields: list[FormField], answers: dict[str, Any]
         for field in fields
         if field.id in reachable and (field.config or {}).get("required") and _is_blank(answers.get(field.id))
     ]
+
+
+def duplicate_ranked_choice_field_keys(fields: list[FormField], answers: dict[str, Any]) -> list[str]:
+    """field_keys of ranked_choice fields whose answer repeats the same
+    option_id at more than one rank, for a field whose config doesn't allow
+    it. `allow_duplicates` is a required RankedChoiceConfig field, but until
+    now nothing server-side actually read it — only the picker UI
+    (RankedList.tsx) used it client-side to trim its remaining-options pool.
+    This is the enforcement that makes it real."""
+    offenders = []
+    for field in fields:
+        if field.question_type != "ranked_choice" or (field.config or {}).get("allow_duplicates"):
+            continue
+        value = answers.get(field.id)
+        if not isinstance(value, dict):
+            continue
+        option_ids = list(value.values())
+        if len(option_ids) != len(set(option_ids)):
+            offenders.append(field.field_key)
+    return offenders
