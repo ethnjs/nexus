@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
@@ -9,7 +10,7 @@ from app.core.auth import (
 )
 from app.core.users import find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
-from app.core.tournament.memberships import get_custom_form_answers
+from app.core.tournament.memberships import gate_age_flags, get_custom_form_answers
 from app.core.tournament.permissions import MANAGE_MEMBERS, has_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -203,8 +204,8 @@ def list_user_tournament_memberships(
     for m in visible:
         resp = MembershipFullResponse.model_validate(m)
         resp.custom_responses = get_custom_form_answers(db, m.tournament_id, user_id)
-        responses.append(resp)
-    return responses
+        responses.append(gate_age_flags(m, resp.model_dump(mode="json")))
+    return JSONResponse(responses)
 
 
 # ---------------------------------------------------------------------------

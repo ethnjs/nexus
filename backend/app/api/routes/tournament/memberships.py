@@ -1,10 +1,13 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.memberships import get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users
+from app.core.tournament.memberships import (
+    gate_age_flags, get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
+)
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_membership, require_permission,
 )
@@ -168,11 +171,12 @@ def get_my_membership(
     # No row only for a site admin who never joined — require_membership()
     # already granted access via its admin bypass.
     if not membership:
-        return MembershipMeResponse(
+        resp = MembershipMeResponse(
             membership_id=None, is_owner=is_owner, roles=[], permissions=permissions,
         )
+        return JSONResponse(gate_age_flags(None, resp.model_dump(mode="json")))
 
-    return MembershipMeResponse(
+    resp = MembershipMeResponse(
         membership_id=membership.id, is_owner=is_owner,
         roles=membership.roles, permissions=permissions,
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
@@ -182,6 +186,7 @@ def get_my_membership(
         lunch=[MembershipLunchRead.model_validate(row) for row in membership.lunch_selections],
         custom_responses=get_custom_form_answers(db, tournament_id, current_user.id),
     )
+    return JSONResponse(gate_age_flags(membership, resp.model_dump(mode="json")))
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +203,7 @@ def get_membership(
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
-    return resp
+    return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +234,7 @@ def update_my_membership(
     db.refresh(m)
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
-    return resp
+    return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 
 # ---------------------------------------------------------------------------
@@ -260,7 +265,7 @@ def update_membership(
     db.refresh(m)
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
-    return resp
+    return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 
 # ---------------------------------------------------------------------------

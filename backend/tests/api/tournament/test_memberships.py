@@ -505,8 +505,10 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
     assert response.status_code == 200
     data = response.json()
-    assert data["is_over_18"] is None
-    assert data["is_over_21"] is None
+    # td_tournament doesn't collect either flag — omitted, not null (see the
+    # gating tests below this file's age-flags section).
+    assert "is_over_18" not in data
+    assert "is_over_21" not in data
     assert len(data["availability"]) == 1
     assert data["availability"][0]["label"] == "Morning"
     assert len(data["lunch"]) == 1
@@ -819,9 +821,16 @@ def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
 # ---------------------------------------------------------------------------
 
 def _age_flags(client, db, tournament, user, dob):
+    """Collection on + consent given by default, so these tests exercise the
+    age arithmetic itself — the gating that hides the flags otherwise is
+    covered separately below."""
     user.date_of_birth = dob
+    tournament.collect_is_over_18 = True
+    tournament.collect_is_over_21 = True
     db.commit()
     membership = grant_role(db, tournament, user, "Volunteer")
+    membership.age_disclosure = "consented"
+    db.commit()
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{tournament.id}/memberships/{membership.id}/")
     assert response.status_code == 200, response.text
@@ -868,6 +877,92 @@ def test_membership_age_flags_computed_against_start_date_not_today(
     dob = date(start.year - 18, start.month, start.day) + timedelta(days=1)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is False
+
+
+# ---------------------------------------------------------------------------
+# is_over_18 / is_over_21 gating — omitted entirely unless the tournament
+# collects that specific flag AND the membership has consented. Never sent
+# as null in the gated-off case, which would read as "under 18" to a
+# careless frontend.
+# ---------------------------------------------------------------------------
+
+def test_age_flags_omitted_when_tournament_does_not_collect(client, td_user, td_tournament, other_user, db):
+    other_user.date_of_birth = date(2000, 1, 1)
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "consented"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" not in data
+    assert "is_over_21" not in data
+
+
+def test_age_flags_omitted_when_not_consented(client, td_user, td_tournament, other_user, db):
+    other_user.date_of_birth = date(2000, 1, 1)
+    td_tournament.collect_is_over_18 = True
+    td_tournament.collect_is_over_21 = True
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    # age_disclosure left null — never answered.
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" not in data
+    assert "is_over_21" not in data
+
+
+def test_age_flags_omitted_when_declined(client, td_user, td_tournament, other_user, db):
+    other_user.date_of_birth = date(2000, 1, 1)
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "declined"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" not in data
+
+
+def test_age_flags_gated_independently_per_flag(client, td_user, td_tournament, other_user, db):
+    """Collecting only is_over_18 shows only is_over_18, even with consent
+    covering both — collection is the other half of the gate."""
+    other_user.date_of_birth = date(2000, 1, 1)
+    td_tournament.collect_is_over_18 = True
+    td_tournament.collect_is_over_21 = False
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "consented"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" in data
+    assert "is_over_21" not in data
+
+
+def test_age_flags_shown_when_collected_and_consented(client, td_user, td_tournament, other_user, db):
+    other_user.date_of_birth = date(2000, 1, 1)
+    td_tournament.collect_is_over_18 = True
+    td_tournament.collect_is_over_21 = True
+    db.commit()
+    membership = grant_role(db, td_tournament, other_user, "Volunteer")
+    membership.age_disclosure = "consented"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    assert "is_over_18" in data
+    assert "is_over_21" in data
+
+
+def test_age_flags_gate_applies_to_my_membership_too(client, td_tournament, other_user, db):
+    """The same gate applies on GET .../me/ — manage_members isn't required
+    to read your own row, but consent still is."""
+    other_user.date_of_birth = date(2000, 1, 1)
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "other@test.com", "otherpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    assert "is_over_18" not in data
 
 
 # ---------------------------------------------------------------------------

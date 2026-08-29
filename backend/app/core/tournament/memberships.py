@@ -65,6 +65,23 @@ def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
     return get_membership_by_user(db, tournament_id, user.id) is not None
 
 
+def gate_age_flags(membership: TournamentMembership | None, data: dict) -> dict:
+    """Drops `is_over_18`/`is_over_21` from a serialized membership response
+    dict unless the tournament collects that specific flag AND this
+    membership has consented (`age_disclosure == "consented"`). Omitted
+    entirely rather than sent as `null` — a careless frontend reading
+    `null` as "under 18" would be exactly backwards. Applies identically
+    regardless of viewer permission: manage_members does not override a
+    member's withheld consent (see TASK.md 2.5)."""
+    consented = membership is not None and membership.age_disclosure == "consented"
+    tournament = membership.tournament if membership is not None else None
+    if not (consented and tournament is not None and tournament.collect_is_over_18):
+        data.pop("is_over_18", None)
+    if not (consented and tournament is not None and tournament.collect_is_over_21):
+        data.pop("is_over_21", None)
+    return data
+
+
 def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list["MembershipCustomAnswerRead"]:
     """This user's answers to non-reserved fields on published,
     tournament-owned forms in `tournament_id`. 'Custom' = field_key matches

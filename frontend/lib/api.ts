@@ -729,8 +729,11 @@ export interface MembershipFull {
   notes:             string | null
   source:            MembershipSource
   join_code:         MembershipJoinCodeInfo | null
-  is_over_18:        boolean | null
-  is_over_21:        boolean | null
+  // Omitted entirely (not `null`) unless the tournament collects this flag
+  // and the member has consented — optional here to match. Never treat
+  // `undefined` as `false`.
+  is_over_18?:       boolean | null
+  is_over_21?:       boolean | null
   created_at:        string
   updated_at:        string
   track_statuses:    MembershipTrackStatus[]
