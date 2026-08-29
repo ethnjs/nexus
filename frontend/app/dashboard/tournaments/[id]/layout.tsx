@@ -4,7 +4,8 @@ import { ReactNode, useState, useEffect } from "react";
 import { use } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { TournamentProvider, useTournament } from "@/lib/useTournament";
-import { MyMembershipProvider } from "@/lib/useMyMembership";
+import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
+import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider, useLayoutPanelContent, LayoutPanel } from "@/lib/useLayoutPanel";
 import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
@@ -96,7 +97,8 @@ function TournamentShell({
 }) {
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  const { setSelectedTournament } = useTournament();
+  const { selectedTournament, setSelectedTournament } = useTournament();
+  const { membership, setMembership } = useMyMembership();
   const pathname = usePathname();
   // Sidebar is locked open (not just hover-expanded) on settings routes —
   // reserve its full width there instead of letting it overlay content.
@@ -137,6 +139,14 @@ function TournamentShell({
       {/* Third flex sibling, not an overlay: it shrinks the column above
           (Topbar included) instead of covering it, so the page stays live. */}
       <LayoutPanelSlot />
+
+      {membership?.needs_age_consent && (
+        <AgeDisclosureModal
+          tournamentId={Number(tournamentId)}
+          tournament={selectedTournament}
+          onResolved={setMembership}
+        />
+      )}
     </div>
   );
 }

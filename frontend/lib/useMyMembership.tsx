@@ -7,6 +7,9 @@ interface MyMembershipContextValue {
   membership: MembershipMe | null;
   loading: boolean;
   hasPermission: (p: Permission) => boolean;
+  /** Replaces the cached membership — used after POST .../age-disclosure/
+   * resolves, so the blocking consent modal can clear without a refetch. */
+  setMembership: (m: MembershipMe | null) => void;
 }
 
 const MyMembershipContext = createContext<MyMembershipContextValue | null>(null);
@@ -29,7 +32,7 @@ export function MyMembershipProvider({ tournamentId, children }: { tournamentId:
   );
 
   return (
-    <MyMembershipContext.Provider value={{ membership, loading, hasPermission }}>
+    <MyMembershipContext.Provider value={{ membership, loading, hasPermission, setMembership }}>
       {children}
     </MyMembershipContext.Provider>
   );

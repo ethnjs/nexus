@@ -775,6 +775,10 @@ export interface MembershipMe {
   roles:          Role[]
   permissions:    Permission[]
   track_statuses: MembershipTrackStatus[]
+  // True only while the tournament collects an age flag and this member
+  // hasn't answered yet — drives the blocking consent modal. False once
+  // answered either way (consented or declined), not just while consented.
+  needs_age_consent: boolean
 }
 
 export const membershipsApi = {
@@ -786,6 +790,10 @@ export const membershipsApi = {
     api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
   getMe: (tournamentId: number) =>
     api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
+  // consent=false is a soft decline — the row and all its data survive;
+  // re-calling with consent=true flips straight back to active.
+  setAgeDisclosure: (tournamentId: number, consent: boolean) =>
+    api.post<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/age-disclosure/`, { consent }),
   leaveMe: (tournamentId: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/memberships/me/`),
   updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
