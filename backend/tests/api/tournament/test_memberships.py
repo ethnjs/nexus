@@ -472,6 +472,48 @@ def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
     assert [r["label"] for r in data["roles"]] == ["Volunteer"]
 
 
+def test_get_my_membership_includes_enrichment(client, td_tournament, db):
+    """/me/ carries the same enrichment MembershipFullResponse gives
+    manage_members about someone else — a plain member with no special
+    permission still reads their own availability/lunch/custom answers/age
+    flags."""
+    from datetime import datetime
+    from app.core.auth import hash_password
+    from app.models.models import (
+        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift, User as UserModel,
+    )
+
+    u = _make_user(db, "volunteer2@example.com")
+    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
+    user.hashed_password = hash_password("volpass")
+    db.commit()
+    membership = grant_role(db, td_tournament, user, "Volunteer")
+
+    shift = TournamentShift(
+        tournament_id=td_tournament.id, label="Morning",
+        start=datetime(2026, 5, 21, 8, 0), end=datetime(2026, 5, 21, 12, 0),
+    )
+    db.add(shift)
+    db.flush()
+    db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
+    db.add(TournamentMembershipLunch(
+        membership_id=membership.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+    ))
+    db.commit()
+
+    login(client, "volunteer2@example.com", "volpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["is_over_18"] is None
+    assert data["is_over_21"] is None
+    assert len(data["availability"]) == 1
+    assert data["availability"][0]["label"] == "Morning"
+    assert len(data["lunch"]) == 1
+    assert data["lunch"][0]["label"] == "Pizza"
+    assert data["custom_responses"] == []
+
+
 def test_get_my_membership_admin_without_membership(client, admin_user, td_tournament):
     """A site admin who never joined the tournament still gets in via
     require_membership()'s admin bypass — membership_id/roles are

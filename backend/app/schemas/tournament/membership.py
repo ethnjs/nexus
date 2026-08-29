@@ -167,14 +167,23 @@ class MembershipSlimResponse(_MembershipRolesMixin):
 
 
 class MembershipMeResponse(_MembershipRolesMixin):
-    """GET .../memberships/me/ — current user's membership + effective permissions."""
+    """GET .../memberships/me/ — current user's membership + effective
+    permissions. Enrichment fields mirror MembershipFullResponse's (same
+    data, same shapes) so a member can read everything about their own
+    membership that manage_members can read about someone else's — just
+    readable without that permission."""
     membership_id: int | None
     is_owner: bool
     permissions: list[str] = []
+    is_over_18: Optional[bool] = None
+    is_over_21: Optional[bool] = None
     # Their own per-track statuses — readable without manage_members, unlike
     # the tournament-wide roster.
     track_statuses: list[MembershipTrackStatusRead] = []
     event_preferences: list[MembershipEventPreferenceRead] = []
+    availability: list[MembershipAvailabilityRead] = []
+    lunch: list[MembershipLunchRead] = []
+    custom_responses: list[MembershipCustomAnswerRead] = []
 
 
 class MembershipFullResponse(_MembershipRolesMixin):

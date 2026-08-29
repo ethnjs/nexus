@@ -17,7 +17,8 @@ from app.models.models import (
     User,
 )
 from app.schemas.tournament.membership import (
-    MembershipCoordinatorUpdate, MembershipEventPreferenceRead, MembershipFullResponse, MembershipMeResponse,
+    MembershipAvailabilityRead, MembershipCoordinatorUpdate,
+    MembershipEventPreferenceRead, MembershipFullResponse, MembershipLunchRead, MembershipMeResponse,
     MembershipMeUpdate, MembershipSlimResponse,
 )
 from app.schemas.tournament.track import MembershipTrackStatusRead
@@ -174,8 +175,12 @@ def get_my_membership(
     return MembershipMeResponse(
         membership_id=membership.id, is_owner=is_owner,
         roles=membership.roles, permissions=permissions,
+        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
         event_preferences=MembershipEventPreferenceRead.group_rows(membership.event_preferences),
+        availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
+        lunch=[MembershipLunchRead.model_validate(row) for row in membership.lunch_selections],
+        custom_responses=get_custom_form_answers(db, tournament_id, current_user.id),
     )
 
 
