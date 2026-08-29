@@ -11,7 +11,6 @@ from datetime import date
 import pytest
 
 from app.core.profile_status import (
-    compute_missing_onboarding_fields,
     compute_missing_profile_fields,
     is_onboarding_complete,
     is_profile_complete,
@@ -161,20 +160,18 @@ def test_without_db_uses_relationship_volunteer(user_factory, db):
 
 
 # ---------------------------------------------------------------------------
-# Onboarding — a much smaller gate than full profile completeness
+# Onboarding — delegates to compute_missing_profile_fields; pronouns is the
+# only field that can be blank and still count as onboarded.
 # ---------------------------------------------------------------------------
 
-def test_onboarding_complete_ignores_profile_only_fields(user_factory, db):
-    """Onboarding asks for name/phone/DOB only, so a user missing shirt_size is
-    onboarded but not profile-complete."""
-    user = user_factory(shirt_size=None)
-    assert compute_missing_onboarding_fields(user) == []
-    assert is_onboarding_complete(user) is True
-    assert is_profile_complete(user, db=db) is False
+def test_onboarding_complete_ignores_pronouns(user_factory, db):
+    user = user_factory(pronouns=None)
+    assert is_onboarding_complete(user, db=db) is True
 
 
-@pytest.mark.parametrize("field", ["first_name", "last_name", "phone", "date_of_birth"])
-def test_onboarding_reports_each_required_field(user_factory, field):
+@pytest.mark.parametrize(
+    "field", ["first_name", "last_name", "phone", "date_of_birth", "shirt_size", "dietary_restriction"]
+)
+def test_onboarding_reports_each_required_field(user_factory, db, field):
     user = user_factory(**{field: None})
-    assert compute_missing_onboarding_fields(user) == [field]
-    assert is_onboarding_complete(user) is False
+    assert is_onboarding_complete(user, db=db) is False
