@@ -18,10 +18,37 @@ import { LogisticsSection } from "@/components/profile/sections/LogisticsSection
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { PanelField } from "@/components/tournament/PanelField";
+import type { MembershipCustomAnswer } from "@/lib/api";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
 export const MEMBER_PANEL_WIDTH = 700;
+
+// Groups flat custom-answer rows by their source form, preserving first-seen
+// form order — MembershipFullResponse doesn't group these itself since a
+// membership can carry answers from several forms.
+function groupCustomResponsesByForm(
+  answers: MembershipCustomAnswer[],
+): [string, MembershipCustomAnswer[]][] {
+  const byForm = new Map<string, MembershipCustomAnswer[]>();
+  for (const answer of answers) {
+    const group = byForm.get(answer.form_title);
+    if (group) group.push(answer);
+    else byForm.set(answer.form_title, [answer]);
+  }
+  return Array.from(byForm.entries());
+}
+
+// A custom answer's value shape depends on the field's question_type (plain
+// text, a list of selected option labels, etc.) — there's no read-only
+// response renderer elsewhere to reuse yet, so this just covers the common
+// shapes generically rather than switching on every question_type.
+function formatCustomAnswerValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
 
 interface MemberPanelProps {
   tournamentId: number;
@@ -230,6 +257,38 @@ export function MemberPanel({
                         ))}
                       </div>
                     </PanelField>
+                  ))}
+                </div>
+              </ProfileCard>
+            )}
+
+            {full.custom_responses.length > 0 && (
+              <ProfileCard>
+                <h3 style={{
+                  fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
+                  color: "var(--color-text-primary)", marginBottom: "4px",
+                }}>
+                  Custom Responses
+                </h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {groupCustomResponsesByForm(full.custom_responses).map(([formTitle, answers]) => (
+                    <div key={formTitle}>
+                      <div style={{
+                        fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600,
+                        color: "var(--color-text-secondary)", marginBottom: "8px",
+                      }}>
+                        {formTitle}
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                        {answers.map((a, i) => (
+                          <PanelField key={i} label={a.field_label}>
+                            <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
+                              {formatCustomAnswerValue(a.value)}
+                            </span>
+                          </PanelField>
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </ProfileCard>
