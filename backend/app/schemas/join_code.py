@@ -51,6 +51,13 @@ class StaffInviteResponse(BaseModel):
     failed: list[str] = []
 
 
+class JoinRedeemRequest(BaseModel):
+    """Optional body for POST /join/. `age_disclosure_consent` only matters
+    for a tournament join code that collects an age flag — a chapter code,
+    or a tournament that collects neither flag, ignores it."""
+    age_disclosure_consent: bool = False
+
+
 class JoinRedeemResponse(BaseModel):
     """Response for POST /join/ — tells the caller which onboarding flow was
     just completed, so the frontend can route (e.g. to tournament vs. chapter

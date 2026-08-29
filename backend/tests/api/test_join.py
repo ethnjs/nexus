@@ -121,6 +121,59 @@ def test_join_tournament_handles_membership_integrity_conflict(client, td_user, 
 
 
 # ---------------------------------------------------------------------------
+# Tournament codes — age disclosure consent
+# ---------------------------------------------------------------------------
+
+def test_join_tournament_requires_consent_when_collecting_age_flag(client, td_user, td_tournament, other_user, db):
+    td_tournament.collect_is_over_18 = True
+    db.commit()
+    make_tournament_join_code(db, td_tournament.id, td_user.id, code="AGEGATE1")
+    login(client, "other@test.com", "otherpass")
+
+    response = client.post("/join/?code=AGEGATE1")
+    assert response.status_code == 403
+    assert response.json()["detail"]["code"] == "age_disclosure_required"
+    assert db.query(TournamentMembership).filter(
+        TournamentMembership.user_id == other_user.id,
+        TournamentMembership.tournament_id == td_tournament.id,
+    ).first() is None
+
+
+def test_join_tournament_succeeds_with_consent_and_sets_timestamp(client, td_user, td_tournament, other_user, db):
+    td_tournament.collect_is_over_21 = True
+    db.commit()
+    make_tournament_join_code(db, td_tournament.id, td_user.id, code="AGEGATE2")
+    login(client, "other@test.com", "otherpass")
+
+    response = client.post("/join/?code=AGEGATE2", json={"age_disclosure_consent": True})
+    assert response.status_code == 201
+
+    membership = db.query(TournamentMembership).filter(
+        TournamentMembership.user_id == other_user.id,
+        TournamentMembership.tournament_id == td_tournament.id,
+    ).first()
+    assert membership.age_disclosure == "consented"
+    assert membership.age_disclosure_at is not None
+
+
+def test_join_tournament_ignores_consent_field_when_not_collecting(client, td_user, td_tournament, other_user, db):
+    """Neither flag collected — join succeeds with no consent at all, and
+    age_disclosure stays null rather than being set to "consented" for a
+    tournament that never asked."""
+    make_tournament_join_code(db, td_tournament.id, td_user.id, code="NOGATE01")
+    login(client, "other@test.com", "otherpass")
+
+    response = client.post("/join/?code=NOGATE01")
+    assert response.status_code == 201
+
+    membership = db.query(TournamentMembership).filter(
+        TournamentMembership.user_id == other_user.id,
+        TournamentMembership.tournament_id == td_tournament.id,
+    ).first()
+    assert membership.age_disclosure is None
+
+
+# ---------------------------------------------------------------------------
 # Chapter codes
 # ---------------------------------------------------------------------------
 

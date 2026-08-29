@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -8,7 +10,9 @@ from app.core.auth import get_current_user
 from app.core.join_codes import is_join_code_expired
 from app.db.session import get_db
 from app.models.models import ChapterMembership, JoinCode, Tournament, TournamentMembership, User
-from app.schemas.join_code import JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemResponse
+from app.schemas.join_code import (
+    JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemRequest, JoinRedeemResponse,
+)
 from app.schemas.university import UniversityResponse
 
 router = APIRouter(tags=["join"])
@@ -82,6 +86,7 @@ def _preview_chapter_code(join_code: JoinCode, db: Session) -> JoinPreviewChapte
 @router.post("/join/", response_model=JoinRedeemResponse, status_code=status.HTTP_201_CREATED)
 def redeem_join_code(
     code: str = Query(...),
+    body: JoinRedeemRequest = JoinRedeemRequest(),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -96,11 +101,13 @@ def redeem_join_code(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired join code")
 
     if join_code.tournament_id is not None:
-        return _redeem_tournament_code(join_code, current_user, db)
+        return _redeem_tournament_code(join_code, current_user, db, body.age_disclosure_consent)
     return _redeem_chapter_code(join_code, current_user, db)
 
 
-def _redeem_tournament_code(join_code: JoinCode, current_user: User, db: Session) -> JoinRedeemResponse:
+def _redeem_tournament_code(
+    join_code: JoinCode, current_user: User, db: Session, age_disclosure_consent: bool,
+) -> JoinRedeemResponse:
     """Creates a bare TournamentMembership with no roles — staff assign roles
     afterward, and per-track participation comes from form write-through."""
     existing = (
@@ -114,12 +121,26 @@ def _redeem_tournament_code(join_code: JoinCode, current_user: User, db: Session
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Already a member of this tournament")
 
+    tournament = db.query(Tournament).filter(Tournament.id == join_code.tournament_id).first()
+    collects_age_flag = tournament is not None and (tournament.collect_is_over_18 or tournament.collect_is_over_21)
+    if collects_age_flag and not age_disclosure_consent:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "age_disclosure_required",
+                "message": "This tournament requires age disclosure consent to join.",
+            },
+        )
+
     membership = TournamentMembership(
         user_id=current_user.id,
         tournament_id=join_code.tournament_id,
         source="join_code",
         join_code_id=join_code.id,
     )
+    if collects_age_flag:
+        membership.age_disclosure = "consented"
+        membership.age_disclosure_at = datetime.now(timezone.utc)
     join_code.use_count += 1
 
     try:
