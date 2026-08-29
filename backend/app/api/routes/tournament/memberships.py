@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.display_config import apply_display_config
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, gate_age_flags, get_custom_form_answers, get_membership_by_user,
     resolve_memberships_or_users,
@@ -259,6 +260,7 @@ def set_my_age_disclosure(
 def get_membership(
     tournament_id: int,
     membership_id: int,
+    surface: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -266,7 +268,9 @@ def get_membership(
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
-    return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
+    data = gate_age_flags(m, resp.model_dump(mode="json"))
+    data = apply_display_config(m.tournament, surface, data)
+    return JSONResponse(data)
 
 
 # ---------------------------------------------------------------------------

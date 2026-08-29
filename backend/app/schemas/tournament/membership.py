@@ -136,6 +136,10 @@ class MembershipCustomAnswerRead(BaseModel):
     field_label: str
     question_type: str
     value: Any
+    # Not part of the original 1.2 shape — added for 3.3's display_config
+    # "form_field:{field_id}" hidden-item matching, which needs a stable id
+    # to key on (field_label is TD-editable display text, not stable).
+    field_id: str
 
 
 class _MembershipRolesMixin(BaseModel):

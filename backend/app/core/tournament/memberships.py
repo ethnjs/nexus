@@ -144,6 +144,7 @@ def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> li
             field_label=field.label,
             question_type=field.question_type,
             value=answer.value,
+            field_id=field.id,
         )
         for answer, field, form in rows
         if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)

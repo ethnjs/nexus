@@ -2,6 +2,7 @@
 from datetime import date, timedelta
 import pytest
 from fastapi.testclient import TestClient
+from app.core.tournament.display_config import MEMBERS_PANEL
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
     Form, FormAnswer, FormField, FormResponse,
@@ -431,7 +432,7 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
     custom = response.json()["custom_responses"]
     assert custom == [{
         "form_title": "Volunteer interest", "field_label": "Favorite color",
-        "question_type": "single_select_dropdown", "value": "opt_1",
+        "question_type": "single_select_dropdown", "value": "opt_1", "field_id": field.id,
     }]
 
 
@@ -461,6 +462,123 @@ def test_get_membership_custom_responses_excludes_unpublished_forms(client, td_u
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
     assert response.status_code == 200
     assert response.json()["custom_responses"] == []
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/{id}/?surface= — display_config
+# application (TASK.md 3.3)
+# ---------------------------------------------------------------------------
+
+def _set_display_config(db, tournament, surface, hidden):
+    tournament.display_config = {**(tournament.display_config or {}), surface: {"hidden": hidden}}
+    db.add(tournament)
+    db.commit()
+
+
+def test_get_membership_surface_hides_track_status(client, td_user, td_tournament, db):
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"track:{track.id}"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert response.json()["track_statuses"] == []
+
+
+def test_get_membership_surface_hides_lunch_category(client, td_user, td_tournament, db):
+    from app.models.models import TournamentMembershipLunch
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+    ))
+    db.commit()
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["lunch_category:entree"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert response.json()["lunch"] == []
+
+
+def test_get_membership_surface_hides_event_preference(client, td_user, td_tournament, db):
+    from app.models.models import TournamentMembershipEventPreference
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id)
+    db.add(TournamentMembershipEventPreference(
+        membership_id=m.id, tournament_event_id=event["id"], key="rank", rank=1,
+    ))
+    db.commit()
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["event_pref:rank"])
+
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert response.json()["event_preferences"] == []
+
+
+def test_get_membership_surface_hides_custom_response(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id, title="Volunteer interest")
+    field = _make_field(db, form, field_key="favorite_color", label="Favorite color")
+    _make_answer(db, u["id"], form, field, "opt_1")
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"form_field:{field.id}"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert response.json()["custom_responses"] == []
+
+
+def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament, db):
+    """No `surface` query param at all is a no-op — existing callers with no
+    opinion on filtering keep getting the full payload even if display_config
+    has hidden items configured for some other surface."""
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"track:{track.id}"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    assert len(response.json()["track_statuses"]) == 1
+
+
+def test_get_membership_surface_hiding_never_affects_age_flags(client, td_user, td_tournament, db):
+    """display_config must never become a second privacy mechanism — hiding
+    every namespaced item on a surface must not resurrect is_over_18/21 for a
+    member who hasn't consented (gate_age_flags still applies independently)."""
+    td_tournament.collect_is_over_18 = True
+    db.add(td_tournament)
+    db.commit()
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"], age_disclosure=None)
+    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["track:1", "lunch_category:entree", "event_pref:rank"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert "is_over_18" not in response.json()
 
 
 # ---------------------------------------------------------------------------
