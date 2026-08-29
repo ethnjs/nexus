@@ -320,26 +320,58 @@ field is archived or invalidated.
 
 ## Track status ordering
 
-Track status write-through is last-write-wins, and "last" is the order
-write-through runs, not submission order. Left unconstrained, a respondent
-editing an older form could demote a track that a newer form already set to
-`confirmed`.
+Track statuses live in `TournamentMembershipTrackStatus`, one row per
+(membership, track). Write-through **only ever upserts** — the rows are shared
+across questions and forms, so no field owns one and none can withdraw its
+contribution.
 
-Three rules narrow this to near-zero:
+Ordering is enforced by a transition rule rather than by comparing submission
+times, because the only damage an out-of-order write can do *is* a demotion:
+
+| stored → incoming | `interested` | `confirmed` | `declined` |
+|---|---|---|---|
+| *(unset)* | ✓ | ✓ | ✓ |
+| `interested` | ✓ | ✓ | ✓ |
+| `confirmed` | ✗ | ✓ | ✓ |
+| `declined` | ✗ | ✓ | ✓ |
+
+In one sentence: **a track never falls back to `interested` once it's moved
+past it.** `declined → confirmed` stays open so someone who changes their mind
+can commit without TD intervention. A refused write is skipped silently, not
+rejected — it's a legitimate outcome of the rules, not a client error.
+
+Three structural rules still apply, and the transition rule closes what they
+left open:
 
 1. **Forward-only write-through** — historical answers are never replayed.
-2. **Locked responses** — a respondent can only edit questions the TD flagged,
-   so no spontaneous edits to old forms.
-3. **Patch-scoped write-through** — an edit carries only the flagged fields,
-   so no other field's write-through re-fires.
+2. **Locked responses** — a respondent can only edit questions the TD flagged.
+3. **Patch-scoped write-through** — `PATCH` writes track statuses only for the
+   fields it actually carried. Unlike availability, there's no idempotent diff
+   to fall back on, so replaying an unpatched field would re-assert a status
+   the respondent didn't touch on this request. Availability keeps its
+   whole-response recompute; the two scopes deliberately differ.
 
-**Remaining exposure:** a TD raises a pending update on a track question in an
-*older* form, and the respondent's new answer overwrites a newer form's status.
-This requires a deliberate TD action on that specific question, so it's
-visible rather than silent — but it is not prevented.
+The exposure this used to name — a TD flagging a track question on an *older*
+form, whose answer then demotes a newer form's status — is closed by the table
+above, with no notion of "which response is newer" needed.
 
-Closing it fully needs write-through to record which response last set each
-track status and reject an out-of-order write.
+**Cost:** no form can walk a mistaken `confirmed` back down to `interested`.
+Correcting that needs a path that bypasses the guard; the planned member
+self-edit of their own membership is one, and `confirmed → declined` is
+already allowed without it.
+
+### Which field wins
+
+Two questions in one submission can name the same track. Field order in the
+form decides intent — later fields overwrite earlier ones — and the transition
+rule then decides whether that intent lands. Within a single
+`multi_select_checkbox`, validation already rejects two options assigning one
+track conflicting statuses, so only the cross-field case needs a rule.
+
+Provenance (`source_response_id`, `source_field_id`) is recorded for debugging
+only. It is not load-bearing: the transition rule, not the history, is what
+keeps writes ordered. A NULL `source_response_id` means the status did not come
+from a form.
 
 ## Out of scope
 
