@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import {
   usersApi, canonicalEventsApi, tournamentsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience,
-  MembershipFull,
+  MembershipFull, Tournament,
 } from "@/lib/api";
+import { Banner } from "@/components/ui/Banner";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import type { UserFull, UserMeFull } from "@/lib/api";
@@ -26,18 +27,35 @@ import { CustomResponsesSection } from "@/components/tournament/sections/CustomR
 import Link from "next/link";
 import { IconEdit } from "@/components/ui/Icons";
 
+function ageDisclosureBannerMessage(tournament: Tournament): string {
+  if (tournament.collect_is_over_18 && tournament.collect_is_over_21) {
+    return `${tournament.name} can see whether you're 18+ and 21+ — never your date of birth.`;
+  }
+  if (tournament.collect_is_over_21) {
+    return `${tournament.name} can see whether you're 21+ — never your date of birth.`;
+  }
+  return `${tournament.name} can see whether you're 18+ — never your date of birth.`;
+}
+
 // One membership's tournament sections — Age Flags alongside Availability/
 // Lunch/Event Preferences/Custom Responses, same components MemberPanel
 // uses. Labeled with the tournament name only when there's more than one
 // membership to tell apart (the common case, viewing one tournament, needs
 // no extra fetch to find out).
-function MembershipTournamentSections({ membership, tournamentName }: { membership: MembershipFull; tournamentName?: string }) {
+function MembershipTournamentSections({ membership, tournament, tournamentName }: {
+  membership: MembershipFull; tournament?: Tournament; tournamentName?: string;
+}) {
+  const collectsAgeFlag = !!tournament && (tournament.collect_is_over_18 || tournament.collect_is_over_21);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
       {tournamentName && (
         <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 700, color: "var(--color-text-primary)" }}>
           {tournamentName}
         </h2>
+      )}
+      {collectsAgeFlag && (
+        <Banner variant="info" message={ageDisclosureBannerMessage(tournament!)} />
       )}
       <ProfileCard>
         <PanelField label="Age Flags">
@@ -88,7 +106,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserFull | UserMeFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [memberships, setMemberships] = useState<MembershipFull[]>([]);
-  const [tournamentNames, setTournamentNames] = useState<Record<number, string>>({});
+  const [tournaments, setTournaments] = useState<Record<number, Tournament>>({});
   const [error, setError] = useState<string | null>(null);
   const [accessDenied, setAccessDenied] = useState(false);
 
@@ -126,16 +144,18 @@ export default function ProfilePage() {
     canonicalEventsApi.list().then(setEvents).catch(() => {});
   }, [authLoading, currentUser, profileId, router]);
 
-  // Tournament names for the section headings — only fetched when there's
+  // One fetch per unique tournament — needed for the age-disclosure banner's
+  // collect_is_over_18/21 (not on MembershipFullResponse) regardless of
+  // membership count, and doubles as the section-heading name when there's
   // more than one membership to tell apart.
   useEffect(() => {
-    if (memberships.length < 2) return;
+    if (memberships.length === 0) return;
     const uniqueIds = Array.from(new Set(memberships.map((m) => m.tournament_id)));
     Promise.all(uniqueIds.map((id) => tournamentsApi.get(id).catch(() => null)))
-      .then((tournaments) => {
-        const names: Record<number, string> = {};
-        tournaments.forEach((t, i) => { if (t) names[uniqueIds[i]] = t.name; });
-        setTournamentNames(names);
+      .then((results) => {
+        const byId: Record<number, Tournament> = {};
+        results.forEach((t, i) => { if (t) byId[uniqueIds[i]] = t; });
+        setTournaments(byId);
       });
   }, [memberships]);
 
@@ -254,7 +274,12 @@ export default function ProfilePage() {
         <ProfileHeader user={profile} showEditButton={isOwnProfile} />
 
         {memberships.map((m) => (
-          <MembershipTournamentSections key={m.id} membership={m} tournamentName={tournamentNames[m.tournament_id]} />
+          <MembershipTournamentSections
+            key={m.id}
+            membership={m}
+            tournament={tournaments[m.tournament_id]}
+            tournamentName={memberships.length > 1 ? tournaments[m.tournament_id]?.name : undefined}
+          />
         ))}
 
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
