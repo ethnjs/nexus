@@ -1,7 +1,7 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.tournament.role import RoleRead
 from app.schemas.tournament.track import MembershipTrackStatusRead
@@ -90,6 +90,35 @@ class MembershipEventPreferenceRead(BaseModel):
         ]
 
 
+class MembershipAvailabilityRead(BaseModel):
+    """One availability_{date} answer, resolved to its shift's label/start/end
+    — the row itself only carries the shift id, same reason
+    MembershipTrackStatusRead.from_row exists for track rows."""
+    shift_id: int
+    label: str
+    start: datetime
+    end: datetime
+
+    @classmethod
+    def from_row(cls, row) -> "MembershipAvailabilityRead":
+        return cls(
+            shift_id=row.tournament_shift_id,
+            label=row.tournament_shift.label,
+            start=row.tournament_shift.start,
+            end=row.tournament_shift.end,
+        )
+
+
+class MembershipLunchRead(BaseModel):
+    """One lunch_{date}_{category} answer. Fields already match the ORM row
+    1:1, so from_attributes handles this without a resolver classmethod."""
+    date: date
+    category: str
+    label: str
+
+    model_config = {"from_attributes": True}
+
+
 class _MembershipRolesMixin(BaseModel):
     """Shared roles handling for response schemas.
 
@@ -151,6 +180,10 @@ class MembershipFullResponse(_MembershipRolesMixin):
 
     track_statuses: list[MembershipTrackStatusRead] = []
     event_preferences: list[MembershipEventPreferenceRead] = []
+    # The ORM relationships are named availability_shifts/lunch_selections —
+    # validation_alias points from_attributes at the actual attribute names.
+    availability: list[MembershipAvailabilityRead] = Field(default=[], validation_alias="availability_shifts")
+    lunch: list[MembershipLunchRead] = Field(default=[], validation_alias="lunch_selections")
 
     user: UserFullResponse
 
@@ -172,4 +205,14 @@ class MembershipFullResponse(_MembershipRolesMixin):
     def _group_event_preferences(cls, v):
         if v and hasattr(v[0], "tournament_event_id"):
             return MembershipEventPreferenceRead.group_rows(v)
+        return v
+
+    # availability rows only carry a shift id — resolve the shift's
+    # label/start/end the same way _flatten_track_statuses resolves a track's
+    # name off the raw ORM rows.
+    @field_validator("availability", mode="before")
+    @classmethod
+    def _resolve_availability(cls, v):
+        if v and hasattr(v[0], "tournament_shift_id"):
+            return [MembershipAvailabilityRead.from_row(row) for row in v]
         return v

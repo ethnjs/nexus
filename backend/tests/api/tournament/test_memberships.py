@@ -299,6 +299,51 @@ def test_get_membership_includes_roles(client, td_user, td_tournament, db):
     assert [r["label"] for r in response.json()["roles"]] == ["Volunteer"]
 
 
+def test_get_membership_availability_and_lunch_empty(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["availability"] == []
+    assert data["lunch"] == []
+
+
+def test_get_membership_availability_and_lunch_populated(client, td_user, td_tournament, db):
+    from datetime import datetime
+    from app.models.models import (
+        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
+    )
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+
+    shift = TournamentShift(
+        tournament_id=td_tournament.id, label="Morning",
+        start=datetime(2026, 5, 21, 8, 0), end=datetime(2026, 5, 21, 12, 0),
+    )
+    db.add(shift)
+    db.flush()
+    db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    data = response.json()
+
+    assert len(data["availability"]) == 1
+    assert data["availability"][0]["shift_id"] == shift.id
+    assert data["availability"][0]["label"] == "Morning"
+
+    assert len(data["lunch"]) == 1
+    assert data["lunch"][0] == {"date": "2026-05-21", "category": "entree", "label": "Pizza"}
+
+
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/memberships/me/ — any member
 # ---------------------------------------------------------------------------
