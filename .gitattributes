@@ -1,0 +1,5 @@
+# Shell scripts must keep LF endings. Git's autocrlf would otherwise check them
+# out with CRLF on Windows, and bash fails on the shebang:
+#   bad interpreter: /usr/bin/env bash^M
+*.sh text eol=lf
+.githooks/* text eol=lf

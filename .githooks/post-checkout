@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+# Runs after `git worktree add` and after every branch checkout.
+#
+# $3 is 1 for a branch checkout, 0 for a file checkout (`git checkout -- path`).
+# Only the former can land us in a new worktree.
+[[ ${3:-0} == 1 ]] || exit 0
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+[[ -f "$root/scripts/setup-worktree-db.sh" ]] || exit 0
+
+# Never fail a checkout over dev-environment setup.
+bash "$root/scripts/setup-worktree-db.sh" || true
