@@ -4,6 +4,7 @@
 
 # Claude
 CLAUDE_OUTPUT_BEHAVIOR.md
+.claude/settings.local.json
 
 # Misc
 password.txt
