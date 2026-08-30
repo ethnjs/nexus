@@ -12,6 +12,10 @@ class Settings(BaseSettings):
 
     database_url: str = "postgresql://nexus:nexus@127.0.0.1:5432/nexus"
 
+    # Echo every SQL statement. Off by default — the seed INSERTs alone bury
+    # the request log at startup. Set SQL_ECHO=true in .env when debugging queries.
+    sql_echo: bool = False
+
     google_service_account_file: str = "./credentials.json"
     google_service_account_json: str = ""  # JSON string — used in production instead of file
 

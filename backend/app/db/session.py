@@ -16,7 +16,7 @@ if settings.database_url:
     engine = create_engine(
         settings.database_url,
         connect_args=connect_args,
-        echo=(settings.app_env == "development"),  # Log SQL in dev
+        echo=settings.sql_echo,  # opt-in via SQL_ECHO=true
         pool_pre_ping=True,  # Railway's proxy drops idle connections; ping before reuse
         pool_recycle=300,  # recycle before Railway's idle timeout kills the socket
     )
