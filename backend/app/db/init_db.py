@@ -42,7 +42,7 @@ def init_db() -> None:
     cfg = Config(str(BACKEND_ROOT / "alembic.ini"))
     cfg.set_main_option("script_location", str(BACKEND_ROOT / "alembic"))
     command.upgrade(cfg, "head")
-    print("✓ Database migrated to head.")
+    print("Database migrated to head.")
 
 
 def seed_dev_data(db: Session) -> None:
@@ -60,7 +60,7 @@ def seed_dev_data(db: Session) -> None:
 
     # Skip if already seeded
     if db.query(User).filter(User.email == "admin@nexus.dev").first():
-        print("✓ Dev seed already exists, skipping.")
+        print("Dev seed already exists, skipping.")
         return
 
     # Admin account — full site-wide access, bypasses all tournament checks.
@@ -90,8 +90,8 @@ def seed_dev_data(db: Session) -> None:
 
     db.commit()
 
-    print("✓ Seeded: admin@nexus.dev / admin1234  (role=admin)")
-    print("✓ Seeded: user1@nexus.dev .. user15@nexus.dev / user1234  (role=user)")
+    print("Seeded: admin@nexus.dev / admin1234  (role=admin)")
+    print("Seeded: user1@nexus.dev .. user15@nexus.dev / user1234  (role=user)")
 
 
 if __name__ == "__main__":

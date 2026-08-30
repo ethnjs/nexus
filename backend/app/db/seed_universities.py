@@ -47,7 +47,7 @@ def seed_universities(db: Session) -> None:
     db.execute(stmt)
     db.commit()
 
-    print(f"✓ Seeded/verified {len(UNIVERSITIES)} universities.")
+    print(f"Seeded/verified {len(UNIVERSITIES)} universities.")
 
 
 if __name__ == "__main__":

@@ -232,7 +232,7 @@ def seed_events_and_categories(db: Session) -> None:
     db.execute(stmt)
     db.commit()
 
-    print(f"✓ Seeded/verified {len(CATEGORIES)} categories and {len(EVENTS)} events.")
+    print(f"Seeded/verified {len(CATEGORIES)} categories and {len(EVENTS)} events.")
 
 
 if __name__ == "__main__":
