@@ -50,7 +50,7 @@ export const PRESETS: Record<PresetKind, PresetMeta> = {
   },
 };
 
-const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})$/;
+const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})(?:_([a-z0-9_]+))?$/;
 const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_([a-z0-9_]+)$/;
 const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
 const TRACK_STATUS_FIELD_KEY_PATTERN = /^track_status_([a-z0-9_]+)$/;
@@ -73,16 +73,22 @@ export function activePresetKind(fieldKey: string): PresetKind | null {
   return null;
 }
 
-// availability_{YYYYMMDD}
-export function parseAvailabilityFieldKey(fieldKey: string): { date: string } {
+// availability_{YYYYMMDD}[_{suffix}] — the suffix is optional, TD-typed free
+// text (slugified), used only to let two fields share the same date across
+// different forms without colliding on field_key (see
+// backend/app/core/form/validation.py's AVAILABILITY_FIELD_KEY_PATTERN).
+export function parseAvailabilityFieldKey(fieldKey: string): { date: string; suffix: string } {
   const match = AVAILABILITY_FIELD_KEY_PATTERN.exec(fieldKey);
-  if (!match) return { date: "" };
-  const [, y, m, d] = match;
-  return { date: `${y}-${m}-${d}` };
+  if (!match) return { date: "", suffix: "" };
+  const [, y, m, d, suffix] = match;
+  return { date: `${y}-${m}-${d}`, suffix: suffix ?? "" };
 }
 
-export function buildAvailabilityFieldKey(date: string): string {
-  return date ? `availability_${date.replaceAll("-", "")}` : "availability_";
+export function buildAvailabilityFieldKey(date: string, suffix: string = ""): string {
+  if (!date) return "availability_";
+  const slug = slugifyFieldKeyPart(suffix);
+  const base = `availability_${date.replaceAll("-", "")}`;
+  return slug ? `${base}_${slug}` : base;
 }
 
 // event_preference_{suffix} — the suffix is TD-typed free text (slugified),

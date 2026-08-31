@@ -282,18 +282,44 @@ function DayPicker({ label, date, tournamentDates, onChange, error }: {
   );
 }
 
+// Local suffix state, synced FROM field_key but not read straight back out
+// of it on every keystroke — same reasoning as LunchParams' category below.
+// Unlike lunch's category, the suffix here is optional: it only exists to
+// disambiguate two fields sharing a date across different forms, so leaving
+// it blank is a valid, complete field_key on its own.
 function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors }: {
   field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[]; showErrors: boolean;
 }) {
-  const { date } = parseAvailabilityFieldKey(field.field_key);
+  const parsed = parseAvailabilityFieldKey(field.field_key);
+  const [suffix, setSuffixState] = useState(parsed.suffix);
+
+  function setDate(newDate: string) {
+    onFieldChange({ field_key: buildAvailabilityFieldKey(newDate, suffix) });
+  }
+
+  function setSuffix(newSuffix: string) {
+    setSuffixState(newSuffix);
+    onFieldChange({ field_key: buildAvailabilityFieldKey(parsed.date, newSuffix) });
+  }
+
   return (
-    <DayPicker
-      label="Date"
-      date={date}
-      tournamentDates={tournamentDates}
-      onChange={(newDate) => onFieldChange({ field_key: buildAvailabilityFieldKey(newDate) })}
-      error={showErrors && !date ? "Date is required." : undefined}
-    />
+    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+      <DayPicker
+        label="Date"
+        date={parsed.date}
+        tournamentDates={tournamentDates}
+        onChange={setDate}
+        error={showErrors && !parsed.date ? "Date is required." : undefined}
+      />
+      <Input
+        label="Suffix (optional)"
+        placeholder="e.g. confirmation"
+        value={suffix}
+        onChange={(e) => setSuffix(e.target.value)}
+        size="sm"
+        fullWidth
+      />
+    </div>
   );
 }
 

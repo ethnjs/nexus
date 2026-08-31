@@ -21,12 +21,18 @@ from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
-# availability_{date}, e.g. "availability_20260315" — one question per date,
-# but every matching field on a tournament writes into the same centralized
-# TournamentMembershipAvailability pool (see write_through.sync_availability
-# and forms.py's _write_through_reserved_fields), so the date isn't used to
-# scope storage, only to keep field_keys distinct per question.
-AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d{8})$")
+# availability_{date}[_{suffix}], e.g. "availability_20260315" or
+# "availability_20260315_judges" — every matching field on a tournament
+# writes into the same centralized TournamentMembershipAvailability pool
+# (see write_through.sync_availability and forms.py's
+# _write_through_reserved_fields), so neither the date nor the suffix scopes
+# storage. The date still pins which day's shifts a given field's
+# write-through may touch (see validate_availability_options). The suffix is
+# optional and purely for field_key uniqueness — it's what lets two different
+# forms each ask about the same date (e.g. a general form and a judges-only
+# form both covering March 15) without colliding on field_key, which must be
+# unique per tournament across every form.
+AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d{8})(?:_([a-z0-9_]+))?$")
 AVAILABILITY_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
 # event_preference_{suffix}, e.g. "event_preference_morning" — locked prefix,
