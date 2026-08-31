@@ -227,8 +227,39 @@ class TestResolveAvailabilityOptions:
 
         options = resolve_field_options(db, field)
         assert options == [
-            {"option_id": "opt_1", "label": "Saturday", "value": [{"id": shift.id, "label": "Saturday", "start": start, "end": end}]}
+            {
+                "option_id": "opt_1", "label": "Saturday",
+                "value": [{"id": shift.id, "label": "Saturday", "start": start, "end": end}],
+                "next_field_id": None, "action": None,
+            }
         ]
+
+    def test_branching_survives_resolution(self, db, td_user, td_tournament):
+        # Regression: the three reserved-key branches used to hand-roll a
+        # bare {option_id, label, value} dict, silently dropping
+        # next_field_id/action from the respondent-facing render even though
+        # they're stored and round-trip fine through the builder (which
+        # reads raw=true, skipping this resolver entirely).
+        form = _make_form(db, td_user, td_tournament)
+        shift = _make_shift(
+            db, td_tournament, "Saturday",
+            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+        )
+        other = _make_field(db, form, field_key="favorite_color", order=2)
+        field = _make_field(
+            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            config={"options": [
+                {"option_id": "opt_1", "value": [shift.id], "label": "Yes", "is_archived": False, "next_field_id": other.id},
+                {"option_id": "opt_2", "value": [shift.id], "label": "No", "is_archived": False, "action": "submit_form"},
+            ]},
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options[0]["next_field_id"] == other.id
+        assert options[0]["action"] is None
+        assert options[1]["next_field_id"] is None
+        assert options[1]["action"] == "submit_form"
 
     def test_grouped_shifts_resolve_to_one_entry_each(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -257,6 +288,7 @@ class TestResolveAvailabilityOptions:
                     {"id": morning.id, "label": "Morning", "start": morning_start, "end": morning_end},
                     {"id": afternoon.id, "label": "Afternoon", "start": afternoon_start, "end": afternoon_end},
                 ],
+                "next_field_id": None, "action": None,
             }
         ]
 
@@ -301,6 +333,7 @@ class TestResolveAvailabilityOptions:
                 "shifts": [{"id": shift.id, "label": "Saturday", "start": shift.start, "end": shift.end}],
                 "track_statuses": [{"id": track.id, "name": "Day 1", "status": "interested"}],
             },
+            "next_field_id": None, "action": None,
         }]
 
     def test_non_availability_field_returns_raw_options(self, db, td_user, td_tournament):
@@ -345,6 +378,7 @@ class TestResolveTrackStatusOptions:
                 {"id": test_writing.id, "name": "Test Writing", "status": "confirmed"},
                 {"id": day_one.id, "name": "Day 1", "status": "interested"},
             ],
+            "next_field_id": None, "action": None,
         }]
 
 
@@ -372,6 +406,7 @@ class TestResolveEventPreferenceOptions:
                     {"id": anat.id, "name": "Anatomy and Physiology", "division": "B"},
                     {"id": disease.id, "name": "Disease Detectives", "division": "C"},
                 ],
+                "next_field_id": None, "action": None,
             }
         ]
 

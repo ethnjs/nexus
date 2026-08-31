@@ -336,6 +336,15 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
         "option_id": option["option_id"],
         "label": option["label"],
         "value": resolved_value,
+        # Only single_select_radio ever reaches here with these set (the
+        # other allowed type, multi_select_checkbox, doesn't support
+        # branching — see BRANCHING_QUESTION_TYPES) — carried through
+        # unconditionally anyway so a respondent's branching walk sees the
+        # same jump target the builder round-trips via raw=true. Omitting
+        # them here was a bug: they used to just vanish from this response,
+        # silently breaking branching for every availability field that had it.
+        "next_field_id": option.get("next_field_id"),
+        "action": option.get("action"),
     }
 
 
@@ -364,6 +373,11 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
             {"id": event_id, "name": name, "division": division}
             for event_id, name, division in events
         ],
+        # See _resolve_availability_option's identical fields — same bug,
+        # same fix. Only single_select_dropdown (of event_preference's three
+        # allowed types) ever has these set.
+        "next_field_id": option.get("next_field_id"),
+        "action": option.get("action"),
     }
 
 
@@ -395,6 +409,11 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
                 "option_id": option["option_id"],
                 "label": option["label"],
                 "value": _resolve_track_statuses(db, option.get("value") or []),
+                # See _resolve_availability_option's identical fields — same
+                # bug, same fix. Only single_select_radio (of track_status's
+                # two allowed types) ever has these set.
+                "next_field_id": option.get("next_field_id"),
+                "action": option.get("action"),
             }
             for option in options
         ]
