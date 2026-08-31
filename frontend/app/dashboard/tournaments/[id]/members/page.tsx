@@ -32,15 +32,12 @@ import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
 import { DisplayConfigModal } from "@/components/tournament/DisplayConfigModal";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
-import { Badge } from "@/components/ui/Badge";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
-// Name / Email / Phone / Account Age / Join Date / Join Method / Tracks / Roles / Actions
-const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 130px 2.6fr 70px";
+// Name / Email / Phone / Account Age / Join Date / Join Method / Roles / Actions
+const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 2.6fr 70px";
 // Roles dropped — the fr tracks below just absorb its share automatically.
-// Tracks stays, same as Email/Phone/Method — it's Roles that's the odd one
-// out here, wide enough to need the room a docked panel takes back.
-const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 130px 70px";
+const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
@@ -89,23 +86,6 @@ function DurationCell({ iso }: { iso: string }) {
         </span>
       </Tooltip>
     </span>
-  );
-}
-
-// Compact analog of MemberPanel's Tracks field — wrapped Badges, "—" when
-// none (already filtered server-side by display_config, see 3.5's Ledger).
-function TracksCell({ trackStatuses }: { trackStatuses: MembershipSlim["track_statuses"] }) {
-  if (trackStatuses.length === 0) {
-    return <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>—</span>;
-  }
-  return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: "4px" }}>
-      {trackStatuses.map((ts) => (
-        <Badge key={ts.track_id} variant={ts.status} style={{ opacity: ts.is_archived ? 0.55 : undefined }}>
-          {ts.name}
-        </Badge>
-      ))}
-    </div>
   );
 }
 
@@ -200,7 +180,6 @@ function MemberRow({
       <DurationCell iso={user.created_at} />
       <DurationCell iso={membership.created_at} />
       <JoinMethodCell membership={membership} style={{ justifySelf: "center" }} />
-      <TracksCell trackStatuses={membership.track_statuses} />
       {!panelOpen && (
         // Stops row clicks (select toggle / focus switch) from firing when
         // the intent was to pick a role chip.
@@ -563,7 +542,6 @@ export default function MembersPage() {
               <span style={{ textAlign: "center" }}>Account Age</span>
               <span style={{ textAlign: "center" }}>Joined</span>
               <span style={{ textAlign: "center" }}>Method</span>
-              <span>Tracks</span>
               {!panelOpen && <span>Roles</span>}
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
@@ -619,9 +597,6 @@ export default function MembersPage() {
           surface={MEMBERS_PANEL}
           title="Configure member panel"
           onSaved={() => {
-            // The table's Tracks column reads off the same filtered list
-            // response (3.5), so a save needs a refetch here too, not just
-            // the panel remount below.
             membershipsApi.list(tournamentId)
               .then(setMembers)
               .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
