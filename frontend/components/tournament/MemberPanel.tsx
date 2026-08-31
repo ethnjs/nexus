@@ -35,6 +35,9 @@ interface MemberPanelProps {
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   canEditMember: (target: MembershipSlim) => boolean;
+  /** Tournament's age-disclosure toggles — the Age field is dropped entirely when neither is on, since there's nothing to show for any member. */
+  collectIsOver18: boolean;
+  collectIsOver21: boolean;
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipSlim) => void;
@@ -52,7 +55,8 @@ interface MemberPanelProps {
 // page that lists members (roster, event rosters, etc.) behind an
 // "expand" action.
 export function MemberPanel({
-  tournamentId, membershipId, allRoles, canTouchRole, canEditMember, onClose, onUpdated,
+  tournamentId, membershipId, allRoles, canTouchRole, canEditMember,
+  collectIsOver18, collectIsOver21, onClose, onUpdated,
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
@@ -148,11 +152,13 @@ export function MemberPanel({
                 </PanelField>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <PanelField label="Age Flags">
-                  <AgeFlagsBadges isOver18={full.is_over_18} isOver21={full.is_over_21} />
-                </PanelField>
-              </div>
+              {(collectIsOver18 || collectIsOver21) && (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                  <PanelField label="Age">
+                    <AgeFlagsBadges isOver18={full.is_over_18} isOver21={full.is_over_21} />
+                  </PanelField>
+                </div>
+              )}
             </ProfileCard>
 
             <AvailabilitySection availability={full.availability} />

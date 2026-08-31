@@ -337,6 +337,8 @@ export default function MembersPage() {
           allRoles={allRoles}
           canTouchRole={canTouchRoleStable}
           canEditMember={canEditMemberStable}
+          collectIsOver18={!!selectedTournament?.collect_is_over_18}
+          collectIsOver21={!!selectedTournament?.collect_is_over_21}
           onClose={clearFocus}
           onUpdated={handleMemberUpdated}
           onPrev={() => prevId !== null && focusItem(prevId)}
@@ -360,6 +362,8 @@ export default function MembersPage() {
           allRoles={allRoles}
           canTouchRole={canTouchRoleStable}
           canEditMember={canEditMemberStable}
+          collectIsOver18={!!selectedTournament?.collect_is_over_18}
+          collectIsOver21={!!selectedTournament?.collect_is_over_21}
           onClose={clearSelection}
           onUpdated={handleMemberUpdated}
         />,
