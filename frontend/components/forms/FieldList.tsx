@@ -51,6 +51,7 @@ export function FieldList({ form }: { form: Form }) {
       .map((f) => ({
         ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
         branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+        originalFieldKey: f.field_key,
       }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
@@ -320,6 +321,7 @@ export function FieldList({ form }: { form: Form }) {
       showDescription: !!field.description,
       branchingEnabled: deriveBranchingEnabled(field),
       customValuesEnabled: deriveCustomValuesEnabled(field),
+      originalFieldKey: field.field_key,
     };
     setFields((prev) => [...prev, restored]);
     setExpandedKey(restored.clientKey);
@@ -335,6 +337,7 @@ export function FieldList({ form }: { form: Form }) {
       clientKey: crypto.randomUUID(),
       id: null,
       field_key: "",
+      originalFieldKey: "",
       config: source.config?.options
         ? { ...source.config, options: (source.config.options as EditableOption[]).map((o) => ({ ...o, clientKey: crypto.randomUUID(), option_id: "" })) }
         : source.config,
@@ -441,6 +444,7 @@ export function FieldList({ form }: { form: Form }) {
         .map((f) => ({
           ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
           branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+          originalFieldKey: f.field_key,
         }));
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
@@ -463,7 +467,16 @@ export function FieldList({ form }: { form: Form }) {
           `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`
         );
       } else {
-        validation.handle422(err);
+        const issues = validation.handle422(err, fields);
+        if (issues.length > 0) {
+          // Same "expand, scroll, flag the popover" treatment a client-caught
+          // issue gets on Save — see handleSave above. A server-caught
+          // collision only ever produces the one issue handle422 already
+          // resolved to a real field, so issues[0] is it.
+          setExpandedKey(issues[0].clientKey);
+          setPendingScrollKey(issues[0].clientKey);
+          setSaveAttempt((n) => n + 1);
+        }
       }
     } finally {
       notifyRef.current = {};
@@ -585,6 +598,7 @@ export function FieldList({ form }: { form: Form }) {
                 tournament={tournament}
                 shifts={shifts}
                 allFields={fields}
+                usedFieldKeys={usedFieldKeys}
                 errors={validation.errorsFor(field.clientKey)}
                 allowArchive={hasResponses}
               />

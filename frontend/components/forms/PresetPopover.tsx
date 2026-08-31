@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
@@ -12,7 +12,7 @@ import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { FormQuestionType } from "@/lib/api";
 import { EditableField } from "@/lib/forms/editableField";
 import {
-  PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError,
+  PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError, isFieldKeyError,
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
   parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
   parseLunchFieldKey, buildLunchFieldKey,
@@ -88,10 +88,33 @@ export function PresetPopover({
   onOpenChange: (open: boolean) => void;
 }) {
   const presetKind = activePresetKind(field.field_key);
-  const presetError = errors.find(isPresetError);
+  const incompleteError = errors.find(isPresetError);
+  // A field_key collision with another form's field is only ever caught at
+  // Save (FieldKeyPopover's own client-side blur check can't see across
+  // forms) — see useFormValidation's handle422. Once this field is
+  // preset-keyed, that's a preset-parameter problem, not a plain-key one, so
+  // it's this popover's to show rather than FieldKeyPopover's (which locks
+  // its input the moment a preset is active).
+  const rawDuplicateError = presetKind ? errors.find(isFieldKeyError) : undefined;
+  // Unlike incompleteError (whose displayed text is re-derived live per input
+  // — see AvailabilityParams etc.), the collision message itself is a static
+  // snapshot from the last failed Save, naming whatever key was rejected
+  // then. Once the TD changes any preset parameter that key is stale, so it's
+  // dismissed the same way FieldKeyPopover clears its own localError: on the
+  // next field_key change, not on the next validate() pass.
+  const [dupDismissed, setDupDismissed] = useState(false);
+  const prevFieldKeyRef = useRef(field.field_key);
+  useEffect(() => {
+    if (field.field_key !== prevFieldKeyRef.current) {
+      prevFieldKeyRef.current = field.field_key;
+      setDupDismissed(true);
+    }
+  }, [field.field_key]);
+  const duplicateError = dupDismissed ? undefined : rawDuplicateError;
+  const keyError = incompleteError ?? duplicateError;
 
   useEffect(() => {
-    if (saveAttempt > 0 && presetError) onOpenChange(true);
+    if (saveAttempt > 0 && (incompleteError || rawDuplicateError)) { onOpenChange(true); setDupDismissed(false); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveAttempt]);
 
@@ -149,7 +172,7 @@ export function PresetPopover({
     <FormPopover
       trigger={
         <Button
-          type="button" variant={presetError ? "danger" : open ? "primary" : "secondary"} size="sm" iconOnly title="Presets"
+          type="button" variant={keyError ? "danger" : open ? "primary" : "secondary"} size="sm" iconOnly title="Presets"
         >
           <IconPresets size={14} />
         </Button>
@@ -191,9 +214,14 @@ export function PresetPopover({
               )}
             </div>
           </div>
+          {duplicateError && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+              {duplicateError}
+            </p>
+          )}
           {presetKind === "availability" && (
             <>
-              <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+              <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!incompleteError} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
                 <Toggle
@@ -221,13 +249,13 @@ export function PresetPopover({
             </>
           )}
           {presetKind === "event_preference" && (
-            <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
+            <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!incompleteError} />
           )}
           {presetKind === "lunch" && (
-            <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+            <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!incompleteError} />
           )}
           {presetKind === "track_status" && (
-            <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
+            <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!incompleteError} />
           )}
         </div>
       )}

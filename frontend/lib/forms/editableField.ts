@@ -14,12 +14,18 @@ import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 // survive FieldToolbar remounting on every expanded-field switch — see
 // deriveBranchingEnabled/deriveCustomValuesEnabled below for how a loaded
 // field's initial value is worked out from its actual option data.
+// originalFieldKey is the key this field is already known to own on the
+// server ("" for a field with no id, which can't own one yet) — the fixed
+// point a live cross-form duplicate check (FieldCard's duplicateKey) needs
+// to exclude, since usedFieldKeys otherwise always contains an unedited
+// existing field's own key right alongside anyone else's.
 export type EditableField = Omit<FormField, "id"> & {
   id: string | null;
   clientKey: string;
   showDescription: boolean;
   branchingEnabled: boolean;
   customValuesEnabled: boolean;
+  originalFieldKey: string;
 };
 
 // A field's options actually use branching/custom values yet — used to seed
@@ -55,6 +61,7 @@ export function newField(order: number): EditableField {
     showDescription: false,
     branchingEnabled: false,
     customValuesEnabled: false,
+    originalFieldKey: "",
     form_id: "",
     field_key: "",
     order,

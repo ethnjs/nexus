@@ -92,6 +92,14 @@ export function issuesFor(field: ValidatableField): string[] {
   return issues;
 }
 
+// Matches the 409 forms.py raises on a Save-time field_key collision
+// (`field_key '{key}' is already in use — pick a more distinct label`) —
+// this can only fire on a key that collides with a *different* form's
+// field, since same-form collisions are already caught client-side by
+// validateFields above. Returns the colliding key, or null if the message
+// isn't this specific error.
+const DUPLICATE_FIELD_KEY_PATTERN = /^field_key '([^']+)' is already in use/;
+
 function validateFields(fields: ValidatableField[]): FieldValidationIssue[] {
   const issues: FieldValidationIssue[] = [];
   const keyCounts = new Map<string, number>();
@@ -146,12 +154,27 @@ export function useFormValidation() {
     setSaveError("");
   }
 
-  function handle422(e: unknown): boolean {
-    if (e instanceof ApiError) {
-      setSaveError(e.message);
-      return true;
+  // Routes a save-time 409 to the same per-field display client-caught
+  // issues get (expand/scroll/open-popover, via the returned issue's
+  // clientKey — see FieldList's caller) when it's a recognized field_key
+  // collision and the offending field can still be found in the current
+  // draft; anything else falls back to the plain save-bar banner. `fields`
+  // is optional so callers with nothing better than an ApiError (no staged
+  // field list in scope) still get the banner behavior this used to always have.
+  function handle422(e: unknown, fields?: ValidatableField[]): FieldValidationIssue[] {
+    if (!(e instanceof ApiError)) return [];
+    const dupKey = DUPLICATE_FIELD_KEY_PATTERN.exec(e.message)?.[1];
+    const target = dupKey && fields ? fields.find((f) => effectiveFieldKey(f) === dupKey) : undefined;
+    if (target) {
+      const issues: FieldValidationIssue[] = [
+        { clientKey: target.clientKey, message: "This field key is already used by another question." },
+      ];
+      setValidationErrors(issues);
+      setSaveError("");
+      return issues;
     }
-    return false;
+    setSaveError(e.message);
+    return [];
   }
 
   function renderErrorBanner() {
