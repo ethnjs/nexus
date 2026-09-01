@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { Badge } from "@/components/ui/Badge";
 import { formatTime } from "@/lib/timeFormat";
 
@@ -27,6 +26,12 @@ interface AvailabilityTimelineProps {
   dayEnd: number;
   /** The member's shifts on this day, in epoch ms. */
   shifts: TimelineShift[];
+  /**
+   * Hover is owned by the caller so the badge list and the bar highlight
+   * together — either one can be the thing the cursor is actually over.
+   */
+  hoveredId: number | null;
+  onHover: (id: number | null) => void;
 }
 
 const HOUR_MS = 3600000;
@@ -61,9 +66,7 @@ function timeRange(span: Span): string {
   return `${formatTime(new Date(span.start).toISOString())}–${formatTime(new Date(span.end).toISOString())}`;
 }
 
-export function AvailabilityTimeline({ dayStart, dayEnd, shifts }: AvailabilityTimelineProps) {
-  const [hovered, setHovered] = useState<TimelineShift | null>(null);
-
+export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover }: AvailabilityTimelineProps) {
   const total = dayEnd - dayStart;
   if (total <= 0) return null;
 
@@ -74,6 +77,7 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts }: AvailabilityT
   const clamped = shifts
     .map((s) => ({ ...s, start: Math.max(s.start, dayStart), end: Math.min(s.end, dayEnd) }))
     .filter((s) => s.end > s.start);
+  const hovered = clamped.find((s) => s.id === hoveredId) ?? null;
 
   return (
     <div style={{
@@ -129,12 +133,12 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts }: AvailabilityT
         {clamped.map((shift) => (
           <div
             key={shift.id}
-            onMouseEnter={() => setHovered(shift)}
-            onMouseLeave={() => setHovered((h) => (h?.id === shift.id ? null : h))}
+            onMouseEnter={() => onHover(shift.id)}
+            onMouseLeave={() => onHover(null)}
             style={{
               position: "absolute", top: 0, bottom: 0,
               left: pct(shift.start - dayStart), width: pct(shift.end - shift.start),
-              background: hovered?.id === shift.id ? GREEN_HOVER : "transparent",
+              background: hoveredId === shift.id ? GREEN_HOVER : "transparent",
               transition: "background 120ms ease",
             }}
           />

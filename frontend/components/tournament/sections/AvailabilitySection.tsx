@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { MembershipAvailability, TournamentShift } from "@/lib/api";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
@@ -58,6 +59,51 @@ function toTimelineShifts(slots: MembershipAvailability[]): TimelineShift[] {
   }));
 }
 
+// One day's row: badges on the left, timeline on the right, sharing a single
+// hovered-shift state so pointing at either one highlights the other.
+function AvailabilityDay({ day, slots, offered }: {
+  day: string;
+  slots: MembershipAvailability[];
+  offered: TournamentShift[] | undefined;
+}) {
+  const [hoveredId, setHoveredId] = useState<number | null>(null);
+
+  const barWindow = hourWindow(offered?.length ? offered : slots);
+  const lastEnd = slots.reduce((latest, s) => (s.end > latest ? s.end : latest), slots[0].end);
+
+  return (
+    <div style={{ display: "flex", alignItems: "stretch", gap: "16px" }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <PanelField label={`${formatDayLabel(day)}, ${formatTime(slots[0].start)}–${formatTime(lastEnd)}`}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+            {slots.map((slot) => (
+              <Badge
+                key={slot.shift_id}
+                // "confirmed" is the design system's green — reusing it keeps
+                // the highlighted badge visually tied to its green bar block
+                // without a one-off style.
+                variant={hoveredId === slot.shift_id ? "confirmed" : "default"}
+                title={`${formatTime(slot.start)}–${formatTime(slot.end)}`}
+                onMouseEnter={() => setHoveredId(slot.shift_id)}
+                onMouseLeave={() => setHoveredId(null)}
+              >
+                {slot.label}
+              </Badge>
+            ))}
+          </div>
+        </PanelField>
+      </div>
+      <AvailabilityTimeline
+        dayStart={barWindow.start}
+        dayEnd={barWindow.end}
+        shifts={toTimelineShifts(slots)}
+        hoveredId={hoveredId}
+        onHover={setHoveredId}
+      />
+    </div>
+  );
+}
+
 // Self-contained ProfileCard — renders nothing when there's no data, so
 // callers can drop this in unconditionally (MemberPanel, and the member's
 // own profile page, once per tournament membership).
@@ -72,36 +118,9 @@ export function AvailabilitySection({ availability, allShifts }: AvailabilitySec
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {Array.from(groupByDay(availability).entries())
             .sort(([a], [b]) => a.localeCompare(b))
-            .map(([day, slots]) => {
-              const offered = offeredByDay.get(day);
-              const barWindow = hourWindow(offered?.length ? offered : slots);
-              const lastEnd = slots.reduce((latest, s) => (s.end > latest ? s.end : latest), slots[0].end);
-
-              return (
-                <div key={day} style={{ display: "flex", alignItems: "stretch", gap: "16px" }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <PanelField label={`${formatDayLabel(day)}, ${formatTime(slots[0].start)}–${formatTime(lastEnd)}`}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                        {slots.map((slot) => (
-                          <Badge
-                            key={slot.shift_id}
-                            variant="default"
-                            title={`${formatTime(slot.start)}–${formatTime(slot.end)}`}
-                          >
-                            {slot.label}
-                          </Badge>
-                        ))}
-                      </div>
-                    </PanelField>
-                  </div>
-                  <AvailabilityTimeline
-                    dayStart={barWindow.start}
-                    dayEnd={barWindow.end}
-                    shifts={toTimelineShifts(slots)}
-                  />
-                </div>
-              );
-            })}
+            .map(([day, slots]) => (
+              <AvailabilityDay key={day} day={day} slots={slots} offered={offeredByDay.get(day)} />
+            ))}
         </div>
       </SectionHeading>
     </ProfileCard>
