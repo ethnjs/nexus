@@ -82,7 +82,7 @@ class MembershipEventPreferenceRead(BaseModel):
                 events=[
                     MembershipEventPreferenceEventRead(
                         id=row.tournament_event_id,
-                        name=row.tournament_event.name,
+                        name=row.tournament_event.display_name,
                         division=row.tournament_event.division,
                         rank=row.rank,
                     )

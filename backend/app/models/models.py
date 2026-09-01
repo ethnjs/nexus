@@ -605,6 +605,14 @@ class TournamentEvent(Base):
         "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
     )
 
+    @property
+    def display_name(self) -> str | None:
+        """The name to show for this event. `name` is only populated for
+        custom (event_id-less) events — a catalog-linked one carries its name
+        on the joined Event row, so reading `.name` directly renders every
+        catalog event nameless."""
+        return self.name or (self.event.name if self.event else None)
+
     __table_args__ = (
         Index(
             "uq_tournament_event_catalog_division",

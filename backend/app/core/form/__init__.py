@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -360,8 +360,12 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
     if not isinstance(value, list):
         return option
 
+    # Whole rows rather than a column tuple: display_name has to fall back to
+    # the joined catalog Event's name, which a bare TournamentEvent.name
+    # select can't see.
     events = (
-        db.query(TournamentEvent.id, TournamentEvent.name, TournamentEvent.division)
+        db.query(TournamentEvent)
+        .options(joinedload(TournamentEvent.event))
         .filter(TournamentEvent.id.in_(value))
         .order_by(TournamentEvent.id)
         .all()
@@ -370,8 +374,8 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
         "option_id": option["option_id"],
         "label": option["label"],
         "value": [
-            {"id": event_id, "name": name, "division": division}
-            for event_id, name, division in events
+            {"id": e.id, "name": e.display_name, "division": e.division}
+            for e in events
         ],
         # See _resolve_availability_option's identical fields — same bug,
         # same fix. Only single_select_dropdown (of event_preference's three
