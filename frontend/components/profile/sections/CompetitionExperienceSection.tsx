@@ -1,3 +1,4 @@
+import { SectionHeading } from "@/components/profile/SectionHeading";
 import {
   CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, ExperienceTableMode,
   competitionExperienceToDraft,
@@ -33,13 +34,7 @@ export function CompetitionExperienceSection({
   );
 
   return (
-    <div>
-      <h3 style={{
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-        color: "var(--color-text-primary)", marginBottom: "16px",
-      }}>
-        Competition Experience
-      </h3>
+    <SectionHeading title="Competition Experience">
       <CompetitionExperienceSpreadsheet
         mode={mode}
         rows={rows}
@@ -48,6 +43,6 @@ export function CompetitionExperienceSection({
         onUpdate={onUpdate}
         onDelete={onDelete}
       />
-    </div>
+    </SectionHeading>
   );
 }

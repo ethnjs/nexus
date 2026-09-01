@@ -2,7 +2,8 @@
 
 import { MembershipCustomAnswer } from "@/lib/api";
 import { ProfileCard } from "@/components/profile/ProfileCard";
-import { PanelField } from "@/components/tournament/PanelField";
+import { SectionHeading } from "@/components/profile/SectionHeading";
+import { PanelField, FieldValue, FieldGrid } from "@/components/profile/PanelField";
 
 interface CustomResponsesSectionProps {
   customResponses: MembershipCustomAnswer[];
@@ -37,33 +38,27 @@ export function CustomResponsesSection({ customResponses }: CustomResponsesSecti
 
   return (
     <ProfileCard>
-      <h3 style={{
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-        color: "var(--color-text-primary)", marginBottom: "4px",
-      }}>
-        Custom Responses
-      </h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        {groupByForm(customResponses).map(([formTitle, answers]) => (
-          <div key={formTitle}>
-            <div style={{
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600,
-              color: "var(--color-text-secondary)", marginBottom: "8px",
-            }}>
-              {formTitle}
+      <SectionHeading title="Custom Responses">
+        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {groupByForm(customResponses).map(([formTitle, answers]) => (
+            <div key={formTitle}>
+              <div style={{
+                fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600,
+                color: "var(--color-text-secondary)", marginBottom: "8px",
+              }}>
+                {formTitle}
+              </div>
+              <FieldGrid>
+                {answers.map((a, i) => (
+                  <PanelField key={i} label={a.field_label}>
+                    <FieldValue>{formatValue(a.value)}</FieldValue>
+                  </PanelField>
+                ))}
+              </FieldGrid>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-              {answers.map((a, i) => (
-                <PanelField key={i} label={a.field_label}>
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
-                    {formatValue(a.value)}
-                  </span>
-                </PanelField>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </SectionHeading>
     </ProfileCard>
   );
 }

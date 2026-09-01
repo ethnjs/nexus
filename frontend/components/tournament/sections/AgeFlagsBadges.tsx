@@ -1,6 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/Badge";
+import { FieldValue } from "@/components/profile/PanelField";
 
 interface AgeFlagsBadgesProps {
   // `undefined` covers the field being omitted from the API response
@@ -18,9 +19,7 @@ interface AgeFlagsBadgesProps {
 export function AgeFlagsBadges({ isOver18, isOver21 }: AgeFlagsBadgesProps) {
   if (isOver18 == null && isOver21 == null) {
     return (
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-tertiary)" }}>
-        Unknown
-      </span>
+      <FieldValue muted>Unknown</FieldValue>
     );
   }
 

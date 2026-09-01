@@ -17,7 +17,8 @@ import { VolunteerExperienceSection } from "@/components/profile/sections/Volunt
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
-import { PanelField } from "@/components/tournament/PanelField";
+import { SectionHeading } from "@/components/profile/SectionHeading";
+import { PanelField, FieldValue, FieldList, FieldGrid } from "@/components/profile/PanelField";
 import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
 import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
 import { LunchSection } from "@/components/tournament/sections/LunchSection";
@@ -96,69 +97,62 @@ export function MemberPanel({
             <ProfileHeader user={full.user} />
 
             <ProfileCard>
-              <h3 style={{
-                fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-                color: "var(--color-text-primary)", marginBottom: "4px",
-              }}>
-                Membership
-              </h3>
+              <SectionHeading title="Membership">
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <FieldGrid>
+                    <PanelField label="Joined">
+                      <FieldValue>{formatDate(full.created_at)}</FieldValue>
+                    </PanelField>
+                    <PanelField label="Join Method">
+                      <JoinMethodCell membership={full} />
+                    </PanelField>
+                  </FieldGrid>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                <PanelField label="Joined">
-                  <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
-                    {formatDate(full.created_at)}
-                  </span>
-                </PanelField>
-                <PanelField label="Join Method">
-                  <JoinMethodCell membership={full} />
-                </PanelField>
-              </div>
+                  <FieldGrid>
+                    {full.track_statuses.length > 0 && (
+                      <PanelField label="Tracks">
+                        <FieldList>
+                          {full.track_statuses.map((ts) => (
+                            // An archived track's statuses stay readable — the
+                            // catalog entry is retired, the commitment still
+                            // happened — so it's dimmed rather than hidden.
+                            <div
+                              key={ts.track_id}
+                              style={{
+                                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                                opacity: ts.is_archived ? 0.55 : undefined,
+                              }}
+                              title={ts.is_archived ? "Archived track" : undefined}
+                            >
+                              <FieldValue>{ts.name}</FieldValue>
+                              <Badge variant={ts.status}>{ts.status}</Badge>
+                            </div>
+                          ))}
+                        </FieldList>
+                      </PanelField>
+                    )}
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                {full.track_statuses.length > 0 && (
-                  <PanelField label="Tracks">
-                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                      {full.track_statuses.map((ts) => (
-                        // An archived track's statuses stay readable — the
-                        // catalog entry is retired, the commitment still
-                        // happened — so it's dimmed rather than hidden.
-                        <div
-                          key={ts.track_id}
-                          style={{
-                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                            opacity: ts.is_archived ? 0.55 : undefined,
-                          }}
-                          title={ts.is_archived ? "Archived track" : undefined}
-                        >
-                          <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
-                            {ts.name}
-                          </span>
-                          <Badge variant={ts.status}>{ts.status}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  </PanelField>
-                )}
+                    <PanelField label="Roles">
+                      <RolesCell
+                        tournamentId={tournamentId}
+                        membership={full}
+                        allRoles={allRoles}
+                        canTouchRole={canTouchRole}
+                        locked={!canEditMember(full)}
+                        onUpdated={handleRolesUpdated}
+                      />
+                    </PanelField>
+                  </FieldGrid>
 
-                <PanelField label="Roles">
-                  <RolesCell
-                    tournamentId={tournamentId}
-                    membership={full}
-                    allRoles={allRoles}
-                    canTouchRole={canTouchRole}
-                    locked={!canEditMember(full)}
-                    onUpdated={handleRolesUpdated}
-                  />
-                </PanelField>
-              </div>
-
-              {(collectIsOver18 || collectIsOver21) && (
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-                  <PanelField label="Age">
-                    <AgeFlagsBadges isOver18={full.is_over_18} isOver21={full.is_over_21} />
-                  </PanelField>
+                  {(collectIsOver18 || collectIsOver21) && (
+                    <FieldGrid>
+                      <PanelField label="Age">
+                        <AgeFlagsBadges isOver18={full.is_over_18} isOver21={full.is_over_21} />
+                      </PanelField>
+                    </FieldGrid>
+                  )}
                 </div>
-              )}
+              </SectionHeading>
             </ProfileCard>
 
             <AvailabilitySection availability={full.availability} />

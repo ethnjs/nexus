@@ -1,3 +1,4 @@
+import { SectionHeading } from "@/components/profile/SectionHeading";
 import {
   VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, ExperienceTableMode,
   volunteerExperienceToDraft,
@@ -35,13 +36,7 @@ export function VolunteerExperienceSection({
   );
 
   return (
-    <div>
-      <h3 style={{
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-        color: "var(--color-text-primary)", marginBottom: "16px",
-      }}>
-        Volunteer Experience
-      </h3>
+    <SectionHeading title="Volunteer Experience">
       <VolunteerExperienceSpreadsheet
         mode={mode}
         rows={rows}
@@ -50,6 +45,6 @@ export function VolunteerExperienceSection({
         onUpdate={onUpdate}
         onDelete={onDelete}
       />
-    </div>
+    </SectionHeading>
   );
 }

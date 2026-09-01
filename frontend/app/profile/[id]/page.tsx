@@ -18,7 +18,7 @@ import { CompetitionExperienceSection } from "@/components/profile/sections/Comp
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { CompetitionExperienceDraft, VolunteerExperienceDraft } from "@/components/profile/ExperienceTables";
-import { PanelField } from "@/components/tournament/PanelField";
+import { PanelField } from "@/components/profile/PanelField";
 import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
 import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
 import { LunchSection } from "@/components/tournament/sections/LunchSection";
