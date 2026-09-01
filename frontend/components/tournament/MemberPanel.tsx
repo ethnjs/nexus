@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
-  ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role,
-  canonicalEventsApi, membershipsApi,
+  ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role, TournamentShift,
+  canonicalEventsApi, membershipsApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
@@ -62,6 +62,9 @@ export function MemberPanel({
 }: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
+  // Sets the availability timeline's window — without it the bar can only
+  // show gaps between the member's own shifts, never hours they declined.
+  const [shifts, setShifts] = useState<TournamentShift[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -69,6 +72,7 @@ export function MemberPanel({
       .then(setFull)
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
     canonicalEventsApi.list().then(setEvents).catch(() => {});
+    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => {});
   }, [tournamentId, membershipId]);
 
   function handleRolesUpdated(updated: MembershipSlim) {
@@ -155,7 +159,7 @@ export function MemberPanel({
               </SectionHeading>
             </ProfileCard>
 
-            <AvailabilitySection availability={full.availability} />
+            <AvailabilitySection availability={full.availability} allShifts={shifts} />
             <LunchSection lunch={full.lunch} />
             <EventPreferencesSection eventPreferences={full.event_preferences} />
             <CustomResponsesSection customResponses={full.custom_responses} />
