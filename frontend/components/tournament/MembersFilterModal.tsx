@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
+import { PillMenu, PillTone } from "@/components/ui/PillMenu";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconChevronDown, IconPlus } from "@/components/ui/Icons";
+import { IconPlus } from "@/components/ui/Icons";
 
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
@@ -69,16 +70,9 @@ const TRACK_STATUS_OPTIONS: FilterOptionItem[] = [
   { value: "declined", label: "Declined" },
 ];
 
-// Same palette as Badge's confirmed/declined variants and the forms editor's
-// track pill — only worth showing when the pill names one status, since a
-// pill reading "2 selected" has no single color to be.
-type PillTone = "default" | "success" | "danger";
+// Only worth colouring when the pill names one status — a pill reading
+// "2 selected" has no single colour to be.
 const TRACK_STATUS_TONES: Record<string, PillTone> = { confirmed: "success", declined: "danger" };
-const PILL_TONE_STYLE: Record<PillTone, { background: string; color: string; border: string }> = {
-  default: { background: "transparent", color: "var(--color-text-secondary)", border: "var(--color-border-strong)" },
-  success: { background: "var(--color-success-subtle)", color: "var(--color-success)", border: "var(--color-success)" },
-  danger:  { background: "var(--color-danger-subtle)", color: "var(--color-danger)", border: "var(--color-danger)" },
-};
 
 // Above this many rows a picker is faster to type into than to scroll.
 const SEARCHABLE_ABOVE = 8;
@@ -143,52 +137,6 @@ function FilterSection({ title, active, onClear, children }: {
       </div>
       {children}
     </div>
-  );
-}
-
-// The pill on a chip's right edge — a plain clickable pill + chevron rather
-// than a bordered Dropdown, so it reads as part of the chip instead of a
-// boxed control embedded in one (same reasoning as the forms editor's track
-// status pill, and the same height).
-function PillMenu({ summary, tone, options, isChecked, onSelect, searchable, header }: {
-  summary: string;
-  tone: PillTone;
-  options: FilterOptionItem[];
-  isChecked: (value: string) => boolean;
-  onSelect: (value: string) => void;
-  searchable: boolean;
-  header?: ReactNode;
-}) {
-  const [open, setOpen] = useState(false);
-  const pill = PILL_TONE_STYLE[tone];
-  return (
-    <Popover
-      trigger={
-        <span style={{
-          display: "inline-flex", alignItems: "center", gap: "2px", boxSizing: "border-box",
-          padding: "1px 6px", borderRadius: "999px",
-          border: `1px solid ${pill.border}`, background: pill.background, color: pill.color,
-          fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
-          cursor: "pointer", whiteSpace: "nowrap",
-        }}>
-          {summary}
-          <IconChevronDown size={9} style={{ transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "rotate(0deg)" }} />
-        </span>
-      }
-      items={options}
-      getKey={(option) => option.value}
-      renderLabel={(option) => option.label}
-      getSearchText={(option) => option.label}
-      searchable={searchable}
-      checklist
-      isSelected={(option) => isChecked(option.value)}
-      onSelect={(option) => onSelect(option.value)}
-      onOpenChange={setOpen}
-      header={header}
-      emptyMessage="Nothing to filter by"
-      width={260}
-      align="left"
-    />
   );
 }
 
@@ -359,13 +307,20 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
           if (!group || (group.options.length === 0 && !answeredToggle)) return null;
           return (
             <PillMenu
-              summary={summaryFor(group)}
+              label={summaryFor(group)}
               tone={toneFor(group)}
-              options={group.options}
-              isChecked={(option) => chosenFor(group).includes(option)}
-              onSelect={(option) => toggleOption(group, option)}
-              header={answeredToggle ? answeredHeader(group) : undefined}
+              items={group.options}
+              getKey={(option) => option.value}
+              renderLabel={(option) => option.label}
+              getSearchText={(option) => option.label}
               searchable={searchable ?? group.options.length > SEARCHABLE_ABOVE}
+              checklist
+              isSelected={(option) => chosenFor(group).includes(option.value)}
+              onSelect={(option) => toggleOption(group, option.value)}
+              header={answeredToggle ? answeredHeader(group) : undefined}
+              emptyMessage="Nothing to filter by"
+              width={260}
+              align="left"
             />
           );
         }}

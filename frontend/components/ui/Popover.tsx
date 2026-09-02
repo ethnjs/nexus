@@ -4,7 +4,7 @@ import { MouseEvent as ReactMouseEvent, ReactNode, useEffect, useRef, useState }
 import { Checkbox } from "@/components/ui/Checkbox";
 import { IconLock } from "@/components/ui/Icons";
 
-interface PopoverProps<T> {
+export interface PopoverProps<T> {
   /** The element that toggles the panel — an icon button, a chip, whatever. */
   trigger: ReactNode;
   items: T[];

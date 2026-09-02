@@ -11,7 +11,8 @@ import { formatDayLabel, formatTime, toDateInput } from '@/lib/timeFormat'
 import { Button } from '@/components/ui/Button'
 import { ChipInput } from '@/components/ui/ChipInput'
 import { Popover } from '@/components/ui/Popover'
-import { IconChevronDown, IconPlus, IconSearch } from '@/components/ui/Icons'
+import { IconPlus, IconSearch } from '@/components/ui/Icons'
+import { PillMenu, PillTone } from '@/components/ui/PillMenu'
 import { BranchTarget, EditableOption, newEntityOption, OptionsEditor } from '@/components/forms/OptionsEditor'
 import { EventOptionsPickerModal } from '@/components/forms/EventOptionsPickerModal'
 
@@ -251,41 +252,22 @@ function TrackPicker({ tracks, option, availability, onChange }: { tracks: Tourn
   />
 }
 
-const STATUS_PILL_STYLE: Record<TrackStatus | '', { background: string; color: string; border: string }> = {
-  '':          { background: 'var(--color-bg)', color: 'var(--color-text-tertiary)', border: 'var(--color-border-strong)' },
-  interested:  { background: 'transparent', color: 'var(--color-text-secondary)', border: 'var(--color-border-strong)' },
-  confirmed:   { background: 'var(--color-success-subtle)', color: 'var(--color-success)', border: 'var(--color-success)' },
-  declined:    { background: 'var(--color-danger-subtle)', color: 'var(--color-danger)', border: 'var(--color-danger)' },
+// Colored per status so the chip reads at a glance, same palette as Badge's
+// interested/confirmed/declined variants. An unset status stays muted — it's
+// a slot to fill, not an outcome.
+const STATUS_TONE: Record<TrackStatus | '', PillTone> = {
+  '': 'muted', interested: 'default', confirmed: 'success', declined: 'danger',
 }
 
-// Right-hand segment of the track chip — a plain clickable pill + chevron
-// (not a bordered Dropdown) so it reads as part of the chip itself, not a
-// boxed control embedded inside one. Keeps the chip a single fixed height
-// matching its neighbors (the Tracks add button) instead of growing to fit
-// a full-size Dropdown's own chrome. Colored per status so the chip reads
-// at a glance, same palette as Badge's interested/confirmed/declined variants.
 function TrackStatusMenu({ status, onChange }: { status: TrackStatus | ''; onChange: (status: TrackStatus) => void }) {
-  const [open, setOpen] = useState(false)
-  const pill = STATUS_PILL_STYLE[status]
   return (
-    <Popover
-      trigger={
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: '2px', boxSizing: 'border-box',
-          padding: '1px 6px', borderRadius: '999px', border: `1px solid ${pill.border}`,
-          background: pill.background, color: pill.color,
-          fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-          cursor: 'pointer', whiteSpace: 'nowrap',
-        }}>
-          {STATUS_LABEL[status]}
-          <IconChevronDown size={9} style={{ transition: 'transform 150ms ease', transform: open ? 'rotate(180deg)' : 'rotate(0deg)' }} />
-        </span>
-      }
+    <PillMenu
+      label={STATUS_LABEL[status]}
+      tone={STATUS_TONE[status]}
       items={STATUS_OPTIONS}
       getKey={(opt) => opt.value}
       renderLabel={(opt) => opt.label}
       onSelect={(opt) => onChange(opt.value)}
-      onOpenChange={setOpen}
       width={140}
       align="left"
     />
