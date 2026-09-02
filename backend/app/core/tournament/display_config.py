@@ -5,6 +5,10 @@ surface's `hidden` list each identify one hideable item, e.g. "track:3".
 Kept here (not inline in the route) so 3.3's apply-the-config step reuses the
 same known sets rather than redefining them."""
 
+from datetime import datetime
+
+from app.core.tournament import tournament_local_date
+
 MEMBERS_PANEL = "members_panel"
 MEMBER_PAGE = "member_page"
 ASSIGNMENT_CARD = "assignment_card"
@@ -15,17 +19,26 @@ TRACK_NAMESPACE = "track:"
 LUNCH_CATEGORY_NAMESPACE = "lunch_category:"
 EVENT_PREF_NAMESPACE = "event_pref:"
 FORM_FIELD_NAMESPACE = "form_field:"
+AVAILABILITY_DAY_NAMESPACE = "availability_day:"
 
 KNOWN_NAMESPACES = (
     TRACK_NAMESPACE,
     LUNCH_CATEGORY_NAMESPACE,
     EVENT_PREF_NAMESPACE,
     FORM_FIELD_NAMESPACE,
+    AVAILABILITY_DAY_NAMESPACE,
 )
 
 
 def is_known_namespace(item: str) -> bool:
     return item.startswith(KNOWN_NAMESPACES)
+
+
+def unslug(text: str) -> str:
+    """"test_review" -> "Test Review". Reserved-key suffixes and field_keys
+    are slugs meant for lookup, never for a TD to read — every catalog label
+    built from one goes through this."""
+    return text.replace("_", " ").strip().title()
 
 
 def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
@@ -42,9 +55,10 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     exclusion, but tournament-wide rather than per-user."""
     from sqlalchemy import distinct
     from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+    from app.core.tournament import tournament_local_date
     from app.models.models import (
-        Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-        TournamentMembershipLunch, TournamentTrack,
+        Form, FormField, Tournament, TournamentMembership, TournamentMembershipEventPreference,
+        TournamentMembershipLunch, TournamentShift, TournamentTrack,
     )
 
     tracks = (
@@ -58,23 +72,19 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         for t in tracks
     ]
 
-    # Ordered by id so which row's label wins a duplicate category is at
-    # least deterministic (first submission), not DB-dependent — the label
-    # is cosmetic either way, since `hidden` keys off category, not label.
-    lunch_rows = (
-        db.query(TournamentMembershipLunch.category, TournamentMembershipLunch.label)
+    # The toggle hides a whole category, so the category is what it must be
+    # labelled with — labelling it with one member's selection ("Sofritas
+    # (Vegan)") named the wrong thing entirely.
+    lunch_categories = (
+        db.query(distinct(TournamentMembershipLunch.category))
         .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
-        .order_by(TournamentMembershipLunch.id)
         .all()
     )
-    seen_categories: set[str] = set()
-    lunch_items = []
-    for category, label in lunch_rows:
-        if category in seen_categories:
-            continue
-        seen_categories.add(category)
-        lunch_items.append({"key": f"{LUNCH_CATEGORY_NAMESPACE}{category}", "label": label})
+    lunch_items = [
+        {"key": f"{LUNCH_CATEGORY_NAMESPACE}{category}", "label": unslug(category)}
+        for (category,) in sorted(lunch_categories)
+    ]
 
     event_pref_keys = (
         db.query(distinct(TournamentMembershipEventPreference.key))
@@ -83,7 +93,7 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         .all()
     )
     event_pref_items = [
-        {"key": f"{EVENT_PREF_NAMESPACE}{key}", "label": key} for (key,) in sorted(event_pref_keys)
+        {"key": f"{EVENT_PREF_NAMESPACE}{key}", "label": unslug(key)} for (key,) in sorted(event_pref_keys)
     ]
 
     field_rows = (
@@ -96,14 +106,35 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         )
         .all()
     )
+    # field_key, not the question label: the label is a whole sentence
+    # ("What's your favorite color?"), and the form it came from doesn't
+    # matter to a TD deciding whether the panel shows that answer.
     custom_field_items = [
-        {"key": f"{FORM_FIELD_NAMESPACE}{field.id}", "label": f"{form.title or form.name}: {field.label}"}
-        for field, form in field_rows
+        {"key": f"{FORM_FIELD_NAMESPACE}{field.id}", "label": unslug(field.field_key)}
+        for field, _form in field_rows
         if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
+    ]
+
+    # One item per day the tournament runs shifts on, in the tournament's own
+    # timezone — a shift's start is an instant, so a bare .date() would bucket
+    # an early/late shift onto the neighbouring day for any non-UTC tournament.
+    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
+    shift_starts = (
+        db.query(TournamentShift.start)
+        .filter(TournamentShift.tournament_id == tournament_id)
+        .all()
+    )
+    availability_days = sorted({tournament_local_date(tournament, start) for (start,) in shift_starts})
+    availability_items = [
+        # Built by hand rather than one strftime: "%-d" (no zero padding) is
+        # a glibc extension that raises on Windows.
+        {"key": f"{AVAILABILITY_DAY_NAMESPACE}{day.isoformat()}", "label": f"{day.strftime('%a, %b')} {day.day}"}
+        for day in availability_days
     ]
 
     return {
         "tracks": track_items,
+        "availability": availability_items,
         "lunch_categories": lunch_items,
         "event_preferences": event_pref_items,
         "custom_fields": custom_field_items,
@@ -130,6 +161,15 @@ def apply_display_config(tournament, surface: str | None, data: dict) -> dict:
     if "track_statuses" in data:
         data["track_statuses"] = [
             ts for ts in data["track_statuses"] if f"{TRACK_NAMESPACE}{ts['track_id']}" not in hidden
+        ]
+    if "availability" in data:
+        # `start` is a serialized instant; the item keys are tournament-local
+        # days, so it has to go back through the same conversion build_catalog
+        # used rather than a naive [:10] slice of the ISO string.
+        data["availability"] = [
+            row for row in data["availability"]
+            if f"{AVAILABILITY_DAY_NAMESPACE}"
+            f"{tournament_local_date(tournament, datetime.fromisoformat(row['start'])).isoformat()}" not in hidden
         ]
     if "lunch" in data:
         data["lunch"] = [

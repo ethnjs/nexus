@@ -1615,6 +1615,7 @@ export interface DisplayConfigCatalogItem {
 export interface DisplayConfigCatalog {
   tracks: DisplayConfigCatalogItem[]
   lunch_categories: DisplayConfigCatalogItem[]
+  availability: DisplayConfigCatalogItem[]
   event_preferences: DisplayConfigCatalogItem[]
   custom_fields: DisplayConfigCatalogItem[]
 }

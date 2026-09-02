@@ -27,6 +27,9 @@ class DisplayConfigCatalog(BaseModel):
     build_catalog's docstring); the modal applies whichever surface's saved
     `hidden` set is relevant to check these against."""
     tracks: list[DisplayConfigCatalogItem] = []
+    # One entry per day the tournament runs shifts on — hiding a day drops
+    # that day's shifts from the panel's availability section.
+    availability: list[DisplayConfigCatalogItem] = []
     lunch_categories: list[DisplayConfigCatalogItem] = []
     event_preferences: list[DisplayConfigCatalogItem] = []
     custom_fields: list[DisplayConfigCatalogItem] = []

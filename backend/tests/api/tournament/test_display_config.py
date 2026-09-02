@@ -1,6 +1,6 @@
 """Tests for GET/PUT /tournaments/{tournament_id}/display-config/
 (app/api/routes/tournament/display_config.py)."""
-from datetime import date
+from datetime import date, datetime, timezone
 from app.models.models import (
     Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
     TournamentMembershipLunch, TournamentTrack,
@@ -126,7 +126,8 @@ def test_get_display_config_catalog_empty_tournament(client, td_user, td_tournam
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
     assert response.json() == {
-        "tracks": [], "lunch_categories": [], "event_preferences": [], "custom_fields": [],
+        "tracks": [], "availability": [], "lunch_categories": [], "event_preferences": [],
+        "custom_fields": [],
     }
 
 
@@ -158,7 +159,8 @@ def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
-    assert response.json()["lunch_categories"] == [{"key": "lunch_category:entree", "label": "Veggie wrap"}]
+    # Labelled by the category, not by either member's selection.
+    assert response.json()["lunch_categories"] == [{"key": "lunch_category:entree", "label": "Entree"}]
 
 
 def test_get_display_config_catalog_includes_event_preferences(client, td_user, td_tournament, db):
@@ -173,7 +175,7 @@ def test_get_display_config_catalog_includes_event_preferences(client, td_user, 
 
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
-    assert response.json()["event_preferences"] == [{"key": "event_pref:rank", "label": "rank"}]
+    assert response.json()["event_preferences"] == [{"key": "event_pref:rank", "label": "Rank"}]
 
 
 def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(client, td_user, td_tournament, db):
@@ -197,8 +199,9 @@ def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(cli
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
+    # field_key unslugged — not the question label, and not prefixed by the form.
     assert response.json()["custom_fields"] == [
-        {"key": f"form_field:{custom_field.id}", "label": "Volunteer interest: Favorite color"},
+        {"key": f"form_field:{custom_field.id}", "label": "Favorite Color"},
     ]
 
 
@@ -206,3 +209,33 @@ def test_get_display_config_catalog_requires_manage_members(client, td_user, oth
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/display-config/catalog/").status_code == 403
+
+
+def test_get_display_config_catalog_includes_availability_days(client, td_user, td_tournament, db):
+    """One item per day the tournament runs shifts on, deduped across shifts."""
+    from app.models.models import TournamentShift
+
+    db.add_all([
+        TournamentShift(
+            tournament_id=td_tournament.id, label="Morning",
+            start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
+        ),
+        TournamentShift(
+            tournament_id=td_tournament.id, label="Afternoon",
+            start=datetime(2026, 3, 1, 20, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 1, 23, 0, tzinfo=timezone.utc),
+        ),
+        TournamentShift(
+            tournament_id=td_tournament.id, label="Day two",
+            start=datetime(2026, 3, 2, 15, 0, tzinfo=timezone.utc),
+            end=datetime(2026, 3, 2, 19, 0, tzinfo=timezone.utc),
+        ),
+    ])
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
+    assert response.status_code == 200
+    keys = [item["key"] for item in response.json()["availability"]]
+    assert keys == ["availability_day:2026-03-01", "availability_day:2026-03-02"]
