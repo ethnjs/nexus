@@ -8,9 +8,11 @@ import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } 
 import { CSS } from "@dnd-kit/utilities";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Input } from "@/components/ui/Input";
+import { EditableText } from "@/components/ui/EditableText";
 import { Toggle } from "@/components/ui/Toggle";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconGripVertical, IconTrash, IconPlus, IconChevronDown, IconChevronRight } from "@/components/ui/Icons";
 import { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
@@ -27,6 +29,15 @@ interface PanelSectionsModalProps {
 // A custom section's id has to survive renames and reordering — the fields
 // assigned to it are keyed by it — so it's generated once, here, and never
 // derived from the title.
+// What a section's entity chips are, named per section — the catalog only
+// says a field is namespaced, not what kind of thing it is.
+const ENTITY_GROUP_LABELS: Record<string, string> = {
+  membership: "Tracks",
+  availability: "Days",
+  lunch: "Categories",
+  event_preferences: "Questions",
+};
+
 function newCustomSectionId(): string {
   return `${CUSTOM_SECTION_PREFIX}${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -64,6 +75,9 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
   const { catalog, draft, setDraft, saving, error, save, loading } =
     useDisplayConfigDraft(tournamentId, MEMBERS_PANEL);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The section created by the last "New section" press — it mounts expanded
+  // and with its name in edit mode, since naming it is always the next step.
+  const [justAdded, setJustAdded] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
   // Editing works on the full list — hidden sections included, since a hidden
@@ -144,7 +158,10 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
   }
 
   function addCustomSection() {
-    update([...sections, { id: newCustomSectionId(), title: "New section", hidden: false, fields: [] }]);
+    const id = newCustomSectionId();
+    update([...sections, { id, title: "New section", hidden: false, fields: [] }]);
+    setJustAdded(id);
+    setExpanded(id);
   }
 
   return (
@@ -167,6 +184,9 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                 const meta = catalogById.get(section.id);
                 const custom = isCustomSection(section.id);
                 const fields = meta?.fields ?? [];
+                // Entity fields carry a namespaced key; static ones don't.
+                const staticFields = fields.filter((field) => !field.key.includes(":"));
+                const entityFields = fields.filter((field) => field.key.includes(":"));
                 const expandable = custom || fields.length > 0;
                 const isOpen = expanded === section.id;
 
@@ -174,30 +194,34 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                   <SortableSection key={section.id} id={section.id}>
                     {(handle) => (
                       <>
-                        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px" }}>
-                          {handle}
+                        <div
+                          onClick={expandable ? () => setExpanded(isOpen ? null : section.id) : undefined}
+                          style={{
+                            display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px",
+                            cursor: expandable ? "pointer" : "default",
+                          }}
+                        >
+                          {/* The handle owns drag; the row owns expand. */}
+                          <span onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>{handle}</span>
                           {expandable ? (
-                            <span
-                              onClick={() => setExpanded(isOpen ? null : section.id)}
-                              style={{ cursor: "pointer", display: "flex", color: "var(--color-text-tertiary)" }}
-                            >
+                            <span style={{ display: "flex", color: "var(--color-text-tertiary)" }}>
                               {isOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
                             </span>
                           ) : <span style={{ width: "12px" }} />}
 
                           {custom ? (
-                            // Fixed width rather than flex:1 — the spacer
-                            // below is what right-aligns the controls, and a
-                            // growing input would eat that alignment.
-                            <div style={{ width: "220px" }}>
-                              <Input
+                            // Click-to-edit rather than a permanent field:
+                            // the row is clickable to expand, and a full input
+                            // sitting in it invites a click that does nothing.
+                            <span onClick={(e) => e.stopPropagation()}>
+                              <EditableText
                                 value={section.title ?? ""}
-                                onChange={(e) => patch(section.id, { title: e.target.value })}
-                                size="sm"
-                                placeholder="Section name"
-                                fullWidth
+                                onSave={(title) => patch(section.id, { title })}
+                                startEditing={section.id === justAdded}
+                                textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+                                title="Click to rename"
                               />
-                            </div>
+                            </span>
                           ) : (
                             <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>
                               {meta?.label ?? section.id}
@@ -212,21 +236,34 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                           {custom && (
                             <Button
                               type="button" variant="secondary" size="sm" iconOnly title="Delete section"
-                              onClick={() => update(sections.filter((s) => s.id !== section.id))}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                update(sections.filter((s) => s.id !== section.id));
+                              }}
                             >
                               <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
                             </Button>
                           )}
-                          <Toggle
-                            checked={!section.hidden}
-                            onChange={() => patch(section.id, { hidden: !section.hidden })}
-                          />
+                          <span onClick={(e) => e.stopPropagation()} style={{ display: "flex" }}>
+                            <Toggle
+                              checked={!section.hidden}
+                              onChange={() => patch(section.id, { hidden: !section.hidden })}
+                            />
+                          </span>
                         </div>
 
-                        {isOpen && (
+                        {/* 0fr -> 1fr animates to the content's natural
+                            height, which a max-height transition can't do
+                            without hardcoding a guess per section. */}
+                        <div style={{
+                          display: "grid",
+                          gridTemplateRows: isOpen ? "1fr" : "0fr",
+                          transition: "grid-template-rows 180ms ease",
+                        }}>
+                          <div style={{ overflow: "hidden" }}>
                           <div style={{ padding: "0 10px 10px 44px", display: "flex", flexDirection: "column", gap: "6px" }}>
-                            {/* Built-in: which of its own fields to show. */}
-                            {fields.map((field) => (
+                            {/* The section's own static fields. */}
+                            {staticFields.map((field) => (
                               <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                                 <Checkbox
                                   checked={fieldIsShown(section, field.key)}
@@ -235,6 +272,51 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{field.label}</span>
                               </label>
                             ))}
+
+                            {/* Tracks as chips: a tournament can have a dozen,
+                                and a chip row reads as "these are shown" far
+                                faster than a column of ticked boxes. */}
+                            {entityFields.length > 0 && (
+                              <span style={{
+                                fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                                letterSpacing: "0.06em", textTransform: "uppercase",
+                                color: "var(--color-text-tertiary)",
+                                marginTop: staticFields.length > 0 ? "6px" : 0,
+                              }}>
+                                {ENTITY_GROUP_LABELS[section.id] ?? "Items"}
+                              </span>
+                            )}
+                            {entityFields.length > 0 && (
+                              <ChipInput
+                                value={entityFields.filter((f) => fieldIsShown(section, f.key)).map((f) => f.label)}
+                                onChange={(labels) => {
+                                  const removed = entityFields.find(
+                                    (f) => fieldIsShown(section, f.key) && !labels.includes(f.label),
+                                  );
+                                  if (removed) toggleField(section, removed.key);
+                                }}
+                                variant="transparent"
+                                size="sm"
+                                disableInput
+                                fullWidth
+                                addButton={
+                                  <Popover
+                                    trigger={
+                                      <Button type="button" variant="secondary" size="sm" iconOnly title="Edit visible items" style={{ padding: 0, flexShrink: 0 }}>
+                                        <IconPlus size={13} />
+                                      </Button>
+                                    }
+                                    items={entityFields}
+                                    getKey={(field) => field.key}
+                                    renderLabel={(field) => field.label}
+                                    checklist
+                                    isSelected={(field) => fieldIsShown(section, field.key)}
+                                    onSelect={(field) => toggleField(section, field.key)}
+                                    emptyMessage="Nothing to configure"
+                                  />
+                                }
+                              />
+                            )}
 
                             {/* Custom: which answers this section collects. A
                                 field already claimed elsewhere still appears,
@@ -262,7 +344,8 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                               </span>
                             )}
                           </div>
-                        )}
+                          </div>
+                        </div>
                       </>
                     )}
                   </SortableSection>

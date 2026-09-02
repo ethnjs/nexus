@@ -9,6 +9,8 @@ interface EditableTextProps {
   /** Applied to both the display text and the input — keep them identical so entering edit mode doesn't shift surrounding layout. */
   textStyle?: CSSProperties
   title?: string
+  /** Mount already in edit mode with the field focused — for text created empty by a button press, where the next thing the user does is always name it. */
+  startEditing?: boolean
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -20,8 +22,8 @@ const DEFAULT_TEXT_STYLE: CSSProperties = {
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit' }: EditableTextProps) {
-  const [editing, setEditing] = useState(false)
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false }: EditableTextProps) {
+  const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
