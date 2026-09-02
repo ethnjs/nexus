@@ -3,9 +3,10 @@
 import { ReactNode, CSSProperties } from "react";
 import { MembershipSlim } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
-import { formatDuration } from "@/lib/timeFormat";
+import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
 import { Badge } from "@/components/ui/Badge";
+import { Tooltip } from "@/components/ui/Tooltip";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
 
@@ -60,6 +61,19 @@ export interface MemberColumn {
   render: (membership: MembershipSlim) => ReactNode;
 }
 
+// The coarse duration ("3mo") with the exact moment behind it on hover —
+// the coarse form is what fits the column, but the precise date is what a
+// coordinator actually needs when it matters.
+function DurationCell({ iso }: { iso: string }) {
+  return (
+    <span style={{ justifySelf: "center" }}>
+      <Tooltip variant="info" message={formatDateTime(iso)} showIcon={false}>
+        <span style={{ ...TEXT_CELL, cursor: "default" }}>{formatDuration(iso)}</span>
+      </Tooltip>
+    </span>
+  );
+}
+
 function Dash({ centered }: { centered?: boolean }) {
   return <span style={centered ? CENTERED_TEXT_CELL : TEXT_CELL}>—</span>;
 }
@@ -80,12 +94,12 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
     case "account_age":
       return {
         key, label: "Account Age", width: WIDTHS.duration, align: "center",
-        render: (m) => <span style={CENTERED_TEXT_CELL}>{formatDuration(m.user.created_at)}</span>,
+        render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
       return {
         key, label: "Joined", width: WIDTHS.duration, align: "center",
-        render: (m) => <span style={CENTERED_TEXT_CELL}>{formatDuration(m.created_at)}</span>,
+        render: (m) => <DurationCell iso={m.created_at} />,
       };
     case "method":
       return {

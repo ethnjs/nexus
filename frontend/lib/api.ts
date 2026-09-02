@@ -822,8 +822,14 @@ export interface MembershipMe {
 export const membershipsApi = {
   // include_declined defaults to false server-side — a declined membership
   // is excluded from the roster unless a TD explicitly opts in.
-  list: (tournamentId: number, includeDeclined = false) =>
-    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/?include_declined=${includeDeclined}`),
+  // `surface` both filters hidden items and decides which optional column
+  // data the rows carry (see enrich_table_columns) — omit it for the plain
+  // roster with neither.
+  list: (tournamentId: number, includeDeclined = false, surface?: string) =>
+    api.get<MembershipSlim[]>(
+      `/tournaments/${tournamentId}/memberships/?include_declined=${includeDeclined}`
+      + (surface ? `&surface=${surface}` : "")
+    ),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
   get: (tournamentId: number, id: number, surface?: string) =>
@@ -1629,8 +1635,25 @@ export const tournamentTracksApi = {
 
 // Namespaced strings — "track:3", "lunch_category:entree", "event_pref:key",
 // "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+// One panel section, in the order the TD arranged them. Built-in sections
+// carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
+// also carries a title and the custom fields assigned to it.
+export interface DisplayConfigSection {
+  id: string
+  hidden?: boolean
+  hidden_fields?: string[]
+  title?: string | null
+  fields?: string[]
+}
+
 export interface DisplayConfigSurface {
   hidden: string[]
+  // Members table: visible columns in display order. null means "use the
+  // defaults" — an empty array means "no data columns", so they differ.
+  columns?: string[] | null
+  // Member panel: section order and per-section visibility. null means the
+  // default order with everything shown.
+  sections?: DisplayConfigSection[] | null
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>
@@ -1646,6 +1669,16 @@ export interface DisplayConfigCatalog {
   availability: DisplayConfigCatalogItem[]
   event_preferences: DisplayConfigCatalogItem[]
   custom_fields: DisplayConfigCatalogItem[]
+  // Members table: every column that can be turned on, fixed ones first.
+  columns: DisplayConfigCatalogItem[]
+  // Member panel: built-in sections and their individually hideable fields.
+  sections: DisplayConfigSectionCatalogItem[]
+}
+
+export interface DisplayConfigSectionCatalogItem {
+  id: string
+  label: string
+  fields: DisplayConfigCatalogItem[]
 }
 
 export const displayConfigApi = {

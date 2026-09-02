@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { membershipsApi, rolesApi, MembershipSlim, Role, ApiError } from "@/lib/api";
-import { formatPhone } from "@/lib/auth";
-import { formatDuration, formatDateTime } from "@/lib/timeFormat";
+import {
+  membershipsApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
+  DisplayConfig, DisplayConfigCatalogItem,
+} from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -16,12 +17,10 @@ import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
-import { Tooltip } from "@/components/ui/Tooltip";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { RolesCell } from "@/components/tournament/RolesCell";
-import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { MemberPanel, MEMBER_PANEL_WIDTH } from "@/components/tournament/MemberPanel";
 import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/MassRoleEditor";
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
@@ -31,20 +30,31 @@ import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
 import { DisplayConfigModal } from "@/components/tournament/DisplayConfigModal";
-import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import { COLUMN_WIDTHS, MemberColumn, resolveColumns } from "@/components/tournament/memberColumns";
+import { MEMBERS_PANEL, MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
-// Name / Email / Phone / Account Age / Join Date / Join Method / Roles / Actions
-const MEMBER_ROW_COLUMNS = "0.8fr 1.2fr 0.6fr 90px 90px 110px 2.6fr 70px";
-// Roles dropped — the fr tracks below just absorb its share automatically.
-const MEMBER_ROW_COLUMNS_COMPACT = "0.8fr 1.2fr 0.6fr 90px 90px 110px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
 const SELECT_COLUMN_WIDTH = "28px";
-function memberColumns(selectMode: boolean, panelOpen: boolean) {
-  const rest = panelOpen ? MEMBER_ROW_COLUMNS_COMPACT : MEMBER_ROW_COLUMNS;
-  return `${selectMode ? SELECT_COLUMN_WIDTH : "0px"} ${rest}`;
+
+// Mirrors the backend's DEFAULT_COLUMNS — what a tournament with nothing
+// saved shows, i.e. roughly the table as it was before it became configurable.
+const DEFAULT_TABLE_COLUMNS = ["email", "phone", "account_age", "joined", "method"];
+
+// Select / Name / ...configured columns... / Roles / Actions. Name, roles and
+// actions aren't configurable: they're the row's identity and its controls,
+// not data a TD would turn off. Roles drops out when a panel is open — the
+// fr tracks absorb its share automatically.
+function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberColumn[]) {
+  return [
+    selectMode ? SELECT_COLUMN_WIDTH : "0px",
+    COLUMN_WIDTHS.name,
+    ...columns.map((column) => column.width),
+    ...(panelOpen ? [] : [COLUMN_WIDTHS.roles]),
+    COLUMN_WIDTHS.actions,
+  ].join(" ");
 }
 
 const DIRTY_TITLE = "Save or discard your changes first";
@@ -72,26 +82,10 @@ function sortValue(m: MembershipSlim, field: SortField): string | number {
   }
 }
 
-function DurationCell({ iso }: { iso: string }) {
-  return (
-    <span style={{ justifySelf: "center" }}>
-      <Tooltip variant="info" message={formatDateTime(iso)} showIcon={false}>
-        <span
-          style={{
-            fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-            cursor: "default",
-          }}
-        >
-          {formatDuration(iso)}
-        </span>
-      </Tooltip>
-    </span>
-  );
-}
-
 function MemberRow({
   tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove, isLast,
   selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly, panelOpen,
+  columns,
 }: {
   tournamentId: number;
   membership: MembershipSlim;
@@ -121,6 +115,8 @@ function MemberRow({
   rolesReadOnly: boolean;
   /** Any docked panel is open — the table is narrower, so the Roles column drops out to give the rest room. */
   panelOpen: boolean;
+  /** The configured columns, already resolved from the saved display config. */
+  columns: MemberColumn[];
 }) {
   const [hovered, setHovered] = useState(false);
   const { user } = membership;
@@ -141,7 +137,7 @@ function MemberRow({
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
-        display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen), alignItems: "center",
+        display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen, columns), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
@@ -168,18 +164,18 @@ function MemberRow({
           {name}
         </span>
       </div>
-      <span style={{
-        fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {user.email}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {user.phone ? formatPhone(user.phone) : "—"}
-      </span>
-      <DurationCell iso={user.created_at} />
-      <DurationCell iso={membership.created_at} />
-      <JoinMethodCell membership={membership} style={{ justifySelf: "center" }} />
+      {columns.map((column) => (
+        <div
+          key={column.key}
+          style={{
+            minWidth: 0,
+            display: column.align === "center" ? "flex" : "block",
+            justifyContent: column.align === "center" ? "center" : undefined,
+          }}
+        >
+          {column.render(membership)}
+        </div>
+      ))}
       {!panelOpen && (
         // Stops row clicks (select toggle / focus switch) from firing when
         // the intent was to pick a role chip.
@@ -239,6 +235,10 @@ export default function MembersPage() {
   // Bumped on save so the open MemberPanel remounts and refetches with the
   // just-changed hidden set — its own effect only re-runs on id changes.
   const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
+  // null = nothing saved, so use DEFAULT_TABLE_COLUMNS. An empty array is a
+  // real answer ("show no data columns") and must not fall back.
+  const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
+  const [columnCatalog, setColumnCatalog] = useState<DisplayConfigCatalogItem[]>([]);
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -265,11 +265,37 @@ export default function MembersPage() {
 
   useEffect(() => {
     if (!canManageMembers) return;
-    membershipsApi.list(tournamentId)
+    membershipsApi.list(tournamentId, false, MEMBERS_TABLE)
       .then(setMembers)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
     rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
-  }, [tournamentId, canManageMembers]);
+  }, [tournamentId, canManageMembers, displayConfigVersion]);
+
+  // The saved column list plus the catalog that names each key. Both are
+  // needed before a column can render: the config says which, the catalog
+  // says what to call them.
+  useEffect(() => {
+    if (!canManageMembers) return;
+    Promise.all([
+      displayConfigApi.get(tournamentId).catch(() => ({} as DisplayConfig)),
+      displayConfigApi.getCatalog(tournamentId).catch(() => null),
+    ]).then(([config, catalog]) => {
+      setColumnKeys(config?.[MEMBERS_TABLE]?.columns ?? null);
+      setColumnCatalog(catalog?.columns ?? []);
+    });
+  }, [tournamentId, canManageMembers, displayConfigVersion]);
+
+  const tableColumns = useMemo(() => {
+    const labels = new Map(columnCatalog.map((item) => [item.key, item.label]));
+    // A saved list of [] means "no columns"; only a missing one falls back to
+    // the defaults, which is why null and [] are kept apart.
+    const keys = columnKeys ?? DEFAULT_TABLE_COLUMNS;
+    return resolveColumns(
+      keys, labels,
+      !!selectedTournament?.collect_is_over_18,
+      !!selectedTournament?.collect_is_over_21,
+    );
+  }, [columnKeys, columnCatalog, selectedTournament]);
 
   const visibleMembers = useMemo(() => {
     if (!members) return [];
@@ -520,7 +546,7 @@ export default function MembersPage() {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen), gap: "10px",
+              display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns), gap: "10px",
               transition: "grid-template-columns 200ms ease",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
@@ -541,11 +567,18 @@ export default function MembersPage() {
                 />
               </span>
               <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
-              <span>Email</span>
-              <span>Phone</span>
-              <span style={{ textAlign: "center" }}>Account Age</span>
-              <span style={{ textAlign: "center" }}>Joined</span>
-              <span style={{ textAlign: "center" }}>Method</span>
+              {tableColumns.map((column) => (
+                <span
+                  key={column.key}
+                  style={{
+                    textAlign: column.align === "center" ? "center" : undefined,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}
+                  title={column.label}
+                >
+                  {column.label}
+                </span>
+              ))}
               {!panelOpen && <span>Roles</span>}
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
@@ -577,6 +610,7 @@ export default function MembersPage() {
                   // Whichever row the open panel is editing shows its roles
                   // read-only here, so the same roles can't be edited from
                   // two places at once.
+                  columns={tableColumns}
                   rolesReadOnly={focusedId === m.id || (massPanelOpen && selectedIds.has(m.id))}
                   panelOpen={panelOpen}
                 />
