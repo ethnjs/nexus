@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import MEMBERS_TABLE, apply_display_config
+from app.core.tournament.member_filters import (
+    apply_member_filters, build_filter_options, filter_age_flags,
+)
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
     enrich_table_columns, gate_age_flags, get_custom_form_answers, get_membership_by_user,
@@ -92,6 +95,17 @@ def list_memberships(
     tournament_id: int,
     include_declined: bool = Query(False),
     surface: str | None = Query(default=None),
+    # Roster filters. Repeatable; different filters AND, values within one OR.
+    # The paired ones ("2:confirmed", "protein:Sofritas", "day_1:47") keep the
+    # two halves together on purpose — see apply_member_filters.
+    role: list[str] = Query(default=[]),
+    track: list[str] = Query(default=[]),
+    lunch: list[str] = Query(default=[]),
+    event_pref: list[str] = Query(default=[]),
+    competition_event: list[int] = Query(default=[]),
+    volunteer_event: list[int] = Query(default=[]),
+    age: list[str] = Query(default=[]),
+    shift: list[int] = Query(default=[]),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -109,7 +123,15 @@ def list_memberships(
     )
     if not include_declined:
         query = query.filter(ACTIVE_MEMBERSHIP_CLAUSE)
+    query = apply_member_filters(
+        query,
+        roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
+        competition_events=competition_event, volunteer_events=volunteer_event,
+        age_flags=age, shifts=shift,
+    )
     memberships = query.order_by(TournamentMembership.id).all()
+    # Age flags are derived, not stored, so they can't be part of the query.
+    memberships = filter_age_flags(memberships, age)
     responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
     if surface == MEMBERS_TABLE:
@@ -124,6 +146,22 @@ def list_memberships(
         for membership, resp in zip(memberships, responses)
     ]
     return JSONResponse(data)
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/memberships/filter-options/ — manage_members
+# The values the roster's filter modal can offer, derived from what this
+# tournament actually holds. Registered before "/{membership_id}/" so the
+# literal path wins.
+# ---------------------------------------------------------------------------
+@router.get("/filter-options/")
+def get_member_filter_options(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    return build_filter_options(db, tournament)
 
 
 # ---------------------------------------------------------------------------

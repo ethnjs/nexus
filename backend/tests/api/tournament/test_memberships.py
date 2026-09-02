@@ -30,6 +30,16 @@ def _make_user(db, email="alice@example.com", first_name="Alice", last_name="Smi
     return {"id": user.id, "email": user.email}
 
 
+def _db_user_for_filter(db, email):
+    """The ORM row, unlike _make_user's dict — grant_role and _make_membership
+    both want the object."""
+    from app.models.models import User as UserModel
+    user = UserModel(first_name="Test", last_name="Member", email=email)
+    db.add(user)
+    db.flush()
+    return user
+
+
 def _make_event(client, tournament_id):
     return client.post(f"/tournaments/{tournament_id}/events/", json={
         "tournament_id": tournament_id,
@@ -246,6 +256,104 @@ def test_list_memberships_age_column_still_respects_consent(client, td_user, td_
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert "is_over_18" not in row
+
+
+class TestRosterFilters:
+    """Filters match against data the roster response doesn't carry, so they
+    run in SQL. Different filters AND; values within one OR."""
+
+    def _roster(self, client, tournament_id, query=""):
+        res = client.get(f"/tournaments/{tournament_id}/memberships/{query}")
+        assert res.status_code == 200, res.json()
+        return {r["user"]["email"] for r in res.json()}
+
+    def test_role_filter_matches_any_named_role(self, client, db, td_user, td_tournament):
+        from tests.conftest import grant_role
+
+        alice = _db_user_for_filter(db, "alice@example.com")
+        bob = _db_user_for_filter(db, "bob@example.com")
+        volunteer = grant_role(db, td_tournament, alice, "Volunteer")
+        grant_role(db, td_tournament, bob, "Runner")
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role_id = volunteer.roles[0].role_id
+        assert self._roster(client, td_tournament.id, f"?role={role_id}") == {"alice@example.com"}
+
+    def test_role_filter_none_finds_members_without_roles(self, client, db, td_user, td_tournament):
+        from tests.conftest import grant_role
+
+        grant_role(db, td_tournament, _db_user_for_filter(db, "alice@example.com"), "Volunteer")
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert "bob@example.com" in self._roster(client, td_tournament.id, "?role=none")
+        assert "alice@example.com" not in self._roster(client, td_tournament.id, "?role=none")
+
+    def test_track_filter_pairs_track_with_status(self, client, db, td_user, td_tournament):
+        """A member confirmed on one track and declined on another must not
+        match "declined on the first" — which is why the pair travels together."""
+        from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
+
+        writing = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        running = TournamentTrack(tournament_id=td_tournament.id, name="Running")
+        db.add_all([writing, running])
+        db.flush()
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.add_all([
+            TournamentMembershipTrackStatus(membership_id=alice.id, track_id=writing.id, status="confirmed"),
+            TournamentMembershipTrackStatus(membership_id=alice.id, track_id=running.id, status="declined"),
+        ])
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, f"?track={writing.id}:confirmed") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, f"?track={writing.id}:declined") == set()
+
+    def test_filters_of_different_kinds_and_together(self, client, db, td_user, td_tournament):
+        from app.models.models import TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack
+
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        db.add(track)
+        db.flush()
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        bob = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.add_all([
+            TournamentMembershipTrackStatus(membership_id=alice.id, track_id=track.id, status="confirmed"),
+            TournamentMembershipTrackStatus(membership_id=bob.id, track_id=track.id, status="confirmed"),
+            TournamentMembershipLunch(
+                membership_id=alice.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+            ),
+        ])
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        both = f"?track={track.id}:confirmed&lunch=entree:pizza"
+        assert self._roster(client, td_tournament.id, both) == {"alice@example.com"}
+
+    def test_malformed_pair_is_ignored_not_fatal(self, client, td_user, td_tournament):
+        """A bad value off a stale bookmark shouldn't 422 the roster — that
+        leaves a TD staring at an error with no way to clear it."""
+        login(client, "td@test.com", "tdpass")
+        res = client.get(f"/tournaments/{td_tournament.id}/memberships/?track=nonsense")
+        assert res.status_code == 200
+
+    def test_filter_options_lists_what_the_tournament_holds(self, client, db, td_user, td_tournament):
+        from app.models.models import TournamentMembershipLunch, TournamentTrack
+
+        db.add(TournamentTrack(tournament_id=td_tournament.id, name="Writing"))
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.add(TournamentMembershipLunch(
+            membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/memberships/filter-options/").json()
+        assert [t["label"] for t in body["tracks"]] == ["Writing"]
+        assert body["lunch"] == [{"value": "entree:pizza", "label": "Entree: pizza"}]
+        assert body["collect_is_over_18"] is False
 
 
 def test_list_memberships_requires_manage_members(
