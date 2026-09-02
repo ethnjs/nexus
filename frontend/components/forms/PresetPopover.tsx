@@ -131,7 +131,9 @@ export function PresetPopover({
         config: {
           ...sanitizeConfigForType(field.config, field.question_type),
           track_status_enabled: undefined,
-          options,
+          // Only when the type actually takes options: the text config
+          // schemas are extra="forbid", so even an empty array 422s the save.
+          ...(OPTION_BEARING_TYPES.includes(field.question_type) ? { options } : {}),
         },
       });
       return;
@@ -147,11 +149,13 @@ export function PresetPopover({
       : kind === "lunch" ? buildLunchFieldKey(soleDay ?? "", "")
       : kind === "track_status" ? "track_status_"
       : "event_preference_";
-    // Every preset's allowedQuestionTypes is option-bearing, so there's
-    // always exactly one starter row to seed here — entity-shaped (an empty
-    // id array to fill in via the picker) for availability/event_preference,
-    // plain freeform for lunch — rather than leaving the TD looking at an
-    // empty list with nothing to click but "Add option."
+    // Seeds one starter row for the option-bearing types — entity-shaped (an
+    // empty id array to fill in via the picker) for availability/
+    // event_preference, plain freeform for lunch — rather than leaving the TD
+    // looking at an empty list with nothing to click but "Add option."
+    // Lunch also allows short_text/long_text, which take no options at all;
+    // carryOptions returns [] for those, and it must not reach the config
+    // since TextConfig is extra="forbid" and rejects even an empty array.
     const options = carryOptions(field, kind, questionType);
     onFieldChange({
       field_key: fieldKey,
@@ -163,7 +167,7 @@ export function PresetPopover({
         // other kind (track_status included — its key alone enables them)
         // must not carry it over.
         track_status_enabled: kind === "availability" ? field.config?.track_status_enabled : undefined,
-        options,
+        ...(OPTION_BEARING_TYPES.includes(questionType) ? { options } : {}),
       },
     });
   }

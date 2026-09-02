@@ -1,6 +1,7 @@
 import { FormField, FormFieldConfig, FormFieldInput } from "@/lib/api";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
+import { OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -88,6 +89,11 @@ export function newField(order: number): EditableField {
 // doesn't carry it either.
 export function toFieldInput(field: EditableField, notifyResponders?: boolean): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
+  // A type that takes no options must not carry the key at all — the text
+  // config schemas are extra="forbid", so even `options: []` 422s the whole
+  // batch. Enforced here as well as at each staging site so no editing path
+  // can produce a payload the server refuses.
+  if (!OPTION_BEARING_TYPES.includes(field.question_type)) delete config.options;
   if (config.options) {
     config.options = (config.options as EditableOption[]).map((option) => {
       const { clientKey, ...rest } = option;
