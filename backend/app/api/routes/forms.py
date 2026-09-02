@@ -717,6 +717,8 @@ def bulk_update_fields(
     # (field, reasons, removed_option_ids) — resolved into rows after the
     # flush, so a rolled-back batch leaves no flags behind.
     pending_flags: list[tuple[FormField, set[str], list[str]]] = []
+    # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
+    lunch_backfills: list[FormField] = []
 
     order = 1
     for entry in payload.fields:
@@ -765,6 +767,17 @@ def bulk_update_fields(
                 )
                 if reasons:
                     pending_flags.append((field, reasons, removed_option_ids))
+            # A field that only now became a lunch question: its existing
+            # answers never reached TournamentMembershipLunch, and never will
+            # on their own — write-through only runs on submit. Backfilled
+            # after the loop, once the new key and config are saved.
+            became_lunch = (
+                is_history_preserving
+                and form.owner_type == "tournament"
+                and bool(LUNCH_FIELD_KEY_PATTERN.match(new_field_key))
+                and not LUNCH_FIELD_KEY_PATTERN.match(field.field_key)
+            )
+
             field.is_archived = False
             field.order = order
             field.label = entry.label
@@ -773,6 +786,8 @@ def bulk_update_fields(
             field.field_key = new_field_key
             field.config = normalized_config
             flag_modified(field, "config")
+            if became_lunch:
+                lunch_backfills.append(field)
         else:
             field_key = slugify(entry.field_key or "")
             _check_field_key_available(field_key)
@@ -809,6 +824,9 @@ def bulk_update_fields(
 
     for field, reasons, removed_option_ids in pending_flags:
         flag_pending_updates(db, field, reasons, removed_option_ids)
+
+    for field in lunch_backfills:
+        _backfill_lunch_write_through(db, form, field)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
@@ -1290,6 +1308,63 @@ def invalidate_form_field(
 
     form.updated_at = utcnow()
     db.commit()
+
+
+def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> None:
+    """Replays every existing answer to `field` through sync_lunch, for a
+    question that only just became a lunch question.
+
+    Write-through runs at submit time, so answers given while the key was
+    still a plain one produced no TournamentMembershipLunch rows — and after
+    the change they're excluded from custom responses too (which filter out
+    reserved keys), leaving them in neither panel section until each member
+    resubmits.
+
+    **Lunch only, deliberately.** The same replay is unsafe for the other
+    presets:
+      - availability shares one storage pool across every question covering a
+        day (two fields can, via availability_{date}_{suffix}), and
+        sync_availability deletes anything in that day it wasn't handed — so a
+        per-field replay would erase the shifts a sibling question contributed.
+      - track_status upserts without deleting, but replaying a stale answer can
+        still overwrite a status a newer form set (every transition except a
+        demotion to "interested" is permitted).
+      - event_preference is scope-safe, but switching to it blanks each
+        option's entity ids, so there'd be nothing to replay.
+    Lunch is the one case where a field exclusively owns its rows *and* its
+    options survive the key change (they're freeform text, not entity ids).
+    """
+    lunch_date, category = parse_lunch_field_key(field.field_key)
+    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+    free_text = field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES
+
+    rows = (
+        db.query(FormAnswer.value, TournamentMembership.id)
+        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
+        .join(TournamentMembership, TournamentMembership.user_id == FormResponse.user_id)
+        .filter(
+            FormAnswer.field_id == field.id,
+            TournamentMembership.tournament_id == form.tournament_id,
+        )
+        .all()
+    )
+
+    for value, membership_id in rows:
+        if free_text:
+            text = value.strip() if isinstance(value, str) else ""
+            values = [{"value": text, "label": text}] if text else []
+        else:
+            # Stored select answers hold {option_id, value, label} snapshots
+            # rather than bare ids — same unwrapping _stored_answer_option_ids
+            # does when replaying from storage.
+            items = value if isinstance(value, list) else ([value] if value else [])
+            option_ids = [i.get("option_id") if isinstance(i, dict) else i for i in items]
+            values = [
+                {"value": options_by_id[oid]["value"], "label": options_by_id[oid]["label"]}
+                for oid in option_ids
+                if oid in options_by_id
+            ]
+        sync_lunch(db, membership_id, lunch_date, category, values)
 
 
 def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_date, category) -> None:

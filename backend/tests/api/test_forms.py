@@ -2224,6 +2224,110 @@ class TestWriteThroughOnSubmit:
         assert rows[0].category == "protein"
         assert rows[0].date == date(2027, 2, 13)
 
+    def test_key_change_to_lunch_backfills_existing_answers(self, client, db, td_user, td_tournament):
+        """Answers given while the key was a plain one never reached
+        TournamentMembershipLunch, and the key change also drops them from
+        custom responses — so the switch replays them rather than stranding
+        them until every member resubmits."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
+        ).status_code == 200
+        # Plain key: nothing written through yet.
+        assert db.query(TournamentMembershipLunch).count() == 0
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": "lunch_20270213_special_requests",
+                "label": "Special requests", "question_type": "short_text",
+                "config": {"required": False, "max_length": 200},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).one()
+        assert row.value == "Vegan cheese only"
+        assert row.category == "special_requests"
+        assert row.date == date(2027, 2, 13)
+
+    def test_key_change_to_lunch_backfills_option_answers(self, client, db, td_user, td_tournament):
+        """A select question's stored answer is an {option_id, value, label}
+        snapshot — the backfill unwraps it and resolves against the new
+        config, whose freeform option values survive the key change."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        options = [
+            {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+            {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
+        ]
+        field = _make_field(
+            db, form, field_key="protein_choice", question_type="single_select_radio",
+            config={"required": False, "options": options},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
+        ).status_code == 200
+        assert db.query(TournamentMembershipLunch).count() == 0
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": "lunch_20270213_protein",
+                "label": "Protein", "question_type": "single_select_radio",
+                "config": {"required": False, "options": options},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).one()
+        assert row.value == "tofu"
+        assert row.label == "Tofu"
+        assert row.category == "protein"
+
+    def test_key_change_between_lunch_keys_does_not_backfill(self, client, db, td_user, td_tournament):
+        """Only a non-preset -> lunch transition backfills. Editing a key that
+        was already lunch leaves the old rows to _clear/-resubmit handling
+        rather than silently writing the new (date, category)."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="lunch_20270213_protein", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
+        ).status_code == 200
+        assert db.query(TournamentMembershipLunch).count() == 1
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": "lunch_20270214_protein",
+                "label": "Protein", "question_type": "short_text",
+                "config": {"required": False, "max_length": 200},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        rows = db.query(TournamentMembershipLunch).all()
+        assert len(rows) == 1
+        assert rows[0].date == date(2027, 2, 13)
+
     def test_lunch_free_text_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         """A short_text lunch question writes its typed answer through as the
         row's value/label — there's no option to resolve."""
