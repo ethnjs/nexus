@@ -146,8 +146,10 @@ def test_get_display_config_catalog_empty_tournament(client, td_user, td_tournam
         "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
     ]
     assert [s["id"] for s in body["sections"]][:2] == ["membership", "availability"]
+    # An empty tournament has no tracks, so membership offers only its static
+    # fields — a tournament with tracks also gets one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
-        "joined", "join_method", "tracks", "roles", "age",
+        "joined", "join_method", "roles", "age",
     ]
 
 
@@ -429,3 +431,30 @@ def test_put_rejects_fields_on_a_builtin_section(client, td_user, td_tournament)
     )
     assert response.status_code == 422
     assert "built-in" in response.json()["detail"]
+
+
+def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournament, db):
+    """A section's pieces are its static fields plus the entities it actually
+    renders — one per track / lunch category, not a single all-or-nothing
+    switch over the lot."""
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    sections = {s["id"]: s for s in client.get(
+        f"/tournaments/{td_tournament.id}/display-config/catalog/"
+    ).json()["sections"]}
+
+    assert [f["key"] for f in sections["membership"]["fields"]] == [
+        "joined", "join_method", "roles", "age", f"track:{track.id}",
+    ]
+    assert [f["key"] for f in sections["lunch"]["fields"]] == [
+        "dietary_restriction", "lunch_category:entree",
+    ]

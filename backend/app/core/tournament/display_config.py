@@ -62,13 +62,11 @@ PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
     ("membership", "Membership", (
         ("joined", "Joined"),
         ("join_method", "Join method"),
-        ("tracks", "Tracks"),
         ("roles", "Roles"),
         ("age", "Age"),
     )),
     ("availability", "Availability", ()),
     ("lunch", "Lunch", (
-        ("selections", "Selections"),
         ("dietary_restriction", "Dietary restriction"),
     )),
     ("event_preferences", "Event Preferences", ()),
@@ -249,11 +247,29 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
            for item in track_items + availability_items + lunch_items + custom_field_items]
     )
 
+    # A section's own toggleable pieces are its static fields plus whatever
+    # entities it actually renders — one entry per track, availability day,
+    # lunch category and event-preference key, rather than a single
+    # all-or-nothing switch over the lot.
+    #
+    # These entity entries keep their namespaced keys, which the surface's
+    # `hidden` list already filters server-side (see apply_display_config) —
+    # so offering them here needs no second filtering path, and the modal
+    # writes them to `hidden` rather than to the section's hidden_fields.
+    entity_fields = {
+        "membership": track_items,
+        "availability": availability_items,
+        "lunch": lunch_items,
+        "event_preferences": event_pref_items,
+    }
     section_items = [
         {
             "id": section_id,
             "label": label,
-            "fields": [{"key": field_id, "label": field_label} for field_id, field_label in fields],
+            "fields": (
+                [{"key": field_id, "label": field_label} for field_id, field_label in fields]
+                + entity_fields.get(section_id, [])
+            ),
         }
         for section_id, label, fields in PANEL_SECTIONS
     ]

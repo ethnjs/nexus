@@ -136,8 +136,10 @@ export function MemberPanel({
         return <AvailabilitySection availability={full.availability} allShifts={shifts} />;
       case "lunch":
         return (
+          // Lunch rows are filtered per category server-side; only the
+          // dietary restriction is a static field of this section.
           <LunchSection
-            lunch={hiddenFields.has("selections") ? [] : full.lunch}
+            lunch={full.lunch}
             dietaryRestriction={
               hiddenFields.has("dietary_restriction") ? null : full.user.dietary_restriction
             }

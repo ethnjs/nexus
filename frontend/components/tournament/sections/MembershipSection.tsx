@@ -21,8 +21,8 @@ interface MembershipSectionProps {
   onRolesUpdated: (updated: MembershipSlim) => void;
   /**
    * Field ids the TD turned off for this section — "joined", "join_method",
-   * "tracks", "roles", "age". Ids match the backend's PANEL_SECTIONS entry
-   * for "membership", which is what the config modal offers.
+   * "roles", "age". Individual tracks aren't here: they're entities filtered
+   * server-side by the surface's hidden list.
    */
   hiddenFields: Set<string>;
 }
@@ -38,7 +38,10 @@ export function MembershipSection({
 
   const showJoined = shows("joined");
   const showMethod = shows("join_method");
-  const showTracks = shows("tracks") && membership.track_statuses.length > 0;
+  // Tracks are hidden individually via the surface's hidden list, which the
+  // server already applies — so an empty list here means every track was
+  // turned off (or none exist), and the field has nothing to show either way.
+  const showTracks = membership.track_statuses.length > 0;
   const showRoles = shows("roles");
   const showAge = shows("age") && (collectIsOver18 || collectIsOver21);
 

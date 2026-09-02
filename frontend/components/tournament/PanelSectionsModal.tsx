@@ -99,7 +99,28 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
     update(arrayMove(sections, from, to));
   }
 
+  // A namespaced key ("track:3", "lunch_category:protein") names a real
+  // entity, and the surface's `hidden` list already drops those server-side —
+  // so it goes there rather than into the section's own hidden_fields, which
+  // are the section's static pieces and have no server-side filter.
+  const isEntityKey = (key: string) => key.includes(":");
+
+  const hiddenItems = new Set(draft?.hidden ?? []);
+
+  function fieldIsShown(section: DisplayConfigSection, fieldKey: string): boolean {
+    return isEntityKey(fieldKey)
+      ? !hiddenItems.has(fieldKey)
+      : !(section.hidden_fields ?? []).includes(fieldKey);
+  }
+
   function toggleField(section: DisplayConfigSection, fieldKey: string) {
+    if (isEntityKey(fieldKey)) {
+      const next = new Set(hiddenItems);
+      if (next.has(fieldKey)) next.delete(fieldKey);
+      else next.add(fieldKey);
+      setDraft({ ...(draft ?? { hidden: [] }), hidden: [...next], sections });
+      return;
+    }
     const hidden = new Set(section.hidden_fields ?? []);
     if (hidden.has(fieldKey)) hidden.delete(fieldKey);
     else hidden.add(fieldKey);
@@ -165,25 +186,35 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                           ) : <span style={{ width: "12px" }} />}
 
                           {custom ? (
-                            <Input
-                              value={section.title ?? ""}
-                              onChange={(e) => patch(section.id, { title: e.target.value })}
-                              size="sm"
-                              placeholder="Section name"
-                              style={{ flex: 1 }}
-                            />
+                            // Fixed width rather than flex:1 — the spacer
+                            // below is what right-aligns the controls, and a
+                            // growing input would eat that alignment.
+                            <div style={{ width: "220px" }}>
+                              <Input
+                                value={section.title ?? ""}
+                                onChange={(e) => patch(section.id, { title: e.target.value })}
+                                size="sm"
+                                placeholder="Section name"
+                                fullWidth
+                              />
+                            </div>
                           ) : (
-                            <span style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: "13px" }}>
+                            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>
                               {meta?.label ?? section.id}
                             </span>
                           )}
+
+                          {/* Pushes the controls to the right edge so every
+                              row's toggle lines up, whether its name is a
+                              full-width Input or a short label. */}
+                          <span style={{ flex: 1 }} />
 
                           {custom && (
                             <Button
                               type="button" variant="secondary" size="sm" iconOnly title="Delete section"
                               onClick={() => update(sections.filter((s) => s.id !== section.id))}
                             >
-                              <IconTrash size={13} />
+                              <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
                             </Button>
                           )}
                           <Toggle
@@ -198,7 +229,7 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                             {fields.map((field) => (
                               <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
                                 <Checkbox
-                                  checked={!(section.hidden_fields ?? []).includes(field.key)}
+                                  checked={fieldIsShown(section, field.key)}
                                   onChange={() => toggleField(section, field.key)}
                                 />
                                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{field.label}</span>
