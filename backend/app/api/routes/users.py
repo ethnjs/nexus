@@ -1,7 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.auth import (
@@ -10,15 +9,8 @@ from app.core.auth import (
 )
 from app.core.users import find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
-from app.core.tournament.memberships import (
-    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, gate_age_flags, get_custom_form_answers,
-)
-from app.core.tournament.permissions import MANAGE_MEMBERS, has_permission
 from app.db.session import get_db
-from app.models.models import (
-    Event, TournamentMembership, User, UserCompetitionExperience, UserSession, UserVolunteerExperience,
-)
-from app.schemas.tournament.membership import MembershipFullResponse
+from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
 from app.schemas.user import (
     UserMeFullResponse, AdminUserSlimResponse,
     AdminUserFullResponse, UserMeSlimResponse, UserUpdate, AdminUserUpdate
@@ -172,46 +164,6 @@ def update_user_me(
     response = UserMeFullResponse.model_validate(user, from_attributes=True)
     response.missing_profile_fields = compute_missing_profile_fields(user, db=db)
     return response
-
-
-# ---------------------------------------------------------------------------
-# GET /users/{user_id}/tournament-memberships/ — powers the tournament
-# sections on /profile/[id] for a viewer who isn't the profile owner.
-# ---------------------------------------------------------------------------
-@router.get("/users/{user_id}/tournament-memberships/", response_model=list[MembershipFullResponse])
-def list_user_tournament_memberships(
-    user_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Every *active* TournamentMembership `user_id` holds that `current_user`
-    is allowed to see: all of them for their own profile, otherwise only
-    tournaments where `current_user` holds manage_members. A staff member
-    who manages several tournaments the same person belongs to sees all of
-    them — never picks just one, which would hide the rest with no signal
-    they exist. A declined membership is excluded even from the owner's own
-    profile — it's inactive, same as everywhere else declined is hidden;
-    their own status is still visible via GET .../memberships/me/, which
-    doesn't filter on this."""
-    is_self = current_user.id == user_id
-
-    memberships = (
-        db.query(TournamentMembership)
-        .filter(TournamentMembership.user_id == user_id, ACTIVE_MEMBERSHIP_CLAUSE)
-        .all()
-    )
-    visible = [
-        m for m in memberships
-        if is_self or has_permission(current_user, m.tournament_id, MANAGE_MEMBERS, db)
-    ]
-
-    responses = []
-    for m in visible:
-        resp = MembershipFullResponse.model_validate(m)
-        resp.custom_responses = get_custom_form_answers(db, m.tournament_id, user_id)
-        resp.event_preferences = build_event_preferences(db, m)
-        responses.append(gate_age_flags(m, resp.model_dump(mode="json")))
-    return JSONResponse(responses)
 
 
 # ---------------------------------------------------------------------------

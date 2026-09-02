@@ -10,8 +10,6 @@ import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelFie
 
 interface EventPreferencesSectionProps {
   eventPreferences: MembershipEventPreference[];
-  /** Flips the out-of-date warning between "you should resubmit" and "their answer is stale". */
-  isSelf?: boolean;
 }
 
 function eventLabel(event: { name: string | null; division: string | null }): string {
@@ -117,7 +115,7 @@ function PreferenceKey({ pref }: { pref: MembershipEventPreference }) {
   );
 }
 
-export function EventPreferencesSection({ eventPreferences, isSelf }: EventPreferencesSectionProps) {
+export function EventPreferencesSection({ eventPreferences }: EventPreferencesSectionProps) {
   if (eventPreferences.length === 0) return null;
 
   // An archived option means the form question changed after this answer was
@@ -131,9 +129,7 @@ export function EventPreferencesSection({ eventPreferences, isSelf }: EventPrefe
           {hasStale && (
             <Banner
               variant="warning"
-              message={isSelf
-                ? "Some of these answers were given to a question that has since changed — resubmit the form to update them."
-                : "Some of these answers were given to a question that has since changed and may be out of date."}
+              message="Some of these answers were given to a question that has since changed and may be out of date."
             />
           )}
           {eventPreferences.map((pref) => <PreferenceKey key={pref.key} pref={pref} />)}

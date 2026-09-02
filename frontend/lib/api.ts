@@ -317,14 +317,6 @@ export const usersApi = {
   getForTournament: (tournamentId: number, userId: number) =>
     api.get<UserSlim>(`/tournaments/${tournamentId}/users/${userId}/`),
 
-  // Every tournament membership `userId` holds that the caller may see —
-  // all of them for their own profile, otherwise only tournaments where the
-  // caller holds manage_members. Each entry carries the target's full user
-  // profile (MembershipFullResponse.user), so this alone is enough to power
-  // /profile/[id] for a non-self view.
-  tournamentMemberships: (userId: number | string) =>
-    api.get<MembershipFull[]>(`/users/${userId}/tournament-memberships/`),
-
   listSessions: ()          => api.get<UserSession[]>('/users/me/sessions/'),
   logoutOtherSessions: ()   => api.post<void>('/users/me/sessions/logout-others/', {}),
   deactivateAccount: (currentPassword: string) =>
