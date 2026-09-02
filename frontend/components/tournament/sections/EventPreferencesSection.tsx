@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { MembershipEventPreference, MembershipEventPreferenceOption } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
+import { unslug } from "@/lib/textFormat";
 import { Banner } from "@/components/ui/Banner";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
@@ -97,7 +98,7 @@ function PreferenceKey({ pref }: { pref: MembershipEventPreference }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (
-    <PanelField label={pref.key.replace(/_/g, " ")}>
+    <PanelField label={unslug(pref.key)}>
       <FieldList>
         {pref.options.map((option, i) => {
           const id = option.option_id ?? `orphan-${i}`;

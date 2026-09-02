@@ -142,6 +142,7 @@ def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> li
         MembershipCustomAnswerRead(
             form_title=form.title or form.name,
             field_label=field.label,
+            field_key=field.field_key,
             question_type=field.question_type,
             value=answer.value,
             field_id=field.id,

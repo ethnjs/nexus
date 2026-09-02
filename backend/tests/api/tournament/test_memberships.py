@@ -474,7 +474,8 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
     custom = response.json()["custom_responses"]
     assert custom == [{
         "form_title": "Volunteer interest", "field_label": "Favorite color",
-        "question_type": "single_select_dropdown", "value": "opt_1", "field_id": field.id,
+        "field_key": "favorite_color", "question_type": "single_select_dropdown",
+        "value": "opt_1", "field_id": field.id,
     }]
 
 

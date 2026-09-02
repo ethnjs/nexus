@@ -134,6 +134,9 @@ class MembershipCustomAnswerRead(BaseModel):
     relationship alone."""
     form_title: str
     field_label: str
+    # The panel labels answers by key, not by the question's full sentence —
+    # see the members-panel display config, which does the same.
+    field_key: str
     question_type: str
     value: Any
     # Not part of the original 1.2 shape — added for 3.3's display_config

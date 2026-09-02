@@ -1,6 +1,7 @@
 "use client";
 
 import { MembershipCustomAnswer } from "@/lib/api";
+import { unslug } from "@/lib/textFormat";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { PanelField, FieldValue, FieldGrid } from "@/components/profile/PanelField";
@@ -9,27 +10,35 @@ interface CustomResponsesSectionProps {
   customResponses: MembershipCustomAnswer[];
 }
 
-// Groups flat custom-answer rows by their source form, preserving first-seen
-// form order — MembershipFullResponse doesn't group these itself since a
-// membership can carry answers from several forms.
-function groupByForm(answers: MembershipCustomAnswer[]): [string, MembershipCustomAnswer[]][] {
-  const byForm = new Map<string, MembershipCustomAnswer[]>();
-  for (const answer of answers) {
-    const group = byForm.get(answer.form_title);
-    if (group) group.push(answer);
-    else byForm.set(answer.form_title, [answer]);
-  }
-  return Array.from(byForm.entries());
+// A submitted select-type answer is frozen as an option snapshot
+// ({option_id, value, label}) so a later edit to the option's text doesn't
+// rewrite history — see snapshot_answer_value. Only `value` is meant to be
+// read; rendering the raw object dumped the whole JSON into the panel.
+function isOptionSnapshot(v: unknown): v is { value?: unknown; label?: unknown } {
+  return typeof v === "object" && v !== null && "option_id" in v;
 }
 
-// A custom answer's value shape depends on the field's question_type (plain
-// text, a list of selected option labels, etc.) — there's no read-only
-// response renderer elsewhere to reuse yet, so this just covers the common
-// shapes generically rather than switching on every question_type.
+function optionText(v: unknown): string {
+  if (isOptionSnapshot(v)) return String(v.value ?? v.label ?? "");
+  return typeof v === "object" && v !== null ? JSON.stringify(v) : String(v);
+}
+
+// Covers the three shapes snapshot_answer_value produces — a lone option, a
+// list of them (multi_select_checkbox), and a rank -> option map
+// (ranked_choice) — plus plain text answers, which pass through untouched.
 function formatValue(value: unknown): string {
   if (value === null || value === undefined || value === "") return "—";
-  if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "—";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return value.length > 0 ? value.map(optionText).join(", ") : "—";
+  if (isOptionSnapshot(value)) return optionText(value);
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    if (entries.length === 0) return "—";
+    // Ranked choice: the key is the rank, so it belongs in the output.
+    return entries
+      .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+      .map(([rank, option]) => `${rank}. ${optionText(option)}`)
+      .join(", ");
+  }
   return String(value);
 }
 
@@ -39,25 +48,13 @@ export function CustomResponsesSection({ customResponses }: CustomResponsesSecti
   return (
     <ProfileCard>
       <SectionHeading title="Custom Responses">
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {groupByForm(customResponses).map(([formTitle, answers]) => (
-            <div key={formTitle}>
-              <div style={{
-                fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600,
-                color: "var(--color-text-secondary)", marginBottom: "8px",
-              }}>
-                {formTitle}
-              </div>
-              <FieldGrid>
-                {answers.map((a, i) => (
-                  <PanelField key={i} label={a.field_label}>
-                    <FieldValue>{formatValue(a.value)}</FieldValue>
-                  </PanelField>
-                ))}
-              </FieldGrid>
-            </div>
+        <FieldGrid>
+          {customResponses.map((answer, i) => (
+            <PanelField key={i} label={unslug(answer.field_key)}>
+              <FieldValue>{formatValue(answer.value)}</FieldValue>
+            </PanelField>
           ))}
-        </div>
+        </FieldGrid>
       </SectionHeading>
     </ProfileCard>
   );

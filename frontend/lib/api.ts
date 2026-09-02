@@ -691,6 +691,8 @@ export interface MembershipEventPreference {
 export interface MembershipCustomAnswer {
   form_title:    string
   field_label:   string
+  // Slug key, not the question's full sentence — what the panel labels by.
+  field_key:     string
   question_type: string
   value:         unknown
 }
