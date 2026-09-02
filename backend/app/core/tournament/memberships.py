@@ -344,3 +344,86 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
         if track.id not in existing
     ]
     return sorted(entries, key=lambda e: e.name)
+
+
+def enrich_table_columns(db: Session, tournament, memberships: list, responses: list) -> None:
+    """Fills in the optional MembershipSlimResponse fields the members table's
+    saved column config asks for, and only those.
+
+    A roster is every member in the tournament, so this is the difference
+    between one extra query and none at all — not between one and N. Each kind
+    of data is fetched for the whole roster in a single query and then handed
+    out, never per membership.
+
+    Mutates `responses` in place, positionally paired with `memberships`."""
+    from app.core.tournament import tournament_local_date
+    from app.core.tournament.display_config import (
+        AVAILABILITY_DAY_NAMESPACE, COLUMN_AGE, COLUMN_SHIRT_SIZE, DEFAULT_COLUMNS,
+        FORM_FIELD_NAMESPACE, LUNCH_CATEGORY_NAMESPACE, MEMBERS_TABLE,
+    )
+    from app.models.models import (
+        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
+    )
+
+    surface = (tournament.display_config or {}).get(MEMBERS_TABLE) or {}
+    columns = surface.get("columns")
+    if columns is None:
+        columns = list(DEFAULT_COLUMNS)
+    if not columns or not memberships:
+        return
+
+    wants_age = COLUMN_AGE in columns
+    wants_shirt = COLUMN_SHIRT_SIZE in columns
+    wants_availability = any(c.startswith(AVAILABILITY_DAY_NAMESPACE) for c in columns)
+    wants_lunch = any(c.startswith(LUNCH_CATEGORY_NAMESPACE) for c in columns)
+    wants_custom = any(c.startswith(FORM_FIELD_NAMESPACE) for c in columns)
+
+    membership_ids = [m.id for m in memberships]
+
+    if wants_availability:
+        # The shift's start is an instant; column keys are tournament-local
+        # days — same conversion build_catalog used to name them.
+        rows = (
+            db.query(TournamentMembershipAvailability.membership_id, TournamentShift.start)
+            .join(TournamentShift, TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id)
+            .filter(TournamentMembershipAvailability.membership_id.in_(membership_ids))
+            .all()
+        )
+        days_by_membership: dict[int, set[str]] = {}
+        for membership_id, start in rows:
+            days_by_membership.setdefault(membership_id, set()).add(
+                tournament_local_date(tournament, start).isoformat()
+            )
+    if wants_lunch:
+        lunch_by_membership: dict[int, list] = {}
+        for row in db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.membership_id.in_(membership_ids)
+        ):
+            lunch_by_membership.setdefault(row.membership_id, []).append(row)
+
+    for membership, response in zip(memberships, responses):
+        if wants_age:
+            response.is_over_18 = membership.is_over_18
+            response.is_over_21 = membership.is_over_21
+        if wants_shirt:
+            response.shirt_size = membership.user.shirt_size
+        if wants_availability:
+            response.availability_days = sorted(days_by_membership.get(membership.id, ()))
+        if wants_lunch:
+            response.lunch = build_lunch_rows(lunch_by_membership.get(membership.id, []))
+        if wants_custom:
+            response.custom_responses = get_custom_form_answers(
+                db, tournament.id, membership.user_id
+            )
+
+
+def build_lunch_rows(rows) -> list["MembershipLunchRead"]:
+    """The plain read shape for lunch rows already in hand — no question_type
+    lookup, unlike build_lunch. The table keys off `category`, which the row
+    itself carries, so the source question's type is irrelevant there."""
+    from app.schemas.tournament.membership import MembershipLunchRead
+
+    return [
+        MembershipLunchRead(date=row.date, category=row.category, value=row.value)
+        for row in rows
+    ]

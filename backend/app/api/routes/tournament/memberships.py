@@ -6,10 +6,11 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.display_config import MEMBERS_PANEL, apply_display_config
+from app.core.tournament.display_config import MEMBERS_TABLE, apply_display_config
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
-    gate_age_flags, get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
+    enrich_table_columns, gate_age_flags, get_custom_form_answers, get_membership_by_user,
+    resolve_memberships_or_users,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -77,16 +78,20 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tou
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/ — manage_members
-# Members-page roster: slim user identity + roles, plus track_statuses (3.5)
-# for the table's Tracks column. Filtered through the same "members_panel"
-# display_config surface as the detail panel (3.3/3.4) — hiding a track
-# there hides it here too, since both read from the same underlying data.
+# GET /tournaments/{tournament_id}/memberships/?surface= — manage_members
+# Members-page roster: slim user identity + roles, plus track_statuses.
+#
+# `surface` names which display_config surface to render for — the members
+# table passes "members_table", which both filters hidden items and decides
+# which optional column data to load (age, shirt size, availability, lunch,
+# custom answers). Omitted means no filtering and no enrichment, so a caller
+# with no opinion gets the plain roster, same as the detail route's param.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[MembershipSlimResponse])
 def list_memberships(
     tournament_id: int,
     include_declined: bool = Query(False),
+    surface: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -107,9 +112,16 @@ def list_memberships(
     memberships = query.order_by(TournamentMembership.id).all()
     responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    if surface == MEMBERS_TABLE:
+        enrich_table_columns(db, tournament, memberships, responses)
+    # gate_age_flags per row, exactly as the detail route does: the Age column
+    # reads is_over_18/21, and a column being switched on must never override
+    # a member's withheld consent.
     data = [
-        apply_display_config(tournament, MEMBERS_PANEL, resp.model_dump(mode="json"))
-        for resp in responses
+        apply_display_config(
+            tournament, surface, gate_age_flags(membership, resp.model_dump(mode="json"))
+        )
+        for membership, resp in zip(memberships, responses)
     ]
     return JSONResponse(data)
 

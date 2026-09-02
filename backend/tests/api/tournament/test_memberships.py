@@ -135,10 +135,10 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
     }]
 
 
-def test_list_memberships_applies_members_panel_display_config(client, td_user, td_tournament, db):
-    """Hiding a track via display_config drops it from the roster table too
-    — same "members_panel" surface the detail panel (3.3) already respects,
-    not a second, independent hiding mechanism."""
+def test_list_memberships_applies_the_requested_surface_config(client, td_user, td_tournament, db):
+    """The roster renders the members *table* surface, so that's the config it
+    honours — the panel's own hidden set is a separate surface now that each
+    has its own controls."""
     from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
 
     u = _make_user(db, "alice@example.com")
@@ -147,12 +147,76 @@ def test_list_memberships_applies_members_panel_display_config(client, td_user, 
     db.add(track)
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
-    td_tournament.display_config = {"members_panel": {"hidden": [f"track:{track.id}"]}}
+    td_tournament.display_config = {"members_table": {"hidden": [f"track:{track.id}"]}}
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert row["track_statuses"] == []
+
+
+def test_list_memberships_without_a_surface_is_unfiltered(client, td_user, td_tournament, db):
+    """No surface means no opinion — the caller gets the plain roster rather
+    than some surface's filtering applied by default."""
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    td_tournament.display_config = {"members_table": {"hidden": [f"track:{track.id}"]}}
     db.commit()
 
     login(client, "td@test.com", "tdpass")
     row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
-    assert row["track_statuses"] == []
+    assert [t["track_id"] for t in row["track_statuses"]] == [track.id]
+
+
+def test_list_memberships_enriches_only_configured_columns(client, td_user, td_tournament, db):
+    """Column data is loaded only when a column asks for it — a roster is
+    every member, so loading lunch/availability nobody turned on would cost
+    on every page load."""
+    from app.models.models import TournamentMembershipLunch
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+    ))
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert row["lunch"] == []
+
+    td_tournament.display_config = {"members_table": {"columns": ["lunch_category:entree"]}}
+    db.commit()
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert [entry["value"] for entry in row["lunch"]] == ["pizza"]
+
+
+def test_list_memberships_age_column_still_respects_consent(client, td_user, td_tournament, db):
+    """Turning the Age column on cannot override a member's withheld
+    consent — display config is not a second privacy mechanism."""
+    from app.models.models import User
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    # is_over_18 is derived from date_of_birth, not stored — so give them one.
+    db.query(User).filter(User.id == u["id"]).one().date_of_birth = date(1990, 1, 1)
+    m.age_disclosure = None
+    td_tournament.collect_is_over_18 = True
+    td_tournament.display_config = {"members_table": {"columns": ["age"]}}
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert "is_over_18" not in row
 
 
 def test_list_memberships_requires_manage_members(

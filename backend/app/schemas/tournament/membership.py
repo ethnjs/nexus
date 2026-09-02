@@ -200,6 +200,20 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     # TD who hides a track sees it disappear from both.
     track_statuses: list[MembershipTrackStatusRead] = []
 
+    # ---- Optional table-column data -------------------------------------
+    # Populated only when the members table's saved column config actually
+    # asks for it (see enrich_table_columns). A roster is every member in the
+    # tournament, so loading lunch/availability/answers for columns nobody
+    # turned on would be pure waste on every page load.
+    is_over_18: Optional[bool] = None
+    is_over_21: Optional[bool] = None
+    shirt_size: Optional[str] = None
+    # Local calendar days (YYYY-MM-DD) this member is available on, matching
+    # the availability_day: column keys.
+    availability_days: list[str] = []
+    lunch: list[MembershipLunchRead] = []
+    custom_responses: list[MembershipCustomAnswerRead] = []
+
     user: UserSlimResponse
 
     @field_validator("track_statuses", mode="before")
