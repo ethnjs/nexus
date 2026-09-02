@@ -8,8 +8,8 @@ from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import MEMBERS_PANEL, apply_display_config
 from app.core.tournament.memberships import (
-    ACTIVE_MEMBERSHIP_CLAUSE, gate_age_flags, get_custom_form_answers, get_membership_by_user,
-    resolve_memberships_or_users,
+    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, gate_age_flags, get_custom_form_answers,
+    get_membership_by_user, resolve_memberships_or_users,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -25,7 +25,7 @@ from app.models.models import (
 )
 from app.schemas.tournament.membership import (
     AgeDisclosureRequest, MembershipAvailabilityRead, MembershipCoordinatorUpdate,
-    MembershipEventPreferenceRead, MembershipFullResponse, MembershipLunchRead, MembershipMeResponse,
+    MembershipFullResponse, MembershipLunchRead, MembershipMeResponse,
     MembershipMeUpdate, MembershipSlimResponse,
 )
 from app.schemas.tournament.track import MembershipTrackStatusRead
@@ -48,7 +48,7 @@ def _build_me_response(
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         needs_age_consent=needs_age_consent,
         track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
-        event_preferences=MembershipEventPreferenceRead.group_rows(membership.event_preferences),
+        event_preferences=build_event_preferences(db, membership),
         availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
         lunch=[MembershipLunchRead.model_validate(row) for row in membership.lunch_selections],
         custom_responses=get_custom_form_answers(db, tournament.id, current_user.id),
@@ -275,6 +275,7 @@ def get_membership(
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    resp.event_preferences = build_event_preferences(db, m)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json"))
     data = apply_display_config(m.tournament, surface, data)
@@ -309,6 +310,7 @@ def update_my_membership(
     db.refresh(m)
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    resp.event_preferences = build_event_preferences(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 
@@ -340,6 +342,7 @@ def update_membership(
     db.refresh(m)
     resp = MembershipFullResponse.model_validate(m)
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    resp.event_preferences = build_event_preferences(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 

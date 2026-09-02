@@ -149,3 +149,110 @@ def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> li
         for answer, field, form in rows
         if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
     ]
+
+
+def build_event_preferences(db: Session, membership: TournamentMembership) -> list["MembershipEventPreferenceRead"]:
+    """This membership's event preferences, grouped by the *form option* they
+    picked rather than the flat per-event rows the DB stores.
+
+    Selecting one option writes one row per event it groups (see
+    form-question-types-reference.md), so a "Test Review" option covering 21
+    events reads back as 21 rows — unusable in a panel. This reverses that
+    expansion by mapping each stored event id back to the option whose `value`
+    list contains it, and returns one entry per option with its events nested.
+
+    Options are matched against archived fields and archived options too, not
+    just live ones: an answer given before the TD reworked the question still
+    has to render. Anything matched that way is flagged `is_archived` so the
+    UI can warn that the answer is out of date; an event matching no option at
+    all falls back to a single-event group, also flagged."""
+    from app.core.form.validation import EVENT_PREFERENCE_FIELD_KEY_PATTERN
+    from app.models.models import Form, FormField
+    from app.schemas.tournament.membership import (
+        MembershipEventPreferenceEventRead,
+        MembershipEventPreferenceOptionRead,
+        MembershipEventPreferenceRead,
+    )
+
+    rows = membership.event_preferences
+    if not rows:
+        return []
+
+    keys = {row.key for row in rows}
+    fields = (
+        db.query(FormField)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == membership.tournament_id,
+            FormField.field_key.in_({f"event_preference_{key}" for key in keys}),
+        )
+        # Live fields first so a live option wins the mapping over an archived
+        # field that shares the key — an archived field doesn't reserve its
+        # key, so both can exist at once.
+        .order_by(FormField.is_archived, FormField.id)
+        .all()
+    )
+
+    # event id -> (key, option_id, label, order, is_archived)
+    option_by_event: dict[tuple[str, int], dict] = {}
+    for field in fields:
+        if not EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
+            continue
+        key = field.field_key[len("event_preference_"):]
+        for order, option in enumerate((field.config or {}).get("options", [])):
+            value = option.get("value")
+            if not isinstance(value, list):
+                continue
+            for event_id in value:
+                option_by_event.setdefault((key, event_id), {
+                    "option_id": option.get("option_id"),
+                    "label": option.get("label") or "",
+                    "order": order,
+                    "is_archived": bool(option.get("is_archived") or field.is_archived),
+                })
+
+    groups: list[MembershipEventPreferenceRead] = []
+    for key in sorted(keys):
+        key_rows = sorted(
+            (row for row in rows if row.key == key),
+            key=lambda r: (r.rank is None, r.rank or 0, r.tournament_event_id),
+        )
+
+        # option_id is only unique within a field, and an orphan has none, so
+        # the bucket key falls back to the event id to keep orphans separate.
+        buckets: dict[object, dict] = {}
+        for row in key_rows:
+            event = MembershipEventPreferenceEventRead(
+                id=row.tournament_event_id,
+                name=row.tournament_event.display_name,
+                division=row.tournament_event.division,
+                rank=row.rank,
+            )
+            match = option_by_event.get((key, row.tournament_event_id))
+            bucket_id = match["option_id"] if match else f"event:{row.tournament_event_id}"
+            bucket = buckets.get(bucket_id)
+            if bucket:
+                bucket["events"].append(event)
+                continue
+            buckets[bucket_id] = {
+                "option_id": match["option_id"] if match else None,
+                # An orphan has no option to name it, so it labels itself.
+                "label": match["label"] if match else (event.name or "Unknown event"),
+                "order": match["order"] if match else len(option_by_event) + row.tournament_event_id,
+                "is_archived": match["is_archived"] if match else True,
+                "rank": row.rank,
+                "events": [event],
+            }
+
+        groups.append(MembershipEventPreferenceRead(
+            key=key,
+            options=[
+                MembershipEventPreferenceOptionRead(**{k: v for k, v in bucket.items() if k != "order"})
+                for bucket in sorted(
+                    buckets.values(),
+                    key=lambda b: (b["rank"] is None, b["rank"] or 0, b["order"]),
+                )
+            ],
+        ))
+    return groups

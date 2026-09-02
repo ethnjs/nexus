@@ -60,40 +60,35 @@ class MembershipEventPreferenceEventRead(BaseModel):
     rank: int | None = None
 
 
+class MembershipEventPreferenceOptionRead(BaseModel):
+    """One picked option of an event_preference question, with the events it
+    groups nested inside. The DB stores one flat row per event; the panel
+    wants the option the member actually chose, since a single option can
+    group 20+ events. Built by app.core.tournament.memberships.
+    build_event_preferences — the reverse mapping needs the form's options,
+    so it can't be derived from the membership rows alone."""
+    # None only for an event that matched no option at all — see is_archived.
+    option_id: str | None = None
+    label: str
+    rank: int | None = None
+    # True when the option (or its whole field) has been archived, or when no
+    # option matched. Flags an answer the TD's current form can no longer
+    # produce, so the UI can prompt for a re-submit.
+    is_archived: bool = False
+    events: list[MembershipEventPreferenceEventRead]
+
+    model_config = {"from_attributes": True}
+
+
 class MembershipEventPreferenceRead(BaseModel):
-    """One event_preference_{suffix} question's answer, grouped by key with
-    its events resolved. Each suffix is its own independent axis — see
+    """One event_preference_{suffix} question's answer, grouped by key then by
+    the option picked. Each suffix is its own independent axis — see
     form-question-types-reference.md — so this is a list, not a single
     preference."""
     key: str
-    events: list[MembershipEventPreferenceEventRead]
+    options: list[MembershipEventPreferenceOptionRead]
 
-    @classmethod
-    def group_rows(cls, rows) -> list["MembershipEventPreferenceRead"]:
-        """Groups flat TournamentMembershipEventPreference rows (one per
-        event) into one entry per key, ordered by key then by rank (nulls
-        last) then event id within each key."""
-        by_key: dict[str, list] = {}
-        for row in rows:
-            by_key.setdefault(row.key, []).append(row)
-        return [
-            cls(
-                key=key,
-                events=[
-                    MembershipEventPreferenceEventRead(
-                        id=row.tournament_event_id,
-                        name=row.tournament_event.display_name,
-                        division=row.tournament_event.division,
-                        rank=row.rank,
-                    )
-                    for row in sorted(
-                        by_key[key],
-                        key=lambda r: (r.rank is None, r.rank or 0, r.tournament_event_id),
-                    )
-                ],
-            )
-            for key in sorted(by_key)
-        ]
+    model_config = {"from_attributes": True}
 
 
 class MembershipAvailabilityRead(BaseModel):
@@ -256,13 +251,16 @@ class MembershipFullResponse(_MembershipRolesMixin):
     def _validate_track_statuses(cls, v):
         return _flatten_track_statuses(v)
 
-    # Same treatment for event preferences — the flat per-event rows need
-    # grouping by key before they match this schema's shape.
+    # Event preferences can't be resolved here: turning the flat per-event
+    # rows into the options the member picked needs the form's option lists,
+    # and a validator has no db session. Drop the raw ORM rows and let the
+    # route assign build_event_preferences()'s result, same as
+    # custom_responses above.
     @field_validator("event_preferences", mode="before")
     @classmethod
-    def _group_event_preferences(cls, v):
+    def _drop_unresolved_event_preferences(cls, v):
         if v and hasattr(v[0], "tournament_event_id"):
-            return MembershipEventPreferenceRead.group_rows(v)
+            return []
         return v
 
     # availability rows only carry a shift id — resolve the shift's

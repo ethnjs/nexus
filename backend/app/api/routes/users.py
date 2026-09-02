@@ -10,7 +10,9 @@ from app.core.auth import (
 )
 from app.core.users import find_user_by_id
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, gate_age_flags, get_custom_form_answers
+from app.core.tournament.memberships import (
+    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, gate_age_flags, get_custom_form_answers,
+)
 from app.core.tournament.permissions import MANAGE_MEMBERS, has_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -207,6 +209,7 @@ def list_user_tournament_memberships(
     for m in visible:
         resp = MembershipFullResponse.model_validate(m)
         resp.custom_responses = get_custom_form_answers(db, m.tournament_id, user_id)
+        resp.event_preferences = build_event_preferences(db, m)
         responses.append(gate_age_flags(m, resp.model_dump(mode="json")))
     return JSONResponse(responses)
 

@@ -324,6 +324,72 @@ def _add_preference(db, membership_id, key, event_id, rank):
     db.commit()
 
 
+
+def _add_event_preference_field(db, tournament_id, created_by, key, options, field_archived=False):
+    """A published tournament form carrying one event_preference_{key} field.
+    `options` is [(option_id, label, [event ids], is_archived)] — the grouping
+    build_event_preferences reverses when reading answers back."""
+    from app.models.models import Form, FormField
+
+    form = Form(
+        name=f"form-{key}", title=f"Form {key}", owner_type="tournament",
+        tournament_id=tournament_id, status="published", created_by=created_by,
+    )
+    db.add(form)
+    db.flush()
+    db.add(FormField(
+        form_id=form.id, order=0, label=f"Events {key}",
+        question_type="ranked_choice", field_key=f"event_preference_{key}",
+        is_archived=field_archived,
+        config={"options": [
+            {"option_id": oid, "label": label, "value": ids, "is_archived": archived}
+            for oid, label, ids, archived in options
+        ]},
+    ))
+    db.commit()
+
+
+def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_user, td_tournament):
+    """One option grouping several events reads back as one entry, not one per
+    event — the whole point of the option-grouped shape."""
+    login(client, "td@test.com", "tdpass")
+    e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
+    e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_event_preference_field(
+        db, td_tournament.id, td_user.id, "morning",
+        [("opt_1", "Life & Space Science", [e1["id"], e2["id"]], False)],
+    )
+    _add_preference(db, membership.id, "morning", e1["id"], 1)
+    _add_preference(db, membership.id, "morning", e2["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    assert res.status_code == 200
+    options = res.json()["event_preferences"][0]["options"]
+    assert len(options) == 1
+    assert options[0]["label"] == "Life & Space Science"
+    assert options[0]["is_archived"] is False
+    assert [e["id"] for e in options[0]["events"]] == sorted([e1["id"], e2["id"]])
+
+
+def test_event_preferences_flag_answers_to_an_archived_option(client, db, td_user, td_tournament):
+    """An answer given before the TD reworked the question still renders, but
+    is flagged so the panel can warn it's out of date."""
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id, name="Anatomy").json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_event_preference_field(
+        db, td_tournament.id, td_user.id, "morning", [("opt_1", "Retired Group", [event["id"]], True)],
+    )
+    _add_preference(db, membership.id, "morning", event["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    assert res.status_code == 200
+    option = res.json()["event_preferences"][0]["options"][0]
+    assert option["label"] == "Retired Group"
+    assert option["is_archived"] is True
+
+
 def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
@@ -335,11 +401,19 @@ def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, t
 
     res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
     assert res.status_code == 200
+    # No form field defines these options, so each event is its own group,
+    # labelled by the event and flagged archived (see build_event_preferences).
     assert res.json()["event_preferences"] == [{
         "key": "morning",
-        "events": [
-            {"id": e1["id"], "name": "Anatomy", "division": "C", "rank": 1},
-            {"id": e2["id"], "name": "Astronomy", "division": "C", "rank": 2},
+        "options": [
+            {
+                "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
+                "events": [{"id": e1["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+            },
+            {
+                "option_id": None, "label": "Astronomy", "rank": 2, "is_archived": True,
+                "events": [{"id": e2["id"], "name": "Astronomy", "division": "C", "rank": 2}],
+            },
         ],
     }]
 
@@ -355,7 +429,7 @@ def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_us
 
     res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
     assert res.status_code == 200
-    ids = [e["id"] for e in res.json()["event_preferences"][0]["events"]]
+    ids = [o["events"][0]["id"] for o in res.json()["event_preferences"][0]["options"]]
     assert ids == sorted([e1["id"], e2["id"]])
 
 def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_tournament):
@@ -378,7 +452,11 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
     res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
     assert res.status_code == 200
     assert res.json()["event_preferences"] == [{
-        "key": "morning", "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+        "key": "morning",
+        "options": [{
+            "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
+            "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
+        }],
     }]
 
 def test_member_slim_response_has_no_event_preferences(client, db, td_user, td_tournament):

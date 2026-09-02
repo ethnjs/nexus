@@ -3,14 +3,10 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import {
-  usersApi, canonicalEventsApi, tournamentsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience,
-  MembershipFull, Tournament,
-} from "@/lib/api";
-import { Banner } from "@/components/ui/Banner";
+import { usersApi, canonicalEventsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import type { UserFull, UserMeFull } from "@/lib/api";
+import type { UserMeFull } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
@@ -18,57 +14,8 @@ import { CompetitionExperienceSection } from "@/components/profile/sections/Comp
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { CompetitionExperienceDraft, VolunteerExperienceDraft } from "@/components/profile/ExperienceTables";
-import { PanelField } from "@/components/profile/PanelField";
-import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
-import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
-import { LunchSection } from "@/components/tournament/sections/LunchSection";
-import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
-import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
 import Link from "next/link";
 import { IconEdit } from "@/components/ui/Icons";
-
-function ageDisclosureBannerMessage(tournament: Tournament): string {
-  if (tournament.collect_is_over_18 && tournament.collect_is_over_21) {
-    return `${tournament.name} can see whether you're 18+ and 21+ — never your date of birth.`;
-  }
-  if (tournament.collect_is_over_21) {
-    return `${tournament.name} can see whether you're 21+ — never your date of birth.`;
-  }
-  return `${tournament.name} can see whether you're 18+ — never your date of birth.`;
-}
-
-// One membership's tournament sections — Age Flags alongside Availability/
-// Lunch/Event Preferences/Custom Responses, same components MemberPanel
-// uses. Labeled with the tournament name only when there's more than one
-// membership to tell apart (the common case, viewing one tournament, needs
-// no extra fetch to find out).
-function MembershipTournamentSections({ membership, tournament, tournamentName }: {
-  membership: MembershipFull; tournament?: Tournament; tournamentName?: string;
-}) {
-  const collectsAgeFlag = !!tournament && (tournament.collect_is_over_18 || tournament.collect_is_over_21);
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {tournamentName && (
-        <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px", fontWeight: 700, color: "var(--color-text-primary)" }}>
-          {tournamentName}
-        </h2>
-      )}
-      {collectsAgeFlag && (
-        <Banner variant="info" message={ageDisclosureBannerMessage(tournament!)} />
-      )}
-      <ProfileCard>
-        <PanelField label="Age Flags">
-          <AgeFlagsBadges isOver18={membership.is_over_18} isOver21={membership.is_over_21} />
-        </PanelField>
-      </ProfileCard>
-      <AvailabilitySection availability={membership.availability} />
-      <LunchSection lunch={membership.lunch} />
-      <EventPreferencesSection eventPreferences={membership.event_preferences} />
-      <CustomResponsesSection customResponses={membership.custom_responses} />
-    </div>
-  );
-}
 
 
 interface FloatingEditButtonProps {
@@ -103,12 +50,9 @@ export default function ProfilePage() {
   const params = useParams();
   const profileId = params.id as string;
 
-  const [profile, setProfile] = useState<UserFull | UserMeFull | null>(null);
+  const [profile, setProfile] = useState<UserMeFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
-  const [memberships, setMemberships] = useState<MembershipFull[]>([]);
-  const [tournaments, setTournaments] = useState<Record<number, Tournament>>({});
   const [error, setError] = useState<string | null>(null);
-  const [accessDenied, setAccessDenied] = useState(false);
 
   const isOwnProfile = !!currentUser && !!profile && String(currentUser.id) === String(profile.id);
 
@@ -120,44 +64,17 @@ export default function ProfilePage() {
       return;
     }
 
-    const isSelf = String(currentUser.id) === String(profileId);
+    if (String(currentUser.id) !== String(profileId)) {
+      router.replace("/dashboard");
+      return;
+    }
 
-    // Own profile always loads via /users/me/ (richer — onboarding status,
-    // date of birth for self-edit) — fetched in parallel with memberships
-    // since self access never depends on the membership result. A non-self
-    // view has no such endpoint; MembershipFullResponse.user already carries
-    // everything the read-only sections below need, so tournament-memberships
-    // alone is enough — an empty result there means no shared tournament,
-    // i.e. no access.
-    if (isSelf) usersApi.meFull().then(setProfile).catch(() => setError("Failed to load profile."));
-
-    usersApi.tournamentMemberships(profileId)
-      .then((ms) => {
-        setMemberships(ms);
-        if (!isSelf) {
-          if (ms.length > 0) setProfile(ms[0].user);
-          else setAccessDenied(true);
-        }
-      })
+    usersApi.meFull()
+      .then(setProfile)
       .catch(() => setError("Failed to load profile."));
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
   }, [authLoading, currentUser, profileId, router]);
-
-  // One fetch per unique tournament — needed for the age-disclosure banner's
-  // collect_is_over_18/21 (not on MembershipFullResponse) regardless of
-  // membership count, and doubles as the section-heading name when there's
-  // more than one membership to tell apart.
-  useEffect(() => {
-    if (memberships.length === 0) return;
-    const uniqueIds = Array.from(new Set(memberships.map((m) => m.tournament_id)));
-    Promise.all(uniqueIds.map((id) => tournamentsApi.get(id).catch(() => null)))
-      .then((results) => {
-        const byId: Record<number, Tournament> = {};
-        results.forEach((t, i) => { if (t) byId[uniqueIds[i]] = t; });
-        setTournaments(byId);
-      });
-  }, [memberships]);
 
   // ── Competition experience CRUD (fast-edit, "view-edit" mode) ──────────────
   function draftToCompetitionCreate(row: CompetitionExperienceDraft) {
@@ -240,18 +157,10 @@ export default function ProfilePage() {
     } : p);
   }
 
-  if (authLoading || (!profile && !error && !accessDenied)) {
+  if (authLoading || (!profile && !error)) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
         <Spinner size="lg" />
-      </div>
-    );
-  }
-
-  if (accessDenied) {
-    return (
-      <div style={{ padding: "40px", fontFamily: "var(--font-sans)", color: "var(--color-text-tertiary)" }}>
-        You don&apos;t have access to view this profile.
       </div>
     );
   }
@@ -272,16 +181,6 @@ export default function ProfilePage() {
         display: "flex", flexDirection: "column", gap: "20px",
       }}>
         <ProfileHeader user={profile} showEditButton={isOwnProfile} />
-
-        {memberships.map((m) => (
-          <MembershipTournamentSections
-            key={m.id}
-            membership={m}
-            tournament={tournaments[m.tournament_id]}
-            tournamentName={memberships.length > 1 ? tournaments[m.tournament_id]?.name : undefined}
-          />
-        ))}
-
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
         {profile.has_competition_experience !== false && (
           <ProfileCard>

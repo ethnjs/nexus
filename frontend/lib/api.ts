@@ -672,11 +672,24 @@ export interface MembershipEventPreferenceEvent {
   rank:     number | null
 }
 
+// Matches MembershipEventPreferenceOptionRead — one option the member picked,
+// with the events it groups nested inside. The API returns the picked option
+// rather than the flat event rows because one option can group 20+ events.
+export interface MembershipEventPreferenceOption {
+  option_id:   string | null
+  label:       string
+  rank:        number | null
+  // The option (or its field) was archived, or no option matched at all —
+  // i.e. the form changed after this answer was given.
+  is_archived: boolean
+  events:      MembershipEventPreferenceEvent[]
+}
+
 // Matches MembershipEventPreferenceRead — one event_preference_{suffix}
-// question's answer, events already ordered by rank.
+// question's answer, grouped by key then by the option picked.
 export interface MembershipEventPreference {
-  key:    string
-  events: MembershipEventPreferenceEvent[]
+  key:     string
+  options: MembershipEventPreferenceOption[]
 }
 
 // Matches MembershipCustomAnswerRead — one answer to a form field that
