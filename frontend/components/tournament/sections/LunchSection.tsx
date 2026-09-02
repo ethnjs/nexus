@@ -5,10 +5,18 @@ import { formatDayLabel } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField } from "@/components/profile/PanelField";
+import { PanelField, FieldValue } from "@/components/profile/PanelField";
 
 interface LunchSectionProps {
   lunch: MembershipLunch[];
+  /**
+   * Shown here as well as in the profile's Logistics card — it's the
+   * constraint the selections have to satisfy, so reading the lunch section
+   * without it is reading half the picture. Deliberately duplicated rather
+   * than moved: Logistics is a global profile card and has no lunch context
+   * of its own.
+   */
+  dietaryRestriction?: string | null;
 }
 
 // Groups by the bare "YYYY-MM-DD" string, then by category within each day.
@@ -28,8 +36,10 @@ function groupByDate(lunch: MembershipLunch[]): [string, [string, MembershipLunc
     .map(([date, categories]) => [date, Array.from(categories.entries())]);
 }
 
-export function LunchSection({ lunch }: LunchSectionProps) {
-  if (lunch.length === 0) return null;
+export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
+  // A restriction with no selections is still worth showing — someone has to
+  // order for them either way.
+  if (lunch.length === 0 && !dietaryRestriction) return null;
 
   return (
     <ProfileCard>
@@ -54,6 +64,11 @@ export function LunchSection({ lunch }: LunchSectionProps) {
               </div>
             </PanelField>
           ))}
+          {dietaryRestriction && (
+            <PanelField label="Dietary Restriction">
+              <FieldValue>{dietaryRestriction}</FieldValue>
+            </PanelField>
+          )}
         </div>
       </SectionHeading>
     </ProfileCard>

@@ -160,7 +160,7 @@ export function MemberPanel({
             </ProfileCard>
 
             <AvailabilitySection availability={full.availability} allShifts={shifts} />
-            <LunchSection lunch={full.lunch} />
+            <LunchSection lunch={full.lunch} dietaryRestriction={full.user.dietary_restriction} />
             <EventPreferencesSection eventPreferences={full.event_preferences} />
             <CustomResponsesSection customResponses={full.custom_responses} />
 
