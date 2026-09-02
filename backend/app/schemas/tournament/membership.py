@@ -257,6 +257,11 @@ class MembershipFullResponse(_MembershipRolesMixin):
     # Not a TournamentMembership relationship — populated by the route via
     # get_custom_form_answers after the rest of this response is built.
     custom_responses: list[MembershipCustomAnswerRead] = []
+    # Sections the surface's display config emptied out — set by
+    # apply_display_config, never by the ORM. The panel renders a section even
+    # when a member has no data for it ("No info yet"), so it needs this to
+    # tell that apart from a section the TD turned off.
+    hidden_sections: list[str] = []
 
     user: UserFullResponse
 

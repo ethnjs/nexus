@@ -1,4 +1,5 @@
 import { SectionHeading } from "@/components/profile/SectionHeading";
+import { FieldValue } from "@/components/profile/PanelField";
 import {
   CompetitionExperienceSpreadsheet, CompetitionExperienceDraft, ExperienceTableMode,
   competitionExperienceToDraft,
@@ -27,11 +28,25 @@ interface CompetitionExperienceSectionProps {
 export function CompetitionExperienceSection({
   user, mode = "view", events = [], onAdd, onUpdate, onDelete,
 }: CompetitionExperienceSectionProps) {
-  if (user.has_competition_experience === false) return null;
 
   const rows: CompetitionExperienceDraft[] = user.competition_experience.map((exp) =>
     competitionExperienceToDraft(exp as Parameters<typeof competitionExperienceToDraft>[0])
   );
+
+  // The panel renders every section, so "they answered: none" and "they never
+  // answered" have to read differently — absence used to convey both. Only in
+  // read-only mode: an editable view still needs the table so a first row can
+  // be added, and the answer itself changed.
+  if (mode === "view") {
+    if (user.has_competition_experience === false) {
+      return <SectionHeading title="Competition Experience"><FieldValue>None</FieldValue></SectionHeading>;
+    }
+    if (rows.length === 0) {
+      return <SectionHeading title="Competition Experience"><FieldValue muted>No info yet</FieldValue></SectionHeading>;
+    }
+  } else if (user.has_competition_experience === false) {
+    return null;
+  }
 
   return (
     <SectionHeading title="Competition Experience">

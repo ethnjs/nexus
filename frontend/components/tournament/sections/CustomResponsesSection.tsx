@@ -43,11 +43,11 @@ function formatValue(value: unknown): string {
 }
 
 export function CustomResponsesSection({ customResponses }: CustomResponsesSectionProps) {
-  if (customResponses.length === 0) return null;
 
   return (
     <ProfileCard>
       <SectionHeading title="Custom Responses">
+        {customResponses.length === 0 && <FieldValue muted>No info yet</FieldValue>}
         <FieldGrid>
           {customResponses.map((answer, i) => (
             <PanelField key={i} label={unslug(answer.field_key)}>

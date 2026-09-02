@@ -6,7 +6,7 @@ import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField } from "@/components/profile/PanelField";
+import { PanelField, FieldValue } from "@/components/profile/PanelField";
 import { AvailabilityTimeline, TimelineShift } from "@/components/tournament/AvailabilityTimeline";
 
 interface AvailabilitySectionProps {
@@ -108,7 +108,6 @@ function AvailabilityDay({ day, slots, offered }: {
 // callers can drop this in unconditionally (MemberPanel, and the member's
 // own profile page, once per tournament membership).
 export function AvailabilitySection({ availability, allShifts }: AvailabilitySectionProps) {
-  if (availability.length === 0) return null;
 
   const offeredByDay = groupByDay(allShifts ?? []);
 
@@ -116,6 +115,7 @@ export function AvailabilitySection({ availability, allShifts }: AvailabilitySec
     <ProfileCard>
       <SectionHeading title="Availability">
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {availability.length === 0 && <FieldValue muted>No info yet</FieldValue>}
           {Array.from(groupByDay(availability).entries())
             .sort(([a], [b]) => a.localeCompare(b))
             .map(([day, slots]) => (

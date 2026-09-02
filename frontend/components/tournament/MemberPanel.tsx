@@ -80,6 +80,8 @@ export function MemberPanel({
     onUpdated?.(updated);
   }
 
+  const hiddenSections = new Set(full?.hidden_sections ?? []);
+
   return (
     <DockedPanel
       onClose={onClose}
@@ -167,24 +169,34 @@ export function MemberPanel({
               </SectionHeading>
             </ProfileCard>
 
-            <AvailabilitySection availability={full.availability} allShifts={shifts} />
-            <LunchSection lunch={full.lunch} dietaryRestriction={full.user.dietary_restriction} />
-            <EventPreferencesSection eventPreferences={full.event_preferences} />
-            <CustomResponsesSection customResponses={full.custom_responses} />
+            {/* Sections render even when empty, so the only thing that
+                suppresses one is the display config having hidden every item
+                it would have shown. */}
+            {!hiddenSections.has("availability") && (
+              <AvailabilitySection availability={full.availability} allShifts={shifts} />
+            )}
+            {!hiddenSections.has("lunch") && (
+              <LunchSection lunch={full.lunch} dietaryRestriction={full.user.dietary_restriction} />
+            )}
+            {!hiddenSections.has("event_preferences") && (
+              <EventPreferencesSection eventPreferences={full.event_preferences} />
+            )}
+            {!hiddenSections.has("custom_responses") && (
+              <CustomResponsesSection customResponses={full.custom_responses} />
+            )}
 
             <ProfileCard><EducationCareerSection user={full.user} /></ProfileCard>
 
-            {full.user.has_competition_experience !== false && (
-              <ProfileCard>
-                <CompetitionExperienceSection user={full.user} mode="view" events={events} />
-              </ProfileCard>
-            )}
+            {/* Rendered unconditionally — the section itself distinguishes
+                "None" (answered, has none) from "No info yet" (never
+                answered), which an absent card can't. */}
+            <ProfileCard>
+              <CompetitionExperienceSection user={full.user} mode="view" events={events} />
+            </ProfileCard>
 
-            {full.user.has_volunteer_experience !== false && (
-              <ProfileCard>
-                <VolunteerExperienceSection user={full.user} mode="view" events={events} />
-              </ProfileCard>
-            )}
+            <ProfileCard>
+              <VolunteerExperienceSection user={full.user} mode="view" events={events} />
+            </ProfileCard>
 
             <ProfileCard><LogisticsSection user={full.user} /></ProfileCard>
           </>

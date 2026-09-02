@@ -772,6 +772,10 @@ export interface MembershipFull {
   availability:      MembershipAvailability[]
   lunch:             MembershipLunch[]
   custom_responses:  MembershipCustomAnswer[]
+  // Sections this surface's display config emptied out. A section renders
+  // even with no data ("No info yet"), so an empty list no longer means
+  // "hidden" — this is what says so.
+  hidden_sections?:  string[]
   roles:             Role[]
   user:              UserFull
 }

@@ -287,3 +287,46 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
     )
     assert response.status_code == 200
     assert [t["name"] for t in response.json()["track_statuses"]] == ["Shown Track"]
+
+
+def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td_tournament, db):
+    """The panel renders a section even when a member has no data for it, so
+    an empty list no longer means "hidden" — hidden_sections is what says a
+    section was actually filtered away."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"hidden": ["lunch_category:entree"]}},
+    ).status_code == 200
+
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+    ).json()
+    assert body["lunch"] == []
+    assert body["hidden_sections"] == ["lunch"]
+    # This member simply has no event preferences — that is not "hidden".
+    assert body["event_preferences"] == []
+    assert "event_preferences" not in body["hidden_sections"]
+
+
+def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, td_tournament, db):
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+    ).json()
+    assert len(body["lunch"]) == 1
+    assert body["hidden_sections"] == []

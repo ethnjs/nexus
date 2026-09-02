@@ -117,7 +117,6 @@ function PreferenceKey({ pref }: { pref: MembershipEventPreference }) {
 }
 
 export function EventPreferencesSection({ eventPreferences }: EventPreferencesSectionProps) {
-  if (eventPreferences.length === 0) return null;
 
   // An archived option means the form question changed after this answer was
   // given, so what's shown no longer matches what the form would ask today.
@@ -133,6 +132,7 @@ export function EventPreferencesSection({ eventPreferences }: EventPreferencesSe
               message="Some of these answers were given to a question that has since changed and may be out of date."
             />
           )}
+          {eventPreferences.length === 0 && <FieldValue muted>No info yet</FieldValue>}
           {eventPreferences.map((pref) => <PreferenceKey key={pref.key} pref={pref} />)}
         </div>
       </SectionHeading>

@@ -1,4 +1,5 @@
 import { SectionHeading } from "@/components/profile/SectionHeading";
+import { FieldValue } from "@/components/profile/PanelField";
 import {
   VolunteerExperienceSpreadsheet, VolunteerExperienceDraft, ExperienceTableMode,
   volunteerExperienceToDraft,
@@ -29,11 +30,25 @@ interface VolunteerExperienceSectionProps {
 export function VolunteerExperienceSection({
   user, mode = "view", events = [], onAdd, onUpdate, onDelete,
 }: VolunteerExperienceSectionProps) {
-  if (user.has_volunteer_experience === false) return null;
 
   const rows: VolunteerExperienceDraft[] = user.volunteer_experience.map((exp) =>
     volunteerExperienceToDraft(exp as Parameters<typeof volunteerExperienceToDraft>[0])
   );
+
+  // The panel renders every section, so "they answered: none" and "they never
+  // answered" have to read differently — absence used to convey both. Only in
+  // read-only mode: an editable view still needs the table so a first row can
+  // be added, and the answer itself changed.
+  if (mode === "view") {
+    if (user.has_volunteer_experience === false) {
+      return <SectionHeading title="Volunteer Experience"><FieldValue>None</FieldValue></SectionHeading>;
+    }
+    if (rows.length === 0) {
+      return <SectionHeading title="Volunteer Experience"><FieldValue muted>No info yet</FieldValue></SectionHeading>;
+    }
+  } else if (user.has_volunteer_experience === false) {
+    return null;
+  }
 
   return (
     <SectionHeading title="Volunteer Experience">

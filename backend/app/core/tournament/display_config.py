@@ -158,11 +158,22 @@ def apply_display_config(tournament, surface: str | None, data: dict) -> dict:
     if not hidden:
         return data
 
+    # A section that renders unconditionally can't use "empty" to mean
+    # "hidden" any more: an empty list is equally a member who never answered.
+    # So record the sections filtering actually emptied — had rows going in,
+    # none coming out — and let the panel drop exactly those.
+    def _note_if_emptied(key: str, before: list) -> None:
+        if before and not data.get(key):
+            emptied.append(key)
+
+    emptied: list[str] = []
+
     if "track_statuses" in data:
         data["track_statuses"] = [
             ts for ts in data["track_statuses"] if f"{TRACK_NAMESPACE}{ts['track_id']}" not in hidden
         ]
     if "availability" in data:
+        before_availability = data["availability"]
         # `start` is a serialized instant; the item keys are tournament-local
         # days, so it has to go back through the same conversion build_catalog
         # used rather than a naive [:10] slice of the ISO string.
@@ -171,16 +182,25 @@ def apply_display_config(tournament, surface: str | None, data: dict) -> dict:
             if f"{AVAILABILITY_DAY_NAMESPACE}"
             f"{tournament_local_date(tournament, datetime.fromisoformat(row['start'])).isoformat()}" not in hidden
         ]
+        _note_if_emptied("availability", before_availability)
     if "lunch" in data:
+        before_lunch = data["lunch"]
         data["lunch"] = [
-            row for row in data["lunch"] if f"{LUNCH_CATEGORY_NAMESPACE}{row['category']}" not in hidden
+            row for row in before_lunch if f"{LUNCH_CATEGORY_NAMESPACE}{row['category']}" not in hidden
         ]
+        _note_if_emptied("lunch", before_lunch)
     if "event_preferences" in data:
+        before_prefs = data["event_preferences"]
         data["event_preferences"] = [
-            pref for pref in data["event_preferences"] if f"{EVENT_PREF_NAMESPACE}{pref['key']}" not in hidden
+            pref for pref in before_prefs if f"{EVENT_PREF_NAMESPACE}{pref['key']}" not in hidden
         ]
+        _note_if_emptied("event_preferences", before_prefs)
     if "custom_responses" in data:
+        before_custom = data["custom_responses"]
         data["custom_responses"] = [
-            row for row in data["custom_responses"] if f"{FORM_FIELD_NAMESPACE}{row['field_id']}" not in hidden
+            row for row in before_custom if f"{FORM_FIELD_NAMESPACE}{row['field_id']}" not in hidden
         ]
+        _note_if_emptied("custom_responses", before_custom)
+
+    data["hidden_sections"] = emptied
     return data

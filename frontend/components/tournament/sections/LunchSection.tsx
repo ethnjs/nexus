@@ -46,14 +46,11 @@ function groupByDate(lunch: MembershipLunch[]): [string, [string, MembershipLunc
 }
 
 export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
-  // A restriction with no selections is still worth showing — someone has to
-  // order for them either way.
-  if (lunch.length === 0 && !dietaryRestriction) return null;
-
   return (
     <ProfileCard>
       <SectionHeading title="Lunch">
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+          {lunch.length === 0 && <FieldValue muted>No info yet</FieldValue>}
           {groupByDate(lunch).map(([date, categories]) => (
             <PanelField key={date} label={formatDayLabel(date)}>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
