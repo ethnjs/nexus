@@ -10,10 +10,90 @@ from datetime import datetime
 from app.core.tournament import tournament_local_date
 
 MEMBERS_PANEL = "members_panel"
+MEMBERS_TABLE = "members_table"
 MEMBER_PAGE = "member_page"
 ASSIGNMENT_CARD = "assignment_card"
 
-KNOWN_SURFACES = frozenset({MEMBERS_PANEL, MEMBER_PAGE, ASSIGNMENT_CARD})
+KNOWN_SURFACES = frozenset({MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD})
+
+# ---------------------------------------------------------------------------
+# Members table columns
+#
+# The table is column-configurable rather than fixed. Name/roles/actions are
+# deliberately absent: they're the row's identity and its controls, not data
+# a TD would ever turn off. Everything here is opt-in per column, and the
+# per-entity ones (one column per track / availability day / lunch category /
+# custom field) are off by default — a tournament with a dozen of each would
+# otherwise open to an unreadable table.
+# ---------------------------------------------------------------------------
+COLUMN_EMAIL = "email"
+COLUMN_PHONE = "phone"
+COLUMN_ACCOUNT_AGE = "account_age"
+COLUMN_JOINED = "joined"
+COLUMN_METHOD = "method"
+COLUMN_AGE = "age"
+COLUMN_SHIRT_SIZE = "shirt_size"
+
+FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
+    (COLUMN_EMAIL, "Email"),
+    (COLUMN_PHONE, "Phone"),
+    (COLUMN_ACCOUNT_AGE, "Account age"),
+    (COLUMN_JOINED, "Joined"),
+    (COLUMN_METHOD, "Join method"),
+    (COLUMN_AGE, "Age"),
+    (COLUMN_SHIRT_SIZE, "Shirt size"),
+)
+
+# What a tournament with no saved column config shows — roughly today's table,
+# so the feature landing doesn't silently rearrange anyone's roster.
+DEFAULT_COLUMNS: tuple[str, ...] = (
+    COLUMN_EMAIL, COLUMN_PHONE, COLUMN_ACCOUNT_AGE, COLUMN_JOINED, COLUMN_METHOD,
+)
+
+# ---------------------------------------------------------------------------
+# Member panel sections
+#
+# Built-in sections keep a stable id: a TD reorders and hides them, but never
+# dissolves or renames one, so each id stays bound to the component that
+# renders it. `fields` are the individually hideable pieces of a section that
+# holds more than one — a section with none is all-or-nothing.
+# ---------------------------------------------------------------------------
+PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
+    ("membership", "Membership", (
+        ("joined", "Joined"),
+        ("join_method", "Join method"),
+        ("tracks", "Tracks"),
+        ("roles", "Roles"),
+        ("age", "Age"),
+    )),
+    ("availability", "Availability", ()),
+    ("lunch", "Lunch", (
+        ("selections", "Selections"),
+        ("dietary_restriction", "Dietary restriction"),
+    )),
+    ("event_preferences", "Event Preferences", ()),
+    ("custom_responses", "Custom Responses", ()),
+    ("education", "Education", (
+        ("university", "University"),
+        ("major", "Major"),
+        ("year_level", "Year level"),
+        ("graduation_year", "Graduation year"),
+        ("employer", "Employer"),
+    )),
+    ("competition_experience", "Competition Experience", ()),
+    ("volunteer_experience", "Volunteer Experience", ()),
+    ("logistics", "Logistics", (
+        ("shirt_size", "Shirt size"),
+        ("dietary_restriction", "Dietary restriction"),
+    )),
+)
+
+DEFAULT_SECTION_ORDER: tuple[str, ...] = tuple(section_id for section_id, _, _ in PANEL_SECTIONS)
+
+# A TD-created section holding custom-form answers. Its id is
+# "custom:{uuid}" — generated client-side on creation and stable thereafter,
+# so reordering and renaming never orphan the fields assigned to it.
+CUSTOM_SECTION_PREFIX = "custom:"
 
 TRACK_NAMESPACE = "track:"
 LUNCH_CATEGORY_NAMESPACE = "lunch_category:"
@@ -39,6 +119,30 @@ def unslug(text: str) -> str:
     are slugs meant for lookup, never for a TD to read — every catalog label
     built from one goes through this."""
     return text.replace("_", " ").strip().title()
+
+
+def is_known_column(key: str) -> bool:
+    """A column key is either one of the fixed ids or an entity the panel
+    already namespaces — event_preference is excluded deliberately: a ranked
+    list of events has no sensible single-cell rendering."""
+    if any(key == column_id for column_id, _ in FIXED_COLUMNS):
+        return True
+    return key.startswith((
+        TRACK_NAMESPACE, AVAILABILITY_DAY_NAMESPACE, LUNCH_CATEGORY_NAMESPACE, FORM_FIELD_NAMESPACE,
+    ))
+
+
+def section_field_ids(section_id: str) -> frozenset[str]:
+    """The individually hideable fields of a built-in section. Empty for a
+    section that's all-or-nothing, and for any custom section."""
+    for candidate_id, _, fields in PANEL_SECTIONS:
+        if candidate_id == section_id:
+            return frozenset(field_id for field_id, _ in fields)
+    return frozenset()
+
+
+def is_known_section(section_id: str) -> bool:
+    return section_id in DEFAULT_SECTION_ORDER or section_id.startswith(CUSTOM_SECTION_PREFIX)
 
 
 def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
@@ -132,12 +236,34 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         for day in availability_days
     ]
 
+    # Table columns: the fixed ones, then one per entity. Entity columns reuse
+    # the same namespaced keys the panel hides by, so a key means the same
+    # thing on both surfaces and the catalog never has to define it twice.
+    column_items = (
+        [{"key": key, "label": label} for key, label in FIXED_COLUMNS]
+        + [{"key": t["key"], "label": f"Track: {t['label']}"} for t in track_items]
+        + [{"key": a["key"], "label": f"Availability: {a['label']}"} for a in availability_items]
+        + [{"key": l["key"], "label": f"Lunch: {l['label']}"} for l in lunch_items]
+        + [{"key": c["key"], "label": c["label"]} for c in custom_field_items]
+    )
+
+    section_items = [
+        {
+            "id": section_id,
+            "label": label,
+            "fields": [{"key": field_id, "label": field_label} for field_id, field_label in fields],
+        }
+        for section_id, label, fields in PANEL_SECTIONS
+    ]
+
     return {
         "tracks": track_items,
         "availability": availability_items,
         "lunch_categories": lunch_items,
         "event_preferences": event_pref_items,
         "custom_fields": custom_field_items,
+        "columns": column_items,
+        "sections": section_items,
     }
 
 

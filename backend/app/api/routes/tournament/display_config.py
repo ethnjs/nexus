@@ -4,7 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.display_config import KNOWN_SURFACES, build_catalog, is_known_namespace
+from app.core.tournament.display_config import (
+    CUSTOM_SECTION_PREFIX, KNOWN_SURFACES, build_catalog, is_known_column, is_known_namespace,
+    is_known_section, section_field_ids,
+)
 from app.core.tournament.permissions import MANAGE_MEMBERS, require_permission
 from app.db.session import get_db
 from app.models.models import User
@@ -71,6 +74,43 @@ def update_display_config(
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Unknown namespace for hidden item '{item}'",
+                )
+        for column in config.columns or []:
+            if not is_known_column(column):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Unknown column '{column}'",
+                )
+        seen_sections: set[str] = set()
+        for section in config.sections or []:
+            if not is_known_section(section.id):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Unknown section '{section.id}'",
+                )
+            # Order is the array's own order, so a duplicate id has no
+            # meaning — it would just render the same section twice.
+            if section.id in seen_sections:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Duplicate section '{section.id}'",
+                )
+            seen_sections.add(section.id)
+
+            allowed_fields = section_field_ids(section.id)
+            for field_id in section.hidden_fields:
+                if field_id not in allowed_fields:
+                    raise HTTPException(
+                        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                        detail=f"Section '{section.id}' has no field '{field_id}'",
+                    )
+            # `fields` assigns custom-form answers to a TD-made section; a
+            # built-in section's contents are fixed, so accepting one there
+            # would silently do nothing.
+            if section.fields and not section.id.startswith(CUSTOM_SECTION_PREFIX):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Section '{section.id}' is built-in and cannot be assigned fields",
                 )
 
     tournament.display_config = {surface: config.model_dump() for surface, config in payload.items()}

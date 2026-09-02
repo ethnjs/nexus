@@ -40,7 +40,13 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
-    assert response.json() == {"unknown_surface": {"hidden": ["track:999", "not_a_real_namespace:x"]}}
+    # `columns`/`sections` come back as None: absent means "use the defaults",
+    # which is why they aren't empty lists.
+    assert response.json() == {
+        "unknown_surface": {
+            "hidden": ["track:999", "not_a_real_namespace:x"], "columns": None, "sections": None,
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -55,10 +61,14 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     }
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200
-    assert response.json() == payload
+    saved = {
+        surface: {**config, "columns": None, "sections": None}
+        for surface, config in payload.items()
+    }
+    assert response.json() == saved
 
     follow_up = client.get(f"/tournaments/{td_tournament.id}/display-config/")
-    assert follow_up.json() == payload
+    assert follow_up.json() == saved
 
 
 def test_put_display_config_rejects_unknown_surface(client, td_user, td_tournament):
@@ -125,10 +135,20 @@ def test_get_display_config_catalog_empty_tournament(client, td_user, td_tournam
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
-    assert response.json() == {
-        "tracks": [], "availability": [], "lunch_categories": [], "event_preferences": [],
-        "custom_fields": [],
-    }
+    body = response.json()
+    assert body["tracks"] == []
+    assert body["availability"] == []
+    assert body["lunch_categories"] == []
+    assert body["event_preferences"] == []
+    assert body["custom_fields"] == []
+    # Fixed columns and built-in sections exist regardless of tournament data.
+    assert [c["key"] for c in body["columns"]] == [
+        "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
+    ]
+    assert [s["id"] for s in body["sections"]][:2] == ["membership", "availability"]
+    assert [f["key"] for f in body["sections"][0]["fields"]] == [
+        "joined", "join_method", "tracks", "roles", "age",
+    ]
 
 
 def test_get_display_config_catalog_includes_tracks(client, td_user, td_tournament, db):
@@ -330,3 +350,82 @@ def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, t
     ).json()
     assert len(body["lunch"]) == 1
     assert body["hidden_sections"] == []
+
+
+# ---------------------------------------------------------------------------
+# Columns and sections — write validation
+# ---------------------------------------------------------------------------
+
+def test_put_accepts_columns_and_sections(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    payload = {
+        "members_table": {"hidden": [], "columns": ["email", "joined", "track:1"]},
+        "members_panel": {"hidden": [], "sections": [
+            {"id": "membership", "hidden": False, "hidden_fields": ["age"], "title": None, "fields": []},
+            {"id": "custom:abc123", "hidden": False, "hidden_fields": [],
+             "title": "Dietary Notes", "fields": ["form_field:xyz"]},
+        ]},
+    }
+    response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
+    assert response.status_code == 200, response.json()
+    body = response.json()
+    assert body["members_table"]["columns"] == ["email", "joined", "track:1"]
+    assert body["members_panel"]["sections"][1]["title"] == "Dietary Notes"
+
+
+def test_put_rejects_unknown_column(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"columns": ["not_a_column"]}},
+    )
+    assert response.status_code == 422
+    assert "not_a_column" in response.json()["detail"]
+
+
+def test_put_rejects_unknown_section(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"sections": [{"id": "not_a_section"}]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_duplicate_section(client, td_user, td_tournament):
+    """Order is the array's own order, so a repeated id has no meaning."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"sections": [{"id": "lunch"}, {"id": "lunch"}]}},
+    )
+    assert response.status_code == 422
+    assert "Duplicate" in response.json()["detail"]
+
+
+def test_put_rejects_field_not_in_its_section(client, td_user, td_tournament):
+    """hidden_fields is checked against the section it's on — "shirt_size"
+    belongs to Logistics, not Membership."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"sections": [
+            {"id": "membership", "hidden_fields": ["shirt_size"]},
+        ]}},
+    )
+    assert response.status_code == 422
+    assert "shirt_size" in response.json()["detail"]
+
+
+def test_put_rejects_fields_on_a_builtin_section(client, td_user, td_tournament):
+    """A built-in section's contents are fixed — accepting an assignment there
+    would silently do nothing."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"sections": [
+            {"id": "lunch", "fields": ["form_field:xyz"]},
+        ]}},
+    )
+    assert response.status_code == 422
+    assert "built-in" in response.json()["detail"]

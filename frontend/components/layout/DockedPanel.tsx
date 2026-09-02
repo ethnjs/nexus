@@ -19,6 +19,8 @@ interface DockedPanelProps {
    * and would land off-screen if it inherited this panel's box too.
    */
   footer?: ReactNode;
+  /** Controls in the header immediately left of the close button — for actions that configure the panel itself, which belong to the panel rather than to the page behind it. */
+  headerActions?: ReactNode;
   /** Prev/next controls in the header, left of the close button — e.g. stepping through a table's current filtered/sorted order. Omit both to hide the controls entirely. */
   onPrev?: () => void;
   onNext?: () => void;
@@ -31,7 +33,7 @@ interface DockedPanelProps {
 // than covering it — the page beside it stays fully interactive, which a
 // modal overlay can't offer.
 export function DockedPanel({
-  onClose, children, width = 480, footer, onPrev, onNext, prevDisabled, nextDisabled,
+  onClose, children, width = 480, footer, headerActions, onPrev, onNext, prevDisabled, nextDisabled,
 }: DockedPanelProps) {
   const showNav = onPrev !== undefined || onNext !== undefined;
   useEffect(() => {
@@ -72,9 +74,12 @@ export function DockedPanel({
             </Button>
           </div>
         ) : <span />}
-        <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
-          <IconX size={13} />
-        </Button>
+        <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+          {headerActions}
+          <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
+            <IconX size={13} />
+          </Button>
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
         {children}
