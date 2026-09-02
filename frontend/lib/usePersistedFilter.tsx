@@ -17,21 +17,25 @@ function storageKeyFor(table: string, userId: number | undefined, tournamentId: 
  * Sets don't survive JSON.stringify (they serialize to `{}`), so the stored
  * shape is `{ field: string[] }` and this hook converts both ways.
  *
- * Returns the applied filters plus a setter that persists — call it on Apply
- * / Clear only, never from a draft edit.
+ * Returns the applied filters, a setter that persists — call it on Apply /
+ * Clear only, never from a draft edit — and whether the stored filters have
+ * been read yet. That last flag matters for a table that filters
+ * server-side: fetching before it turns true sends a request with no
+ * filters, which then races the real one.
  */
 export function usePersistedFilter<K extends string>(
   table: string,
   userId: number | undefined,
   tournamentId: number | undefined,
   keys: readonly K[],
-): [FilterState<K>, (next: FilterState<K>) => void] {
+): [FilterState<K>, (next: FilterState<K>) => void, boolean] {
   // The caller passes an array literal or const tuple; pinning it in a ref
   // keeps it out of effect/callback deps without risking a stale-identity loop.
   const keysRef = useRef(keys);
   keysRef.current = keys;
 
   const [filters, setFilters] = useState<FilterState<K>>(() => emptyFilterState(keys));
+  const [hydrated, setHydrated] = useState(false);
 
   const storageKey = storageKeyFor(table, userId, tournamentId);
 
@@ -56,6 +60,7 @@ export function usePersistedFilter<K extends string>(
       // "no filters" rather than breaking the page.
     }
     setFilters(next);
+    setHydrated(true);
   }, [storageKey]);
 
   const apply = useCallback((next: FilterState<K>) => {
@@ -73,7 +78,7 @@ export function usePersistedFilter<K extends string>(
     }
   }, [storageKey]);
 
-  return [filters, apply];
+  return [filters, apply, hydrated];
 }
 
 

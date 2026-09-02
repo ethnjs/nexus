@@ -250,7 +250,9 @@ export default function MembersPage() {
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
-  const [filters, applyFilters] = usePersistedFilter("members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS);
+  const [filters, applyFilters, filtersReady] = usePersistedFilter(
+    "members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS,
+  );
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showTableColumnsModal, setShowTableColumnsModal] = useState(false);
   // Bumped on save so the open MemberPanel remounts and refetches with the
@@ -310,16 +312,24 @@ export default function MembersPage() {
   const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
   const toggleSelectedStable = useCallback((id: number) => selectionRef.current.toggleSelected(id), []);
 
+  // Held until the stored filters have been read: filtering runs server-side
+  // now, so firing on the initial empty state would put an unfiltered request
+  // in flight alongside the filtered one — and the unfiltered one, being the
+  // bigger query, tends to land second and win.
   useEffect(() => {
-    if (!canManageMembers) return;
+    if (!canManageMembers || !filtersReady) return;
+    // A filter change mid-flight has the same race on a smaller scale, so a
+    // superseded response is dropped rather than allowed to overwrite.
+    let current = true;
     membershipsApi.list(tournamentId, {
       surface: MEMBERS_TABLE,
       filters: membersFilterParams(filters),
     })
-      .then(setMembers)
-      .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
-    rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
-  }, [tournamentId, canManageMembers, displayConfigVersion, filters]);
+      .then((rows) => { if (current) setMembers(rows); })
+      .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });
+    rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
+    return () => { current = false; };
+  }, [tournamentId, canManageMembers, filtersReady, displayConfigVersion, filters]);
 
   // The saved column list plus the catalog that names each key. Both are
   // needed before a column can render: the config says which, the catalog
