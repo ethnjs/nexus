@@ -822,17 +822,53 @@ export interface MembershipMe {
   needs_age_consent: boolean
 }
 
+// Matches build_filter_options — every value is a {value,label} pair whose
+// `value` is exactly what the matching query param takes.
+export interface MemberFilterOptions {
+  tracks:             FilterOptionItem[]
+  lunch:              FilterOptionItem[]
+  event_preferences:  FilterOptionItem[]
+  competition_events: FilterOptionItem[]
+  volunteer_events:   FilterOptionItem[]
+  shifts:             FilterOptionItem[]
+  collect_is_over_18: boolean
+  collect_is_over_21: boolean
+}
+
+export interface FilterOptionItem {
+  value: string
+  label: string
+}
+
 export const membershipsApi = {
   // include_declined defaults to false server-side — a declined membership
   // is excluded from the roster unless a TD explicitly opts in.
-  // `surface` both filters hidden items and decides which optional column
-  // data the rows carry (see enrich_table_columns) — omit it for the plain
-  // roster with neither.
-  list: (tournamentId: number, includeDeclined = false, surface?: string) =>
-    api.get<MembershipSlim[]>(
-      `/tournaments/${tournamentId}/memberships/?include_declined=${includeDeclined}`
-      + (surface ? `&surface=${surface}` : "")
-    ),
+  // An options object rather than positional args: the roster now takes a
+  // surface plus eight repeatable filter params, and `list(id, false, undefined,
+  // ...)` at the call site says nothing about what's being asked for.
+  //
+  // `surface` both filters hidden items and decides which optional column data
+  // the rows carry (see enrich_table_columns). `filters` maps a param name to
+  // the values to include — omitted or empty means that filter doesn't apply.
+  list: (tournamentId: number, opts: {
+    includeDeclined?: boolean;
+    surface?: string;
+    filters?: Record<string, string[]>;
+  } = {}) => {
+    const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
+    if (opts.surface) params.set("surface", opts.surface);
+    for (const [key, values] of Object.entries(opts.filters ?? {})) {
+      // Repeated rather than comma-joined: a lunch value can legitimately
+      // contain a comma ("Rice, beans").
+      for (const value of values) params.append(key, value);
+    }
+    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/?${params}`);
+  },
+
+  // What the roster's filter modal can offer, derived from what the
+  // tournament actually holds.
+  filterOptions: (tournamentId: number) =>
+    api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/memberships/filter-options/`),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
   get: (tournamentId: number, id: number, surface?: string) =>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { FilterState, emptyFilterState } from "@/components/ui/FilterModal";
 
 // Scoped per user *and* tournament: logout() doesn't clear localStorage, so an
@@ -74,4 +74,62 @@ export function usePersistedFilter<K extends string>(
   }, [storageKey]);
 
   return [filters, apply];
+}
+
+
+/**
+ * A single scalar mirrored into localStorage under the same per-user,
+ * per-tournament scoping as the filters — for the table controls that outlive
+ * a page visit but aren't filters (sort field, sort direction).
+ *
+ * Reads through useSyncExternalStore rather than hydrating in an effect: the
+ * stored value is external state, and an effect would render the fallback
+ * first and then immediately re-render with the stored one. The server
+ * snapshot is null, so SSR renders the fallback and the client agrees.
+ *
+ * `isValid` guards a stored value that no longer exists — a sort field removed
+ * in a later release would otherwise come back and sort by nothing.
+ */
+export function usePersistedValue<T extends string>(
+  table: string,
+  userId: number | undefined,
+  tournamentId: number | undefined,
+  name: string,
+  fallback: T,
+  isValid: (value: string) => boolean,
+): [T, (next: T) => void] {
+  const storageKey = storageKeyFor(`${table}:${name}`, userId, tournamentId);
+
+  // Nothing else in the app writes these keys, so there's no change to
+  // subscribe to — the store is only ever updated through `persist` below,
+  // which sets local state anyway.
+  const stored = useSyncExternalStore(
+    () => () => {},
+    () => {
+      if (!storageKey) return null;
+      try {
+        return window.localStorage.getItem(storageKey);
+      } catch {
+        // Private mode, cleared site data, storage disabled — the fallback is
+        // a perfectly good answer, so this must never break the page.
+        return null;
+      }
+    },
+    () => null,
+  );
+
+  const [override, setOverride] = useState<T | null>(null);
+  const value = override ?? (stored !== null && isValid(stored) ? (stored as T) : fallback);
+
+  const persist = useCallback((next: T) => {
+    setOverride(next);
+    if (!storageKey) return;
+    try {
+      window.localStorage.setItem(storageKey, next);
+    } catch {
+      // Same as above: failing to remember a sort order is not worth an error.
+    }
+  }, [storageKey]);
+
+  return [value, persist];
 }

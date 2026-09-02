@@ -27,8 +27,11 @@ import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { emptyFilterState } from "@/components/ui/FilterModal";
-import { usePersistedFilter } from "@/lib/usePersistedFilter";
-import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
+import { usePersistedFilter, usePersistedValue } from "@/lib/usePersistedFilter";
+import {
+  MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
+  MEMBERS_FILTER_KEYS,
+} from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
@@ -248,8 +251,16 @@ export default function MembersPage() {
   // real answer ("show no data columns") and must not fall back.
   const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
   const [columnCatalog, setColumnCatalog] = useState<DisplayConfigCatalogItem[]>([]);
-  const [sortField, setSortField] = useState<SortField>("joined");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // Persisted per user + tournament, like the filters: a coordinator who
+  // sorts by last name is still sorting by last name tomorrow.
+  const [sortField, setSortField] = usePersistedValue<SortField>(
+    "members", currentUser?.id, tournamentId, "sortField", "joined",
+    (value) => SORT_FIELD_OPTIONS.some((option) => option.value === value),
+  );
+  const [sortDir, setSortDir] = usePersistedValue<SortDir>(
+    "members", currentUser?.id, tournamentId, "sortDir", "desc",
+    (value) => value === "asc" || value === "desc",
+  );
 
   const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
@@ -283,11 +294,14 @@ export default function MembersPage() {
 
   useEffect(() => {
     if (!canManageMembers) return;
-    membershipsApi.list(tournamentId, false, MEMBERS_TABLE)
+    membershipsApi.list(tournamentId, {
+      surface: MEMBERS_TABLE,
+      filters: membersFilterParams(filters),
+    })
       .then(setMembers)
       .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
     rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
-  }, [tournamentId, canManageMembers, displayConfigVersion]);
+  }, [tournamentId, canManageMembers, displayConfigVersion, filters]);
 
   // The saved column list plus the catalog that names each key. Both are
   // needed before a column can render: the config says which, the catalog
@@ -320,13 +334,9 @@ export default function MembersPage() {
     const q = search.trim().toLowerCase();
     const filtered = members.filter((m) => {
       if (q && !memberName(m).toLowerCase().includes(q) && !m.user.email.toLowerCase().includes(q)) return false;
-      // A member is hidden only when *every* role they hold is excluded —
-      // otherwise someone with a kept role would vanish for holding an
-      // unrelated excluded one. A member with no roles at all is never
-      // hidden by this filter — deselecting every role should surface the
-      // unassigned members, not hide them along with everyone else.
-      const roleKeys = m.roles.map((r) => String(r.id));
-      if (roleKeys.length > 0 && roleKeys.every((k) => filters.role.has(k))) return false;
+      // Filtering is the server's job now — every filter matches against
+      // data the roster doesn't carry. Only search stays here, since it
+      // reads fields already on the row.
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {
@@ -564,7 +574,7 @@ export default function MembersPage() {
             <Button
               type="button" variant="secondary" size="md" iconOnly
               title={sortDir === "asc" ? "Ascending" : "Descending"}
-              onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+              onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
             >
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>
@@ -659,6 +669,7 @@ export default function MembersPage() {
 
       {showFilterModal && (
         <MembersFilterModal
+          tournamentId={tournamentId}
           roleOptions={roleFilterOptions}
           filters={filters}
           onApply={applyFilters}
