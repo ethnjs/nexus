@@ -8,8 +8,8 @@ from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import MEMBERS_PANEL, apply_display_config
 from app.core.tournament.memberships import (
-    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, gate_age_flags,
-    get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
+    ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
+    gate_age_flags, get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -277,6 +277,7 @@ def get_membership(
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     resp.event_preferences = build_event_preferences(db, m)
     resp.lunch = build_lunch(db, m)
+    resp.track_statuses = build_track_statuses(db, m)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json"))
     data = apply_display_config(m.tournament, surface, data)
@@ -313,6 +314,7 @@ def update_my_membership(
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     resp.event_preferences = build_event_preferences(db, m)
     resp.lunch = build_lunch(db, m)
+    resp.track_statuses = build_track_statuses(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 
@@ -346,6 +348,7 @@ def update_membership(
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     resp.event_preferences = build_event_preferences(db, m)
     resp.lunch = build_lunch(db, m)
+    resp.track_statuses = build_track_statuses(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
 
 

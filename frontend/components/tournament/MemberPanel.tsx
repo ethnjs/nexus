@@ -117,6 +117,9 @@ export function MemberPanel({
                       <PanelField label="Tracks">
                         <FieldList>
                           {full.track_statuses.map((ts) => (
+                            // Every live track appears, answered or not — a
+                            // "pending" one is a member who still owes an
+                            // answer, which absence alone wouldn't show.
                             // An archived track's statuses stay readable — the
                             // catalog entry is retired, the commitment still
                             // happened — so it's dimmed rather than hidden.

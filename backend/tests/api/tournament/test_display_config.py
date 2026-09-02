@@ -3,7 +3,7 @@
 from datetime import date, datetime, timezone
 from app.models.models import (
     Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentTrack,
+    TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack,
 )
 from tests.conftest import grant_role, login
 
@@ -239,3 +239,51 @@ def test_get_display_config_catalog_includes_availability_days(client, td_user, 
     assert response.status_code == 200
     keys = [item["key"] for item in response.json()["availability"]]
     assert keys == ["availability_day:2026-03-01", "availability_day:2026-03-02"]
+
+
+def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournament, db):
+    """Every live track appears on the panel, answered or not — an unanswered
+    one reads as "pending" rather than being missing."""
+    answered = TournamentTrack(tournament_id=td_tournament.id, name="Answered Track")
+    unanswered = TournamentTrack(tournament_id=td_tournament.id, name="Unanswered Track")
+    retired = TournamentTrack(tournament_id=td_tournament.id, name="Retired Track", is_archived=True)
+    db.add_all([answered, unanswered, retired])
+    db.flush()
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.add(TournamentMembershipTrackStatus(
+        membership_id=m.id, track_id=answered.id, status="confirmed",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    by_name = {t["name"]: t["status"] for t in response.json()["track_statuses"]}
+    assert by_name == {"Answered Track": "confirmed", "Unanswered Track": "pending"}
+    # An archived track nobody answered isn't pending anything.
+    assert "Retired Track" not in by_name
+
+
+def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournament, db):
+    """The padding runs before display config, so hiding a track drops it
+    whether or not the member ever answered it."""
+    hidden_track = TournamentTrack(tournament_id=td_tournament.id, name="Hidden Track")
+    shown = TournamentTrack(tournament_id=td_tournament.id, name="Shown Track")
+    db.add_all([hidden_track, shown])
+    db.flush()
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"hidden": [f"track:{hidden_track.id}"]}},
+    ).status_code == 200
+
+    response = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+    )
+    assert response.status_code == 200
+    assert [t["name"] for t in response.json()["track_statuses"]] == ["Shown Track"]

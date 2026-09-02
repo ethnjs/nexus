@@ -62,8 +62,13 @@ class MembershipTrackStatusRead(BaseModel):
     track_id: int
     name: str
     is_archived: bool
+    # "interested" | "confirmed" | "declined", or the synthetic "pending" for
+    # a track the member has no row for at all — see build_track_statuses.
+    # Never accepted on a write; write-through only ever stores the three
+    # real statuses (see TRACK_STATUSES).
     status: str
-    updated_at: datetime
+    # None on a "pending" entry: there's no row, so nothing has been updated.
+    updated_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row) -> "MembershipTrackStatusRead":

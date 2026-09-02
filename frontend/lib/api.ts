@@ -624,8 +624,11 @@ export interface MembershipTrackStatus {
   track_id:    number
   name:        string
   is_archived: boolean
-  status:      TrackStatus
-  updated_at:  string
+  // "pending" is read-only — a track the member has no row for at all. It is
+  // never writable, hence TrackStatus (the write-side union) not carrying it.
+  status:      TrackStatus | "pending"
+  // Null on a pending entry: no row, so nothing has been updated.
+  updated_at:  string | null
 }
 
 // How a membership was created. "manual" covers staff-add, owner-on-create,

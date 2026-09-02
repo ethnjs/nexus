@@ -298,3 +298,49 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
         )
         for row in rows
     ]
+
+
+PENDING_TRACK_STATUS = "pending"
+
+
+def build_track_statuses(db: Session, membership: TournamentMembership) -> list["MembershipTrackStatusRead"]:
+    """Every track this member could hold a status on, not just the ones they
+    do — a track with no row reads as "pending" rather than being absent.
+
+    Absence is ambiguous on its own: "hasn't answered yet" and "this track
+    doesn't exist" look identical to a panel, so a coordinator can't tell who
+    still owes an answer. Padding the list makes the gap explicit.
+
+    Archived tracks are padded out of, not into, the list: a retired track the
+    member never engaged with isn't pending anything. One they *do* have a row
+    for still appears, since that history stays readable (see
+    MembershipTrackStatusRead).
+
+    Display config filtering runs after this and keys off track_id, so a
+    hidden track drops out whether or not it had a row."""
+    from app.models.models import TournamentTrack
+    from app.schemas.tournament.track import MembershipTrackStatusRead
+
+    existing = {row.track_id: row for row in membership.track_statuses}
+    live_tracks = (
+        db.query(TournamentTrack)
+        .filter(
+            TournamentTrack.tournament_id == membership.tournament_id,
+            TournamentTrack.is_archived == False,
+        )
+        .all()
+    )
+
+    entries = [
+        MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses
+    ] + [
+        MembershipTrackStatusRead(
+            track_id=track.id,
+            name=track.name,
+            is_archived=track.is_archived,
+            status=PENDING_TRACK_STATUS,
+        )
+        for track in live_tracks
+        if track.id not in existing
+    ]
+    return sorted(entries, key=lambda e: e.name)
