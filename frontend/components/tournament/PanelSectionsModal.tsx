@@ -18,7 +18,9 @@ import { IconGripVertical, IconTrash, IconPlus, IconChevronDown, IconChevronRigh
 import { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
 import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
-import { CUSTOM_SECTION_PREFIX, isCustomSection, orderedSections } from "@/lib/panelSections";
+import {
+  CUSTOM_SECTION_PREFIX, DEFAULT_CUSTOM_SECTION_TITLE, isCustomSection, resolveSections,
+} from "@/lib/panelSections";
 
 interface PanelSectionsModalProps {
   tournamentId: number;
@@ -36,6 +38,27 @@ const ENTITY_GROUP_LABELS: Record<string, string> = {
   availability: "Days",
   lunch: "Categories",
   event_preferences: "Questions",
+};
+
+// Shared by both kinds of row so a built-in and a custom section read as the
+// same thing. The transparent bottom border matches EditableText's resting
+// state (it reserves room for the underline it shows while editing), without
+// which a custom row sits 1px taller than its neighbours.
+const SECTION_LABEL_STYLE = {
+  fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
+} as const;
+
+// Fixed so a row's height never depends on whether its name is an
+// EditableText or a plain span.
+const SECTION_ROW_HEIGHT = "38px";
+
+// The name cell is pinned to one line's height. EditableText's input measures
+// a little taller than its resting span, and in a centred row any growth
+// re-centres the contents — so the text appears to jump up the moment you
+// click it. A fixed box lets the input overflow imperceptibly instead of
+// moving everything.
+const SECTION_NAME_BOX: React.CSSProperties = {
+  display: "flex", alignItems: "center", height: "20px",
 };
 
 function newCustomSectionId(): string {
@@ -80,14 +103,11 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
   const [justAdded, setJustAdded] = useState<string | null>(null);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
-  // Editing works on the full list — hidden sections included, since a hidden
-  // one still has to be reachable to turn back on. That's why this doesn't
-  // reuse orderedSections' filtering, only its ordering.
-  const sections: DisplayConfigSection[] = (() => {
-    const saved = draft?.sections ?? null;
-    if (saved && saved.length > 0) return saved;
-    return orderedSections(null).map((section) => ({ ...section }));
-  })();
+  // Hidden sections included — one still has to be reachable to turn back on.
+  // Run through resolveSections even when a list is saved: that's what drops
+  // an id that's no longer a section (an old built-in) and appends one that
+  // has since been added, rather than showing whatever was saved verbatim.
+  const sections: DisplayConfigSection[] = resolveSections(draft?.sections ?? null);
 
   const catalogById = new Map<string, DisplayConfigSectionCatalogItem>(
     (catalog?.sections ?? []).map((section) => [section.id, section]),
@@ -197,7 +217,8 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                         <div
                           onClick={expandable ? () => setExpanded(isOpen ? null : section.id) : undefined}
                           style={{
-                            display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px",
+                            display: "flex", alignItems: "center", gap: "8px",
+                            padding: "0 10px", minHeight: SECTION_ROW_HEIGHT,
                             cursor: expandable ? "pointer" : "default",
                           }}
                         >
@@ -213,17 +234,22 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
                             // Click-to-edit rather than a permanent field:
                             // the row is clickable to expand, and a full input
                             // sitting in it invites a click that does nothing.
-                            <span onClick={(e) => e.stopPropagation()}>
+                            <span onClick={(e) => e.stopPropagation()} style={SECTION_NAME_BOX}>
                               <EditableText
-                                value={section.title ?? ""}
+                                value={section.title ?? DEFAULT_CUSTOM_SECTION_TITLE}
                                 onSave={(title) => patch(section.id, { title })}
                                 startEditing={section.id === justAdded}
-                                textStyle={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}
+                                textStyle={SECTION_LABEL_STYLE}
                                 title="Click to rename"
                               />
                             </span>
                           ) : (
-                            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>
+                            <span style={{
+                              ...SECTION_LABEL_STYLE,
+                              ...SECTION_NAME_BOX,
+                              color: "var(--color-text-primary)",
+                              borderBottom: "1px solid transparent",
+                            }}>
                               {meta?.label ?? section.id}
                             </span>
                           )}

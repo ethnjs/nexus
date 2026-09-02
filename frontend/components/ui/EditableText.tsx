@@ -17,6 +17,14 @@ const DEFAULT_TEXT_STYLE: CSSProperties = {
   fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 500,
 }
 
+// Applied to both the resting span and the input so the swap can't change the
+// box's height. Without the explicit line-height the two measure differently,
+// and without display:block the input sits on the text baseline — leaving
+// descender space under it that makes the editing box taller. Either one
+// shifts the text vertically inside a centred flex row, which is exactly what
+// edit-in-place is supposed to avoid.
+const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
+
 // Click-to-edit text that reads as plain text until clicked — no visible
 // field chrome, just an underline once active. The input's width is driven
 // by a hidden mirror span (same font) rather than a fixed size, so the
@@ -74,8 +82,8 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
 
   if (editing) {
     return (
-      <span style={{ position: 'relative', display: 'inline-block' }}>
-        <span ref={measureRef} style={{ ...style, position: 'absolute', visibility: 'hidden', whiteSpace: 'pre' }}>
+      <span style={{ position: 'relative', display: 'inline-block', verticalAlign: 'top' }}>
+        <span ref={measureRef} style={{ ...style, ...BOX_STYLE, position: 'absolute', visibility: 'hidden', whiteSpace: 'pre' }}>
           {draft || ' '}
         </span>
         <input
@@ -90,6 +98,7 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
           disabled={saving}
           style={{
             ...style,
+            ...BOX_STYLE,
             width: `${Math.max(inputWidth, 20)}px`,
             boxSizing: 'content-box',
             color: 'var(--color-text-primary)',
@@ -117,7 +126,13 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
     <span
       onClick={startEdit}
       title={title}
-      style={{ ...style, color: 'var(--color-text-primary)', cursor: 'text', borderBottom: '1px solid transparent' }}
+      style={{
+        ...style,
+        ...BOX_STYLE,
+        color: 'var(--color-text-primary)',
+        cursor: 'text',
+        borderBottom: '1px solid transparent',
+      }}
     >
       {value}
     </span>

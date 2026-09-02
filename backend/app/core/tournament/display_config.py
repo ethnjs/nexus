@@ -70,7 +70,6 @@ PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
         ("dietary_restriction", "Dietary restriction"),
     )),
     ("event_preferences", "Event Preferences", ()),
-    ("custom_responses", "Custom Responses", ()),
     ("education", "Education", (
         ("university", "University"),
         ("major", "Major"),
@@ -92,6 +91,15 @@ DEFAULT_SECTION_ORDER: tuple[str, ...] = tuple(section_id for section_id, _, _ i
 # "custom:{uuid}" — generated client-side on creation and stable thereafter,
 # so reordering and renaming never orphan the fields assigned to it.
 CUSTOM_SECTION_PREFIX = "custom:"
+
+# The one custom section a tournament starts with: a catch-all holding every
+# custom answer no other section claimed. Custom Responses used to be a
+# built-in section, which made it the only part of the panel a TD couldn't
+# rename or remove; as a seeded custom section it behaves like any other.
+#
+# Being a catch-all rather than an enumerated list is what keeps a question
+# added to a form next month from being invisible until someone assigns it.
+DEFAULT_CUSTOM_SECTION_ID = f"{CUSTOM_SECTION_PREFIX}all"
 
 TRACK_NAMESPACE = "track:"
 LUNCH_CATEGORY_NAMESPACE = "lunch_category:"

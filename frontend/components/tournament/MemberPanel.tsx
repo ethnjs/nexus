@@ -104,7 +104,9 @@ export function MemberPanel({
     if (hiddenSections.has(section.id)) return null;
 
     const hiddenFields = hiddenFieldsOf(section);
-    const { assigned, unassigned } = splitCustomAnswers(
+    // `unassigned` is only non-empty once the catch-all section is deleted,
+    // which is a TD choosing for those answers not to show.
+    const { assigned } = splitCustomAnswers(
       full.custom_responses, orderedSections(sectionConfig),
     );
 
@@ -147,10 +149,6 @@ export function MemberPanel({
         );
       case "event_preferences":
         return <EventPreferencesSection eventPreferences={full.event_preferences} />;
-      case "custom_responses":
-        // Whatever no custom section claimed — so an answer is never shown
-        // twice, and never lost when its section is deleted.
-        return <CustomResponsesSection customResponses={unassigned} />;
       case "education":
         return <ProfileCard><EducationCareerSection user={full.user} hiddenFields={hiddenFields} /></ProfileCard>;
       case "competition_experience":

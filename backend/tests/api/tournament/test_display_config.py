@@ -145,7 +145,10 @@ def test_get_display_config_catalog_empty_tournament(client, td_user, td_tournam
     assert [c["key"] for c in body["columns"]] == [
         "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
     ]
+    # Custom Responses is no longer built in — it's seeded as a deletable
+    # custom section instead, so it doesn't appear in the catalog.
     assert [s["id"] for s in body["sections"]][:2] == ["membership", "availability"]
+    assert "custom_responses" not in [s["id"] for s in body["sections"]]
     # An empty tournament has no tracks, so membership offers only its static
     # fields — a tournament with tracks also gets one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
