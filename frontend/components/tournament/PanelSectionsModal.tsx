@@ -1,0 +1,257 @@
+"use client";
+
+import { useState } from "react";
+import {
+  DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
+} from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy, useSortable, arrayMove } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Modal } from "@/components/ui/Modal";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { Toggle } from "@/components/ui/Toggle";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { Spinner } from "@/components/ui/Spinner";
+import { IconGripVertical, IconTrash, IconPlus, IconChevronDown, IconChevronRight } from "@/components/ui/Icons";
+import { DisplayConfigSection, DisplayConfigSectionCatalogItem } from "@/lib/api";
+import { useDisplayConfigDraft } from "@/lib/useDisplayConfigDraft";
+import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import { CUSTOM_SECTION_PREFIX, isCustomSection, orderedSections } from "@/lib/panelSections";
+
+interface PanelSectionsModalProps {
+  tournamentId: number;
+  onClose: () => void;
+  onSaved?: () => void;
+}
+
+// A custom section's id has to survive renames and reordering — the fields
+// assigned to it are keyed by it — so it's generated once, here, and never
+// derived from the title.
+function newCustomSectionId(): string {
+  return `${CUSTOM_SECTION_PREFIX}${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function SortableSection({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+        opacity: isDragging ? 0.5 : 1,
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-sm)",
+        marginBottom: "8px",
+        background: "var(--color-surface)",
+      }}
+    >
+      {children(
+        <span
+          {...attributes}
+          {...listeners}
+          style={{ cursor: "grab", display: "flex", alignItems: "center", color: "var(--color-text-tertiary)" }}
+          title="Drag to reorder"
+        >
+          <IconGripVertical size={14} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSectionsModalProps) {
+  const { catalog, draft, setDraft, saving, error, save, loading } =
+    useDisplayConfigDraft(tournamentId, MEMBERS_PANEL);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
+
+  // Editing works on the full list — hidden sections included, since a hidden
+  // one still has to be reachable to turn back on. That's why this doesn't
+  // reuse orderedSections' filtering, only its ordering.
+  const sections: DisplayConfigSection[] = (() => {
+    const saved = draft?.sections ?? null;
+    if (saved && saved.length > 0) return saved;
+    return orderedSections(null).map((section) => ({ ...section }));
+  })();
+
+  const catalogById = new Map<string, DisplayConfigSectionCatalogItem>(
+    (catalog?.sections ?? []).map((section) => [section.id, section]),
+  );
+  const assignedFields = new Set(
+    sections.filter((s) => isCustomSection(s.id)).flatMap((s) => s.fields ?? []),
+  );
+
+  function update(next: DisplayConfigSection[]) {
+    setDraft({ ...(draft ?? { hidden: [] }), sections: next });
+  }
+
+  function patch(id: string, changes: Partial<DisplayConfigSection>) {
+    update(sections.map((section) => (section.id === id ? { ...section, ...changes } : section)));
+  }
+
+  function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const from = sections.findIndex((s) => s.id === active.id);
+    const to = sections.findIndex((s) => s.id === over.id);
+    if (from === -1 || to === -1) return;
+    update(arrayMove(sections, from, to));
+  }
+
+  function toggleField(section: DisplayConfigSection, fieldKey: string) {
+    const hidden = new Set(section.hidden_fields ?? []);
+    if (hidden.has(fieldKey)) hidden.delete(fieldKey);
+    else hidden.add(fieldKey);
+    patch(section.id, { hidden_fields: [...hidden] });
+  }
+
+  function toggleAssignment(section: DisplayConfigSection, fieldKey: string) {
+    const assigned = new Set(section.fields ?? []);
+    if (assigned.has(fieldKey)) {
+      assigned.delete(fieldKey);
+      patch(section.id, { fields: [...assigned] });
+      return;
+    }
+    // A field belongs to at most one section — claiming it here releases it
+    // from wherever it was, so it can never render twice.
+    update(sections.map((candidate) => {
+      if (candidate.id === section.id) return { ...candidate, fields: [...assigned, fieldKey] };
+      if (!isCustomSection(candidate.id)) return candidate;
+      return { ...candidate, fields: (candidate.fields ?? []).filter((f) => f !== fieldKey) };
+    }));
+  }
+
+  function addCustomSection() {
+    update([...sections, { id: newCustomSectionId(), title: "New section", hidden: false, fields: [] }]);
+  }
+
+  return (
+    <Modal title="Configure member panel" onClose={onClose} width={640}>
+      {error && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "12px" }}>
+          {error}
+        </p>
+      )}
+
+      {loading ? (
+        <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
+          <Spinner size="lg" />
+        </div>
+      ) : (
+        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+            <SortableContext items={sections.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+              {sections.map((section) => {
+                const meta = catalogById.get(section.id);
+                const custom = isCustomSection(section.id);
+                const fields = meta?.fields ?? [];
+                const expandable = custom || fields.length > 0;
+                const isOpen = expanded === section.id;
+
+                return (
+                  <SortableSection key={section.id} id={section.id}>
+                    {(handle) => (
+                      <>
+                        <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "8px 10px" }}>
+                          {handle}
+                          {expandable ? (
+                            <span
+                              onClick={() => setExpanded(isOpen ? null : section.id)}
+                              style={{ cursor: "pointer", display: "flex", color: "var(--color-text-tertiary)" }}
+                            >
+                              {isOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+                            </span>
+                          ) : <span style={{ width: "12px" }} />}
+
+                          {custom ? (
+                            <Input
+                              value={section.title ?? ""}
+                              onChange={(e) => patch(section.id, { title: e.target.value })}
+                              size="sm"
+                              placeholder="Section name"
+                              style={{ flex: 1 }}
+                            />
+                          ) : (
+                            <span style={{ flex: 1, fontFamily: "var(--font-sans)", fontSize: "13px" }}>
+                              {meta?.label ?? section.id}
+                            </span>
+                          )}
+
+                          {custom && (
+                            <Button
+                              type="button" variant="secondary" size="sm" iconOnly title="Delete section"
+                              onClick={() => update(sections.filter((s) => s.id !== section.id))}
+                            >
+                              <IconTrash size={13} />
+                            </Button>
+                          )}
+                          <Toggle
+                            checked={!section.hidden}
+                            onChange={() => patch(section.id, { hidden: !section.hidden })}
+                          />
+                        </div>
+
+                        {isOpen && (
+                          <div style={{ padding: "0 10px 10px 44px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                            {/* Built-in: which of its own fields to show. */}
+                            {fields.map((field) => (
+                              <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                                <Checkbox
+                                  checked={!(section.hidden_fields ?? []).includes(field.key)}
+                                  onChange={() => toggleField(section, field.key)}
+                                />
+                                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{field.label}</span>
+                              </label>
+                            ))}
+
+                            {/* Custom: which answers this section collects. A
+                                field already claimed elsewhere still appears,
+                                so moving one between sections is a single
+                                click rather than an unassign-then-assign. */}
+                            {custom && (catalog?.custom_fields ?? []).map((field) => {
+                              const mine = (section.fields ?? []).includes(field.key);
+                              const takenElsewhere = !mine && assignedFields.has(field.key);
+                              return (
+                                <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+                                  <Checkbox checked={mine} onChange={() => toggleAssignment(section, field.key)} />
+                                  <span style={{
+                                    fontFamily: "var(--font-sans)", fontSize: "13px",
+                                    color: takenElsewhere ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
+                                  }}>
+                                    {field.label}{takenElsewhere ? " — in another section" : ""}
+                                  </span>
+                                </label>
+                              );
+                            })}
+
+                            {custom && (catalog?.custom_fields ?? []).length === 0 && (
+                              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+                                No custom form fields yet.
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </SortableSection>
+                );
+              })}
+            </SortableContext>
+          </DndContext>
+
+          <Button type="button" variant="secondary" size="sm" onClick={addCustomSection}>
+            <IconPlus size={13} /> New section
+          </Button>
+        </div>
+      )}
+
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "12px" }}>
+        <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
+        <Button type="button" variant="primary" onClick={() => save(onSaved, onClose)} disabled={saving || !draft}>
+          Save
+        </Button>
+      </div>
+    </Modal>
+  );
+}

@@ -29,10 +29,10 @@ import { SelectionBar } from "@/components/ui/SelectionBar";
 import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
-import { DisplayConfigModal } from "@/components/tournament/DisplayConfigModal";
+import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, resolveColumns } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
-import { MEMBERS_PANEL, MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
+import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
 // Always present as a grid track (never conditionally added/removed) so its
@@ -241,7 +241,7 @@ export default function MembersPage() {
   // Committed filters only — the modal keeps its own draft until Apply.
   const [filters, applyFilters] = usePersistedFilter("members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS);
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [showDisplayConfigModal, setShowDisplayConfigModal] = useState(false);
+  const [showTableColumnsModal, setShowTableColumnsModal] = useState(false);
   // Bumped on save so the open MemberPanel remounts and refetches with the
   // just-changed hidden set — its own effect only re-runs on id changes.
   const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
@@ -549,7 +549,7 @@ export default function MembersPage() {
             )}
             <Button
               type="button" variant="secondary" size="md"
-              onClick={() => setShowDisplayConfigModal(true)}
+              onClick={() => setShowTableColumnsModal(true)}
             >
               <IconEye size={16} /> Display
             </Button>
@@ -667,18 +667,14 @@ export default function MembersPage() {
         />
       )}
 
-      {showDisplayConfigModal && (
-        <DisplayConfigModal
+      {/* The page's Display button configures the *table*. The panel has its
+          own button in its own header — each surface is edited where it's
+          visible, rather than one modal serving both. */}
+      {showTableColumnsModal && (
+        <TableColumnsModal
           tournamentId={tournamentId}
-          surface={MEMBERS_PANEL}
-          title="Configure member panel"
-          onSaved={() => {
-            membershipsApi.list(tournamentId)
-              .then(setMembers)
-              .catch((e) => setLoadError(e instanceof ApiError ? e.message : "Failed to load members."));
-            setDisplayConfigVersion((v) => v + 1);
-          }}
-          onClose={() => setShowDisplayConfigModal(false)}
+          onSaved={() => setDisplayConfigVersion((v) => v + 1)}
+          onClose={() => setShowTableColumnsModal(false)}
         />
       )}
 

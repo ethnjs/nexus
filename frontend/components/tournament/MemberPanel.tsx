@@ -18,6 +18,9 @@ import { LunchSection } from "@/components/tournament/sections/LunchSection";
 import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
 import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import { PanelSectionsModal } from "@/components/tournament/PanelSectionsModal";
+import { Button } from "@/components/ui/Button";
+import { IconEye } from "@/components/ui/Icons";
 import {
   hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
 } from "@/lib/panelSections";
@@ -64,6 +67,7 @@ export function MemberPanel({
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
   // Section order, per-section visibility, and the TD's custom sections.
   const [sectionConfig, setSectionConfig] = useState<DisplayConfigSection[] | null>(null);
+  const [showSectionsModal, setShowSectionsModal] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -177,6 +181,15 @@ export function MemberPanel({
       onNext={onNext}
       prevDisabled={!hasPrev}
       nextDisabled={!hasNext}
+      headerActions={
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title="Configure panel"
+          onClick={() => setShowSectionsModal(true)}
+        >
+          <IconEye size={14} />
+        </Button>
+      }
     >
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: "20px" }}>
         {error ? (
@@ -195,6 +208,17 @@ export function MemberPanel({
           </>
         )}
       </div>
+      {showSectionsModal && (
+        <PanelSectionsModal
+          tournamentId={tournamentId}
+          onSaved={() =>
+            displayConfigApi.get(tournamentId)
+              .then((config) => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null))
+              .catch(() => {})
+          }
+          onClose={() => setShowSectionsModal(false)}
+        />
+      )}
     </DockedPanel>
   );
 }
