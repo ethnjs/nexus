@@ -27,18 +27,26 @@ export const FORM_FIELD_PREFIX = "form_field:";
 // squeezing a cell until it wraps — an `fr` track alone happily shrinks to
 // nothing, which is what had phone wrapping.
 const WIDTHS = {
-  name: "minmax(140px, 1.2fr)",
-  email: "minmax(190px, 1.6fr)",
-  phone: "132px",
-  duration: "88px",
-  method: "116px",
-  age: "132px",
-  shirtSize: "76px",
-  track: "116px",
-  availabilityDay: "104px",
-  lunchCategory: "minmax(120px, 0.8fr)",
-  customField: "minmax(130px, 1fr)",
-  roles: "minmax(160px, 2.6fr)",
+  name: "minmax(96px, 1.2fr)",
+  email: "minmax(110px, 1.6fr)",
+  // Fixed, and sized to the widest formatted number — "(555) 123-4567" is
+  // ~101px at 12px mono. This is the one column that must never shrink: it
+  // has no useful truncation, and squeezing it is what made it wrap.
+  phone: "118px",
+  duration: "74px",
+  method: "100px",
+  age: "124px",
+  shirtSize: "64px",
+  track: "104px",
+  availabilityDay: "92px",
+  lunchCategory: "minmax(90px, 0.8fr)",
+  customField: "minmax(100px, 1fr)",
+  roles: "minmax(110px, 2.6fr)",
+  // The collapsed form of `roles`, for when a docked panel narrows the table.
+  // Deliberately still a minmax(<length>, <flex>): grid-template-columns only
+  // interpolates track-for-track between matching value types, so a bare
+  // "0px" here would make the whole template snap instead of animating.
+  rolesCollapsed: "minmax(0px, 0fr)",
   actions: "70px",
 } as const;
 

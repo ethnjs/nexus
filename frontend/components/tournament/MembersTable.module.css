@@ -1,0 +1,108 @@
+/*
+ * One grid owns the column tracks; every row is a `subgrid` that inherits
+ * them. The point is cost: `grid-template-columns` is not compositable, so
+ * when the tracks change (Select mode opening, a docked panel collapsing the
+ * Roles column) or when the container is resized by the panel sliding open,
+ * the browser re-resolves every `fr` track. With a grid per row that work ran
+ * N times per frame; with subgrid it runs once and the rows place into it.
+ */
+.table {
+  display: grid;
+  /* grid-template-columns is set inline — it depends on the tournament's
+     configured columns. */
+  column-gap: 10px;
+  /* Matches the panel slot's width transition (see LayoutPanelSlot) so the
+     Roles column collapses in step with the panel sliding in. */
+  transition: grid-template-columns 220ms ease;
+  /* The 12px the rows used to carry as their own horizontal padding. It sits
+     here now so the tracks are defined once; rows bleed back out over it (see
+     .row) to keep their background and divider running the full card width. */
+  padding: 0 12px;
+}
+
+.row,
+.header {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  /* Negative margin + equal padding sums to zero, which is what keeps the
+     subgrid's tracks aligned with the parent's: the spec subtracts a
+     subgrid's own margin/border/padding from its first and last track. The
+     background and border-bottom still bleed the full 12px outward. */
+  margin: 0 -12px;
+  padding: 10px 12px;
+}
+
+.header {
+  padding: 12px 12px;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.row {
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+/* Hover as CSS rather than React state: the old version re-rendered a row
+   (and its RolesCell, ChipInput and Tooltip subtrees) on every mouse enter
+   and leave, which is exactly when the grid is mid-animation. */
+.row:hover,
+.row[data-active="true"] {
+  background: var(--color-bg);
+}
+
+/* The Select checkbox. Its track animates to zero width rather than being
+   added/removed, because grid-template-columns only interpolates between lists
+   of the same length and matching track types; the contents fade on the same
+   clock. */
+.collapsible {
+  overflow: hidden;
+  min-width: 0;
+  transition: opacity 150ms ease;
+}
+
+.collapsed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/*
+ * The Roles cell gets the same zero-width track treatment, but it can't just
+ * be hidden: its chips are flex-wrap, so at a near-zero track width every chip
+ * lands on its own line, the row's height balloons, and that height is
+ * recomputed on every frame of the column transition. For a full roster that
+ * is the entire cost of opening a panel.
+ *
+ * So while the column is narrow the whole subtree comes out of layout. The
+ * cell itself stays in the DOM — the track has to exist for
+ * grid-template-columns to interpolate at all — but nothing inside it is
+ * measured, sized or painted, and it can't contribute to the row's height.
+ *
+ * height:0 is the fallback half of that, for browsers without
+ * content-visibility (Safari < 18): the subtree still lays out internally
+ * there, but it no longer drives the row height, which is the part that was
+ * visible as the rows jumping.
+ */
+.rolesCell {
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition: opacity 150ms ease;
+}
+
+.table[data-roles-hidden="true"] .rolesCell {
+  height: 0;
+  opacity: 0;
+  content-visibility: hidden;
+}

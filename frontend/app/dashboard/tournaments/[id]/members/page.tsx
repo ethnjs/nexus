@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import {
   membershipsApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
@@ -31,6 +31,7 @@ import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
 import { DisplayConfigModal } from "@/components/tournament/DisplayConfigModal";
 import { COLUMN_WIDTHS, MemberColumn, resolveColumns } from "@/components/tournament/memberColumns";
+import styles from "@/components/tournament/MembersTable.module.css";
 import { MEMBERS_PANEL, MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
@@ -45,17 +46,27 @@ const DEFAULT_TABLE_COLUMNS = ["email", "phone", "account_age", "joined", "metho
 
 // Select / Name / ...configured columns... / Roles / Actions. Name, roles and
 // actions aren't configurable: they're the row's identity and its controls,
-// not data a TD would turn off. Roles drops out when a panel is open — the
-// fr tracks absorb its share automatically.
+// not data a TD would turn off.
+//
+// Every track is always present. Select and Roles collapse to zero width
+// rather than dropping out, for the reason SELECT_COLUMN_WIDTH documents
+// above: grid-template-columns interpolates position-by-position, so a list
+// that changes length (or swaps a minmax() for a plain length) can't
+// transition at all and snaps instead. Roles used to drop out, which is why
+// the table jumped while the panel animated open beside it.
 function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberColumn[]) {
   return [
     selectMode ? SELECT_COLUMN_WIDTH : "0px",
     COLUMN_WIDTHS.name,
     ...columns.map((column) => column.width),
-    ...(panelOpen ? [] : [COLUMN_WIDTHS.roles]),
+    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : COLUMN_WIDTHS.roles,
     COLUMN_WIDTHS.actions,
   ].join(" ");
 }
+
+// Matches the column transition, so the Roles chips only come back into
+// layout once the track that holds them has finished widening.
+const ROLES_REVEAL_MS = 220;
 
 const DIRTY_TITLE = "Save or discard your changes first";
 
@@ -82,8 +93,13 @@ function sortValue(m: MembershipSlim, field: SortField): string | number {
   }
 }
 
-function MemberRow({
-  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove, isLast,
+// memo'd because the parent re-renders on every keystroke in Search, every
+// selection change and every panel re-registration. Without it each of those
+// re-rendered every row's AvatarCircle, Tooltip and RolesCell subtree. All
+// callback props below are id-based and reference-stable in the parent, which
+// is what makes the memo actually hold.
+const MemberRow = memo(function MemberRow({
+  tournamentId, membership, allRoles, canTouchRole, locked, isSelf, isArchived, onUpdated, onFocus, onRemove, onSelfRemove,
   selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused, rolesReadOnly, panelOpen,
   columns,
 }: {
@@ -98,27 +114,25 @@ function MemberRow({
   /** Archived tournaments hide the remove control entirely rather than showing it disabled. */
   isArchived: boolean;
   onUpdated: (updated: MembershipSlim) => void;
-  onFocus: () => void;
+  onFocus: (id: number) => void;
   onRemove: (membership: MembershipSlim) => void;
   onSelfRemove: (membership: MembershipSlim) => void;
-  isLast: boolean;
   selectMode: boolean;
   selected: boolean;
   /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
   selectionLocked: boolean;
-  onToggleSelect: () => void;
+  onToggleSelect: (id: number) => void;
   /** A single-member panel is open (for some row, not necessarily this one) — rows become click-to-switch instead of inert. */
   focusActive: boolean;
   /** This row is the one currently shown in the single-member panel. */
   focused: boolean;
   /** This row's roles are open in the docked panel — don't offer a second, inline way to edit the same thing. */
   rolesReadOnly: boolean;
-  /** Any docked panel is open — the table is narrower, so the Roles column drops out to give the rest room. */
+  /** Any docked panel is open — the table is narrower, so the Roles column collapses to give the rest room. */
   panelOpen: boolean;
   /** The configured columns, already resolved from the saved display config. */
   columns: MemberColumn[];
 }) {
-  const [hovered, setHovered] = useState(false);
   const { user } = membership;
   const name = `${user.first_name ?? ""} ${user.last_name ?? ""}`.trim() || "—";
 
@@ -126,34 +140,26 @@ function MemberRow({
   // Select mode, or switching which row the single-member panel shows. Never
   // both at once — the two flows are mutually exclusive.
   const clickable = (selectMode || focusActive) && !selectionLocked;
-  const handleRowClick = selectMode ? onToggleSelect : onFocus;
+  const handleRowClick = selectMode ? () => onToggleSelect(membership.id) : () => onFocus(membership.id);
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? DIRTY_TITLE : undefined;
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={styles.row}
+      // Hover is styled in CSS; only the "this row is the open one" state
+      // needs to reach the stylesheet from React.
+      data-active={highlighted ? "true" : undefined}
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
-      style={{
-        display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen, columns), alignItems: "center",
-        gap: "10px", padding: "10px 12px",
-        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
-        transition: "background 100ms ease, grid-template-columns 200ms ease",
-        cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
-      }}
+      style={{ cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default" }}
     >
       <span
-        style={{
-          display: "flex", justifyContent: "center", overflow: "hidden",
-          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-          transition: "opacity 150ms ease",
-        }}
+        className={`${styles.collapsible} ${selectMode ? "" : styles.collapsed}`}
+        style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
-        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+        <Checkbox checked={selected} locked={selectionLocked} onChange={() => onToggleSelect(membership.id)} />
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="sm" />
@@ -176,21 +182,25 @@ function MemberRow({
           {column.render(membership)}
         </div>
       ))}
-      {!panelOpen && (
-        // Stops row clicks (select toggle / focus switch) from firing when
-        // the intent was to pick a role chip.
-        <div onClick={(e) => e.stopPropagation()} style={{ minWidth: 0 }}>
-          <RolesCell
-            tournamentId={tournamentId}
-            membership={membership}
-            allRoles={allRoles}
-            canTouchRole={canTouchRole}
-            locked={locked}
-            readOnly={rolesReadOnly}
-            onUpdated={onUpdated}
-          />
-        </div>
-      )}
+      {/* Stays mounted while a panel is open — its track animates to zero
+          width instead of being removed, which is the only way the template
+          can transition. Whether its contents are actually laid out is driven
+          by data-roles-hidden on the table, not from here, so restoring them
+          on close doesn't re-render every row. readOnly while collapsed keeps
+          the Popover (and its scroll/resize listeners) out of the tree.
+          Stops row clicks (select toggle / focus switch) from firing when the
+          intent was to pick a role chip. */}
+      <div className={styles.rolesCell} onClick={(e) => e.stopPropagation()}>
+        <RolesCell
+          tournamentId={tournamentId}
+          membership={membership}
+          allRoles={allRoles}
+          canTouchRole={canTouchRole}
+          locked={locked}
+          readOnly={rolesReadOnly || panelOpen}
+          onUpdated={onUpdated}
+        />
+      </div>
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         {!isArchived && (
           <Button
@@ -206,14 +216,14 @@ function MemberRow({
           type="button" variant="secondary" size="sm" iconOnly
           disabled={selectionLocked}
           title={lockedTitle ?? "Expand"}
-          onClick={onFocus}
+          onClick={() => onFocus(membership.id)}
         >
           <IconExpand size={13} />
         </Button>
       </div>
     </div>
   );
-}
+});
 
 export default function MembersPage() {
   const params = useParams();
@@ -262,6 +272,15 @@ export default function MembersPage() {
   useEffect(() => { roleLockRef.current = { canTouchRole, canEditMember }; });
   const canTouchRoleStable = useCallback((role: Role) => roleLockRef.current.canTouchRole(role), []);
   const canEditMemberStable = useCallback((target: MembershipSlim) => roleLockRef.current.canEditMember(target), []);
+
+  // Same ref trick, for a different reason: toggleSelected's identity changes
+  // every time the selection does, and focusItem's whenever the dirty flag
+  // does. Handed straight to a memo'd MemberRow those would defeat the memo
+  // and re-render every row on each checkbox click.
+  const selectionRef = useRef({ focusItem, toggleSelected });
+  useEffect(() => { selectionRef.current = { focusItem, toggleSelected }; });
+  const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
+  const toggleSelectedStable = useCallback((id: number) => selectionRef.current.toggleSelected(id), []);
 
   useEffect(() => {
     if (!canManageMembers) return;
@@ -332,6 +351,24 @@ export default function MembersPage() {
   // Either flow narrows the table for a docked panel — drop the Roles
   // column to give the rest more room while it's up.
   const panelOpen = focusedId !== null || massPanelOpen;
+
+  // Whether the Roles chips participate in layout at all (see .rolesCell).
+  // Asymmetric on purpose: they drop out the instant a panel opens, so the
+  // collapsing column never has to wrap them at a few px wide, but they only
+  // come back once the column has finished widening again. Kept as a data
+  // attribute on the single table element rather than a row prop — flipping it
+  // is then a CSS cascade change instead of a re-render of every row.
+  const [prevPanelOpen, setPrevPanelOpen] = useState(panelOpen);
+  const [rolesLaidOut, setRolesLaidOut] = useState(!panelOpen);
+  if (panelOpen !== prevPanelOpen) {
+    setPrevPanelOpen(panelOpen);
+    if (panelOpen) setRolesLaidOut(false);
+  }
+  useEffect(() => {
+    if (panelOpen) return;
+    const timer = setTimeout(() => setRolesLaidOut(true), ROLES_REVEAL_MS);
+    return () => clearTimeout(timer);
+  }, [panelOpen]);
 
   // Steps through the table's own current filter/sort order, so switching
   // sort or narrowing a filter mid-edit still lands somewhere sensible.
@@ -545,66 +582,63 @@ export default function MembersPage() {
           </div>
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
-            <div style={{
-              display: "grid", gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns), gap: "10px",
-              transition: "grid-template-columns 200ms ease",
-              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-              fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-              color: "var(--color-text-tertiary)",
-            }}>
-              <span
-                style={{
-                  display: "flex", justifyContent: "center", overflow: "hidden",
-                  opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-                  transition: "opacity 150ms ease",
-                }}
-                title={panelDirty ? DIRTY_TITLE : undefined}
-              >
-                <Checkbox
-                  checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
-                  locked={panelDirty}
-                  onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
-                />
-              </span>
-              <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
-              {tableColumns.map((column) => (
+            {/* One grid for the whole table: it owns the column tracks and is
+                the only element that transitions them. Header and rows are
+                subgrids, so resizing (the docked panel sliding open shrinks
+                this container every frame) costs one track resolution instead
+                of one per row. */}
+            <div
+              className={styles.table}
+              data-roles-hidden={rolesLaidOut ? undefined : "true"}
+              style={{ gridTemplateColumns: memberColumns(selectMode, panelOpen, tableColumns) }}
+            >
+              <div className={styles.header}>
                 <span
-                  key={column.key}
-                  style={{
-                    textAlign: column.align === "center" ? "center" : undefined,
-                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                  }}
-                  title={column.label}
+                  className={`${styles.collapsible} ${selectMode ? "" : styles.collapsed}`}
+                  style={{ display: "flex", justifyContent: "center" }}
+                  title={panelDirty ? DIRTY_TITLE : undefined}
                 >
-                  {column.label}
+                  <Checkbox
+                    checked={visibleMembers.length > 0 && visibleMembers.every((m) => selectedIds.has(m.id))}
+                    locked={panelDirty}
+                    onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
+                  />
                 </span>
-              ))}
-              {!panelOpen && <span>Roles</span>}
-              <span style={{ textAlign: "center" }}>Actions</span>
-            </div>
+                <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
+                {tableColumns.map((column) => (
+                  <span
+                    key={column.key}
+                    style={{
+                      textAlign: column.align === "center" ? "center" : undefined,
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                    }}
+                    title={column.label}
+                  >
+                    {column.label}
+                  </span>
+                ))}
+                <span className={styles.rolesCell}>Roles</span>
+                <span style={{ textAlign: "center" }}>Actions</span>
+              </div>
 
-            {visibleMembers.length === 0 ? (
-              <EmptyState title="No matching members" description="Try adjusting your search or filters." />
-            ) : (
-              visibleMembers.map((m, i) => (
+              {visibleMembers.map((m) => (
                 <MemberRow
                   key={m.id}
                   tournamentId={tournamentId}
                   membership={m}
                   allRoles={allRoles}
-                  canTouchRole={canTouchRole}
+                  canTouchRole={canTouchRoleStable}
                   locked={!canEditMember(m)}
                   isSelf={currentUser?.id === m.user.id}
                   isArchived={isArchived}
                   onUpdated={handleMemberUpdated}
-                  onFocus={() => focusItem(m.id)}
+                  onFocus={focusItemStable}
                   onRemove={setRemoveTarget}
                   onSelfRemove={setSelfRemoveTarget}
-                  isLast={i === visibleMembers.length - 1}
                   selectMode={selectMode}
                   selected={selectedIds.has(m.id)}
                   selectionLocked={panelDirty}
-                  onToggleSelect={() => toggleSelected(m.id)}
+                  onToggleSelect={toggleSelectedStable}
                   focusActive={focusedId !== null}
                   focused={focusedId === m.id}
                   // Whichever row the open panel is editing shows its roles
@@ -614,7 +648,11 @@ export default function MembersPage() {
                   rolesReadOnly={focusedId === m.id || (massPanelOpen && selectedIds.has(m.id))}
                   panelOpen={panelOpen}
                 />
-              ))
+              ))}
+            </div>
+
+            {visibleMembers.length === 0 && (
+              <EmptyState title="No matching members" description="Try adjusting your search or filters." />
             )}
           </Card>
         </>

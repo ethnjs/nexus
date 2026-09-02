@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import {
   ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role, TournamentShift,
   canonicalEventsApi, membershipsApi, tournamentShiftsApi,
@@ -67,12 +67,17 @@ export function MemberPanel({
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // These usually resolve inside the ~220ms the panel spends sliding open,
+  // and the commit they trigger swaps a spinner for the full section stack
+  // (availability timeline, experience tables, logistics). As an urgent update
+  // that render blocks the frame and visibly stutters the slide; marked as a
+  // transition, React can slice it across frames and let the animation win.
   useEffect(() => {
     membershipsApi.get(tournamentId, membershipId, MEMBERS_PANEL)
-      .then(setFull)
+      .then((data) => startTransition(() => setFull(data)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
-    canonicalEventsApi.list().then(setEvents).catch(() => {});
-    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => {});
+    canonicalEventsApi.list().then((data) => startTransition(() => setEvents(data))).catch(() => {});
+    tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
   }, [tournamentId, membershipId]);
 
   function handleRolesUpdated(updated: MembershipSlim) {
