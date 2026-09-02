@@ -7,18 +7,25 @@ interface LogisticsUser {
   dietary_restriction: string | null;
 }
 
-export function LogisticsSection({ user }: { user: LogisticsUser }) {
+export function LogisticsSection({ user, hiddenFields }: {
+  user: LogisticsUser;
+  /** Field ids the TD turned off — matches the backend's PANEL_SECTIONS entry for "logistics". */
+  hiddenFields?: Set<string>;
+}) {
+  const shows = (field: string) => !hiddenFields?.has(field);
   return (
     <SectionHeading title="Logistics">
       <FieldGrid>
-        <PanelField label="Shirt Size">
+        {shows("shirt_size") && <PanelField label="Shirt Size">
           {user.shirt_size !== null ? (
             <Badge variant="default">{user.shirt_size}</Badge>
           ) : (
             <FieldValue muted>No info yet</FieldValue>
           )}
-        </PanelField>
-        <TextField label="Dietary Restriction" value={user.dietary_restriction} />
+        </PanelField>}
+        {shows("dietary_restriction") && (
+          <TextField label="Dietary Restriction" value={user.dietary_restriction} />
+        )}
       </FieldGrid>
     </SectionHeading>
   );

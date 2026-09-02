@@ -2,12 +2,10 @@
 
 import { startTransition, useEffect, useState } from "react";
 import {
-  ApiError, CanonicalEvent, MembershipFull, MembershipSlim, Role, TournamentShift,
-  canonicalEventsApi, membershipsApi, tournamentShiftsApi,
+  ApiError, CanonicalEvent, DisplayConfigSection, MembershipFull, MembershipSlim, Role,
+  TournamentShift, canonicalEventsApi, displayConfigApi, membershipsApi, tournamentShiftsApi,
 } from "@/lib/api";
-import { formatDate } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
-import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -15,16 +13,15 @@ import { EducationCareerSection } from "@/components/profile/sections/EducationC
 import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
-import { RolesCell } from "@/components/tournament/RolesCell";
-import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
-import { SectionHeading } from "@/components/profile/SectionHeading";
-import { PanelField, FieldValue, FieldList, FieldGrid } from "@/components/profile/PanelField";
-import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
 import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
 import { LunchSection } from "@/components/tournament/sections/LunchSection";
 import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
 import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import {
+  hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
+} from "@/lib/panelSections";
+import { MembershipSection } from "@/components/tournament/sections/MembershipSection";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -65,6 +62,8 @@ export function MemberPanel({
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
+  // Section order, per-section visibility, and the TD's custom sections.
+  const [sectionConfig, setSectionConfig] = useState<DisplayConfigSection[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -78,6 +77,9 @@ export function MemberPanel({
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
     canonicalEventsApi.list().then((data) => startTransition(() => setEvents(data))).catch(() => {});
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
+    displayConfigApi.get(tournamentId)
+      .then((config) => startTransition(() => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null)))
+      .catch(() => {});
   }, [tournamentId, membershipId]);
 
   function handleRolesUpdated(updated: MembershipSlim) {
@@ -86,6 +88,86 @@ export function MemberPanel({
   }
 
   const hiddenSections = new Set(full?.hidden_sections ?? []);
+
+  // One renderer per section id. Ordering, visibility and per-field hiding
+  // are all decided by the saved config above; this only says how a given
+  // section draws itself.
+  function renderSection(section: DisplayConfigSection) {
+    if (!full) return null;
+    // `hidden_sections` is a separate mechanism from `section.hidden`: the TD
+    // turned a section off explicitly there, whereas this covers a section
+    // whose every item was filtered away by the hidden-item list.
+    if (hiddenSections.has(section.id)) return null;
+
+    const hiddenFields = hiddenFieldsOf(section);
+    const { assigned, unassigned } = splitCustomAnswers(
+      full.custom_responses, orderedSections(sectionConfig),
+    );
+
+    if (isCustomSection(section.id)) {
+      return (
+        <CustomResponsesSection
+          title={section.title || "Custom Responses"}
+          customResponses={assigned.get(section.id) ?? []}
+        />
+      );
+    }
+
+    switch (section.id) {
+      case "membership":
+        return (
+          <MembershipSection
+            tournamentId={tournamentId}
+            membership={full}
+            allRoles={allRoles}
+            canTouchRole={canTouchRole}
+            locked={!canEditMember(full)}
+            collectIsOver18={collectIsOver18}
+            collectIsOver21={collectIsOver21}
+            onRolesUpdated={handleRolesUpdated}
+            hiddenFields={hiddenFields}
+          />
+        );
+      case "availability":
+        return <AvailabilitySection availability={full.availability} allShifts={shifts} />;
+      case "lunch":
+        return (
+          <LunchSection
+            lunch={hiddenFields.has("selections") ? [] : full.lunch}
+            dietaryRestriction={
+              hiddenFields.has("dietary_restriction") ? null : full.user.dietary_restriction
+            }
+          />
+        );
+      case "event_preferences":
+        return <EventPreferencesSection eventPreferences={full.event_preferences} />;
+      case "custom_responses":
+        // Whatever no custom section claimed — so an answer is never shown
+        // twice, and never lost when its section is deleted.
+        return <CustomResponsesSection customResponses={unassigned} />;
+      case "education":
+        return <ProfileCard><EducationCareerSection user={full.user} hiddenFields={hiddenFields} /></ProfileCard>;
+      case "competition_experience":
+        // Rendered whatever the data — the section itself distinguishes
+        // "None" (answered, has none) from "No info yet" (never answered),
+        // which an absent card can't.
+        return (
+          <ProfileCard>
+            <CompetitionExperienceSection user={full.user} mode="view" events={events} />
+          </ProfileCard>
+        );
+      case "volunteer_experience":
+        return (
+          <ProfileCard>
+            <VolunteerExperienceSection user={full.user} mode="view" events={events} />
+          </ProfileCard>
+        );
+      case "logistics":
+        return <ProfileCard><LogisticsSection user={full.user} hiddenFields={hiddenFields} /></ProfileCard>;
+      default:
+        return null;
+    }
+  }
 
   return (
     <DockedPanel
@@ -107,103 +189,9 @@ export function MemberPanel({
           <>
             <ProfileHeader user={full.user} />
 
-            <ProfileCard>
-              <SectionHeading title="Membership">
-                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                  <FieldGrid>
-                    <PanelField label="Joined">
-                      <FieldValue>{formatDate(full.created_at)}</FieldValue>
-                    </PanelField>
-                    <PanelField label="Join Method">
-                      <JoinMethodCell membership={full} />
-                    </PanelField>
-                  </FieldGrid>
-
-                  <FieldGrid>
-                    {full.track_statuses.length > 0 && (
-                      <PanelField label="Tracks">
-                        <FieldList>
-                          {full.track_statuses.map((ts) => (
-                            // Every live track appears, answered or not — a
-                            // "pending" one is a member who still owes an
-                            // answer, which absence alone wouldn't show.
-                            // An archived track's statuses stay readable — the
-                            // catalog entry is retired, the commitment still
-                            // happened — so it's dimmed rather than hidden.
-                            <div
-                              key={ts.track_id}
-                              style={{
-                                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                                opacity: ts.is_archived ? 0.55 : undefined,
-                              }}
-                              title={ts.is_archived ? "Archived track" : undefined}
-                            >
-                              <FieldValue>{ts.name}</FieldValue>
-                              <Badge variant={ts.status}>{ts.status}</Badge>
-                            </div>
-                          ))}
-                        </FieldList>
-                      </PanelField>
-                    )}
-
-                    <PanelField label="Roles">
-                      <RolesCell
-                        tournamentId={tournamentId}
-                        membership={full}
-                        allRoles={allRoles}
-                        canTouchRole={canTouchRole}
-                        locked={!canEditMember(full)}
-                        onUpdated={handleRolesUpdated}
-                      />
-                    </PanelField>
-                  </FieldGrid>
-
-                  {(collectIsOver18 || collectIsOver21) && (
-                    <FieldGrid>
-                      <PanelField label="Age">
-                        <AgeFlagsBadges
-                          isOver18={full.is_over_18}
-                          isOver21={full.is_over_21}
-                          collectIsOver18={collectIsOver18}
-                          collectIsOver21={collectIsOver21}
-                        />
-                      </PanelField>
-                    </FieldGrid>
-                  )}
-                </div>
-              </SectionHeading>
-            </ProfileCard>
-
-            {/* Sections render even when empty, so the only thing that
-                suppresses one is the display config having hidden every item
-                it would have shown. */}
-            {!hiddenSections.has("availability") && (
-              <AvailabilitySection availability={full.availability} allShifts={shifts} />
-            )}
-            {!hiddenSections.has("lunch") && (
-              <LunchSection lunch={full.lunch} dietaryRestriction={full.user.dietary_restriction} />
-            )}
-            {!hiddenSections.has("event_preferences") && (
-              <EventPreferencesSection eventPreferences={full.event_preferences} />
-            )}
-            {!hiddenSections.has("custom_responses") && (
-              <CustomResponsesSection customResponses={full.custom_responses} />
-            )}
-
-            <ProfileCard><EducationCareerSection user={full.user} /></ProfileCard>
-
-            {/* Rendered unconditionally — the section itself distinguishes
-                "None" (answered, has none) from "No info yet" (never
-                answered), which an absent card can't. */}
-            <ProfileCard>
-              <CompetitionExperienceSection user={full.user} mode="view" events={events} />
-            </ProfileCard>
-
-            <ProfileCard>
-              <VolunteerExperienceSection user={full.user} mode="view" events={events} />
-            </ProfileCard>
-
-            <ProfileCard><LogisticsSection user={full.user} /></ProfileCard>
+            {orderedSections(sectionConfig).map((section) => (
+              <div key={section.id}>{renderSection(section)}</div>
+            ))}
           </>
         )}
       </div>

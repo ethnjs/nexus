@@ -8,6 +8,8 @@ import { PanelField, FieldValue, FieldGrid } from "@/components/profile/PanelFie
 
 interface CustomResponsesSectionProps {
   customResponses: MembershipCustomAnswer[];
+  /** Heading text — a TD-made section supplies its own name. */
+  title?: string;
 }
 
 // A submitted select-type answer is frozen as an option snapshot
@@ -42,11 +44,11 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-export function CustomResponsesSection({ customResponses }: CustomResponsesSectionProps) {
+export function CustomResponsesSection({ customResponses, title = "Custom Responses" }: CustomResponsesSectionProps) {
 
   return (
     <ProfileCard>
-      <SectionHeading title="Custom Responses">
+      <SectionHeading title={title}>
         {customResponses.length === 0 && <FieldValue muted>No info yet</FieldValue>}
         <FieldGrid>
           {customResponses.map((answer, i) => (
