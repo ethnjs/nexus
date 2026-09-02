@@ -431,7 +431,11 @@ export default function MembersPage() {
   // changes, so the element never closes over stale props.
   useEffect(() => {
     if (focusedId !== null) {
-      const membership = (members ?? []).find((m) => m.id === focusedId);
+      // Nothing loaded yet says nothing about whether the row exists — on a
+      // refresh into ?member=, focus is seeded before the roster arrives, and
+      // treating "not in an empty list" as "gone" would drop it every time.
+      if (members === null) return;
+      const membership = members.find((m) => m.id === focusedId);
       if (!membership) { clearFocus(); return; }
       setPanel(
         <MemberPanel
