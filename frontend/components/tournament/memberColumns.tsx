@@ -242,6 +242,28 @@ export function resolveColumns(
 
 export const COLUMN_WIDTHS = WIDTHS;
 
+// Narrower floors for when a docked panel is open. The panel takes roughly a
+// third of the window, and the floors above can then add up to more than the
+// table has left — the grid overflows and the last column (Actions) is
+// clipped by the card's edge. Select mode makes it worse by another 28px.
+//
+// Name and email are the two tracks that can give: both already ellipse, so
+// a lower floor costs a few characters where the alternative costs a whole
+// column. Nothing else is touched — phone has no useful truncation, and the
+// badge columns wrap (and balloon the row height) rather than ellipse.
+//
+// Safe by construction: a floor only binds when space is scarce, so this is
+// identical to the full-width table whenever the table actually fits.
+const COMPACT_TRACKS: Record<string, string> = {
+  [WIDTHS.name]: "minmax(104px, 1.1fr)",
+  [WIDTHS.email]: "minmax(120px, 1.5fr)",
+};
+
+/** The panel-open form of a track, or the track itself if it can't give. */
+export function compactTrack(width: string): string {
+  return COMPACT_TRACKS[width] ?? width;
+}
+
 // Roles is the elastic column: it holds wrapping chips, so it can give space
 // back as data columns are added, and it's the only track wide enough to be
 // worth taking from. Shrinks per configured column past the default five,

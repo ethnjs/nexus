@@ -33,7 +33,7 @@ import {
   MEMBERS_FILTER_KEYS,
 } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
-import { COLUMN_WIDTHS, MemberColumn, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
+import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
@@ -58,10 +58,14 @@ const DEFAULT_TABLE_COLUMNS = ["email", "phone", "account_age", "joined", "metho
 // transition at all and snaps instead. Roles used to drop out, which is why
 // the table jumped while the panel animated open beside it.
 function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberColumn[]) {
+  // With the panel open the table is squeezed, so the tracks that can give
+  // do — see compactTrack. Same track types either way, so the template
+  // still interpolates as the panel slides.
+  const track = (width: string) => (panelOpen ? compactTrack(width) : width);
   return [
     selectMode ? SELECT_COLUMN_WIDTH : "0px",
-    COLUMN_WIDTHS.name,
-    ...columns.map((column) => column.width),
+    track(COLUMN_WIDTHS.name),
+    ...columns.map((column) => track(column.width)),
     panelOpen ? COLUMN_WIDTHS.rolesCollapsed : rolesWidth(columns.length),
     COLUMN_WIDTHS.actions,
   ].join(" ");
@@ -655,7 +659,9 @@ export default function MembersPage() {
                   </span>
                 ))}
                 <span className={styles.rolesCell}>Roles</span>
-                <span style={{ textAlign: "center" }}>Actions</span>
+                {/* Ellipses like every other header rather than spilling past
+                    the card edge if the grid is ever squeezed past its floors. */}
+                <span style={{ textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Actions</span>
               </div>
 
               {visibleMembers.map((m) => (
