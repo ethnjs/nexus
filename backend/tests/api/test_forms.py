@@ -2224,6 +2224,78 @@ class TestWriteThroughOnSubmit:
         assert rows[0].category == "protein"
         assert rows[0].date == date(2027, 2, 13)
 
+    def test_lunch_free_text_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+        """A short_text lunch question writes its typed answer through as the
+        row's value/label — there's no option to resolve."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="lunch_20270213_special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        membership = (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .first()
+        )
+        rows = db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.membership_id == membership.id
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].value == "Vegan cheese only"
+        assert rows[0].category == "special_requests"
+        assert rows[0].date == date(2027, 2, 13)
+
+    def test_lunch_free_text_longer_than_the_old_column_limit(self, client, db, td_user, td_tournament):
+        """value/label are Text, not VARCHAR(64)/(255) — a long_text answer
+        that would have blown the old limits stores intact."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="lunch_20270213_notes", question_type="long_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        answer = "No dairy. " * 40  # 400 chars
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": answer}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.category == "notes"
+        ).one()
+        assert row.value == answer.strip()
+
+    def test_lunch_free_text_blank_answer_writes_no_row(self, client, db, td_user, td_tournament):
+        """A whitespace-only answer stores nothing, so a skipped question
+        reads the same as one that was never asked."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="lunch_20270213_special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/",
+                          json={"answers": [{"field_id": field.id, "value": "   "}]})
+        assert res.status_code == 200, res.json()
+
+        assert db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.category == "special_requests"
+        ).count() == 0
+
     def test_event_preference_write_through_ranked_choice(self, client, db, td_user, td_tournament):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")

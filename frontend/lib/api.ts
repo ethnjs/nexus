@@ -656,6 +656,10 @@ export interface MembershipLunch {
   // The short canonical form ("Sofritas"), not the form's full option text
   // ("Sofritas (Vegan)") — see MembershipLunchRead.
   value:    string
+  // The source question's type — the only thing distinguishing a typed
+  // answer from a picked option, since both land in `value`. Null when the
+  // field is gone.
+  question_type?: string | null
 }
 
 // Matches MembershipEventPreferenceEventRead

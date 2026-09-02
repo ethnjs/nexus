@@ -257,3 +257,44 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
             ],
         ))
     return groups
+
+
+def build_lunch(db: Session, membership: TournamentMembership) -> list["MembershipLunchRead"]:
+    """This membership's lunch rows, each carrying the question_type of the
+    question that produced it.
+
+    The row itself can't tell you: a typed short_text answer and a picked
+    option both land in the same value/label columns. The type lives on the
+    FormField whose field_key is `lunch_{YYYYMMDD}_{category}`, so this maps
+    rows back to fields by reconstructing that key. Archived fields count too
+    — an answer given before the question was retired still has to render the
+    way it was written."""
+    from app.models.models import Form, FormField
+    from app.schemas.tournament.membership import MembershipLunchRead
+
+    rows = membership.lunch_selections
+    if not rows:
+        return []
+
+    def field_key_for(row) -> str:
+        return f"lunch_{row.date.strftime('%Y%m%d')}_{row.category}"
+
+    type_by_key = dict(
+        db.query(FormField.field_key, FormField.question_type)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == membership.tournament_id,
+            FormField.field_key.in_({field_key_for(row) for row in rows}),
+        )
+    )
+
+    return [
+        MembershipLunchRead(
+            date=row.date,
+            category=row.category,
+            value=row.value,
+            question_type=type_by_key.get(field_key_for(row)),
+        )
+        for row in rows
+    ]

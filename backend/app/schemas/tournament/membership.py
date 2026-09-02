@@ -121,6 +121,12 @@ class MembershipLunchRead(BaseModel):
     date: date
     category: str
     value: str
+    # The source question's type — a picked option and a typed answer land in
+    # identical columns, so this is the only thing that tells a renderer
+    # which it's looking at. Resolved by build_lunch, which has the field;
+    # None when the field is gone (deleted form) or the response was built
+    # straight from the ORM rows.
+    question_type: str | None = None
 
     model_config = {"from_attributes": True}
 

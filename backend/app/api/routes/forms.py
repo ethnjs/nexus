@@ -24,6 +24,7 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
+    LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
     availability_field_date,
     collect_active_field_errors,
@@ -1167,14 +1168,21 @@ def _write_through_reserved_fields(
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
             lunch_date, category = parse_lunch_field_key(field.field_key)
-            # `selected` is now option_id(s) (see branching.py's matching and
-            # PlainOption/BranchingOption's option_id) — resolve each back to
-            # its stored value/label snapshot before write-through.
-            values = [
-                {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
-                for v in selected
-                if v in options_by_id
-            ]
+            if field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES:
+                # No options to resolve — the answer itself is the selection.
+                # Blank clears the row rather than storing an empty one, so
+                # an erased answer reads the same as never having answered.
+                text = value.strip() if isinstance(value, str) else ""
+                values = [{"value": text, "label": text}] if text else []
+            else:
+                # `selected` is now option_id(s) (see branching.py's matching
+                # and PlainOption/BranchingOption's option_id) — resolve each
+                # back to its stored value/label snapshot before write-through.
+                values = [
+                    {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
+                    for v in selected
+                    if v in options_by_id
+                ]
             sync_lunch(db, membership.id, lunch_date, category, values)
             continue
 

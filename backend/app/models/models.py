@@ -1008,8 +1008,10 @@ class TournamentMembershipLunch(Base):
     membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
     date = Column(Date, nullable=False)
     category = Column(String(64), nullable=False)
-    value = Column(String(64), nullable=False)
-    label = Column(String(255), nullable=False)
+    # Text, not String: a lunch_{date}_{category} field can be short_text/
+    # long_text, whose whole answer lands here as value/label.
+    value = Column(Text, nullable=False)
+    label = Column(Text, nullable=False)
 
     membership = relationship("TournamentMembership", back_populates="lunch_selections")
 

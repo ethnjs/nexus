@@ -449,7 +449,10 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
 
     assert len(data["lunch"]) == 1
     # value ("pizza"), not label ("Pizza") — see MembershipLunchRead.
-    assert data["lunch"][0] == {"date": "2026-05-21", "category": "entree", "value": "pizza"}
+    # question_type is None here: no form field defines lunch_20260521_entree.
+    assert data["lunch"][0] == {
+        "date": "2026-05-21", "category": "entree", "value": "pizza", "question_type": None,
+    }
 
 
 def test_get_membership_custom_responses_empty(client, td_user, td_tournament, db):

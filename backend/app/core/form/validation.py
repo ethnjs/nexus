@@ -46,7 +46,12 @@ EVENT_PREFERENCE_QUESTION_TYPES = {"ranked_choice", "multi_select_checkbox", "si
 # into the key, so per-tournament field_key uniqueness already covers
 # per-(date, category) uniqueness with no separate check needed.
 LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
-LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
+# Free-text is allowed here but on no other reserved key: a lunch question
+# like "any special requests?" belongs in the panel's Lunch section, and
+# without the reserved key it would be filtered out of custom responses
+# (which exclude reserved keys) and land nowhere at all.
+LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox", "short_text", "long_text"}
+LUNCH_FREE_TEXT_QUESTION_TYPES = {"short_text", "long_text"}
 
 # track_status_{suffix}, e.g. "track_status_volunteer_interest". The suffix
 # makes the question's stable field key independent of a catalog track, so

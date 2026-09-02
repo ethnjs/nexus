@@ -7,6 +7,14 @@ import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { PanelField, FieldValue } from "@/components/profile/PanelField";
 
+// lunch_{date}_{category} allows these alongside the option-based types —
+// see LUNCH_QUESTION_TYPES.
+const FREE_TEXT_TYPES = new Set(["short_text", "long_text"]);
+
+function isFreeText(selection: MembershipLunch): boolean {
+  return !!selection.question_type && FREE_TEXT_TYPES.has(selection.question_type);
+}
+
 interface LunchSectionProps {
   lunch: MembershipLunch[];
   /**
@@ -56,8 +64,12 @@ export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
                     }}>
                       {category}
                     </span>
+                    {/* A typed answer is a sentence — an uppercase badge
+                        would mangle it, so it renders as prose. */}
                     {selections.map((sel, i) => (
-                      <Badge key={i} variant="default">{sel.value}</Badge>
+                      isFreeText(sel)
+                        ? <FieldValue key={i}>{sel.value}</FieldValue>
+                        : <Badge key={i} variant="default">{sel.value}</Badge>
                     ))}
                   </div>
                 ))}
