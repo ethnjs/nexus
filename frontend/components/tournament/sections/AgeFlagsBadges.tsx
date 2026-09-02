@@ -11,26 +11,36 @@ interface AgeFlagsBadgesProps {
   // branch below, which would render as "Under 18"/"Under 21".
   isOver18: boolean | null | undefined;
   isOver21: boolean | null | undefined;
+  // The tournament's own collection toggles. A flag it doesn't collect gets
+  // no badge at all — not even "Unknown", which would imply the question was
+  // asked. These can't be inferred from the values: the response omits a
+  // field both when it isn't collected and when the member withheld consent,
+  // so `undefined` alone can't tell those apart, and only the second is
+  // worth surfacing.
+  collectIsOver18: boolean;
+  collectIsOver21: boolean;
+}
+
+function AgeBadge({ value, label }: { value: boolean | null | undefined; label: "18+" | "21+" }) {
+  return (
+    <Badge variant={value == null ? "default" : value ? "confirmed" : "declined"}>
+      {value == null ? `${label} Unknown` : value ? label : `Under ${label.replace("+", "")}`}
+    </Badge>
+  );
 }
 
 // Content only, no PanelField wrapper — callers decide the label/layout
 // around it (MemberPanel embeds this inside its "Membership" card's grid;
 // the profile page may want its own placement).
-export function AgeFlagsBadges({ isOver18, isOver21 }: AgeFlagsBadgesProps) {
-  if (isOver18 == null && isOver21 == null) {
-    return (
-      <FieldValue muted>Unknown</FieldValue>
-    );
+export function AgeFlagsBadges({ isOver18, isOver21, collectIsOver18, collectIsOver21 }: AgeFlagsBadgesProps) {
+  if (!collectIsOver18 && !collectIsOver21) {
+    return <FieldValue muted>Unknown</FieldValue>;
   }
 
   return (
     <div style={{ display: "flex", gap: "6px" }}>
-      <Badge variant={isOver18 == null ? "default" : isOver18 ? "confirmed" : "declined"}>
-        {isOver18 == null ? "18+ Unknown" : isOver18 ? "18+" : "Under 18"}
-      </Badge>
-      <Badge variant={isOver21 == null ? "default" : isOver21 ? "confirmed" : "declined"}>
-        {isOver21 == null ? "21+ Unknown" : isOver21 ? "21+" : "Under 21"}
-      </Badge>
+      {collectIsOver18 && <AgeBadge value={isOver18} label="18+" />}
+      {collectIsOver21 && <AgeBadge value={isOver21} label="21+" />}
     </div>
   );
 }

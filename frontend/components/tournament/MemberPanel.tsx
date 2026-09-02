@@ -154,7 +154,12 @@ export function MemberPanel({
                   {(collectIsOver18 || collectIsOver21) && (
                     <FieldGrid>
                       <PanelField label="Age">
-                        <AgeFlagsBadges isOver18={full.is_over_18} isOver21={full.is_over_21} />
+                        <AgeFlagsBadges
+                          isOver18={full.is_over_18}
+                          isOver21={full.is_over_21}
+                          collectIsOver18={collectIsOver18}
+                          collectIsOver21={collectIsOver21}
+                        />
                       </PanelField>
                     </FieldGrid>
                   )}
