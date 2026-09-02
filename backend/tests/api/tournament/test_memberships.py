@@ -339,6 +339,41 @@ class TestRosterFilters:
         res = client.get(f"/tournaments/{td_tournament.id}/memberships/?track=nonsense")
         assert res.status_code == 200
 
+    def test_age_filter_respects_consent_and_collection(self, client, db, td_user, td_tournament):
+        """A member who never consented must not appear in a 21+ list. Their
+        presence would reveal the flag as surely as printing it — and the row
+        would render "21+ Unknown", since the response omits the value."""
+        from app.models.models import User as UserModel
+
+        consented = _db_user_for_filter(db, "consented@example.com")
+        withheld = _db_user_for_filter(db, "withheld@example.com")
+        for user in (consented, withheld):
+            db.query(UserModel).filter(UserModel.id == user.id).one().date_of_birth = date(1980, 1, 1)
+        yes = _make_membership(db, td_tournament.id, consented.id)
+        no = _make_membership(db, td_tournament.id, withheld.id)
+        yes.age_disclosure = "consented"
+        no.age_disclosure = None
+        td_tournament.collect_is_over_21 = True
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        emails = self._roster(client, td_tournament.id, "?age=over_21")
+        assert "consented@example.com" in emails
+        assert "withheld@example.com" not in emails
+
+    def test_age_filter_ignores_a_flag_the_tournament_does_not_collect(self, client, db, td_user, td_tournament):
+        from app.models.models import User as UserModel
+
+        user = _db_user_for_filter(db, "adult@example.com")
+        db.query(UserModel).filter(UserModel.id == user.id).one().date_of_birth = date(1980, 1, 1)
+        m = _make_membership(db, td_tournament.id, user.id)
+        m.age_disclosure = "consented"
+        td_tournament.collect_is_over_18 = False
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?age=over_18") == set()
+
     def test_filter_options_lists_what_the_tournament_holds(self, client, db, td_user, td_tournament):
         from app.models.models import TournamentMembershipLunch, TournamentTrack
 

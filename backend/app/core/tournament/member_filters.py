@@ -154,17 +154,31 @@ def filter_age_flags(memberships: list, age_flags: list[str] | None) -> list:
     properties computed from the user's date of birth against the tournament's
     start date — there's no column to filter on.
 
-    A member whose flag is unknown (no date of birth) never matches: "show me
-    the 21+ volunteers" must not return someone who might not be.
+    Gated exactly as gate_age_flags gates the response: the tournament must
+    collect that flag and the member must have consented. Filtering on the raw
+    property instead would leak what consent withheld — a member who declined
+    would still appear in a "21+" list, which tells you their flag as surely as
+    printing it. It also read as a plain bug, since the row then rendered
+    "21+ Unknown" (the response omits the value) inside a 21+ filter.
+
+    A member whose flag is unknown never matches: "show me the 21+ volunteers"
+    must not return someone who might not be.
     """
     if not age_flags:
         return memberships
-    wants_18 = "over_18" in age_flags
-    wants_21 = "over_21" in age_flags
-    return [
-        m for m in memberships
-        if (wants_18 and m.is_over_18 is True) or (wants_21 and m.is_over_21 is True)
-    ]
+
+    def matches(membership) -> bool:
+        if membership.age_disclosure != "consented":
+            return False
+        tournament = membership.tournament
+        if "over_18" in age_flags and tournament.collect_is_over_18 and membership.is_over_18 is True:
+            return True
+        if "over_21" in age_flags and tournament.collect_is_over_21 and membership.is_over_21 is True:
+            return True
+        return False
+
+    return [m for m in memberships if matches(m)]
+
 
 
 def build_filter_options(db, tournament) -> dict:

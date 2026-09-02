@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { FilterOptionItem, MemberFilterOptions, membershipsApi } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
@@ -52,6 +53,18 @@ interface MembersFilterModalProps {
 // twenty event-preference pairs and thirty experience events, and a column of
 // checkboxes for each would be an unreadable modal. A chip row shows what's
 // being filtered on and nothing else.
+function FilterHeading({ title }: { title: string }) {
+  return (
+    <span style={{
+      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+      letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
+      display: "block", marginBottom: "6px",
+    }}>
+      {title}
+    </span>
+  );
+}
+
 function ChipFilter({ title, options, selected, onToggle }: {
   title: string;
   options: FilterOptionItem[];
@@ -63,13 +76,7 @@ function ChipFilter({ title, options, selected, onToggle }: {
 
   return (
     <div style={{ marginBottom: "16px" }}>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        display: "block", marginBottom: "6px",
-      }}>
-        {title}
-      </span>
+      <FilterHeading title={title} />
       <ChipInput
         value={[...selected].map((value) => labelFor.get(value) ?? value)}
         onChange={(labels) => {
@@ -151,7 +158,19 @@ export function MembersFilterModal({
         <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
           <ChipFilter title="Roles" options={roleOptions} selected={draft.role} onToggle={(v) => toggle("role", v)} />
           <ChipFilter title="Track status" options={trackOptions} selected={draft.track} onToggle={(v) => toggle("track", v)} />
-          <ChipFilter title="Age" options={ageOptions} selected={draft.age} onToggle={(v) => toggle("age", v)} />
+          {/* Two options at most, both fixed — a chip row with an add
+              popover is more machinery than picking between 18+ and 21+
+              deserves. */}
+          {ageOptions.length > 0 && (
+            <div style={{ marginBottom: "16px" }}>
+              <FilterHeading title="Age" />
+              <ButtonGroup
+                options={ageOptions.map((o) => ({ value: o.value, label: o.label }))}
+                value={[...draft.age]}
+                onChange={(value) => toggle("age", value)}
+              />
+            </div>
+          )}
           <ChipFilter title="Availability" options={options.shifts} selected={draft.shift} onToggle={(v) => toggle("shift", v)} />
           <ChipFilter title="Lunch" options={options.lunch} selected={draft.lunch} onToggle={(v) => toggle("lunch", v)} />
           <ChipFilter title="Event preferences" options={options.event_preferences} selected={draft.event_pref} onToggle={(v) => toggle("event_pref", v)} />
