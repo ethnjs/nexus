@@ -826,11 +826,11 @@ export interface MembershipMe {
 // `value` is exactly what the matching query param takes.
 export interface MemberFilterOptions {
   tracks:             FilterOptionItem[]
-  lunch:              FilterOptionItem[]
-  event_preferences:  FilterOptionItem[]
+  shift_days:         FilterOptionGroup[]
+  lunch_categories:   FilterOptionGroup[]
+  event_preferences:  FilterOptionGroup[]
   competition_events: FilterOptionItem[]
   volunteer_events:   FilterOptionItem[]
-  shifts:             FilterOptionItem[]
   collect_is_over_18: boolean
   collect_is_over_21: boolean
 }
@@ -838,6 +838,16 @@ export interface MemberFilterOptions {
 export interface FilterOptionItem {
   value: string
   label: string
+}
+
+// A paired filter's left half (a day, a lunch category, an event-preference
+// question) carrying the right halves it can be narrowed to. The query param
+// takes them joined: "{group}:{option}", or "{group}:__any__" for a group
+// added but not yet narrowed.
+export interface FilterOptionGroup {
+  value:   string
+  label:   string
+  options: FilterOptionItem[]
 }
 
 export const membershipsApi = {

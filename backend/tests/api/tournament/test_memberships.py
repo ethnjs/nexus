@@ -387,8 +387,94 @@ class TestRosterFilters:
         login(client, "td@test.com", "tdpass")
         body = client.get(f"/tournaments/{td_tournament.id}/memberships/filter-options/").json()
         assert [t["label"] for t in body["tracks"]] == ["Writing"]
-        assert body["lunch"] == [{"value": "entree:pizza", "label": "Entree: pizza"}]
+        # Lunch comes back grouped by category: the modal adds the category
+        # as a chip and narrows it from that chip's pill. Answered/not
+        # answered aren't options — they're the pill's own toggle.
+        entree = next(g for g in body["lunch_categories"] if g["value"] == "entree")
+        assert entree["label"] == "Entree"
+        assert [o["value"] for o in entree["options"]] == ["pizza"]
         assert body["collect_is_over_18"] is False
+
+    def test_lunch_options_come_from_the_question_not_the_answers(self, client, db, td_user, td_tournament):
+        """A choice nobody picked is still offerable — that's how a TD finds
+        who didn't pick it."""
+        from app.models.models import Form, FormField
+
+        form = Form(owner_type="tournament", tournament_id=td_tournament.id, name="Signup", created_by=td_user.id)
+        db.add(form)
+        db.flush()
+        db.add(FormField(
+            form_id=form.id, order=0, label="Protein", field_key="lunch_20260521_protein",
+            question_type="single_select_radio",
+            config={"options": [
+                {"option_id": "opt_1", "value": "Sofritas", "label": "Sofritas"},
+                {"option_id": "opt_2", "value": "Chicken", "label": "Chicken", "is_archived": True},
+            ]},
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/memberships/filter-options/").json()
+        protein = next(g for g in body["lunch_categories"] if g["value"] == "protein")
+        assert [o["value"] for o in protein["options"]] == ["Sofritas"]
+
+    def test_lunch_any_and_unanswered_split_on_a_stored_row(self, client, db, td_user, td_tournament):
+        """"Answered" and "not answered" are the whole point of the sentinels:
+        a free-text lunch question has no options to name."""
+        from app.models.models import TournamentMembershipLunch
+
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.add(TournamentMembershipLunch(
+            membership_id=alice.id, date=date(2026, 5, 21), category="dietary", value="none", label="none",
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, "?lunch=dietary:__any__") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, "?lunch=dietary:__unanswered__") == {
+            "bob@example.com", "td@test.com",
+        }
+        # "none" is an answer; a missing row is not the same as answering none.
+        assert self._roster(client, td_tournament.id, "?lunch=dietary:__none__") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, "?lunch=dietary:__not_none__") == set()
+
+    def test_track_any_status_matches_any_answer(self, client, db, td_user, td_tournament):
+        from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
+
+        track = TournamentTrack(tournament_id=td_tournament.id, name="Writing")
+        db.add(track)
+        db.flush()
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.add(TournamentMembershipTrackStatus(membership_id=alice.id, track_id=track.id, status="declined"))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, f"?track={track.id}:__any__") == {"alice@example.com"}
+
+    def test_shift_filter_takes_a_day_or_one_shift(self, client, db, td_user, td_tournament):
+        """A day-level value resolves to every shift on that day, read in the
+        tournament's timezone rather than UTC."""
+        from datetime import datetime, timezone as dt_timezone
+        from app.core.tournament import tournament_local_date
+        from app.models.models import TournamentMembershipAvailability, TournamentShift
+
+        morning = TournamentShift(
+            tournament_id=td_tournament.id, label="Impound",
+            start=datetime(2026, 5, 21, 15, 0, tzinfo=dt_timezone.utc),
+            end=datetime(2026, 5, 21, 17, 0, tzinfo=dt_timezone.utc),
+        )
+        db.add(morning)
+        db.flush()
+        alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
+        db.add(TournamentMembershipAvailability(membership_id=alice.id, tournament_shift_id=morning.id))
+        db.commit()
+
+        day = tournament_local_date(td_tournament, morning.start).isoformat()
+        login(client, "td@test.com", "tdpass")
+        assert self._roster(client, td_tournament.id, f"?shift={day}:{morning.id}") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, f"?shift={day}:__any__") == {"alice@example.com"}
 
 
 def test_list_memberships_requires_manage_members(

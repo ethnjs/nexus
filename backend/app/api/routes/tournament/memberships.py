@@ -96,8 +96,10 @@ def list_memberships(
     include_declined: bool = Query(False),
     surface: str | None = Query(default=None),
     # Roster filters. Repeatable; different filters AND, values within one OR.
-    # The paired ones ("2:confirmed", "protein:Sofritas", "day_1:47") keep the
-    # two halves together on purpose — see apply_member_filters.
+    # The paired ones ("2:confirmed", "protein:Sofritas", "2027-02-13:47")
+    # keep the two halves together on purpose, and take "__any__" on the
+    # right for "any status / any shift that day / answered at all" — see
+    # apply_member_filters.
     role: list[str] = Query(default=[]),
     track: list[str] = Query(default=[]),
     lunch: list[str] = Query(default=[]),
@@ -105,7 +107,7 @@ def list_memberships(
     competition_event: list[int] = Query(default=[]),
     volunteer_event: list[int] = Query(default=[]),
     age: list[str] = Query(default=[]),
-    shift: list[int] = Query(default=[]),
+    shift: list[str] = Query(default=[]),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -125,6 +127,7 @@ def list_memberships(
         query = query.filter(ACTIVE_MEMBERSHIP_CLAUSE)
     query = apply_member_filters(
         query,
+        tournament=tournament,
         roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
         competition_events=competition_event, volunteer_events=volunteer_event,
         age_flags=age, shifts=shift,

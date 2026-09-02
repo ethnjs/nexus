@@ -25,6 +25,12 @@ interface PopoverProps<T> {
   disabledReason?: (item: T) => string | undefined;
   /** Fires whenever the panel opens/closes — e.g. to rotate a chevron on the trigger. */
   onOpenChange?: (open: boolean) => void;
+  /** Shows a search field at the top of the panel (focused on open) that narrows the rows. Requires getSearchText. For lists long enough that scrolling to find a row is the slow part — a tournament's events, a member's experience. */
+  searchable?: boolean;
+  /** The text `searchable` matches a row against — usually the same string renderLabel shows. */
+  getSearchText?: (item: T) => string;
+  /** Rendered above the rows and outside their scroll container — for a control that acts on the list as a whole, e.g. a select-all toggle. */
+  header?: ReactNode;
 }
 
 // Anchored from the top (below the trigger) normally; flips to bottom
@@ -49,9 +55,11 @@ const PANEL_MAX_HEIGHT = 260;
 // side panel's scroll container), which silently truncates or hides it.
 export function Popover<T>({
   trigger, items, getKey, renderLabel, onSelect, emptyMessage = "Nothing to show", width = 180, align = "right",
-  checklist = false, isSelected, isDisabled, disabledReason, onOpenChange,
+  checklist = false, isSelected, isDisabled, disabledReason, onOpenChange, searchable = false, getSearchText, header,
 }: PopoverProps<T>) {
   const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     onOpenChange?.(open);
@@ -92,7 +100,7 @@ export function Popover<T>({
   }
 
   useEffect(() => {
-    if (!open) { setPanelPos(null); setHoverTip(null); return; }
+    if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); return; }
     updatePanelPos();
     window.addEventListener("scroll", updatePanelPos, true);
     window.addEventListener("resize", updatePanelPos);
@@ -127,6 +135,10 @@ export function Popover<T>({
   }
 
   const busy = pendingKey !== null;
+  const needle = query.trim().toLowerCase();
+  const visibleItems = searchable && needle
+    ? items.filter((item) => (getSearchText?.(item) ?? "").toLowerCase().includes(needle))
+    : items;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -137,16 +149,44 @@ export function Popover<T>({
           position: "fixed",
           ...(panelPos.top !== undefined ? { top: panelPos.top } : { bottom: panelPos.bottom }),
           left: panelPos.left, zIndex: 300,
-          width: `${width}px`, maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto", padding: "6px",
+          width: `${width}px`, padding: "6px", boxSizing: "border-box",
+          display: "flex", flexDirection: "column", overflow: "hidden",
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
         }}>
-          {items.length === 0 ? (
+          {searchable && (
+            <input
+              ref={searchRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search..."
+              // Focused on mount rather than through an effect: the panel
+              // only renders once its position is measured, so a focus()
+              // fired when `open` flips runs before the input exists.
+              autoFocus
+              style={{
+                flexShrink: 0,
+                width: "100%", height: "26px", marginBottom: "6px",
+                padding: "0 8px", boxSizing: "border-box",
+                fontFamily: "var(--font-sans)", fontSize: "12px",
+                color: "var(--color-text-primary)", background: "var(--color-bg)",
+                border: "1px solid var(--color-border)", borderRadius: "var(--radius-sm)",
+                outline: "none",
+              }}
+            />
+          )}
+          {header && <div style={{ flexShrink: 0, marginBottom: "6px" }}>{header}</div>}
+          {/* The rows scroll, the search box above them doesn't — a sticky
+              box inside the scroller leaves rows sliding through the gap
+              between it and the panel's padded edge. */}
+          <div style={{ maxHeight: `${PANEL_MAX_HEIGHT}px`, overflowY: "auto" }}>
+          {visibleItems.length === 0 ? (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", padding: "6px 10px" }}>
-              {emptyMessage}
+              {needle ? "No matches" : emptyMessage}
             </p>
           ) : checklist ? (
-            items.map((item) => {
+            visibleItems.map((item) => {
               const key = getKey(item);
               const checked = isSelected?.(item) ?? false;
               const disabled = isDisabled?.(item) ?? false;
@@ -176,7 +216,7 @@ export function Popover<T>({
               );
             })
           ) : (
-            items.map((item) => {
+            visibleItems.map((item) => {
               const key = getKey(item);
               const disabled = isDisabled?.(item) ?? false;
               const reason = disabled ? disabledReason?.(item) : undefined;
@@ -202,6 +242,7 @@ export function Popover<T>({
               );
             })
           )}
+          </div>
           {error && (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", padding: "4px 10px 2px" }}>
               {error}

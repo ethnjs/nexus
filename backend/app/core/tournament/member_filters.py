@@ -16,7 +16,7 @@ three of the named roles is returned once, not three times.
 """
 from __future__ import annotations
 
-from sqlalchemy import exists, or_
+from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
@@ -29,6 +29,20 @@ from app.models.models import (
 # A plain "no roles" is not expressible as a role id, and it's the one members
 # a coordinator most often wants to find.
 NO_ROLES = "none"
+
+# Right-hand sentinel on every paired filter: the member answered *something*
+# for this track/day/category/question. The modal adds a chip for the left
+# half first (a track, a day, a lunch category) and only then narrows it, so
+# a chip has to mean something before its pill is touched.
+ANY = "__any__"
+
+# Lunch-only right-hand sentinels. "Unanswered" is the one thing an EXISTS
+# over stored rows can't say by naming a value, and none/not-none exist
+# because "no dietary restrictions" is an answer of "none" — a missing row
+# means the member never filled the question in, which is a different member.
+LUNCH_UNANSWERED = "__unanswered__"
+LUNCH_NONE = "__none__"
+LUNCH_NOT_NONE = "__not_none__"
 
 
 def _split_pairs(values: list[str]) -> list[tuple[str, str]]:
@@ -46,9 +60,48 @@ def _split_pairs(values: list[str]) -> list[tuple[str, str]]:
     return pairs
 
 
+def _lunch_clause(category: str, value: str):
+    """One lunch filter value as an EXISTS (or NOT EXISTS) over this
+    membership's lunch rows for `category`.
+
+    A row only exists once the member answered, so "unanswered" is the
+    absence of rows — and "none" has to be the stored string, not a missing
+    row: someone who wrote "none" has told you they eat anything, someone
+    with no row has told you nothing.
+    """
+    in_category = (
+        (TournamentMembershipLunch.membership_id == TournamentMembership.id)
+        & (TournamentMembershipLunch.category == category)
+    )
+    if value == LUNCH_UNANSWERED:
+        return ~exists().where(in_category)
+    if value == ANY:
+        return exists().where(in_category)
+    if value == LUNCH_NONE:
+        return exists().where(in_category & (func.lower(TournamentMembershipLunch.value) == "none"))
+    if value == LUNCH_NOT_NONE:
+        return exists().where(in_category & (func.lower(TournamentMembershipLunch.value) != "none"))
+    return exists().where(in_category & (TournamentMembershipLunch.value == value))
+
+
+def _shift_ids_on_days(db, tournament, days: set[str]) -> set[int]:
+    """Every shift of `tournament` starting on one of the given ISO days,
+    read in the tournament's own timezone (see tournament_local_date)."""
+    from app.core.tournament import tournament_local_date
+    from app.models.models import TournamentShift
+
+    return {
+        shift_id
+        for shift_id, start in db.query(TournamentShift.id, TournamentShift.start)
+        .filter(TournamentShift.tournament_id == tournament.id)
+        if tournament_local_date(tournament, start).isoformat() in days
+    }
+
+
 def apply_member_filters(
     query: Query,
     *,
+    tournament=None,
     roles: list[str] | None = None,
     tracks: list[str] | None = None,
     lunch: list[str] | None = None,
@@ -56,9 +109,13 @@ def apply_member_filters(
     competition_events: list[int] | None = None,
     volunteer_events: list[int] | None = None,
     age_flags: list[str] | None = None,
-    shifts: list[int] | None = None,
+    shifts: list[str] | None = None,
 ) -> Query:
-    """Narrows a TournamentMembership query by the roster's filter params."""
+    """Narrows a TournamentMembership query by the roster's filter params.
+
+    `tournament` is only needed to resolve a day-level availability filter
+    ("every shift on Feb 13") into shift ids — a shift's day depends on the
+    tournament's timezone, not on UTC."""
     if roles:
         role_ids = [int(value) for value in roles if value != NO_ROLES]
         clauses = []
@@ -82,7 +139,7 @@ def apply_member_filters(
             exists().where(
                 (TournamentMembershipTrackStatus.membership_id == TournamentMembership.id)
                 & (TournamentMembershipTrackStatus.track_id == int(track_id))
-                & (TournamentMembershipTrackStatus.status == status)
+                & (true() if status == ANY else TournamentMembershipTrackStatus.status == status)
             )
             for track_id, status in _split_pairs(tracks)
             if track_id.isdigit()
@@ -91,15 +148,10 @@ def apply_member_filters(
             query = query.filter(or_(*clauses))
 
     if lunch:
-        # "category:value" — same pairing reasoning as tracks.
-        clauses = [
-            exists().where(
-                (TournamentMembershipLunch.membership_id == TournamentMembership.id)
-                & (TournamentMembershipLunch.category == category)
-                & (TournamentMembershipLunch.value == value)
-            )
-            for category, value in _split_pairs(lunch)
-        ]
+        # "category:value" — same pairing reasoning as tracks, plus the four
+        # sentinels: a lunch question can be free text, where the only useful
+        # question is whether it was answered at all.
+        clauses = [_lunch_clause(category, value) for category, value in _split_pairs(lunch)]
         if clauses:
             query = query.filter(or_(*clauses))
 
@@ -110,10 +162,11 @@ def apply_member_filters(
             exists().where(
                 (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
                 & (TournamentMembershipEventPreference.key == suffix)
-                & (TournamentMembershipEventPreference.tournament_event_id == int(event_id))
+                & (true() if event_id == ANY
+                   else TournamentMembershipEventPreference.tournament_event_id == int(event_id))
             )
             for suffix, event_id in _split_pairs(event_preferences)
-            if event_id.isdigit()
+            if event_id == ANY or event_id.isdigit()
         ]
         if clauses:
             query = query.filter(or_(*clauses))
@@ -139,10 +192,23 @@ def apply_member_filters(
         pass
 
     if shifts:
-        query = query.filter(exists().where(
-            (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
-            & TournamentMembershipAvailability.tournament_shift_id.in_(shifts)
-        ))
+        # "YYYY-MM-DD:shiftId", or ":__any__" for "free at some point that
+        # day". The day travels with the shift so the modal can rebuild its
+        # day chips from the URL without a second lookup.
+        shift_ids: set[int] = set()
+        any_days: set[str] = set()
+        for day, value in _split_pairs(shifts):
+            if value == ANY:
+                any_days.add(day)
+            elif value.isdigit():
+                shift_ids.add(int(value))
+        if any_days and tournament is not None:
+            shift_ids |= _shift_ids_on_days(query.session, tournament, any_days)
+        if shift_ids:
+            query = query.filter(exists().where(
+                (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
+                & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
+            ))
 
     return query
 
@@ -185,16 +251,27 @@ def build_filter_options(db, tournament) -> dict:
     """Everything the roster's filter modal offers, derived from what this
     tournament actually holds.
 
-    Options come from submitted data rather than from a catalog wherever the
-    catalog wouldn't narrow it: there's no table of lunch choices, and offering
-    every canonical event when three are mentioned in anyone's experience makes
-    the picker useless. Tracks and shifts do have catalogs, so those are
-    authoritative — a track nobody has answered for is still worth filtering by
-    (it finds the members who owe an answer).
+    Every paired filter comes back as a group (the left half) carrying its
+    own options (the right half), because that's how the modal builds them:
+    add a track / a day / a lunch category / an event-preference question as
+    a chip, then narrow it with that chip's pill.
+
+    Sources are the catalogs wherever one exists — tracks, shifts and events
+    are authoritative even when nobody has answered about them yet (a track
+    with no answers is exactly how you find the members who owe one), and
+    lunch options come from the lunch question's own config rather than from
+    submitted rows. Only experience falls back to submitted data: offering
+    every canonical event when three are mentioned makes the picker useless.
     """
     from sqlalchemy import distinct, func
+    from app.core.form.validation import (
+        EVENT_PREFERENCE_FIELD_KEY_PATTERN, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
+    )
+    from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import unslug
-    from app.models.models import Event, TournamentEvent, TournamentShift, TournamentTrack
+    from app.models.models import (
+        Event, Form, FormField, TournamentEvent, TournamentShift, TournamentTrack,
+    )
 
     def scoped(model):
         return (
@@ -203,6 +280,14 @@ def build_filter_options(db, tournament) -> dict:
             .filter(TournamentMembership.tournament_id == tournament.id)
         )
 
+    fields = (
+        db.query(FormField)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(Form.tournament_id == tournament.id, FormField.is_archived == False)
+        .order_by(FormField.order)
+        .all()
+    )
+
     tracks = [
         {"value": str(track.id), "label": track.name}
         for track in db.query(TournamentTrack)
@@ -210,50 +295,61 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentTrack.name)
     ]
 
-    lunch = [
-        {"value": f"{category}:{value}", "label": f"{unslug(category)}: {value}"}
-        for category, value in scoped(TournamentMembershipLunch)
-        .with_entities(TournamentMembershipLunch.category, TournamentMembershipLunch.value)
-        .distinct()
-        .order_by(TournamentMembershipLunch.category, TournamentMembershipLunch.value)
-    ]
-
-    event_preferences = [
-        {
-            "value": f"{key}:{event_id}",
-            "label": f"{unslug(key)}: {name or 'Unknown event'}{f' ({division})' if division else ''}",
-        }
-        for key, event_id, name, division in scoped(TournamentMembershipEventPreference)
-        .join(TournamentEvent, TournamentMembershipEventPreference.tournament_event_id == TournamentEvent.id)
-        .outerjoin(Event, TournamentEvent.event_id == Event.id)
-        .with_entities(
-            TournamentMembershipEventPreference.key,
-            TournamentEvent.id,
-            # The SQL form of TournamentEvent.display_name: `name` is only set
-            # on custom events, so a catalog-linked one takes its name off the
-            # joined Event row. Reading TournamentEvent.name alone renders
-            # every catalog event as "Unknown event".
-            func.coalesce(TournamentEvent.name, Event.name),
-            TournamentEvent.division,
-        )
-        .distinct()
-        .order_by(TournamentMembershipEventPreference.key)
-    ]
-
-    # Labelled with their day: shift names repeat across a multi-day
-    # tournament ("Impound" on both Saturdays), and a picker offering the same
-    # word twice is unusable.
-    from app.core.tournament import tournament_local_date
-
-    shifts = [
-        {
-            "value": str(shift.id),
-            "label": f"{shift.label} — {tournament_local_date(tournament, shift.start).strftime('%b')} "
-                     f"{tournament_local_date(tournament, shift.start).day}",
-        }
-        for shift in db.query(TournamentShift)
+    # Grouped by day: a day is the unit a TD thinks in ("who's around
+    # Saturday?"), and shift names repeat across the days of a multi-day
+    # tournament, so a flat list offers "Impound" twice with nothing to tell
+    # the two apart.
+    shift_days: dict[str, dict] = {}
+    for shift in (
+        db.query(TournamentShift)
         .filter(TournamentShift.tournament_id == tournament.id)
         .order_by(TournamentShift.start)
+    ):
+        day = tournament_local_date(tournament, shift.start)
+        group = shift_days.setdefault(
+            day.isoformat(),
+            {"value": day.isoformat(), "label": f"{day:%a, %b} {day.day}", "options": []},
+        )
+        group["options"].append({
+            "value": str(shift.id),
+            "label": f"{shift.label} ({_local_time(tournament, shift.start)}-{_local_time(tournament, shift.end)})",
+        })
+
+    lunch_categories = _lunch_groups(
+        db, fields, scoped, unslug, LUNCH_FIELD_KEY_PATTERN, LUNCH_FREE_TEXT_QUESTION_TYPES,
+    )
+
+    # Every tournament event, not just the ones somebody ranked — the filter
+    # is as often used to find who *didn't* pick an event.
+    event_options = [
+        {
+            "value": str(event_id),
+            "label": f"{name or 'Unknown event'}{f' ({division})' if division else ''}",
+        }
+        # func.coalesce is the SQL form of TournamentEvent.display_name:
+        # `name` is only set on custom events, so a catalog-linked one takes
+        # its name off the joined Event row.
+        for event_id, name, division in db.query(
+            TournamentEvent.id, func.coalesce(TournamentEvent.name, Event.name), TournamentEvent.division,
+        )
+        .outerjoin(Event, TournamentEvent.event_id == Event.id)
+        .filter(TournamentEvent.tournament_id == tournament.id)
+        .order_by(func.coalesce(TournamentEvent.name, Event.name))
+    ]
+    suffixes = {
+        match.group(1)
+        for match in (EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) for field in fields)
+        if match
+    }
+    # A question can be deleted after members answered it; the answers stay
+    # filterable, so the stored keys are unioned in rather than lost.
+    suffixes |= {
+        key for (key,) in scoped(TournamentMembershipEventPreference)
+        .with_entities(TournamentMembershipEventPreference.key).distinct()
+    }
+    event_preferences = [
+        {"value": suffix, "label": unslug(suffix), "options": event_options}
+        for suffix in sorted(suffixes)
     ]
 
     member_user_ids = (
@@ -275,11 +371,101 @@ def build_filter_options(db, tournament) -> dict:
     # list for the roles editor, so refetching it would be a second source.
     return {
         "tracks": tracks,
-        "lunch": lunch,
+        "shift_days": list(shift_days.values()),
+        "lunch_categories": lunch_categories,
         "event_preferences": event_preferences,
         "competition_events": experience_events(UserCompetitionExperience),
         "volunteer_events": experience_events(UserVolunteerExperience),
-        "shifts": shifts,
         "collect_is_over_18": bool(tournament.collect_is_over_18),
         "collect_is_over_21": bool(tournament.collect_is_over_21),
     }
+
+
+def _local_time(tournament, moment) -> str:
+    """"7:00 AM" in the tournament's own timezone, for a shift's picker label."""
+    from zoneinfo import ZoneInfo
+
+    local = moment.astimezone(ZoneInfo(tournament.timezone))
+    return f"{local.hour % 12 or 12}:{local.minute:02d} {'AM' if local.hour < 12 else 'PM'}"
+
+
+def _lunch_groups(db, fields, scoped, unslug, lunch_pattern, free_text_types) -> list[dict]:
+    """Lunch categories, each carrying the values it can be filtered on.
+
+    Options come from the lunch question's own config, so a choice nobody
+    picked is still offerable. A free-text lunch question has no options at
+    all, so the only thing worth asking of it is whether the member answered
+    — plus, for dietary restrictions, whether the answer was "none", which is
+    a real answer and not the same as never having filled it in.
+    """
+    # `free_text` starts False so a category whose question is gone still
+    # offers its stored answers — only a question we can see is free text
+    # suppresses them, since listing every distinct essay is no picker at all.
+    def group_for(category: str) -> dict:
+        return groups.setdefault(category, {
+            "value": category, "label": unslug(category), "options": [], "free_text": False,
+        })
+
+    def add_option(group: dict, value: str, label: str) -> None:
+        if value and all(existing["value"] != value for existing in group["options"]):
+            group["options"].append({"value": value, "label": label or value})
+
+    groups: dict[str, dict] = {}
+    for field in fields:
+        match = lunch_pattern.match(field.field_key)
+        if not match:
+            continue
+        group = group_for(match.group(2))
+        if field.question_type in free_text_types:
+            # Only when nothing else on this category offers choices — a
+            # category can be asked twice, once each way.
+            group["free_text"] = not group["options"]
+            continue
+        group["free_text"] = False
+        # The stored lunch value is the option's `value` snapshot (see
+        # sync_lunch's call site), not its id — so that's what the filter
+        # compares against.
+        for option in (field.config or {}).get("options", []):
+            # A lunch option's `value` is always the TD-typed string (the
+            # list[int] shape PlainOption also allows is for entity-backed
+            # keys, which lunch never is) — anything else isn't filterable.
+            value = option.get("value")
+            if not option.get("is_archived") and isinstance(value, str):
+                add_option(group, value, option.get("label"))
+
+    # Answers outlive the question that collected them — a deleted or re-keyed
+    # lunch question would otherwise take its stored values out of the filter
+    # with it.
+    stored: dict[str, set[str]] = {}
+    for category, value in (
+        scoped(TournamentMembershipLunch)
+        .with_entities(TournamentMembershipLunch.category, TournamentMembershipLunch.value)
+        .distinct()
+        .order_by(TournamentMembershipLunch.category, TournamentMembershipLunch.value)
+    ):
+        stored.setdefault(category, set()).add(value)
+        group = group_for(category)
+        if not group["free_text"]:
+            add_option(group, value, value)
+
+    for category, group in groups.items():
+        # ANY and LUNCH_UNANSWERED are filterable but deliberately absent
+        # here: the modal offers them as an answered/not-answered toggle
+        # above the list rather than as two more rows in it.
+        sentinels = []
+        # "None" only means something where it's an answer someone can give —
+        # a dietary-restrictions question, or a category already holding one.
+        # On "Protein" it would just be noise.
+        if _looks_dietary(category) or any(v.lower() == "none" for v in stored.get(category, ())):
+            sentinels = [
+                {"value": LUNCH_NONE, "label": "None"},
+                {"value": LUNCH_NOT_NONE, "label": "Not none"},
+            ]
+        group["options"] = sentinels + group["options"]
+        group.pop("free_text")
+
+    return [groups[category] for category in sorted(groups)]
+
+
+def _looks_dietary(category: str) -> bool:
+    return any(word in category for word in ("dietary", "restriction", "allerg"))
