@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   membershipsApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem,
@@ -229,7 +229,16 @@ const MemberRow = memo(function MemberRow({
 
 export default function MembersPage() {
   const params = useParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const tournamentId = Number(params.id);
+
+  // Read once, on the first render only: from here on the URL follows the
+  // page's state, not the other way round, so re-reading it would fight the
+  // router.replace below. Filters aren't here — they live in localStorage
+  // (see usePersistedFilter), which already survives a refresh.
+  const [initialMemberId] = useState(() => Number(searchParams.get("member")) || null);
 
   const { user: currentUser } = useAuth();
   const { selectedTournament } = useTournament();
@@ -273,7 +282,16 @@ export default function MembersPage() {
     focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
     setPanelDirty, focusItem, toggleSelectMode, toggleSelected, toggleSelectAll,
     openMassPanel, clearFocus, clearSelection, forgetItem, getPrevNext,
-  } = usePanelSelection();
+  } = usePanelSelection({ initialFocusedId: initialMemberId });
+
+  // The URL mirrors whichever member's panel is open, so a refresh comes
+  // back to it. replace, not push: this is where you already are, and every
+  // row you click would otherwise cost a Back press to undo.
+  useEffect(() => {
+    const search = focusedId !== null ? `?member=${focusedId}` : "";
+    if (search === window.location.search) return;
+    router.replace(`${pathname}${search}`, { scroll: false });
+  }, [focusedId, pathname, router]);
 
   // useMemberRoleLock hands back fresh closures every render, which would
   // re-register the docked panel in a loop if they went straight into the
