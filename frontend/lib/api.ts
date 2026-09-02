@@ -702,6 +702,9 @@ export interface MembershipCustomAnswer {
   field_key:     string
   question_type: string
   value:         unknown
+  // Stable id behind the display-config "form_field:{id}" key — the label and
+  // key are both TD-editable, this isn't.
+  field_id:      string
 }
 
 // Matches RoleRead
@@ -747,9 +750,19 @@ export interface MembershipSlim {
   // wider type used interchangeably in a few places) doesn't carry it.
   age_disclosure?: 'consented' | 'declined' | null
   roles:      Role[]
-  // Roster table's Tracks column (3.5) — already filtered server-side by the
-  // tournament's "members_panel" display_config surface.
+  // Already filtered server-side by whichever display_config surface the
+  // roster was fetched for (?surface=members_table).
   track_statuses: MembershipTrackStatus[]
+  // ---- Optional table-column data -------------------------------------
+  // Populated only when the members table's saved column config asks for it
+  // (see enrich_table_columns) — a roster is every member, so data for a
+  // column nobody turned on is never loaded.
+  is_over_18?:       boolean | null
+  is_over_21?:       boolean | null
+  shirt_size?:       string | null
+  availability_days?: string[]
+  lunch?:            MembershipLunch[]
+  custom_responses?: MembershipCustomAnswer[]
   user:       UserSlim
 }
 
