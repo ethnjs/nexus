@@ -448,7 +448,8 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
     assert data["availability"][0]["label"] == "Morning"
 
     assert len(data["lunch"]) == 1
-    assert data["lunch"][0] == {"date": "2026-05-21", "category": "entree", "label": "Pizza"}
+    # value ("pizza"), not label ("Pizza") — see MembershipLunchRead.
+    assert data["lunch"][0] == {"date": "2026-05-21", "category": "entree", "value": "pizza"}
 
 
 def test_get_membership_custom_responses_empty(client, td_user, td_tournament, db):
@@ -699,7 +700,7 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     assert len(data["availability"]) == 1
     assert data["availability"][0]["label"] == "Morning"
     assert len(data["lunch"]) == 1
-    assert data["lunch"][0]["label"] == "Pizza"
+    assert data["lunch"][0]["value"] == "pizza"
     assert data["custom_responses"] == []
 
 

@@ -47,7 +47,7 @@ export function LunchSection({ lunch }: LunchSectionProps) {
                       {category}
                     </span>
                     {selections.map((sel, i) => (
-                      <Badge key={i} variant="default">{sel.label}</Badge>
+                      <Badge key={i} variant="default">{sel.value}</Badge>
                     ))}
                   </div>
                 ))}

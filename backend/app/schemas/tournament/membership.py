@@ -112,10 +112,15 @@ class MembershipAvailabilityRead(BaseModel):
 
 class MembershipLunchRead(BaseModel):
     """One lunch_{date}_{category} answer. Fields already match the ORM row
-    1:1, so from_attributes handles this without a resolver classmethod."""
+    1:1, so from_attributes handles this without a resolver classmethod.
+
+    `value` rather than `label`: the row carries both, and value is the short
+    canonical form ("Sofritas") while label is the full option text the form
+    showed ("Sofritas (Vegan)") — the panel renders these as badges, where
+    the short form is what fits."""
     date: date
     category: str
-    label: str
+    value: str
 
     model_config = {"from_attributes": True}
 

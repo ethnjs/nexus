@@ -653,7 +653,9 @@ export interface MembershipAvailability {
 export interface MembershipLunch {
   date:     string
   category: string
-  label:    string
+  // The short canonical form ("Sofritas"), not the form's full option text
+  // ("Sofritas (Vegan)") — see MembershipLunchRead.
+  value:    string
 }
 
 // Matches MembershipEventPreferenceEventRead
