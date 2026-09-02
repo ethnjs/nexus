@@ -27,8 +27,10 @@ export const FORM_FIELD_PREFIX = "form_field:";
 // squeezing a cell until it wraps — an `fr` track alone happily shrinks to
 // nothing, which is what had phone wrapping.
 const WIDTHS = {
-  name: "minmax(96px, 1.2fr)",
-  email: "minmax(110px, 1.6fr)",
+  // Floor is higher than a plain text column's: the avatar and its gap take
+  // ~32px before a single character of the name is drawn.
+  name: "minmax(160px, 1.1fr)",
+  email: "minmax(190px, 1.5fr)",
   // Fixed, and sized to the widest formatted number — "(555) 123-4567" is
   // ~101px at 12px mono. This is the one column that must never shrink: it
   // has no useful truncation, and squeezing it is what made it wrap.
@@ -38,7 +40,7 @@ const WIDTHS = {
   age: "124px",
   shirtSize: "64px",
   track: "104px",
-  availabilityDay: "92px",
+  availabilityDay: "minmax(110px, 0.7fr)",
   lunchCategory: "minmax(90px, 0.8fr)",
   customField: "minmax(100px, 1fr)",
   roles: "minmax(110px, 2.6fr)",
@@ -53,19 +55,27 @@ const WIDTHS = {
 // Applied to every text cell. minWidth:0 is the load-bearing part: a grid
 // item defaults to min-width:auto, so it refuses to shrink below its content
 // and pushes the row wide instead of ellipsing.
+const LEFT_TEXT_CELL: CSSProperties = {
+  fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
+  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+  textAlign: "left", display: "block", width: "100%",
+};
+
 const TEXT_CELL: CSSProperties = {
   fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
+  // Every configured column centers — header and cell alike — so a row reads
+  // as a set of aligned marks rather than ragged text of varying length.
+  textAlign: "center", display: "block", width: "100%",
 };
-
-const CENTERED_TEXT_CELL: CSSProperties = { ...TEXT_CELL, textAlign: "center", display: "block" };
 
 export interface MemberColumn {
   key: string;
   label: string;
   /** Grid track for this column, from the WIDTHS table above. */
   width: string;
-  align?: "center";
+  /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
+  align?: "start";
   render: (membership: MembershipSlim) => ReactNode;
 }
 
@@ -82,8 +92,8 @@ function DurationCell({ iso }: { iso: string }) {
   );
 }
 
-function Dash({ centered }: { centered?: boolean }) {
-  return <span style={centered ? CENTERED_TEXT_CELL : TEXT_CELL}>—</span>;
+function Dash() {
+  return <span style={TEXT_CELL}>—</span>;
 }
 
 // The columns that exist for every tournament, whatever data it holds.
@@ -91,8 +101,8 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
   switch (key) {
     case "email":
       return {
-        key, label: "Email", width: WIDTHS.email,
-        render: (m) => <span style={TEXT_CELL} title={m.user.email}>{m.user.email}</span>,
+        key, label: "Email", width: WIDTHS.email, align: "start",
+        render: (m) => <span style={LEFT_TEXT_CELL} title={m.user.email}>{m.user.email}</span>,
       };
     case "phone":
       return {
@@ -101,22 +111,22 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "account_age":
       return {
-        key, label: "Account Age", width: WIDTHS.duration, align: "center",
+        key, label: "Account Age", width: WIDTHS.duration,
         render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
       return {
-        key, label: "Joined", width: WIDTHS.duration, align: "center",
+        key, label: "Joined", width: WIDTHS.duration,
         render: (m) => <DurationCell iso={m.created_at} />,
       };
     case "method":
       return {
-        key, label: "Method", width: WIDTHS.method, align: "center",
+        key, label: "Method", width: WIDTHS.method,
         render: (m) => <JoinMethodCell membership={m} style={{ justifySelf: "center" }} />,
       };
     case "age":
       return {
-        key, label: "Age", width: WIDTHS.age, align: "center",
+        key, label: "Age", width: WIDTHS.age,
         render: (m) => (
           <AgeFlagsBadges
             isOver18={m.is_over_18}
@@ -128,8 +138,8 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "shirt_size":
       return {
-        key, label: "Shirt", width: WIDTHS.shirtSize, align: "center",
-        render: (m) => <span style={CENTERED_TEXT_CELL}>{m.shirt_size ?? "—"}</span>,
+        key, label: "Shirt", width: WIDTHS.shirtSize,
+        render: (m) => <span style={TEXT_CELL}>{m.shirt_size ?? "—"}</span>,
       };
     default:
       return null;
@@ -156,10 +166,10 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
     return {
-      key, label, width: WIDTHS.track, align: "center",
+      key, label, width: WIDTHS.track,
       render: (m) => {
         const status = m.track_statuses.find((t) => t.track_id === trackId);
-        if (!status) return <Dash centered />;
+        if (!status) return <Dash />;
         return <Badge variant={status.status === "pending" ? "pending" : status.status}>{status.status}</Badge>;
       },
     };
@@ -167,10 +177,22 @@ function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(AVAILABILITY_DAY_PREFIX)) {
     const day = key.slice(AVAILABILITY_DAY_PREFIX.length);
     return {
-      key, label, width: WIDTHS.availabilityDay, align: "center",
-      render: (m) => (
-        m.availability_days?.includes(day) ? <Badge variant="confirmed">Yes</Badge> : <Dash centered />
-      ),
+      key, label, width: WIDTHS.availabilityDay,
+      render: (m) => {
+        // Matched on the server-resolved `day`, never on the shift's start:
+        // that's an instant, and the viewer's timezone need not be the
+        // tournament's, so deriving the day here could put a shift in the
+        // wrong column.
+        const shifts = (m.availability_shifts ?? []).filter((shift) => shift.day === day);
+        if (shifts.length === 0) return <Dash />;
+        return (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", minWidth: 0, justifyContent: "center" }}>
+            {shifts.map((shift) => (
+              <Badge key={shift.shift_id} variant="confirmed">{shift.label}</Badge>
+            ))}
+          </div>
+        );
+      },
     };
   }
   if (key.startsWith(LUNCH_CATEGORY_PREFIX)) {
@@ -219,3 +241,20 @@ export function resolveColumns(
 }
 
 export const COLUMN_WIDTHS = WIDTHS;
+
+// Roles is the elastic column: it holds wrapping chips, so it can give space
+// back as data columns are added, and it's the only track wide enough to be
+// worth taking from. Shrinks per configured column past the default five,
+// with a floor that still fits two chips before wrapping.
+const ROLES_BASE_FR = 2.6;
+const ROLES_FR_PER_COLUMN = 0.3;
+const ROLES_MIN_FR = 0.8;
+const ROLES_FREE_COLUMNS = 5;
+
+export function rolesWidth(columnCount: number): string {
+  const share = Math.max(
+    ROLES_MIN_FR,
+    ROLES_BASE_FR - Math.max(0, columnCount - ROLES_FREE_COLUMNS) * ROLES_FR_PER_COLUMN,
+  );
+  return `minmax(110px, ${share}fr)`;
+}

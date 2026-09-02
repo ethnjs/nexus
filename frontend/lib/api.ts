@@ -760,7 +760,10 @@ export interface MembershipSlim {
   is_over_18?:       boolean | null
   is_over_21?:       boolean | null
   shirt_size?:       string | null
-  availability_days?: string[]
+  // Each shift tagged with the tournament-local day its column keys by —
+  // resolved server-side, since a shift's start is an instant and the
+  // viewer's timezone need not match the tournament's.
+  availability_shifts?: { shift_id: number; label: string; day: string }[]
   lunch?:            MembershipLunch[]
   custom_responses?: MembershipCustomAnswer[]
   user:       UserSlim

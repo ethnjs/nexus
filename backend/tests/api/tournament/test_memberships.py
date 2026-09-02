@@ -1,5 +1,5 @@
 """Tests for /tournaments/{tournament_id}/memberships endpoints."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 import pytest
 from fastapi.testclient import TestClient
 from app.core.tournament.display_config import MEMBERS_PANEL
@@ -197,6 +197,35 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     db.commit()
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert [entry["value"] for entry in row["lunch"]] == ["pizza"]
+
+
+def test_availability_column_carries_shifts_with_their_local_day(client, td_user, td_tournament, db):
+    """The table shows a badge per shift, so the rows carry the shifts
+    themselves — each tagged with the tournament-local day its column keys by,
+    resolved server-side rather than from the instant in the browser."""
+    from app.models.models import TournamentMembershipAvailability, TournamentShift
+
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"])
+    shift = TournamentShift(
+        tournament_id=td_tournament.id, label="Morning",
+        start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
+    )
+    db.add(shift)
+    db.flush()
+    db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
+    td_tournament.display_config = {
+        "members_table": {"columns": ["availability_day:2026-03-01"]},
+    }
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    row = next(r for r in client.get(url).json() if r["id"] == m.id)
+    assert row["availability_shifts"] == [
+        {"shift_id": shift.id, "label": "Morning", "day": "2026-03-01"},
+    ]
 
 
 def test_list_memberships_age_column_still_respects_consent(client, td_user, td_tournament, db):

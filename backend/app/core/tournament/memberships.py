@@ -381,18 +381,28 @@ def enrich_table_columns(db: Session, tournament, memberships: list, responses: 
     membership_ids = [m.id for m in memberships]
 
     if wants_availability:
+        from app.schemas.tournament.membership import MembershipTableShiftRead
+
         # The shift's start is an instant; column keys are tournament-local
         # days — same conversion build_catalog used to name them.
         rows = (
-            db.query(TournamentMembershipAvailability.membership_id, TournamentShift.start)
+            db.query(
+                TournamentMembershipAvailability.membership_id,
+                TournamentShift.id, TournamentShift.label, TournamentShift.start,
+            )
             .join(TournamentShift, TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id)
             .filter(TournamentMembershipAvailability.membership_id.in_(membership_ids))
+            .order_by(TournamentShift.start)
             .all()
         )
-        days_by_membership: dict[int, set[str]] = {}
-        for membership_id, start in rows:
-            days_by_membership.setdefault(membership_id, set()).add(
-                tournament_local_date(tournament, start).isoformat()
+        shifts_by_membership: dict[int, list] = {}
+        for membership_id, shift_id, label, start in rows:
+            shifts_by_membership.setdefault(membership_id, []).append(
+                MembershipTableShiftRead(
+                    shift_id=shift_id,
+                    label=label,
+                    day=tournament_local_date(tournament, start).isoformat(),
+                )
             )
     if wants_lunch:
         lunch_by_membership: dict[int, list] = {}
@@ -408,7 +418,7 @@ def enrich_table_columns(db: Session, tournament, memberships: list, responses: 
         if wants_shirt:
             response.shirt_size = membership.user.shirt_size
         if wants_availability:
-            response.availability_days = sorted(days_by_membership.get(membership.id, ()))
+            response.availability_shifts = shifts_by_membership.get(membership.id, [])
         if wants_lunch:
             response.lunch = build_lunch_rows(lunch_by_membership.get(membership.id, []))
         if wants_custom:

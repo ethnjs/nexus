@@ -239,12 +239,14 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # Table columns: the fixed ones, then one per entity. Entity columns reuse
     # the same namespaced keys the panel hides by, so a key means the same
     # thing on both surfaces and the catalog never has to define it twice.
+    # Unprefixed: a column header has room for a track name or a date, not for
+    # "Track: " in front of it, and the config modal groups these under their
+    # own headings anyway. The key still carries the namespace, so nothing
+    # depends on the label to tell the kinds apart.
     column_items = (
         [{"key": key, "label": label} for key, label in FIXED_COLUMNS]
-        + [{"key": t["key"], "label": f"Track: {t['label']}"} for t in track_items]
-        + [{"key": a["key"], "label": f"Availability: {a['label']}"} for a in availability_items]
-        + [{"key": l["key"], "label": f"Lunch: {l['label']}"} for l in lunch_items]
-        + [{"key": c["key"], "label": c["label"]} for c in custom_field_items]
+        + [{"key": item["key"], "label": item["label"]}
+           for item in track_items + availability_items + lunch_items + custom_field_items]
     )
 
     section_items = [

@@ -131,6 +131,15 @@ class MembershipLunchRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MembershipTableShiftRead(BaseModel):
+    """One availability shift as the members table needs it — the label to put
+    on a badge, plus the tournament-local day that decides which column it
+    belongs in."""
+    shift_id: int
+    label: str
+    day: str
+
+
 class MembershipCustomAnswerRead(BaseModel):
     """One answer to a non-reserved (not availability_/lunch_/track_status_/
     event_preference_) form field — everything that doesn't have a dedicated
@@ -208,13 +217,27 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     is_over_18: Optional[bool] = None
     is_over_21: Optional[bool] = None
     shirt_size: Optional[str] = None
-    # Local calendar days (YYYY-MM-DD) this member is available on, matching
-    # the availability_day: column keys.
-    availability_days: list[str] = []
+    # The shifts this member is available for, each tagged with the
+    # tournament-local day its availability_day: column keys by. The day is
+    # resolved server-side rather than derived from a timestamp in the
+    # browser: a shift's start is an instant, and the viewer's timezone need
+    # not match the tournament's.
+    availability_shifts: list["MembershipTableShiftRead"] = []
     lunch: list[MembershipLunchRead] = []
     custom_responses: list[MembershipCustomAnswerRead] = []
 
     user: UserSlimResponse
+
+    # `availability_shifts` is also the name of the ORM relationship holding
+    # the raw join rows, so from_attributes would populate this with those
+    # instead of the resolved shape. Drop them; enrich_table_columns assigns
+    # the real value, and only when a column asks for it.
+    @field_validator("availability_shifts", mode="before")
+    @classmethod
+    def _drop_unresolved_availability_shifts(cls, v):
+        if v and hasattr(v[0], "tournament_shift_id"):
+            return []
+        return v
 
     @field_validator("track_statuses", mode="before")
     @classmethod

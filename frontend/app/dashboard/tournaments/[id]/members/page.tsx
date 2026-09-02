@@ -30,7 +30,7 @@ import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { MembersFilterModal, isMembersFilterActive, MEMBERS_FILTER_KEYS } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
-import { COLUMN_WIDTHS, MemberColumn, resolveColumns } from "@/components/tournament/memberColumns";
+import { COLUMN_WIDTHS, MemberColumn, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
@@ -59,7 +59,7 @@ function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberC
     selectMode ? SELECT_COLUMN_WIDTH : "0px",
     COLUMN_WIDTHS.name,
     ...columns.map((column) => column.width),
-    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : COLUMN_WIDTHS.roles,
+    panelOpen ? COLUMN_WIDTHS.rolesCollapsed : rolesWidth(columns.length),
     COLUMN_WIDTHS.actions,
   ].join(" ");
 }
@@ -174,9 +174,8 @@ const MemberRow = memo(function MemberRow({
         <div
           key={column.key}
           style={{
-            minWidth: 0,
-            display: column.align === "center" ? "flex" : "block",
-            justifyContent: column.align === "center" ? "center" : undefined,
+            minWidth: 0, display: "flex",
+            justifyContent: column.align === "start" ? "flex-start" : "center",
           }}
         >
           {column.render(membership)}
@@ -609,7 +608,7 @@ export default function MembersPage() {
                   <span
                     key={column.key}
                     style={{
-                      textAlign: column.align === "center" ? "center" : undefined,
+                      textAlign: column.align === "start" ? "left" : "center",
                       overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}
                     title={column.label}
