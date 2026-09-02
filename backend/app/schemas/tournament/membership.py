@@ -161,13 +161,12 @@ class MembershipCustomAnswerRead(BaseModel):
 
 
 class _MembershipRolesMixin(BaseModel):
-    """Shared roles handling for response schemas.
-
-    TournamentMembership.roles is a list of TournamentMembershipRole join
-    rows, not TournamentRole rows — unwrap to the underlying role so this
-    serializes as list[RoleRead].
-    """
+    """Roles unwrapping on its own, for the one response that shares nothing
+    else — MembershipMeResponse is keyed by permissions rather than by the
+    membership row, so it has no id/created_at to inherit."""
     roles: list[RoleRead] = []
+
+    model_config = {"from_attributes": True}
 
     @field_validator("roles", mode="before")
     @classmethod
@@ -176,7 +175,51 @@ class _MembershipRolesMixin(BaseModel):
             return [mr.role for mr in v]
         return v
 
+
+class _MembershipResponseBase(_MembershipRolesMixin):
+    """What every membership response carries, whichever view it is.
+
+    Slim (roster) and Full (detail panel) genuinely differ — the roster is
+    every member in the tournament, so it must not carry a whole user profile
+    and every onboarding answer per row — but the identity of the membership
+    itself is the same either way, and was previously declared twice.
+    """
+    id: int
+    source: str
+    # Resolved server-side — see MembershipJoinCodeInfo. None when source
+    # isn't "join_code". Supersedes the bare join_code_id FK.
+    join_code: MembershipJoinCodeInfo | None = None
+    # When they joined THIS tournament — distinct from user.created_at
+    # (their NEXUS account age).
+    created_at: datetime
+    updated_at: datetime
+
+    track_statuses: list[MembershipTrackStatusRead] = []
+
+    # Omitted entirely, not nulled, unless the tournament collects the flag
+    # and the member consented — see gate_age_flags.
+    is_over_18: Optional[bool] = None
+    is_over_21: Optional[bool] = None
+
+    # Always populated on the detail view; on the roster only when a table
+    # column asks for them (see enrich_table_columns), since a roster is every
+    # member and loading answers nobody displays is waste on every page load.
+    lunch: list[MembershipLunchRead] = []
+    custom_responses: list[MembershipCustomAnswerRead] = []
+
     model_config = {"from_attributes": True}
+
+    @field_validator("roles", mode="before")
+    @classmethod
+    def _unwrap_roles(cls, v):
+        if v and hasattr(v[0], "role"):
+            return [mr.role for mr in v]
+        return v
+
+    @field_validator("track_statuses", mode="before")
+    @classmethod
+    def _validate_track_statuses(cls, v):
+        return _flatten_track_statuses(v)
 
 
 def _flatten_track_statuses(v):
@@ -189,33 +232,17 @@ def _flatten_track_statuses(v):
     return v
 
 
-class MembershipSlimResponse(_MembershipRolesMixin):
-    """List view — members page roster. No onboarding/logistics fields."""
-    id: int
-    source: str
-    # Resolved server-side — see MembershipJoinCodeInfo. None when source
-    # isn't "join_code". Supersedes the bare join_code_id FK.
-    join_code: MembershipJoinCodeInfo | None = None
-    # When they joined THIS tournament — distinct from user.created_at
-    # (their NEXUS account age).
-    created_at: datetime
-    updated_at: datetime
+class MembershipSlimResponse(_MembershipResponseBase):
+    """List view — members page roster. No onboarding/logistics fields beyond
+    what a configured table column asks for."""
     # null/"consented"/"declined" — surfaced so a TD who opts into seeing
     # declined members (GET .../memberships/?include_declined=true) can tell
     # them apart from active ones; excluded from the roster by default.
     age_disclosure: Optional[str] = None
-    # Powers the roster table's Tracks column (3.5) — same display_config
-    # "members_panel" surface/hidden-item filtering as the detail panel, so a
-    # TD who hides a track sees it disappear from both.
-    track_statuses: list[MembershipTrackStatusRead] = []
 
     # ---- Optional table-column data -------------------------------------
-    # Populated only when the members table's saved column config actually
-    # asks for it (see enrich_table_columns). A roster is every member in the
-    # tournament, so loading lunch/availability/answers for columns nobody
-    # turned on would be pure waste on every page load.
-    is_over_18: Optional[bool] = None
-    is_over_21: Optional[bool] = None
+    # Like `lunch`/`custom_responses` on the base: loaded only when a column
+    # asks for it.
     shirt_size: Optional[str] = None
     # The shifts this member is available for, each tagged with the
     # tournament-local day its availability_day: column keys by. The day is
@@ -223,8 +250,6 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     # browser: a shift's start is an instant, and the viewer's timezone need
     # not match the tournament's.
     availability_shifts: list["MembershipTableShiftRead"] = []
-    lunch: list[MembershipLunchRead] = []
-    custom_responses: list[MembershipCustomAnswerRead] = []
 
     user: UserSlimResponse
 
@@ -238,11 +263,6 @@ class MembershipSlimResponse(_MembershipRolesMixin):
         if v and hasattr(v[0], "tournament_shift_id"):
             return []
         return v
-
-    @field_validator("track_statuses", mode="before")
-    @classmethod
-    def _validate_track_statuses(cls, v):
-        return _flatten_track_statuses(v)
 
 
 class MembershipMeResponse(_MembershipRolesMixin):
@@ -271,29 +291,18 @@ class MembershipMeResponse(_MembershipRolesMixin):
     needs_age_consent: bool = False
 
 
-class MembershipFullResponse(_MembershipRolesMixin):
+class MembershipFullResponse(_MembershipResponseBase):
     """Detail view — the expanded side panel for a single member."""
-    id: int
     tournament_id: int
     notes: Optional[str] = None
-    source: str
-    join_code: MembershipJoinCodeInfo | None = None
 
-    is_over_18: Optional[bool] = None
-    is_over_21: Optional[bool] = None
-
-    created_at: datetime
-    updated_at: datetime
-
-    track_statuses: list[MembershipTrackStatusRead] = []
     event_preferences: list[MembershipEventPreferenceRead] = []
     # The ORM relationships are named availability_shifts/lunch_selections —
     # validation_alias points from_attributes at the actual attribute names.
+    # (The base declares `lunch` unaliased for the roster, which assigns it
+    # rather than reading it off the ORM.)
     availability: list[MembershipAvailabilityRead] = Field(default=[], validation_alias="availability_shifts")
     lunch: list[MembershipLunchRead] = Field(default=[], validation_alias="lunch_selections")
-    # Not a TournamentMembership relationship — populated by the route via
-    # get_custom_form_answers after the rest of this response is built.
-    custom_responses: list[MembershipCustomAnswerRead] = []
     # Sections the surface's display config emptied out — set by
     # apply_display_config, never by the ORM. The panel renders a section even
     # when a member has no data for it ("No info yet"), so it needs this to
@@ -302,16 +311,6 @@ class MembershipFullResponse(_MembershipRolesMixin):
 
     user: UserFullResponse
 
-    @field_validator("track_statuses", mode="before")
-    @classmethod
-    def _validate_track_statuses(cls, v):
-        return _flatten_track_statuses(v)
-
-    # Event preferences can't be resolved here: turning the flat per-event
-    # rows into the options the member picked needs the form's option lists,
-    # and a validator has no db session. Drop the raw ORM rows and let the
-    # route assign build_event_preferences()'s result, same as
-    # custom_responses above.
     @field_validator("event_preferences", mode="before")
     @classmethod
     def _drop_unresolved_event_preferences(cls, v):
