@@ -2,6 +2,7 @@
 
 import { MembershipLunch } from "@/lib/api";
 import { formatDayLabel } from "@/lib/timeFormat";
+import { unslug } from "@/lib/textFormat";
 import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
@@ -60,9 +61,9 @@ export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
                   <div key={category} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>
                     <span style={{
                       fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
-                      color: "var(--color-text-secondary)", textTransform: "capitalize",
+                      color: "var(--color-text-secondary)",
                     }}>
-                      {category}
+                      {unslug(category)}
                     </span>
                     {/* A typed answer is a sentence — an uppercase badge
                         would mangle it, so it renders as prose. */}
