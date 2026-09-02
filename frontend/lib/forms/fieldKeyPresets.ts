@@ -40,7 +40,12 @@ export const PRESETS: Record<PresetKind, PresetMeta> = {
   },
   lunch: {
     kind: "lunch", label: "Lunch",
-    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
+    // The only preset that allows free text: a lunch question like "any
+    // special requests?" belongs in the panel's Lunch section, and without
+    // the reserved key it would be filtered out of custom responses (which
+    // exclude reserved keys) and land nowhere. Mirrors the backend's
+    // LUNCH_QUESTION_TYPES.
+    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox", "short_text", "long_text"],
     defaultQuestionType: "single_select_radio",
   },
   track_status: {
