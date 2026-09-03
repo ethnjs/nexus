@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext, DragEndEvent, PointerSensor, closestCenter, useSensor, useSensors,
 } from "@dnd-kit/core";
@@ -67,6 +67,24 @@ function newCustomSectionId(): string {
 
 function SortableSection({ id, children }: { id: string; children: (handle: React.ReactNode) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
+  // Closed hand from the moment the pointer goes down, not from when the drag
+  // actually starts — dnd-kit waits for 4px of travel, and in that gap an
+  // open hand reads as a handle that ignored the click. Tracked in state
+  // rather than :active because the handle's cursor has to be inline: the row
+  // it sits in declares `cursor: pointer`, which it would otherwise inherit.
+  const [pressed, setPressed] = useState(false);
+  useEffect(() => {
+    if (!pressed) return;
+    // On window, not the handle: the pointer is usually somewhere else
+    // entirely by the time it comes back up.
+    const release = () => setPressed(false);
+    window.addEventListener("pointerup", release);
+    window.addEventListener("pointercancel", release);
+    return () => {
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+    };
+  }, [pressed]);
   return (
     <div
       ref={setNodeRef}
@@ -84,7 +102,11 @@ function SortableSection({ id, children }: { id: string; children: (handle: Reac
         <span
           {...attributes}
           {...listeners}
-          style={{ cursor: "grab", display: "flex", alignItems: "center", color: "var(--color-text-tertiary)" }}
+          onPointerDown={(e) => { setPressed(true); listeners?.onPointerDown?.(e); }}
+          style={{
+            cursor: pressed || isDragging ? "grabbing" : "grab",
+            display: "flex", alignItems: "center", color: "var(--color-text-tertiary)",
+          }}
           title="Drag to reorder"
         >
           <IconGripVertical size={14} />

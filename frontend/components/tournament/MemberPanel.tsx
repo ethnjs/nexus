@@ -76,6 +76,11 @@ export function MemberPanel({
   // Section order, per-section visibility, and the TD's custom sections.
   const [sectionConfig, setSectionConfig] = useState<DisplayConfigSection[] | null>(null);
   const [showSectionsModal, setShowSectionsModal] = useState(false);
+  // Bumped when the display config is saved. Refetching the *membership* is
+  // the point, not just the section list: hidden items are stripped
+  // server-side (see apply_display_config), so a track turned back on in the
+  // modal isn't in the payload this panel is already holding.
+  const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -92,7 +97,7 @@ export function MemberPanel({
     displayConfigApi.get(tournamentId)
       .then((config) => startTransition(() => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null)))
       .catch(() => {});
-  }, [tournamentId, membershipId]);
+  }, [tournamentId, membershipId, reloadKey]);
 
   function handleRolesUpdated(updated: MembershipSlim) {
     setFull((f) => (f ? { ...f, roles: updated.roles } : f));
@@ -236,11 +241,7 @@ export function MemberPanel({
       {showSectionsModal && (
         <PanelSectionsModal
           tournamentId={tournamentId}
-          onSaved={() =>
-            displayConfigApi.get(tournamentId)
-              .then((config) => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null))
-              .catch(() => {})
-          }
+          onSaved={() => setReloadKey((key) => key + 1)}
           onClose={() => setShowSectionsModal(false)}
         />
       )}
