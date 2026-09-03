@@ -5,7 +5,7 @@ from app.models.models import (
     Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
     TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack,
 )
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, set_display_config
 
 
 # ---------------------------------------------------------------------------
@@ -33,18 +33,18 @@ def test_get_display_config_non_member_gets_404(client, td_user, other_tournamen
 def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament, db):
     """A deleted track (or a surface key from a since-removed UI location)
     leaves a dangling reference behind — reading it back must never 500."""
-    td_tournament.display_config = {
+    set_display_config(db, td_tournament, td_user, {
         "unknown_surface": {"hidden": ["track:999", "not_a_real_namespace:x"]},
-    }
-    db.commit()
+    })
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert response.status_code == 200
-    # `columns`/`sections` come back as None: absent means "use the defaults",
-    # which is why they aren't empty lists.
+    # `columns`/`sections`/`filters`/`sort` come back as None: absent means
+    # "use the defaults", which is why they aren't empty lists.
     assert response.json() == {
         "unknown_surface": {
-            "hidden": ["track:999", "not_a_real_namespace:x"], "columns": None, "sections": None,
+            "hidden": ["track:999", "not_a_real_namespace:x"],
+            "columns": None, "sections": None, "filters": None, "sort": None,
         },
     }
 
@@ -62,13 +62,90 @@ def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200
     saved = {
-        surface: {**config, "columns": None, "sections": None}
+        surface: {**config, "columns": None, "sections": None, "filters": None, "sort": None}
         for surface, config in payload.items()
     }
     assert response.json() == saved
 
     follow_up = client.get(f"/tournaments/{td_tournament.id}/display-config/")
     assert follow_up.json() == saved
+
+
+def test_display_config_is_per_member(client, td_user, other_user, td_tournament, db):
+    """The whole point of the move: two coordinators on the same roster each
+    keep their own columns instead of overwriting each other."""
+    grant_role(db, td_tournament, other_user, "Tournament Director")
+    login(client, "td@test.com", "tdpass")
+    client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"columns": ["email"]}},
+    )
+
+    login(client, "other@test.com", "otherpass")
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json() == {}
+    client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"columns": ["phone"]}},
+    )
+
+    login(client, "td@test.com", "tdpass")
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["members_table"]["columns"] == ["email"]
+
+
+def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournament):
+    """Filters and sort ride along in the same surface blob — they're the
+    same "how this coordinator reads the roster" state the columns are."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {
+            "filters": {"role": ["3"], "track": ["7:confirmed"]},
+            "sort": {"field": "last_name", "direction": "desc"},
+        }},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["members_table"]["filters"] == {"role": ["3"], "track": ["7:confirmed"]}
+    assert saved["members_table"]["sort"] == {"field": "last_name", "direction": "desc"}
+
+
+def test_put_display_config_rejects_unknown_filter(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filters": {"not_a_filter": ["x"]}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_display_config_keeps_unresolvable_filter_values(client, td_user, td_tournament):
+    """Values stay opaque on purpose: a track deleted after someone filtered
+    by it is inert on the roster, and must not 422 every later save."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filters": {"track": ["99999:confirmed"]}}},
+    )
+    assert response.status_code == 200
+
+
+def test_put_display_config_rejects_unknown_sort_field(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"sort": {"field": "shoe_size", "direction": "asc"}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_display_config_rejects_unknown_sort_direction(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"sort": {"field": "joined", "direction": "sideways"}}},
+    )
+    assert response.status_code == 422
 
 
 def test_put_display_config_rejects_unknown_surface(client, td_user, td_tournament):

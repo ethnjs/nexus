@@ -9,9 +9,11 @@ import {
  * Loads the display-config catalog plus one surface's saved settings, and
  * saves edits back without disturbing the other surfaces.
  *
- * The whole config is kept as-loaded rather than re-fetched at save time: a
- * PUT replaces every surface at once, so writing back only the edited one
- * would silently wipe whatever the others hold.
+ * A PUT replaces every surface at once, so the save re-reads the config
+ * first and lays only this draft's own keys over it. The config loaded when
+ * the modal opened isn't good enough: the members table writes filters and
+ * sort into the same surface while a modal is open, and a stale copy would
+ * put them back to whatever they were at open time.
  */
 export function useDisplayConfigDraft(tournamentId: number, surface: string) {
   const [catalog, setCatalog] = useState<DisplayConfigCatalog | null>(null);
@@ -35,7 +37,16 @@ export function useDisplayConfigDraft(tournamentId: number, surface: string) {
     setSaving(true);
     setError(null);
     try {
-      await displayConfigApi.set(tournamentId, { ...fullConfig, [surface]: draft });
+      const fresh = await displayConfigApi.get(tournamentId).catch(() => fullConfig);
+      await displayConfigApi.set(tournamentId, {
+        ...fresh,
+        [surface]: {
+          ...fresh[surface],
+          hidden: draft.hidden,
+          columns: draft.columns,
+          sections: draft.sections,
+        },
+      });
       onSaved?.();
       onClose?.();
     } catch (e) {

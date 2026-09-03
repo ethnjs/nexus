@@ -6,7 +6,9 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.display_config import MEMBERS_TABLE, apply_display_config
+from app.core.tournament.display_config import (
+    MEMBERS_TABLE, apply_display_config, viewer_display_config,
+)
 from app.core.tournament.member_filters import (
     apply_member_filters, build_filter_options, filter_age_flags,
 )
@@ -137,14 +139,17 @@ def list_memberships(
     memberships = filter_age_flags(memberships, age)
     responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    # The viewer's own config decides both which optional columns to load and
+    # what to drop from each row — see viewer_display_config.
+    config = viewer_display_config(db, tournament_id, current_user.id)
     if surface == MEMBERS_TABLE:
-        enrich_table_columns(db, tournament, memberships, responses)
+        enrich_table_columns(db, tournament, config, memberships, responses)
     # gate_age_flags per row, exactly as the detail route does: the Age column
     # reads is_over_18/21, and a column being switched on must never override
     # a member's withheld consent.
     data = [
         apply_display_config(
-            tournament, surface, gate_age_flags(membership, resp.model_dump(mode="json"))
+            config, surface, gate_age_flags(membership, resp.model_dump(mode="json"))
         )
         for membership, resp in zip(memberships, responses)
     ]
@@ -333,7 +338,7 @@ def get_membership(
     resp.track_statuses = build_track_statuses(db, m)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json"))
-    data = apply_display_config(m.tournament, surface, data)
+    data = apply_display_config(viewer_display_config(db, tournament_id, current_user.id), surface, data)
     return JSONResponse(data)
 
 

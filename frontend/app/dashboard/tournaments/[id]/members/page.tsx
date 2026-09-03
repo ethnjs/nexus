@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   membershipsApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
-  DisplayConfig, DisplayConfigCatalogItem,
+  DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
@@ -26,11 +26,9 @@ import { MassRoleEditor, MASS_ROLE_EDITOR_WIDTH } from "@/components/tournament/
 import { RemoveMemberModal } from "@/components/tournament/RemoveMemberModal";
 import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedirectModal";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { emptyFilterState } from "@/components/ui/FilterModal";
-import { usePersistedFilter, usePersistedValue } from "@/lib/usePersistedFilter";
 import {
   MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
-  MEMBERS_FILTER_KEYS,
+  membersFilterFromStored, emptyMembersFilter,
 } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
@@ -249,8 +247,8 @@ export default function MembersPage() {
 
   // Read once, on the first render only: from here on the URL follows the
   // page's state, not the other way round, so re-reading it would fight the
-  // router.replace below. Filters aren't here — they live in localStorage
-  // (see usePersistedFilter), which already survives a refresh.
+  // router.replace below. Filters aren't here — they're saved server-side in
+  // this viewer's display config, which already survives a refresh.
   const [initialMemberId] = useState(() => Number(searchParams.get("member")) || null);
 
   const { user: currentUser } = useAuth();
@@ -263,9 +261,12 @@ export default function MembersPage() {
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
-  const [filters, applyFilters, filtersReady] = usePersistedFilter(
-    "members", currentUser?.id, tournamentId, MEMBERS_FILTER_KEYS,
-  );
+  // Filters, sort and columns are all this viewer's own display config now,
+  // so they arrive in the one GET below and are written back by persistView.
+  const [filters, setFilters] = useState<MembersFilterState>(() => emptyMembersFilter());
+  // The whole config as last read, so a write can lay this surface's view
+  // state over the other surfaces instead of replacing them.
+  const [viewReady, setViewReady] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
   const [showTableColumnsModal, setShowTableColumnsModal] = useState(false);
   // Bumped on save so the open MemberPanel remounts and refetches with the
@@ -275,16 +276,10 @@ export default function MembersPage() {
   // real answer ("show no data columns") and must not fall back.
   const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
   const [columnCatalog, setColumnCatalog] = useState<DisplayConfigCatalogItem[]>([]);
-  // Persisted per user + tournament, like the filters: a coordinator who
-  // sorts by last name is still sorting by last name tomorrow.
-  const [sortField, setSortField] = usePersistedValue<SortField>(
-    "members", currentUser?.id, tournamentId, "sortField", "joined",
-    (value) => SORT_FIELD_OPTIONS.some((option) => option.value === value),
-  );
-  const [sortDir, setSortDir] = usePersistedValue<SortDir>(
-    "members", currentUser?.id, tournamentId, "sortDir", "desc",
-    (value) => value === "asc" || value === "desc",
-  );
+  // Saved with the filters, and for the same reason: a coordinator who sorts
+  // by last name is still sorting by last name tomorrow, on any device.
+  const [sortField, setSortField] = useState<SortField>("joined");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
   const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
@@ -325,12 +320,12 @@ export default function MembersPage() {
   const focusItemStable = useCallback((id: number) => selectionRef.current.focusItem(id), []);
   const toggleSelectedStable = useCallback((id: number) => selectionRef.current.toggleSelected(id), []);
 
-  // Held until the stored filters have been read: filtering runs server-side
-  // now, so firing on the initial empty state would put an unfiltered request
-  // in flight alongside the filtered one — and the unfiltered one, being the
+  // Held until the saved filters have been read: filtering runs server-side,
+  // so firing on the initial empty state would put an unfiltered request in
+  // flight alongside the filtered one — and the unfiltered one, being the
   // bigger query, tends to land second and win.
   useEffect(() => {
-    if (!canManageMembers || !filtersReady) return;
+    if (!canManageMembers || !viewReady) return;
     // A filter change mid-flight has the same race on a smaller scale, so a
     // superseded response is dropped rather than allowed to overwrite.
     let current = true;
@@ -342,21 +337,62 @@ export default function MembersPage() {
       .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });
     rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
     return () => { current = false; };
-  }, [tournamentId, canManageMembers, filtersReady, displayConfigVersion, filters]);
+  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters]);
 
-  // The saved column list plus the catalog that names each key. Both are
-  // needed before a column can render: the config says which, the catalog
-  // says what to call them.
+  // This viewer's saved view of the table — columns, filters and sort — plus
+  // the catalog that names each column key. Both halves are needed before a
+  // column can render: the config says which, the catalog says what to call
+  // them. Filters gate the roster fetch below, so this has to land first.
   useEffect(() => {
     if (!canManageMembers) return;
     Promise.all([
       displayConfigApi.get(tournamentId).catch(() => ({} as DisplayConfig)),
       displayConfigApi.getCatalog(tournamentId).catch(() => null),
     ]).then(([config, catalog]) => {
-      setColumnKeys(config?.[MEMBERS_TABLE]?.columns ?? null);
+      const surface = config?.[MEMBERS_TABLE];
+      setColumnKeys(surface?.columns ?? null);
       setColumnCatalog(catalog?.columns ?? []);
+      // Only on the first load: a re-read after a Display save must not
+      // stomp filters the coordinator changed while that modal was open.
+      setViewReady((already) => {
+        if (already) return true;
+        setFilters(membersFilterFromStored(surface?.filters));
+        if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
+          setSortField(surface.sort.field as SortField);
+          setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
+        }
+        return true;
+      });
     });
   }, [tournamentId, canManageMembers, displayConfigVersion]);
+
+  // Write-back for the view state this page owns (filters, sort). Re-reads
+  // before writing because a PUT replaces every surface at once and the
+  // Display modal writes columns into this same surface — see
+  // useDisplayConfigDraft, which merges from the other side for the same
+  // reason. Fire-and-forget: failing to remember a sort order is not worth
+  // interrupting the table over.
+  const persistView = useCallback((patch: Partial<DisplayConfigSurface>) => {
+    displayConfigApi.get(tournamentId)
+      .then((fresh) => displayConfigApi.set(tournamentId, {
+        ...fresh,
+        // A surface that has never been saved still needs its required
+        // `hidden` key, hence the spread order.
+        [MEMBERS_TABLE]: { ...{ hidden: [] }, ...fresh[MEMBERS_TABLE], ...patch },
+      }))
+      .catch(() => {});
+  }, [tournamentId]);
+
+  const applyFilters = useCallback((next: MembersFilterState) => {
+    setFilters(next);
+    persistView({ filters: membersFilterParams(next) });
+  }, [persistView]);
+
+  const applySort = useCallback((field: SortField, direction: SortDir) => {
+    setSortField(field);
+    setSortDir(direction);
+    persistView({ sort: { field, direction } });
+  }, [persistView]);
 
   const tableColumns = useMemo(() => {
     const labels = new Map(columnCatalog.map((item) => [item.key, item.label]));
@@ -604,7 +640,7 @@ export default function MembersPage() {
             {isMembersFilterActive(filters) && (
               <Button
                 type="button" variant="ghost" size="md"
-                onClick={() => applyFilters(emptyFilterState(MEMBERS_FILTER_KEYS))}
+                onClick={() => applyFilters(emptyMembersFilter())}
               >
                 <IconX size={16} /> Clear filters
               </Button>
@@ -618,7 +654,7 @@ export default function MembersPage() {
             <Dropdown
               label="Sort by"
               value={sortField}
-              onChange={(v) => setSortField(v as SortField)}
+              onChange={(v) => applySort(v as SortField, sortDir)}
               options={SORT_FIELD_OPTIONS}
               size="md"
               variant="secondary"
@@ -627,7 +663,7 @@ export default function MembersPage() {
             <Button
               type="button" variant="secondary" size="md" iconOnly
               title={sortDir === "asc" ? "Ascending" : "Descending"}
-              onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+              onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
             >
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>

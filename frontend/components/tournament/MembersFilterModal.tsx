@@ -39,6 +39,23 @@ function usableValues(key: string, values: Set<string>): string[] {
   return PAIRED_KEYS.includes(key as MembersFilterKey) ? list.filter((v) => v.includes(":")) : list;
 }
 
+/** The saved wire shape (arrays, keyed by filter) back into filter state.
+    Unknown keys are dropped and unknown value shapes ignored — a filter
+    removed in a later release must not come back as a chip that narrows
+    nothing. */
+export function membersFilterFromStored(
+  stored: Record<string, string[]> | null | undefined,
+): MembersFilterState {
+  const state = emptyMembersFilter();
+  for (const key of MEMBERS_FILTER_KEYS) {
+    const values = stored?.[key];
+    if (Array.isArray(values)) {
+      state[key] = new Set(values.filter((v): v is string => typeof v === "string"));
+    }
+  }
+  return state;
+}
+
 /** The committed filters as repeatable query params, empty keys dropped. */
 export function membersFilterParams(filters: MembersFilterState): Record<string, string[]> {
   return Object.fromEntries(

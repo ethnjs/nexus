@@ -190,6 +190,19 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     return tournament
 
 
+def set_display_config(db, tournament, user, config: dict) -> None:
+    """Write one viewer's display config. It lives on their membership row,
+    not the tournament — every surface renders per viewer now, so a test
+    has to say *whose* config it is setting."""
+    membership = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=tournament.id, user_id=user.id)
+        .one()
+    )
+    membership.display_config = config
+    db.commit()
+
+
 def grant_role(db: Session, tournament: Tournament, user: User, role_label: str) -> TournamentMembership:
     """
     Give `user` a membership in `tournament` holding the role identified by

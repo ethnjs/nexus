@@ -1695,6 +1695,14 @@ export interface DisplayConfigSection {
   fields?: string[]
 }
 
+export interface DisplayConfigSort {
+  field: string
+  direction: 'asc' | 'desc'
+}
+
+// One surface's config for the *current viewer*. Every field is per member:
+// two coordinators on the same roster keep their own columns, filters and
+// sort rather than overwriting each other.
 export interface DisplayConfigSurface {
   hidden: string[]
   // Members table: visible columns in display order. null means "use the
@@ -1703,6 +1711,11 @@ export interface DisplayConfigSurface {
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
   sections?: DisplayConfigSection[] | null
+  // Members table: committed filters, keyed by the roster query param each
+  // set belongs to. Sets don't survive JSON, so the wire shape is arrays.
+  filters?: Record<string, string[]> | null
+  // Members table: the viewer's sort. null means the page's own default.
+  sort?: DisplayConfigSort | null
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>

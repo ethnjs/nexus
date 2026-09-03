@@ -20,16 +20,24 @@ class DisplayConfigSection(BaseModel):
     fields: list[str] = []
 
 
+class DisplayConfigSort(BaseModel):
+    """The members table's sort, remembered per viewer. Sorting is done in
+    the client (the roster is a single page), so this is view state the
+    server only stores and validates."""
+    field: str
+    direction: str = "asc"
+
+
 class DisplayConfigSurface(BaseModel):
-    """One UI surface's saved configuration. Every field is optional and
-    every reader falls back to a default, so a surface saved before a given
-    feature existed keeps working untouched.
+    """One UI surface's saved configuration, for one member. Every field is
+    optional and every reader falls back to a default, so a surface saved
+    before a given feature existed keeps working untouched.
 
     Surfaces and namespaces are only validated on write (see the PUT route);
     this schema itself accepts any string so a stale/dangling item never
     fails to parse on read.
 
-    The whole display_config column is just dict[str, DisplayConfigSurface]
+    The whole per-member display_config column is dict[str, DisplayConfigSurface]
     (surface key -> this) — no wrapper schema needed for that; FastAPI
     handles a plain dict type as both a request body and a response model.
     """
@@ -44,6 +52,13 @@ class DisplayConfigSurface(BaseModel):
     # missing from a saved list still renders, appended in default order, so
     # adding a new section type never requires a migration.
     sections: list[DisplayConfigSection] | None = None
+    # Members table only: the viewer's committed filters, keyed by the roster
+    # query param each set belongs to ({"track": ["3:confirmed"], ...}). An
+    # empty dict and None both mean "no filters" — the client clears by
+    # sending {}, so this never has to distinguish them.
+    filters: dict[str, list[str]] | None = None
+    # Members table only. Absent means the client's own default sort.
+    sort: DisplayConfigSort | None = None
 
 
 class DisplayConfigCatalogItem(BaseModel):

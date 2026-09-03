@@ -1,4 +1,4 @@
-"""Shared constants for the per-tournament display_config JSON column (see
+"""Shared constants for the per-member display_config JSON column (see
 TASK.md Phase 3). Surface keys name a UI location; namespaced strings in a
 surface's `hidden` list each identify one hideable item, e.g. "track:3".
 
@@ -15,6 +15,31 @@ MEMBER_PAGE = "member_page"
 ASSIGNMENT_CARD = "assignment_card"
 
 KNOWN_SURFACES = frozenset({MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD})
+
+# ---------------------------------------------------------------------------
+# Members table view state
+#
+# Filters and sort live in the same per-member surface blob as the columns:
+# all three are "how this coordinator reads the roster", they're read in the
+# same request the page already makes, and they're written by the same PUT.
+#
+# Filter keys are exactly the roster query params (see list_memberships) —
+# stored under the name the client will send them back as, so persisting is
+# a round trip through one vocabulary rather than a translation. Values are
+# opaque here on purpose: "2:confirmed", a shift id, "__any__" — the filter
+# layer already ignores anything that no longer resolves, so a deleted track
+# in someone's saved filters is inert rather than an error.
+# ---------------------------------------------------------------------------
+KNOWN_FILTER_KEYS = frozenset({
+    "role", "track", "lunch", "event_pref",
+    "competition_event", "volunteer_event", "age", "shift",
+})
+
+# Sorting is client-side (the roster is one page), so these are validated but
+# never used in a query — they exist so a stored value that no longer sorts
+# by anything can't be written in the first place.
+KNOWN_SORT_FIELDS = frozenset({"first_name", "last_name", "joined", "account_age"})
+KNOWN_SORT_DIRECTIONS = frozenset({"asc", "desc"})
 
 # ---------------------------------------------------------------------------
 # Members table columns
@@ -293,12 +318,27 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     }
 
 
-def apply_display_config(tournament, surface: str | None, data: dict) -> dict:
+def viewer_display_config(db, tournament_id: int, user_id: int) -> dict:
+    """The config to render a tournament's surfaces with for one viewer.
+
+    Empty for a viewer with no membership row in this tournament (a platform
+    admin looking in from outside) — they read the defaults and have nowhere
+    to save, which is the same answer as "saved nothing yet"."""
+    from app.core.tournament.memberships import get_membership_by_user
+
+    membership = get_membership_by_user(db, tournament_id, user_id)
+    return (membership.display_config or {}) if membership else {}
+
+
+def apply_display_config(config: dict | None, surface: str | None, data: dict) -> dict:
     """Drops hidden items from a serialized MembershipFullResponse dict for
-    the given surface. Hidden items are omitted from the payload itself —
-    not left for the client to filter — so stale data never crosses the
-    wire. `surface=None` (no query param given) is a no-op: existing
-    callers with no opinion on filtering get the unfiltered response.
+    the given surface, per the *viewer's* config (see
+    viewer_display_config) — not the tournament's, which no longer has one.
+
+    Hidden items are omitted from the payload itself — not left for the
+    client to filter — so stale data never crosses the wire. `surface=None`
+    (no query param given) is a no-op: existing callers with no opinion on
+    filtering get the unfiltered response.
 
     Deliberately independent of gate_age_flags: this must never become a
     second privacy mechanism. A TD un-hiding an age flag in display_config
@@ -306,7 +346,7 @@ def apply_display_config(tournament, surface: str | None, data: dict) -> dict:
     aren't namespaced items this function even looks at."""
     if not surface:
         return data
-    hidden = set((tournament.display_config or {}).get(surface, {}).get("hidden", []))
+    hidden = set((config or {}).get(surface, {}).get("hidden", []))
     if not hidden:
         return data
 

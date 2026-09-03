@@ -383,7 +383,7 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
     return sorted(entries, key=lambda e: e.name)
 
 
-def enrich_table_columns(db: Session, tournament, memberships: list, responses: list) -> None:
+def enrich_table_columns(db: Session, tournament, config: dict | None, memberships: list, responses: list) -> None:
     """Fills in the optional MembershipSlimResponse fields the members table's
     saved column config asks for, and only those.
 
@@ -402,7 +402,7 @@ def enrich_table_columns(db: Session, tournament, memberships: list, responses: 
         TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
     )
 
-    surface = (tournament.display_config or {}).get(MEMBERS_TABLE) or {}
+    surface = (config or {}).get(MEMBERS_TABLE) or {}
     columns = surface.get("columns")
     if columns is None:
         columns = list(DEFAULT_COLUMNS)

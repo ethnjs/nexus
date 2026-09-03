@@ -8,7 +8,7 @@ from app.models.models import (
     Form, FormAnswer, FormField, FormResponse,
     TournamentMembership, TournamentMembershipRole, TournamentRole,
 )
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, set_display_config
 
 
 def get_role_id_by_label(db, tournament_id: int, label: str) -> int:
@@ -157,8 +157,7 @@ def test_list_memberships_applies_the_requested_surface_config(client, td_user, 
     db.add(track)
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
-    td_tournament.display_config = {"members_table": {"hidden": [f"track:{track.id}"]}}
-    db.commit()
+    set_display_config(db, td_tournament, td_user, {"members_table": {"hidden": [f"track:{track.id}"]}})
 
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
@@ -177,8 +176,7 @@ def test_list_memberships_without_a_surface_is_unfiltered(client, td_user, td_to
     db.add(track)
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
-    td_tournament.display_config = {"members_table": {"hidden": [f"track:{track.id}"]}}
-    db.commit()
+    set_display_config(db, td_tournament, td_user, {"members_table": {"hidden": [f"track:{track.id}"]}})
 
     login(client, "td@test.com", "tdpass")
     row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
@@ -203,8 +201,7 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert row["lunch"] == []
 
-    td_tournament.display_config = {"members_table": {"columns": ["lunch_category:entree"]}}
-    db.commit()
+    set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["lunch_category:entree"]}})
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert [entry["value"] for entry in row["lunch"]] == ["pizza"]
 
@@ -225,10 +222,9 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     db.add(shift)
     db.flush()
     db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
-    td_tournament.display_config = {
-        "members_table": {"columns": ["availability_day:2026-03-01"]},
-    }
-    db.commit()
+    set_display_config(
+        db, td_tournament, td_user, {"members_table": {"columns": ["availability_day:2026-03-01"]}},
+    )
 
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
@@ -249,8 +245,8 @@ def test_list_memberships_age_column_still_respects_consent(client, td_user, td_
     db.query(User).filter(User.id == u["id"]).one().date_of_birth = date(1990, 1, 1)
     m.age_disclosure = None
     td_tournament.collect_is_over_18 = True
-    td_tournament.display_config = {"members_table": {"columns": ["age"]}}
     db.commit()
+    set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["age"]}})
 
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
@@ -837,9 +833,15 @@ def test_get_membership_custom_responses_excludes_unpublished_forms(client, td_u
 # application (TASK.md 3.3)
 # ---------------------------------------------------------------------------
 
-def _set_display_config(db, tournament, surface, hidden):
-    tournament.display_config = {**(tournament.display_config or {}), surface: {"hidden": hidden}}
-    db.add(tournament)
+def _set_display_config(db, tournament, viewer, surface, hidden):
+    """The config is the *viewer's* now, so these all set the TD's own — the
+    TD is who every one of these tests logs in as."""
+    membership = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=tournament.id, user_id=viewer.id)
+        .one()
+    )
+    membership.display_config = {**(membership.display_config or {}), surface: {"hidden": hidden}}
     db.commit()
 
 
@@ -853,7 +855,7 @@ def test_get_membership_surface_hides_track_status(client, td_user, td_tournamen
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
     db.commit()
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"track:{track.id}"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"track:{track.id}"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
@@ -870,7 +872,7 @@ def test_get_membership_surface_hides_lunch_category(client, td_user, td_tournam
         membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
     ))
     db.commit()
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["lunch_category:entree"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["lunch_category:entree"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
@@ -889,7 +891,7 @@ def test_get_membership_surface_hides_event_preference(client, td_user, td_tourn
         membership_id=m.id, tournament_event_id=event["id"], key="rank", rank=1,
     ))
     db.commit()
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["event_pref:rank"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["event_pref:rank"])
 
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
@@ -902,7 +904,7 @@ def test_get_membership_surface_hides_custom_response(client, td_user, td_tourna
     form = _make_form(db, td_user, td_tournament.id, title="Volunteer interest")
     field = _make_field(db, form, field_key="favorite_color", label="Favorite color")
     _make_answer(db, u["id"], form, field, "opt_1")
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"form_field:{field.id}"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"form_field:{field.id}"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
@@ -923,7 +925,7 @@ def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament,
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
     db.commit()
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, [f"track:{track.id}"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"track:{track.id}"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
@@ -941,7 +943,7 @@ def test_get_membership_surface_hiding_never_affects_age_flags(client, td_user, 
 
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"], age_disclosure=None)
-    _set_display_config(db, td_tournament, MEMBERS_PANEL, ["track:1", "lunch_category:entree", "event_pref:rank"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["track:1", "lunch_category:entree", "event_pref:rank"])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
