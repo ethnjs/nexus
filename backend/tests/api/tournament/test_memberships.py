@@ -1315,6 +1315,44 @@ def test_delete_membership(client, td_user, td_tournament, db):
     ).status_code == 204
 
 
+def test_delete_membership_deletes_form_responses(client, td_user, td_tournament, db):
+    """A removed member's answers to this tournament's forms go with them —
+    FormResponse is keyed by user, not membership, so nothing cascades."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id)
+    field = _make_field(db, form)
+    _make_answer(db, u["id"], form, field, "blue")
+
+    login(client, "td@test.com", "tdpass")
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+    ).status_code == 204
+
+    assert db.query(FormResponse).filter_by(user_id=u["id"]).count() == 0
+    # Answers ride the response's FK cascade, which a bulk delete relies on.
+    assert db.query(FormAnswer).filter_by(field_id=field.id).count() == 0
+
+
+def test_delete_membership_keeps_other_tournaments_responses(
+    client, td_user, td_tournament, other_tournament, db,
+):
+    """Scoped to the tournament being left — the same user's answers to a
+    different tournament's form are none of this removal's business."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    other_form = _make_form(db, td_user, other_tournament.id)
+    other_field = _make_field(db, other_form)
+    _make_answer(db, u["id"], other_form, other_field, "green")
+
+    login(client, "td@test.com", "tdpass")
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+    ).status_code == 204
+
+    assert db.query(FormResponse).filter_by(form_id=other_form.id, user_id=u["id"]).count() == 1
+
+
 def test_delete_membership_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.delete(

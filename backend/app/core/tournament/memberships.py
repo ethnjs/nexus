@@ -112,6 +112,43 @@ def gate_age_flags(membership: TournamentMembership | None, data: dict) -> dict:
     return data
 
 
+def delete_tournament_form_responses(db: Session, tournament_id: int, user_id: int) -> int:
+    """Delete this user's responses to forms owned by `tournament_id`.
+
+    FormResponse is keyed by (form_id, user_id), never by membership, so
+    removing someone from a tournament otherwise leaves their responses
+    behind: the roster no longer shows them, but the rows still count
+    toward a form's response_count (which blocks deleting the form) and
+    still occupy the unique (form_id, user_id) slot, so rejoining lands the
+    member on answers they can no longer see. Call this wherever a
+    membership is hard-deleted.
+
+    Scoped to tournament-owned forms on purpose — a chapter form's
+    responses belong to the chapter and outlive any one tournament.
+
+    Answers and pending-update flags go with each response through their own
+    FK cascades, which is why this can be a bulk delete. Does not commit:
+    the caller's own delete + commit is the unit of work.
+    """
+    from app.models.models import Form, FormResponse
+
+    doomed = (
+        db.query(FormResponse.id)
+        .join(Form, FormResponse.form_id == Form.id)
+        .filter(
+            FormResponse.user_id == user_id,
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+        )
+        .scalar_subquery()
+    )
+    return (
+        db.query(FormResponse)
+        .filter(FormResponse.id.in_(doomed))
+        .delete(synchronize_session=False)
+    )
+
+
 def get_custom_form_answers(db: Session, tournament_id: int, user_id: int) -> list["MembershipCustomAnswerRead"]:
     """This user's answers to non-reserved fields on published,
     tournament-owned forms in `tournament_id`. 'Custom' = field_key matches

@@ -12,8 +12,8 @@ from app.core.tournament.member_filters import (
 )
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
-    enrich_table_columns, gate_age_flags, get_custom_form_answers, get_membership_by_user,
-    resolve_memberships_or_users,
+    delete_tournament_form_responses, enrich_table_columns, gate_age_flags,
+    get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -429,6 +429,7 @@ def leave_tournament(
     if not m:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
 
+    delete_tournament_form_responses(db, tournament_id, m.user_id)
     db.delete(m)
     db.commit()
 
@@ -453,5 +454,8 @@ def delete_membership(
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
     validate_member_target(current_user, tournament, m, db)
 
+    # Their answers to this tournament's forms go with them — see
+    # delete_tournament_form_responses for why the cascade can't do it.
+    delete_tournament_form_responses(db, tournament_id, m.user_id)
     db.delete(m)
     db.commit()
