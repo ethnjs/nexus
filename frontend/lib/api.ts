@@ -488,9 +488,15 @@ export interface TournamentShiftInput {
   end:   string
 }
 
+// `public: true` asks for the member-facing read of a catalog: holding a
+// membership is the whole gate, and the response carries only what a member
+// is meant to see. Without it the route wants the staff permission
+// (manage_events here) and answers with the full shape.
 export const tournamentShiftsApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentShift[]>(`/tournaments/${tournamentId}/shifts/`),
+  list: (tournamentId: number, opts: { public?: boolean } = {}) =>
+    api.get<TournamentShift[]>(
+      `/tournaments/${tournamentId}/shifts/${opts.public ? "?public=true" : ""}`,
+    ),
   create: (tournamentId: number, body: TournamentShiftInput) =>
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
@@ -562,6 +568,10 @@ export interface EventLoadDefaultsResponse {
 export const tournamentEventsApi = {
   list: (tournamentId: number) =>
     api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
+  // The one catalog whose member shape differs — no room assignment, no
+  // staffing target, no times.
+  listPublic: (tournamentId: number) =>
+    api.get<TournamentEventMember[]>(`/tournaments/${tournamentId}/events/?public=true`),
   get:    (tournamentId: number, id: number) =>
     api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
@@ -1443,6 +1453,13 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
+/** The member-facing event shape (?public=true) — only what names an event. */
+export interface TournamentEventMember {
+  id: number
+  name: string | null
+  division: string | null
+}
+
 export interface TournamentTrack {
   id: number
   tournament_id: number
@@ -1678,8 +1695,10 @@ export const tournamentOnboardingApi = {
 }
 
 export const tournamentTracksApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentTrack[]>(`/tournaments/${tournamentId}/tracks/`),
+  list: (tournamentId: number, opts: { public?: boolean } = {}) =>
+    api.get<TournamentTrack[]>(
+      `/tournaments/${tournamentId}/tracks/${opts.public ? "?public=true" : ""}`,
+    ),
   create: (tournamentId: number, name: string) =>
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, { name }),
   update: (tournamentId: number, trackId: number, body: { name?: string; is_archived?: boolean }) =>

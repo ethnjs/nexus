@@ -48,7 +48,9 @@ export default function MemberPage() {
     membershipsApi.get(tournamentId, membershipId)
       .then(setFull)
       .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
-    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => {});
+    // The member-facing read: a self-viewer holds no manage_events, and all
+    // this sets is the availability timeline's window.
+    tournamentShiftsApi.list(tournamentId, { public: true }).then(setShifts).catch(() => setShifts([]));
   }, [tournamentId, membershipId]);
 
   // The catalog is only the *pickable* roles — the ones a member already

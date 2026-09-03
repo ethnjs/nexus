@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.form import shift_referenced_by_live_field
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
-from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
+from app.core.tournament.permissions import MANAGE_EVENTS, require_catalog_read, require_permission
 from app.db.session import get_db
 from app.models.models import TournamentEvent, TournamentEventShift, TournamentShift, User
 from app.schemas.tournament.shift import TournamentShiftCreate, TournamentShiftRead, TournamentShiftUpdate
@@ -14,13 +14,19 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/shifts", tags=["tourname
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/shifts/ — manage_events
+# GET /tournaments/{tournament_id}/shifts/ — manage_events, or any member
+# with ?public=true
+#
+# Same shape either way for now: a shift is a label and a time range, and any
+# member who has answered an availability question has already seen those
+# resolved into its options. The param still exists so the member-facing read
+# is explicit at the call site rather than an accident of permissions.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[TournamentShiftRead])
 def list_shifts(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
+    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
 ):
     get_tournament(tournament_id, db)
     return (

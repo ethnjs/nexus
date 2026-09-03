@@ -18,7 +18,7 @@ ADDING A NEW DEFAULT ROLE:
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -294,6 +294,41 @@ def require_permission(
                 detail="Tournament not found",
             )
         if not has_permission(current_user, tournament_id, permission, db):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+    return _dependency
+
+
+def require_catalog_read(permission: str, tournament_id_param: str = "tournament_id"):
+    """Dependency factory for a catalog GET that serves two audiences.
+
+    `?public=true` is the member-facing read: holding a membership is the
+    whole gate, and the route answers with the member-facing shape. Anything
+    else is the staff read and needs `permission`.
+
+    A query param rather than a parallel /me/ route because it is one
+    collection either way — and because the two shapes are the same for most
+    catalogs, so a second route would be pure duplication. The cost is that
+    the handler can't declare a static response_model where the shapes
+    differ (events); see the note there.
+    """
+    def _dependency(
+        tournament_id: int,
+        public: bool = Query(False),
+        current_user: "User" = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> "User":
+        # Membership first either way, so a non-member can't tell a
+        # permission failure from a tournament that doesn't exist.
+        if not has_any_membership(current_user, tournament_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament not found",
+            )
+        if not public and not has_permission(current_user, tournament_id, permission, db):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

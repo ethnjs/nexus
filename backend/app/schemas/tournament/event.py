@@ -129,6 +129,30 @@ class EventRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class EventMemberRead(BaseModel):
+    """The member-facing event shape (?public=true).
+
+    Deliberately only what names an event: `building`/`room`/`floor` are the
+    physical assignment, which stays staff-side until the day, and
+    `volunteers_needed` is a staffing target rather than anything a member
+    acts on. `start_time`/`end_time` are out too — they're nullable through
+    planning, so publishing them would imply a schedule the TD hasn't
+    committed to.
+
+    Matches the {id, name, division} shape resolve_field_options already
+    gives an event_preference option, so one renderer serves both.
+    """
+    id: int
+    name: str | None = None
+    division: str | None = None
+
+    @classmethod
+    def from_row(cls, event) -> "EventMemberRead":
+        # display_name, not name: a catalog-linked event carries its name on
+        # the joined canonical Event, leaving its own column null.
+        return cls(id=event.id, name=event.display_name, division=event.division)
+
+
 class EventLoadDefaultsSkipped(BaseModel):
     event_id: int
     division: str

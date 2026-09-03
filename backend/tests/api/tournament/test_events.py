@@ -193,6 +193,62 @@ def test_list_events_non_member_gets_404(client, td_user, other_tournament):
 
 
 # ---------------------------------------------------------------------------
+# ?public=true — the member-facing read
+# ---------------------------------------------------------------------------
+
+def test_list_events_public_readable_by_plain_member(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/events/?public=true").status_code == 200
+
+
+def test_list_events_public_omits_location_and_staffing(client, td_user, td_tournament):
+    """Room assignment stays staff-side until the day, and volunteers_needed
+    is a planning target — the member shape is only what names an event."""
+    login(client, "td@test.com", "tdpass")
+    _make_event(
+        client, td_tournament.id, name="Boomilever", division="C",
+        building="Science Hall", room="204", floor="2", volunteers_needed=6,
+    )
+    rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
+    assert set(rows[0]) == {"id", "name", "division"}
+
+
+def test_list_events_public_uses_display_name_for_catalog_events(
+    client, td_user, td_tournament, db,
+):
+    """A catalog-linked event leaves its own name column null and carries the
+    name on the joined canonical event — the member read has to resolve it."""
+    from app.models.models import Event, EventCategory, TournamentEvent
+
+    category = EventCategory(name="Build")
+    db.add(category)
+    db.flush()
+    canonical = Event(name="Air Trajectory", category_id=category.id)
+    db.add(canonical)
+    db.flush()
+    db.add(TournamentEvent(
+        tournament_id=td_tournament.id, name=None, division="C", event_id=canonical.id,
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
+    assert rows[0]["name"] == "Air Trajectory"
+
+
+def test_list_events_public_still_requires_membership(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/events/?public=true").status_code == 404
+
+
+def test_list_events_public_false_still_gates_the_permission(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/events/?public=false").status_code == 403
+
+
+# ---------------------------------------------------------------------------
 # Get single
 # ---------------------------------------------------------------------------
 

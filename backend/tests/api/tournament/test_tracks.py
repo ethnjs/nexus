@@ -59,6 +59,20 @@ def test_track_routes_require_manage_tournament(client, db, td_tournament, other
     assert client.get(f"/tournaments/{td_tournament.id}/tracks/").status_code == 403
 
 
+def test_list_tracks_public_readable_by_plain_member(client, db, td_tournament, other_user):
+    """Same shape as the staff read for now — a member needs the catalog to
+    know which tracks exist and which of them they may confirm on."""
+    grant_role(db, td_tournament, other_user, "Runner")
+    login(client, "other@test.com", "otherpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/tracks/?public=true")
+    assert response.status_code == 200
+
+
+def test_list_tracks_public_still_requires_membership(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/tracks/?public=true").status_code == 404
+
+
 def test_track_is_scoped_to_its_tournament(client, db, td_user, td_tournament, other_tournament):
     other_track = TournamentTrack(tournament_id=other_tournament.id, name="Other tournament track")
     db.add(other_track)

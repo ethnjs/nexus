@@ -7,7 +7,9 @@ from sqlalchemy.orm import Session
 from app.core.auth import get_current_user
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
+from app.core.tournament.permissions import (
+    MANAGE_TOURNAMENT, require_catalog_read, require_permission,
+)
 from app.db.session import get_db
 from app.models.models import TournamentTrack, User
 from app.schemas.tournament.track import TournamentTrackCreate, TournamentTrackRead, TournamentTrackUpdate
@@ -27,15 +29,19 @@ def _name_taken(db: Session, tournament_id: int, name: str, *, excluding_id: int
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/tracks/ — manage_tournament-gated catalog
-# list. Archived tracks remain here so staff can restore them and interpret
-# historical track fields.
+# GET /tournaments/{tournament_id}/tracks/ — manage_tournament, or any member
+# with ?public=true. Archived tracks remain here either way, so staff can
+# restore them and so a member's status on a retired track still resolves to
+# a name.
+#
+# Same shape for both audiences for now — a track is a name, an archived flag
+# and whether members may confirm themselves on it.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[TournamentTrackRead])
 def list_tracks(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
+    current_user: User = Depends(require_catalog_read(MANAGE_TOURNAMENT)),
 ):
     get_tournament(tournament_id, db)
     return (

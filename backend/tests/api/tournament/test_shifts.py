@@ -85,6 +85,38 @@ def test_list_shifts(client, td_user, td_tournament):
     assert len(response.json()) == 2
 
 
+def test_list_shifts_public_readable_by_plain_member(client, td_user, other_tournament, db):
+    """Same shape as the staff read for now — a shift is a label and a time
+    range, which any member answering an availability question already sees."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/shifts/?public=true").status_code == 200
+
+
+def test_list_shifts_without_public_still_requires_manage_events(
+    client, td_user, other_tournament, db,
+):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/shifts/").status_code == 403
+
+
+def test_list_shifts_public_still_requires_membership(client, td_user, other_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/shifts/?public=true").status_code == 404
+
+
+def test_shift_writes_are_never_public(client, td_user, other_tournament, db):
+    """The param is a read concept — it must not become a way in for writes."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    response = client.post(
+        f"/tournaments/{other_tournament.id}/shifts/?public=true",
+        json={"label": "Sneaky", "start": EVENT_DATE + "T08:00:00Z", "end": EVENT_DATE + "T12:00:00Z"},
+    )
+    assert response.status_code == 403
+
+
 def test_update_shift(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_shift(client, td_tournament.id).json()

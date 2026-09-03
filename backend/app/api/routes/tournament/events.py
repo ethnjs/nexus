@@ -1,14 +1,17 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
-from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
+from app.core.tournament.permissions import (
+    MANAGE_EVENTS, require_catalog_read, require_permission,
+)
 from app.db.session import get_db
 from app.models.models import SeasonEvent, TournamentEvent, TournamentShift, User
 from app.schemas.tournament.event import (
-    EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventRead, EventUpdate,
+    EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
+    EventUpdate,
 )
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
@@ -45,28 +48,41 @@ def _validate_tournament_bounds(event: TournamentEvent, tournament) -> None:
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/events/ — manage_events
+# GET /tournaments/{tournament_id}/events/ — manage_events, or any member
+# with ?public=true
+#
+# The one catalog whose two audiences get different shapes: the member view
+# is EventMemberRead (id/name/division), which drops the room assignment and
+# staffing numbers. That's why there's no static response_model here —
+# FastAPI resolves one per route, and returning the models directly still
+# serializes correctly; the cost is a looser OpenAPI schema for this route.
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[EventRead])
+@router.get("/", response_model=None)
 def list_events(
     tournament_id: int,
+    public: bool = Query(False),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_EVENTS)),
-):
+    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
+) -> list[EventRead] | list[EventMemberRead]:
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)
 
-    events = (
-        db.query(TournamentEvent)
-        .options(
-            joinedload(TournamentEvent.event),
-            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events),
+    query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
+    if not public:
+        # Only the staff shape carries shifts; loading them for a member read
+        # would be a join nobody looks at.
+        query = query.options(
+            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events)
         )
+    events = (
+        query
         .filter(TournamentEvent.tournament_id == tournament_id)
         .order_by(TournamentEvent.division, TournamentEvent.name)
         .all()
     )
-    return events
+    if public:
+        return [EventMemberRead.from_row(event) for event in events]
+    return [EventRead.model_validate(event) for event in events]
 
 
 # ---------------------------------------------------------------------------
