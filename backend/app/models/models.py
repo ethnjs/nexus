@@ -679,6 +679,12 @@ class TournamentTrack(Base):
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     is_archived = Column(Boolean, nullable=False, default=False)
+    # Whether a member may move themselves to "confirmed" on this track from
+    # their own member page. Off by default: on most tracks `confirmed` means
+    # the TD staffed them, and only the TD knows when that's true. Opting
+    # *out* never consults this — declining a track is always the member's
+    # own call.
+    allow_confirm = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 

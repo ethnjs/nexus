@@ -28,6 +28,7 @@ class TournamentTrackUpdate(BaseModel):
 
     name: str | None = Field(default=None, max_length=255)
     is_archived: bool | None = None
+    allow_confirm: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -45,6 +46,9 @@ class TournamentTrackRead(BaseModel):
     tournament_id: int
     name: str
     is_archived: bool
+    # Members may self-confirm on this track (see the model). Read by the
+    # member page to decide whether to offer the control at all.
+    allow_confirm: bool
     created_at: datetime
     updated_at: datetime
 

@@ -22,17 +22,21 @@ from app.core.tournament.permissions import (
 )
 from app.core.tournament.roles import validate_member_target
 from app.db.session import get_db
+from app.core.form.write_through import sync_availability
 from app.models.models import (
     Tournament,
     TournamentMembership,
     TournamentMembershipRole,
+    TournamentMembershipTrackStatus,
     TournamentRole,
+    TournamentShift,
+    TournamentTrack,
     User,
 )
 from app.schemas.tournament.membership import (
-    AgeDisclosureRequest, MembershipAvailabilityRead, MembershipCoordinatorUpdate,
-    MembershipFullResponse, MembershipMeResponse,
-    MembershipMeUpdate, MembershipSlimResponse,
+    AgeDisclosureRequest, MembershipAvailabilityRead, MembershipAvailabilityUpdate,
+    MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
+    MembershipMeUpdate, MembershipSlimResponse, MembershipTrackStatusUpdate,
 )
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
@@ -430,6 +434,124 @@ def update_membership(
     resp.lunch = build_lunch(db, m)
     resp.track_statuses = build_track_statuses(db, m)
     return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
+
+
+# ---------------------------------------------------------------------------
+# PUT /tournaments/{tournament_id}/memberships/me/availability/ — self-service
+#
+# The member's own availability, edited from their member page rather than
+# through a form. Forms remain an input channel that writes the same rows
+# (see core/form/write_through.py); this is a second writer, not a
+# replacement, which is why it reuses that module's diff instead of
+# rewriting the set: an unchanged shift keeps its row.
+#
+# Whole-set semantics, unlike a form answer's per-day scope: the page shows
+# every shift at once, so anything left out is a withdrawal rather than a
+# question that wasn't asked.
+# ---------------------------------------------------------------------------
+@router.put("/me/availability/", response_model=list[MembershipAvailabilityRead])
+def update_my_availability(
+    tournament_id: int,
+    payload: MembershipAvailabilityUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    m = get_membership_by_user(db, tournament_id, current_user.id)
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    owned_shift_ids = {
+        shift_id
+        for (shift_id,) in db.query(TournamentShift.id).filter(
+            TournamentShift.tournament_id == tournament_id
+        )
+    }
+    unknown = set(payload.shift_ids) - owned_shift_ids
+    if unknown:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown shift {sorted(unknown)[0]}",
+        )
+
+    sync_availability(db, m.id, set(payload.shift_ids), owned_shift_ids)
+    db.commit()
+    db.refresh(m)
+    return [MembershipAvailabilityRead.from_row(row) for row in m.availability_shifts]
+
+
+# ---------------------------------------------------------------------------
+# PUT /tournaments/{tournament_id}/memberships/me/track-statuses/{track_id}/
+# — self-service
+#
+# The three statuses split by who they belong to:
+#
+#   declined    always — opting out is the member's own call, on any track.
+#   confirmed   only with the track's allow_confirm. Otherwise
+#               `confirmed` means the TD staffed them, and only the TD knows.
+#   interested  only *without* allow_confirm — it's the way back in for
+#               a member who can't confirm themselves. With self-confirm on,
+#               declined goes straight to confirmed and the middle state
+#               would be a step to nowhere.
+#
+# Coming back from `declined` at all is something write-through refuses (see
+# can_set_track_status). That guard exists to stop a *stale form write* from
+# demoting a track a newer form already advanced — a member acting on their
+# own page is neither stale nor out of order, and without this exception a
+# mistaken opt-out would be a one-way door.
+# ---------------------------------------------------------------------------
+@router.put("/me/track-statuses/{track_id}/", response_model=MembershipTrackStatusRead)
+def update_my_track_status(
+    tournament_id: int,
+    track_id: int,
+    payload: MembershipTrackStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
+
+    m = get_membership_by_user(db, tournament_id, current_user.id)
+    if not m:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
+
+    track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
+    if track.is_archived:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This track is archived",
+        )
+    if payload.status == "confirmed" and not track.allow_confirm:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This track's confirmations are handled by the tournament staff",
+        )
+    if payload.status == "interested" and track.allow_confirm:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Confirm or decline this track — there's no interested step on it",
+        )
+
+    row = (
+        db.query(TournamentMembershipTrackStatus)
+        .filter(
+            TournamentMembershipTrackStatus.membership_id == m.id,
+            TournamentMembershipTrackStatus.track_id == track_id,
+        )
+        .first()
+    )
+    if row is None:
+        row = TournamentMembershipTrackStatus(
+            membership_id=m.id, track_id=track_id, status=payload.status,
+        )
+        db.add(row)
+    else:
+        row.status = payload.status
+    db.commit()
+    db.refresh(row)
+    return MembershipTrackStatusRead.from_row(row)
 
 
 # ---------------------------------------------------------------------------

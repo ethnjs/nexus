@@ -1349,6 +1349,168 @@ def test_update_membership_not_found(client, td_user, td_tournament):
 
 
 # ---------------------------------------------------------------------------
+# Self-service: availability and track status (PUT .../me/...)
+# ---------------------------------------------------------------------------
+
+def _make_shift(db, tournament_id, label="Morning", day=1):
+    from app.models.models import TournamentShift
+
+    shift = TournamentShift(
+        tournament_id=tournament_id, label=label,
+        start=datetime(2026, 3, day, 15, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 3, day, 19, 0, tzinfo=timezone.utc),
+    )
+    db.add(shift)
+    db.commit()
+    db.refresh(shift)
+    return shift
+
+
+def _make_track(db, tournament_id, name="Test Writing", allow_confirm=False):
+    from app.models.models import TournamentTrack
+
+    track = TournamentTrack(tournament_id=tournament_id, name=name, allow_confirm=allow_confirm)
+    db.add(track)
+    db.commit()
+    db.refresh(track)
+    return track
+
+
+def _my_membership(db, tournament, user):
+    return (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=tournament.id, user_id=user.id)
+        .one()
+    )
+
+
+def test_put_my_availability_replaces_the_whole_set(client, td_user, td_tournament, db):
+    """Whole-set, not a per-day delta: the page shows every shift at once, so
+    a shift left out is a withdrawal."""
+    morning = _make_shift(db, td_tournament.id, "Morning", day=1)
+    afternoon = _make_shift(db, td_tournament.id, "Afternoon", day=2)
+    login(client, "td@test.com", "tdpass")
+
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        json={"shift_ids": [morning.id, afternoon.id]},
+    )
+    assert response.status_code == 200
+    assert {row["shift_id"] for row in response.json()} == {morning.id, afternoon.id}
+
+    dropped = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        json={"shift_ids": [afternoon.id]},
+    )
+    assert [row["shift_id"] for row in dropped.json()] == [afternoon.id]
+
+
+def test_put_my_availability_rejects_another_tournaments_shift(
+    client, td_user, td_tournament, other_tournament, db,
+):
+    foreign = _make_shift(db, other_tournament.id, "Elsewhere")
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        json={"shift_ids": [foreign.id]},
+    )
+    assert response.status_code == 422
+
+
+def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_tournament, db):
+    """Opting out is the member's own call on any track."""
+    track = _make_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "declined"
+
+
+def test_put_my_track_status_undeclines_to_interested(client, td_user, td_tournament, db):
+    """With allow_confirm off, interested is the way back in — and it's a
+    move write-through itself refuses (see can_set_track_status)."""
+    track = _make_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/"
+    client.put(url, json={"status": "declined"})
+    response = client.put(url, json={"status": "interested"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "interested"
+
+
+def test_put_my_track_status_cannot_self_confirm_by_default(client, td_user, td_tournament, db):
+    track = _make_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        json={"status": "confirmed"},
+    )
+    assert response.status_code == 403
+
+
+def test_put_my_track_status_self_confirms_when_allowed(client, td_user, td_tournament, db):
+    """With allow_confirm on, declined goes straight to confirmed."""
+    track = _make_track(db, td_tournament.id, allow_confirm=True)
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/"
+    client.put(url, json={"status": "declined"})
+    response = client.put(url, json={"status": "confirmed"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "confirmed"
+
+
+def test_put_my_track_status_rejects_interested_when_confirm_allowed(
+    client, td_user, td_tournament, db,
+):
+    """No step to nowhere: a member who can confirm themselves has no use for
+    the middle state."""
+    track = _make_track(db, td_tournament.id, allow_confirm=True)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        json={"status": "interested"},
+    )
+    assert response.status_code == 422
+
+
+def test_put_my_track_status_rejects_unknown_status(client, td_user, td_tournament, db):
+    track = _make_track(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        json={"status": "maybe"},
+    )
+    assert response.status_code == 422
+
+
+def test_put_my_track_status_rejects_archived_track(client, td_user, td_tournament, db):
+    track = _make_track(db, td_tournament.id)
+    track.is_archived = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 409
+
+
+def test_put_my_track_status_scoped_to_the_tournament(
+    client, td_user, td_tournament, other_tournament, db,
+):
+    foreign = _make_track(db, other_tournament.id, "Elsewhere")
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{foreign.id}/",
+        json={"status": "declined"},
+    )
+    assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
 

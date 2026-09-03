@@ -21,6 +21,33 @@ class MembershipMeUpdate(BaseModel):
     pass
 
 
+class MembershipAvailabilityUpdate(BaseModel):
+    """Self-service availability — the member's whole set of shifts for this
+    tournament, not a delta. A member editing their own page is stating what
+    they're available for now, so anything absent is a withdrawal; the
+    per-day scoping write-through needs (see sync_availability) exists to
+    keep two forms from treading on each other, which doesn't apply here."""
+    shift_ids: list[int] = []
+
+
+class MembershipTrackStatusUpdate(BaseModel):
+    """Self-service track status for one track.
+
+    Which transitions are allowed is not this schema's business — see the
+    route. Briefly: opting out is always the member's own call, opting in to
+    `confirmed` needs the track's allow_self_confirm."""
+    status: str
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, value: str) -> str:
+        from app.core.form.write_through import TRACK_STATUSES
+
+        if value not in TRACK_STATUSES:
+            raise ValueError(f"status must be one of {', '.join(TRACK_STATUSES)}")
+        return value
+
+
 class AgeDisclosureRequest(BaseModel):
     """POST .../memberships/me/age-disclosure/ — one answer covers both
     is_over_18 and is_over_21, there is no partial consent."""
