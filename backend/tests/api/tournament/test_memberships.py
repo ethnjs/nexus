@@ -956,6 +956,27 @@ def test_get_membership_surface_hides_custom_response(client, td_user, td_tourna
     assert response.json()["custom_responses"] == []
 
 
+def test_get_membership_surface_hides_availability_day(client, td_user, td_tournament, db):
+    """Availability items key by tournament-local day, so this is the one
+    hidden namespace that needs the tournament's timezone to resolve — the
+    path that had no coverage when apply_display_config lost that argument."""
+    from app.core.tournament import tournament_local_date
+    from app.models.models import TournamentMembershipAvailability
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    shift = _make_shift(db, td_tournament.id, "Morning", day=1)
+    db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
+    db.commit()
+    day = tournament_local_date(td_tournament, shift.start).isoformat()
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"availability_day:{day}"])
+
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    assert response.status_code == 200
+    assert response.json()["availability"] == []
+
+
 def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament, db):
     """No `surface` query param at all is a no-op — existing callers with no
     opinion on filtering keep getting the full payload even if display_config

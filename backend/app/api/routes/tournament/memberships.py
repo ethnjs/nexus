@@ -153,7 +153,7 @@ def list_memberships(
     # a member's withheld consent.
     data = [
         apply_display_config(
-            config, surface, gate_age_flags(membership, resp.model_dump(mode="json"))
+            config, surface, gate_age_flags(membership, resp.model_dump(mode="json")), tournament
         )
         for membership, resp in zip(memberships, responses)
     ]
@@ -345,7 +345,7 @@ def get_membership(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    get_tournament(tournament_id, db)
+    tournament = get_tournament(tournament_id, db)
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
 
     can_manage = MANAGE_MEMBERS in get_user_permissions(current_user, tournament_id, db)
@@ -364,7 +364,9 @@ def get_membership(
     resp.track_statuses = build_track_statuses(db, m)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json"))
-    data = apply_display_config(viewer_display_config(db, tournament_id, current_user.id), surface, data)
+    data = apply_display_config(
+        viewer_display_config(db, tournament_id, current_user.id), surface, data, tournament
+    )
     return JSONResponse(data)
 
 

@@ -330,10 +330,13 @@ def viewer_display_config(db, tournament_id: int, user_id: int) -> dict:
     return (membership.display_config or {}) if membership else {}
 
 
-def apply_display_config(config: dict | None, surface: str | None, data: dict) -> dict:
+def apply_display_config(config: dict | None, surface: str | None, data: dict, tournament) -> dict:
     """Drops hidden items from a serialized MembershipFullResponse dict for
     the given surface, per the *viewer's* config (see
     viewer_display_config) — not the tournament's, which no longer has one.
+    `tournament` is still needed even though the config no longer lives on
+    it: availability items key by tournament-local day, which only the
+    tournament's timezone can resolve.
 
     Hidden items are omitted from the payload itself — not left for the
     client to filter — so stale data never crosses the wire. `surface=None`
