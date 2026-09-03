@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -28,7 +28,6 @@ function FormRow({ form, isLast }: {
   form: FormListItem;
   isLast: boolean;
 }) {
-  const router = useRouter();
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -78,7 +77,7 @@ function FormRow({ form, isLast }: {
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Preview"
-          onClick={(e) => { e.stopPropagation(); router.push(`/forms/${form.id}/preview`); }}
+          onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/preview`, "_blank", "noopener,noreferrer"); }}
         >
           <IconEye size={14} />
         </Button>
