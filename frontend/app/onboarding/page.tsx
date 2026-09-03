@@ -696,7 +696,7 @@ function OnboardingContent() {
               loading={loading}
               fullWidth
             >
-              {state >= STATE.COMPLETE ? "Complete" : "Finish setup"}
+              Complete
             </Button>
           </div>
 
