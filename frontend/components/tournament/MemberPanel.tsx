@@ -20,7 +20,7 @@ import { CustomResponsesSection } from "@/components/tournament/sections/CustomR
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 import { PanelSectionsModal } from "@/components/tournament/PanelSectionsModal";
 import { Button } from "@/components/ui/Button";
-import { IconEye } from "@/components/ui/Icons";
+import { IconEye, IconTrash } from "@/components/ui/Icons";
 import {
   hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
 } from "@/lib/panelSections";
@@ -39,6 +39,13 @@ interface MemberPanelProps {
   /** Tournament's age-disclosure toggles — the Age field is dropped entirely when neither is on, since there's nothing to show for any member. */
   collectIsOver18: boolean;
   collectIsOver21: boolean;
+  /** Archived tournaments hide the Remove control entirely rather than showing it disabled — same rule the table row follows. */
+  isArchived?: boolean;
+  /** This panel is showing the current user's own membership — removal redirects to the General Settings leave flow. */
+  isSelf?: boolean;
+  /** Opens the caller's remove-member confirmation. Omit to hide the control (e.g. a surface with no removal flow). */
+  onRemove?: (membership: MembershipSlim) => void;
+  onSelfRemove?: (membership: MembershipSlim) => void;
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipSlim) => void;
@@ -58,6 +65,7 @@ interface MemberPanelProps {
 export function MemberPanel({
   tournamentId, membershipId, allRoles, canTouchRole, canEditMember,
   collectIsOver18, collectIsOver21, onClose, onUpdated,
+  isArchived, isSelf, onRemove, onSelfRemove,
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
@@ -182,13 +190,30 @@ export function MemberPanel({
       prevDisabled={!hasPrev}
       nextDisabled={!hasNext}
       headerActions={
-        <Button
-          type="button" variant="secondary" size="sm" iconOnly
-          title="Configure panel"
-          onClick={() => setShowSectionsModal(true)}
-        >
-          <IconEye size={14} />
-        </Button>
+        <>
+          {/* The table's Actions column collapses while this panel is open, so
+              Remove lives here instead. Same gate the row used: archived hides
+              it, outranked/owner disables it, and your own row redirects to the
+              leave flow. Waits for `full` — the lock can't be judged without
+              the member it applies to. */}
+          {full && !isArchived && (onRemove || onSelfRemove) && (
+            <Button
+              type="button" variant="secondary" size="sm" iconOnly
+              title={isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
+              disabled={!isSelf && !canEditMember(full)}
+              onClick={() => (isSelf ? onSelfRemove?.(full) : onRemove?.(full))}
+            >
+              <IconTrash size={14} style={{ color: "var(--color-danger)" }} />
+            </Button>
+          )}
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly
+            title="Configure panel"
+            onClick={() => setShowSectionsModal(true)}
+          >
+            <IconEye size={14} />
+          </Button>
+        </>
       }
     >
       <div style={{ padding: "20px 28px", display: "flex", flexDirection: "column", gap: "20px" }}>

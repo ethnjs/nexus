@@ -67,7 +67,10 @@ function memberColumns(selectMode: boolean, panelOpen: boolean, columns: MemberC
     track(COLUMN_WIDTHS.name),
     ...columns.map((column) => track(column.width)),
     panelOpen ? COLUMN_WIDTHS.rolesCollapsed : rolesWidth(columns.length),
-    COLUMN_WIDTHS.actions,
+    // Actions collapses with the panel too: its Remove lives in the panel
+    // header while one is open, and Expand is meaningless when the row is
+    // already expanded. Plain length either way so the track still animates.
+    panelOpen ? "0px" : COLUMN_WIDTHS.actions,
   ].join(" ");
 }
 
@@ -207,7 +210,13 @@ const MemberRow = memo(function MemberRow({
           onUpdated={onUpdated}
         />
       </div>
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+      {/* Same collapse treatment as the Roles cell, driven by the same
+          data attribute on the table — see .actionsCell. */}
+      <div
+        className={styles.actionsCell}
+        style={{ display: "flex", justifyContent: "center", gap: "4px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {!isArchived && (
           <Button
             type="button" variant="secondary" size="sm" iconOnly
@@ -447,6 +456,10 @@ export default function MembersPage() {
           canEditMember={canEditMemberStable}
           collectIsOver18={!!selectedTournament?.collect_is_over_18}
           collectIsOver21={!!selectedTournament?.collect_is_over_21}
+          isArchived={isArchived}
+          isSelf={currentUser?.id === membership.user.id}
+          onRemove={setRemoveTarget}
+          onSelfRemove={setSelfRemoveTarget}
           onClose={clearFocus}
           onUpdated={handleMemberUpdated}
           onPrev={() => prevId !== null && focusItem(prevId)}
@@ -472,6 +485,10 @@ export default function MembersPage() {
           canEditMember={canEditMemberStable}
           collectIsOver18={!!selectedTournament?.collect_is_over_18}
           collectIsOver21={!!selectedTournament?.collect_is_over_21}
+          isArchived={isArchived}
+          isSelf={currentUser?.id === selectedMembers[0].user.id}
+          onRemove={setRemoveTarget}
+          onSelfRemove={setSelfRemoveTarget}
           onClose={clearSelection}
           onUpdated={handleMemberUpdated}
         />,
@@ -500,7 +517,7 @@ export default function MembersPage() {
   }, [
     focusedId, members, massPanelOpen, selectedMembers, tournamentId, allRoles,
     prevId, nextId, hasPrev, hasNext, focusItem, setPanelDirty, displayConfigVersion,
-    canTouchRoleStable, canEditMemberStable, handleMemberUpdated,
+    canTouchRoleStable, canEditMemberStable, handleMemberUpdated, isArchived, currentUser?.id,
     clearFocus, clearSelection, setPanel, clearPanel,
   ]);
 
@@ -665,7 +682,7 @@ export default function MembersPage() {
                 <span className={styles.rolesCell}>Roles</span>
                 {/* Ellipses like every other header rather than spilling past
                     the card edge if the grid is ever squeezed past its floors. */}
-                <span style={{ textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Actions</span>
+                <span className={styles.actionsCell} style={{ textAlign: "center", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Actions</span>
               </div>
 
               {visibleMembers.map((m) => (

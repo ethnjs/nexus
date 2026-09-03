@@ -30,12 +30,18 @@ const WIDTHS = {
   // Floor is higher than a plain text column's: the avatar and its gap take
   // ~32px before a single character of the name is drawn.
   name: "minmax(160px, 1.1fr)",
-  email: "minmax(190px, 1.5fr)",
+  // Low flex on purpose: 190px already holds a typical address, so the extra
+  // space of a full-width table is better spent on Roles than on padding out
+  // an already-fitting email.
+  email: "minmax(190px, 0.7fr)",
   // Fixed, and sized to the widest formatted number — "(555) 123-4567" is
   // ~101px at 12px mono. This is the one column that must never shrink: it
   // has no useful truncation, and squeezing it is what made it wrap.
-  phone: "118px",
+  phone: "108px",
   duration: "74px",
+  // Wider than `duration` only because "ACCOUNT AGE" is the long header; the
+  // value inside is the same "3mo" the other duration columns hold.
+  accountAge: "96px",
   method: "100px",
   age: "124px",
   shirtSize: "64px",
@@ -111,7 +117,7 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       };
     case "account_age":
       return {
-        key, label: "Account Age", width: WIDTHS.duration,
+        key, label: "Account Age", width: WIDTHS.accountAge,
         render: (m) => <DurationCell iso={m.user.created_at} />,
       };
     case "joined":
@@ -247,16 +253,21 @@ export const COLUMN_WIDTHS = WIDTHS;
 // table has left — the grid overflows and the last column (Actions) is
 // clipped by the card's edge. Select mode makes it worse by another 28px.
 //
-// Name and email are the two tracks that can give: both already ellipse, so
-// a lower floor costs a few characters where the alternative costs a whole
-// column. Nothing else is touched — phone has no useful truncation, and the
-// badge columns wrap (and balloon the row height) rather than ellipse.
+// Name and email are the columns a coordinator actually reads, so they hold
+// floors that stay legible (~17 and ~20 mono characters) and the other
+// ellipsing text columns give instead. Phone and the badge columns are left
+// alone — phone has no useful truncation, and badges wrap (ballooning the row
+// height) rather than ellipse.
 //
 // Safe by construction: a floor only binds when space is scarce, so this is
 // identical to the full-width table whenever the table actually fits.
 const COMPACT_TRACKS: Record<string, string> = {
-  [WIDTHS.name]: "minmax(104px, 1.1fr)",
-  [WIDTHS.email]: "minmax(120px, 1.5fr)",
+  [WIDTHS.name]: "minmax(132px, 1.4fr)",
+  [WIDTHS.email]: "minmax(150px, 0.7fr)",
+  // Free-text answers: shorter than name/email are worth, and they keep their
+  // hover title, so these are the cheapest characters in the row to spend.
+  [WIDTHS.lunchCategory]: "minmax(70px, 0.5fr)",
+  [WIDTHS.customField]: "minmax(76px, 0.6fr)",
 };
 
 /** The panel-open form of a track, or the track itself if it can't give. */
