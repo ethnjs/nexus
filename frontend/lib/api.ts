@@ -742,10 +742,31 @@ export interface RoleWithMemberCount extends Role {
 // membership response (code/label + who created it). Only present when
 // source === "join_code". Codes are never hard-deleted, so this is always
 // populated for a join_code-sourced membership.
+/** One role on a person reference — label and id only, never permissions or rank. */
+export interface PersonRole {
+  id: number | null
+  label: string
+}
+
+/**
+ * How the backend credits an action: a join code's creator, an audit actor, a
+ * form's author. Name and roles only — see PersonRefResponse for why it isn't
+ * the whole membership.
+ */
+export interface PersonRef {
+  user_id: number
+  /** null when they hold no membership in this tournament/chapter. */
+  membership_id: number | null
+  first_name: string | null
+  last_name: string | null
+  /** null = no membership here; [] = a member with no roles; absent = the viewer isn't entitled to them. */
+  roles?: PersonRole[] | null
+}
+
 export interface MembershipJoinCodeInfo {
   code:    string
   label:   string | null
-  creator: MembershipSlim | UserSlim
+  creator: PersonRef
 }
 
 // Matches MembershipSlimResponse — members-page roster row. No onboarding/
@@ -1010,7 +1031,7 @@ export interface Invite {
   expires_at: string | null
   created_at: string
   use_count:  number
-  creator:    MembershipSlim | UserSlim
+  creator: PersonRef
 }
 
 export interface InviteCreate {
@@ -1072,7 +1093,7 @@ export interface AuditLogEntry {
   created_at:    string
   // The actor's membership in this tournament — falls back to the bare user
   // when they have none (e.g. a site admin acting without ever joining).
-  actor:         MembershipSlim | UserSlim
+  actor: PersonRef
   // Current role state — populated only when target_type === "role" and the
   // role still exists (null for role_deleted, and for role_updated's
   // bulk-reorder variant, which has no single target_id).
@@ -1085,7 +1106,7 @@ export interface AuditLogPage {
 }
 
 export interface AuditLogActor {
-  actor: MembershipSlim | UserSlim
+  actor: PersonRef
   // Total entries this actor has in this tournament's log — sorted
   // most-active first by the backend, feeds the "Filter by User" dropdown.
   count: number
@@ -1519,7 +1540,7 @@ export interface FormListItem {
   owner_type:      FormOwnerType
   tournament_id:   number | null
   chapter_id:      number | null
-  creator:         MembershipSlim | ChapterMember | UserSlim
+  creator: PersonRef
   created_at:      string
   updated_at:      string
   response_count:  number

@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.tournament.memberships import resolve_memberships_or_users
+from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import AuditLogEntry, TournamentRole, User
@@ -35,7 +35,7 @@ def list_audit_log_actors(
         .all()
     )
 
-    actors = resolve_memberships_or_users(db, tournament_id, {actor_id for actor_id, _ in rows})
+    actors = resolve_person_refs(db, tournament_id, {actor_id for actor_id, _ in rows})
     return [AuditLogActor(actor=actors[actor_id], count=count) for actor_id, count in rows]
 
 
@@ -83,7 +83,7 @@ def list_audit_log(
     items = query.order_by(AuditLogEntry.id.desc()).limit(limit).all()
     next_before_id = items[-1].id if len(items) == limit else None
 
-    actors = resolve_memberships_or_users(db, tournament_id, {entry.actor_id for entry in items})
+    actors = resolve_person_refs(db, tournament_id, {entry.actor_id for entry in items})
 
     role_ids = {entry.target_id for entry in items if entry.target_type == "role" and entry.target_id is not None}
     roles_by_id = {

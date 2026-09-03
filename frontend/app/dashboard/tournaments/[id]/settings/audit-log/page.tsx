@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { auditLogApi, AuditLogActor, AuditLogEntry, ApiError } from "@/lib/api";
 import { describeAuditLogEntry, ACTION_LABELS, ALL_AUDIT_ACTIONS } from "@/lib/auditLog";
-import { personUser, personName } from "@/lib/personDisplay";
+import { personName } from "@/lib/personDisplay";
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -22,7 +22,6 @@ const PAGE_SIZE = 50;
 function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean }) {
   const [hovered, setHovered] = useState(false);
   const [expanded, setExpanded] = useState(false);
-  const user = personUser(entry.actor);
   const { summary, details, hideActor } = describeAuditLogEntry(entry);
   const hasDetails = !!details && details.length > 0;
 
@@ -56,7 +55,7 @@ function AuditLogRow({ entry, isLast }: { entry: AuditLogEntry; isLast: boolean 
       {hideActor ? (
         <div style={{ width: "28px", flexShrink: 0 }} />
       ) : (
-        <AvatarCircle user={user} size="sm" />
+        <AvatarCircle user={entry.actor} size="sm" />
       )}
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={{
@@ -179,7 +178,7 @@ export default function AuditLogSettingsPage() {
   const userOptions = [
     { value: "", label: "All users" },
     ...(actors ?? []).map((a) => ({
-      value: String(personUser(a.actor).id),
+      value: String(a.actor.user_id),
       label: personName(a.actor),
     })),
   ];

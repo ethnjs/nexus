@@ -736,6 +736,68 @@ def test_get_membership_self_view_hides_notes(client, td_user, other_tournament,
     ).json()["notes"] is None
 
 
+def _join_code_membership(db, tournament, member_user, creator_user):
+    """A membership sourced from a join code, so its response carries a
+    resolved `join_code.creator` — the reference shape under test."""
+    from app.models.models import JoinCode
+
+    code = JoinCode(
+        tournament_id=tournament.id, created_by=creator_user.id,
+        code=f"JC{creator_user.id:03d}{member_user.id:03d}"[:8], label="Staff",
+    )
+    db.add(code)
+    db.flush()
+    # Reuse the row if the member already has one (grant_role makes one), the
+    # same way conftest's grant_role does — a second insert violates
+    # uq_user_tournament.
+    membership = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=tournament.id, user_id=member_user.id)
+        .first()
+    )
+    if membership is None:
+        membership = TournamentMembership(
+            tournament_id=tournament.id, user_id=member_user.id, source="join_code",
+        )
+        db.add(membership)
+    membership.source = "join_code"
+    membership.join_code_id = code.id
+    db.commit()
+    db.refresh(membership)
+    return membership
+
+
+def test_join_code_creator_carries_name_and_roles_only(client, td_user, td_tournament, db):
+    """The reference used to embed the creator's whole roster row — email,
+    phone, age flags, lunch choices, custom form answers. It credits an
+    action; it is not a directory entry."""
+    member = _db_user_for_filter(db, "invitee@example.com")
+    m = _join_code_membership(db, td_tournament, member, td_user)
+
+    login(client, "td@test.com", "tdpass")
+    creator = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+    ).json()["join_code"]["creator"]
+    assert set(creator) == {"user_id", "membership_id", "first_name", "last_name", "roles"}
+    assert creator["user_id"] == td_user.id
+    assert [r["label"] for r in creator["roles"]] == ["Tournament Director"]
+
+
+def test_self_viewer_sees_the_creator_name_without_roles(client, td_user, other_tournament, db):
+    """A member may know who invited them. Their inviter's standing in the
+    tournament is a separate question, and not theirs."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    m = _join_code_membership(db, other_tournament, td_user, other_tournament.owner)
+
+    login(client, "td@test.com", "tdpass")
+    creator = client.get(
+        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+    ).json()["join_code"]["creator"]
+    assert creator["first_name"] is not None
+    # Absent, not null: null is the answer for "holds no membership here".
+    assert "roles" not in creator
+
+
 def test_get_membership_self_access_does_not_leak_others(client, td_user, other_tournament, db):
     """Self-access is exactly self — a member still can't read the row of
     anyone else in the tournament."""

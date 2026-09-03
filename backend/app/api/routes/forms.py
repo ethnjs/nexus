@@ -52,7 +52,7 @@ from app.core.form.write_through import (
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, is_declined
 from app.core.tournament.onboarding import next_required_onboarding_form_id
-from app.core.tournament.memberships import resolve_memberships_or_users
+from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -69,7 +69,6 @@ from app.models.models import (
     User,
     utcnow,
 )
-from app.schemas.chapter.membership import ChapterMemberResponse
 from app.schemas.form import (
     BulkFieldsUpdate,
     FieldChangeRead,
@@ -83,8 +82,7 @@ from app.schemas.form import (
     FormUpdate,
     TournamentFormPrerequisitesUpdate,
 )
-from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.user import UserSlimResponse
+from app.schemas.person import PersonRefResponse, PersonRoleRead
 
 router = APIRouter(tags=["forms"])
 
@@ -191,7 +189,7 @@ def list_tournament_forms(
         .order_by(Form.updated_at.desc())
         .all()
     )
-    creators = resolve_memberships_or_users(db, tournament_id, {f.created_by for f in forms})
+    creators = resolve_person_refs(db, tournament_id, {f.created_by for f in forms})
     return [_to_list_read(f, creators[f.created_by]) for f in forms]
 
 
@@ -307,28 +305,41 @@ def list_chapter_forms(
 
 def _resolve_chapter_creators(
     db: Session, chapter_id: int, user_ids: set[int],
-) -> dict[int, ChapterMemberResponse | UserSlimResponse]:
-    """Same fallback pattern as resolve_memberships_or_users (tournament side)
-    — resolve to the creator's ChapterMembership in this chapter, falling
-    back to the bare User for ids with no membership row. No shared helper
-    exists for chapters yet (resolve_memberships_or_users is tournament-only),
-    so this mirrors it locally rather than generalizing prematurely."""
+) -> dict[int, PersonRefResponse]:
+    """The chapter-side twin of resolve_person_refs — same shape out, so a
+    form's creator reads identically whoever owns the form.
+
+    A chapter role is a plain string on the membership rather than a row, so
+    it becomes a single PersonRoleRead with no id. That still distinguishes
+    "a member here, holding this role" from "not a member" (roles None),
+    which is the difference CreatorHoverCard renders."""
     memberships = (
         db.query(ChapterMembership)
+        .options(selectinload(ChapterMembership.user))
         .filter(ChapterMembership.chapter_id == chapter_id, ChapterMembership.user_id.in_(user_ids))
         .all()
     )
-    resolved: dict[int, ChapterMemberResponse | UserSlimResponse] = {
-        m.user_id: ChapterMemberResponse.model_validate(m) for m in memberships
+    resolved: dict[int, PersonRefResponse] = {
+        m.user_id: PersonRefResponse(
+            user_id=m.user_id,
+            membership_id=m.id,
+            first_name=m.user.first_name,
+            last_name=m.user.last_name,
+            roles=[PersonRoleRead(label=m.role)],
+        )
+        for m in memberships
     }
     missing_ids = user_ids - resolved.keys()
     if missing_ids:
         users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
+        resolved.update({
+            u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
+            for u in users
+        })
     return resolved
 
 
-def _to_list_read(form: Form, creator: MembershipSlimResponse | ChapterMemberResponse | UserSlimResponse) -> FormListRead:
+def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
     return FormListRead(
         id=form.id,
         name=form.name,

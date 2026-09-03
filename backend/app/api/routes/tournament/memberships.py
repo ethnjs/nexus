@@ -15,7 +15,7 @@ from app.core.tournament.member_filters import (
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
     delete_tournament_form_responses, enrich_table_columns, gate_age_flags,
-    get_custom_form_answers, get_membership_by_user, resolve_memberships_or_users,
+    get_custom_form_answers, get_membership_by_user, resolve_person_refs,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -70,17 +70,16 @@ def _build_me_response(
 
 
 def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
-    """Overwrites each response's .join_code.creator with a properly
-    resolved MembershipSlimResponse|UserSlimResponse. Automatic
-    from_attributes validation would otherwise read JoinCode.creator (a
-    plain User relationship) and silently fall back to the bare-user branch
-    of the union every time, never surfacing the creator's actual
-    membership — same fix already applied to JoinCodeResponse.creator and
+    """Overwrites each response's .join_code.creator with a properly resolved
+    PersonRefResponse. Automatic from_attributes validation would otherwise
+    read JoinCode.creator (a plain User relationship), which knows nothing of
+    the creator's membership here and so would never carry their roles —
+    same fix already applied to JoinCodeResponse.creator and
     AuditLogEntry.actor."""
     creator_ids = {m.join_code.created_by for m in memberships if m.join_code is not None}
     if not creator_ids:
         return
-    creators = resolve_memberships_or_users(db, tournament_id, creator_ids)
+    creators = resolve_person_refs(db, tournament_id, creator_ids)
     for m, resp in zip(memberships, responses):
         if m.join_code is not None:
             resp.join_code.creator = creators[m.join_code.created_by]
@@ -367,6 +366,12 @@ def get_membership(
     resp.track_statuses = build_track_statuses(db, m)
     _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json"))
+    if not can_manage and data.get("join_code"):
+        # A self-viewer is entitled to know who invited them, not to a read of
+        # that person's standing in the tournament. Popped off the dict rather
+        # than set null, so "withheld" stays distinct from the null that means
+        # "holds no membership here" (see PersonRefResponse.roles).
+        data["join_code"]["creator"].pop("roles", None)
     data = apply_display_config(
         viewer_display_config(db, tournament_id, current_user.id), surface, data, tournament
     )

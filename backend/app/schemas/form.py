@@ -3,9 +3,7 @@ from datetime import datetime
 from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.schemas.user import UserSlimResponse
-from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.chapter.membership import ChapterMemberResponse
+from app.schemas.person import PersonRefResponse
 
 # ---------------------------------------------------------------------------
 # FormField.config schemas — one per question_type, shape enforced per
@@ -332,7 +330,7 @@ class FormListRead(BaseModel):
     # tournament/chapter, falling back to the bare user when they have none
     # (e.g. a site admin acting without ever joining) — same pattern as
     # JoinCodeResponse.creator.
-    creator: MembershipSlimResponse | ChapterMemberResponse | UserSlimResponse
+    creator: PersonRefResponse
     created_at: datetime
     updated_at: datetime
     response_count: int = 0

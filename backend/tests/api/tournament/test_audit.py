@@ -250,21 +250,43 @@ def test_list_audit_log_actor_resolves_to_membership(client, td_user, td_tournam
     login(client, "td@test.com", "tdpass")
 
     actor = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"]
-    assert actor["user"]["id"] == td_user.id
+    assert actor["user_id"] == td_user.id
+    assert actor["membership_id"] is not None
+    assert [r["label"] for r in actor["roles"]] == ["Tournament Director"]
+
+
+def test_list_audit_log_actor_carries_no_contact_details(client, td_user, td_tournament, db):
+    """A reference credits an action; it is not a directory entry. The whole
+    roster row used to ride along here — email, phone, age flags, lunch."""
+    _log(db, td_tournament.id, td_user.id)
+    login(client, "td@test.com", "tdpass")
+
+    actor = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"]
+    assert set(actor) == {"user_id", "membership_id", "first_name", "last_name", "roles"}
+
+
+def test_list_audit_log_actor_role_carries_no_permissions(client, td_user, td_tournament, db):
+    """PersonRoleRead, not RoleRead — rank and permissions are the
+    authorization model, not part of naming who acted."""
+    _log(db, td_tournament.id, td_user.id)
+    login(client, "td@test.com", "tdpass")
+
+    role = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"]["roles"][0]
+    assert set(role) == {"id", "label"}
 
 
 def test_list_audit_log_actor_falls_back_to_user_without_membership(
     client, td_user, td_tournament, admin_user, db
 ):
     """A site admin can act on a tournament without ever joining it — the log
-    still has to name them, so the actor degrades to the bare user."""
+    still has to name them, so roles come back null rather than empty."""
     _log(db, td_tournament.id, admin_user.id)
     login(client, "td@test.com", "tdpass")
 
     actor = client.get(f"/tournaments/{td_tournament.id}/audit-log/").json()["items"][0]["actor"]
-    assert "user" not in actor
-    assert actor["id"] == admin_user.id
-    assert actor["email"] == admin_user.email
+    assert actor["user_id"] == admin_user.id
+    assert actor["membership_id"] is None
+    assert actor["roles"] is None
 
 
 def test_list_audit_log_hydrates_role_target(client, td_user, td_tournament, db):
@@ -325,7 +347,7 @@ def test_list_audit_log_actors_counts_per_actor(client, td_user, td_tournament, 
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/audit-log/actors/").json()
 
-    counts = {row["actor"]["user"]["id"]: row["count"] for row in rows}
+    counts = {row["actor"]["user_id"]: row["count"] for row in rows}
     assert counts == {td_user.id: 1, other_user.id: 2}
 
 
@@ -337,7 +359,7 @@ def test_list_audit_log_actors_most_active_first(client, td_user, td_tournament,
 
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/audit-log/actors/").json()
-    assert [row["actor"]["user"]["id"] for row in rows] == [other_user.id, td_user.id]
+    assert [row["actor"]["user_id"] for row in rows] == [other_user.id, td_user.id]
 
 
 def test_list_audit_log_actors_excludes_other_tournaments(
@@ -348,7 +370,7 @@ def test_list_audit_log_actors_excludes_other_tournaments(
 
     login(client, "td@test.com", "tdpass")
     rows = client.get(f"/tournaments/{td_tournament.id}/audit-log/actors/").json()
-    assert [row["actor"]["user"]["id"] for row in rows] == [td_user.id]
+    assert [row["actor"]["user_id"] for row in rows] == [td_user.id]
 
 
 def test_list_audit_log_actors_empty(client, td_user, td_tournament):

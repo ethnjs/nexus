@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
-from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_memberships_or_users
+from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
 from app.core.tournament.onboarding import advance_onboarding_progress
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -71,7 +71,7 @@ def list_onboarding_forms(
         .order_by(TournamentForm.order)
         .all()
     )
-    creators = resolve_memberships_or_users(db, tournament_id, {r.form.created_by for r in rows})
+    creators = resolve_person_refs(db, tournament_id, {r.form.created_by for r in rows})
     return [_read(r, creators[r.form.created_by]) for r in rows]
 
 
@@ -130,7 +130,7 @@ def add_onboarding_form(
 
     db.commit()
     db.refresh(tf)
-    creators = resolve_memberships_or_users(db, tournament_id, {tf.form.created_by})
+    creators = resolve_person_refs(db, tournament_id, {tf.form.created_by})
     return _read(tf, creators[tf.form.created_by])
 
 
@@ -178,7 +178,7 @@ def reorder_onboarding_forms(
         rows_by_form_id[item.form_id].order = item.order
 
     db.commit()
-    creators = resolve_memberships_or_users(db, tournament_id, {r.form.created_by for r in rows})
+    creators = resolve_person_refs(db, tournament_id, {r.form.created_by for r in rows})
     ordered = sorted(rows_by_form_id.values(), key=lambda r: r.order)
     return [_read(r, creators[r.form.created_by]) for r in ordered]
 

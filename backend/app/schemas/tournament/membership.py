@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.tournament.role import RoleRead
 from app.schemas.tournament.track import MembershipTrackStatusRead
+from app.schemas.person import PersonRefResponse
 from app.schemas.user import UserFullResponse, UserSlimResponse
 
 
@@ -72,7 +73,7 @@ class MembershipJoinCodeInfo(BaseModel):
     # The creator's membership in this tournament — falls back to the bare
     # user when they have none. Resolved server-side, same pattern as
     # JoinCodeResponse.creator / AuditLogEntry.actor.
-    creator: "MembershipSlimResponse | UserSlimResponse"
+    creator: PersonRefResponse
 
     model_config = {"from_attributes": True}
 

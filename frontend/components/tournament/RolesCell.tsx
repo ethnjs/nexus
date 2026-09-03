@@ -1,7 +1,7 @@
 "use client";
 
 import { ApiError, MembershipSlim, membershipsApi, Role } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
+import { userName } from "@/lib/personDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
 import { ChipInput } from "@/components/ui/ChipInput";
@@ -40,7 +40,7 @@ export function RolesCell({
   const inert = locked || readOnly;
   const { show } = useToast();
   const { user: currentUser } = useAuth();
-  const memberName = personName(membership.user);
+  const memberName = userName(membership.user);
   const isSelf = currentUser?.id === membership.user.id;
 
   const heldIds = new Set(membership.roles.map((r) => r.id));

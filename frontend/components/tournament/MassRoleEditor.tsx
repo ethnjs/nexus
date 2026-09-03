@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { membershipsApi, ApiError, MembershipSlim, Role } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
+import { userName } from "@/lib/personDisplay";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
@@ -36,7 +36,7 @@ function ResultsCard({ results }: { results: MemberResult[] }) {
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {results.map((r) => (
           <p key={r.membership.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
-            <span style={{ fontWeight: 500 }}>{personName(r.membership)}</span>{" "}
+            <span style={{ fontWeight: 500 }}>{userName(r.membership.user)}</span>{" "}
             {r.error ? (
               <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
             ) : (

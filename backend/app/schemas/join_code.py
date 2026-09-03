@@ -3,9 +3,8 @@ from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, EmailStr
 
-from app.schemas.user import UserSlimResponse
+from app.schemas.person import PersonRefResponse
 from app.schemas.tournament import TournamentPublic
-from app.schemas.tournament.membership import MembershipSlimResponse
 
 
 class JoinCodeResponse(BaseModel):
@@ -18,7 +17,7 @@ class JoinCodeResponse(BaseModel):
     # The creator's membership row in this tournament — falls back to the
     # bare user when they have none (e.g. a site admin acting without ever
     # joining). created_by is always set; the membership isn't guaranteed.
-    creator: MembershipSlimResponse | UserSlimResponse
+    creator: PersonRefResponse
 
     model_config = {"from_attributes": True}
 

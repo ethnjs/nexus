@@ -2,9 +2,22 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
-from app.models.models import TournamentMembership, User
+from app.models.models import TournamentMembership, TournamentMembershipRole, User
+# Safe at module scope where the tournament schemas aren't: person.py sits at
+# the bottom of the import graph on purpose (see its docstring).
+from app.schemas.person import PersonRefResponse, PersonRoleRead
+
+if TYPE_CHECKING:
+    # Annotations only. Every one of these is imported for real inside the
+    # builder that uses it, because importing them here at runtime cycles:
+    # schemas/tournament/membership.py -> schemas/tournament/role.py ->
+    # core/tournament/permissions.py -> back to this module.
+    from app.schemas.tournament.membership import (
+        MembershipCustomAnswerRead, MembershipEventPreferenceRead, MembershipLunchRead,
+    )
+    from app.schemas.tournament.track import MembershipTrackStatusRead
 
 # A declined membership's row survives (2.4c is a soft decline), but it must
 # read as inactive everywhere a roster/count/access-check enumerates members.
@@ -26,12 +39,6 @@ def is_declined(membership: "TournamentMembership") -> bool:
     plain Python `==`, not SQL."""
     return membership.age_disclosure == "declined"
 
-if TYPE_CHECKING:
-    # Deferred to a lazy import inside resolve_memberships_or_users() below —
-    # schemas/tournament/membership.py -> schemas/tournament/role.py ->
-    # core/tournament/permissions.py -> back to this module at import time.
-    from app.schemas.tournament.membership import MembershipCustomAnswerRead, MembershipSlimResponse
-    from app.schemas.user import UserSlimResponse
 
 def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
     """
@@ -49,33 +56,50 @@ def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *optio
         query = query.options(*options)
     return query.first()
 
-def resolve_memberships_or_users(
+def resolve_person_refs(
     db: Session, tournament_id: int, user_ids: set[int],
-) -> dict[int, MembershipSlimResponse | UserSlimResponse]:
+) -> dict[int, PersonRefResponse]:
     """
-    Resolve a batch of user ids to their TournamentMembership in this
-    tournament, falling back to the bare User for ids with no membership row
-    (e.g. a site admin acting without ever joining). Shared by any response
-    that surfaces "who did this" — join-code creators, audit log actors.
-    """
-    from app.schemas.tournament.membership import MembershipSlimResponse
-    from app.schemas.user import UserSlimResponse
+    Resolve a batch of user ids to name-and-roles references, for any response
+    that surfaces "who did this" — join-code creators, audit log actors, form
+    authors.
 
+    Returns one shape, not a union. It used to hand back a whole
+    MembershipSlimResponse for anyone with a membership, which meant every
+    "invited by" line carried that person's email, phone, age flags, lunch
+    choices and custom form answers — and their age flags never passed
+    through gate_age_flags on the way. `roles=None` now carries the "no
+    membership in this tournament" fact the bare-user branch used to.
+    """
     memberships = (
         db.query(TournamentMembership)
+        .options(
+            selectinload(TournamentMembership.roles).selectinload(TournamentMembershipRole.role),
+            selectinload(TournamentMembership.user),
+        )
         .filter(
             TournamentMembership.tournament_id == tournament_id,
             TournamentMembership.user_id.in_(user_ids),
         )
         .all()
     )
-    resolved: dict[int, MembershipSlimResponse | UserSlimResponse] = {
-        m.user_id: MembershipSlimResponse.model_validate(m) for m in memberships
+    resolved: dict[int, PersonRefResponse] = {
+        m.user_id: PersonRefResponse(
+            user_id=m.user_id,
+            membership_id=m.id,
+            first_name=m.user.first_name,
+            last_name=m.user.last_name,
+            roles=[PersonRoleRead(id=mr.role.id, label=mr.role.label) for mr in m.roles],
+        )
+        for m in memberships
     }
     missing_ids = user_ids - resolved.keys()
     if missing_ids:
         users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
+        resolved.update({
+            u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
+            for u in users
+        })
     return resolved
 
 
