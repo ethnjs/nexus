@@ -57,7 +57,10 @@ def _build_me_response(
         roles=membership.roles, permissions=permissions,
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         needs_age_consent=needs_age_consent,
-        track_statuses=[MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses],
+        # build_track_statuses rather than the raw rows: it pads every live
+        # track the member has no row for as "pending", and those are exactly
+        # the tracks a self-service control needs to offer.
+        track_statuses=build_track_statuses(db, membership),
         event_preferences=build_event_preferences(db, membership),
         availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
         lunch=build_lunch(db, membership),

@@ -71,18 +71,24 @@ class MembershipTrackStatusRead(BaseModel):
     # Never accepted on a write; write-through only ever stores the three
     # real statuses (see TRACK_STATUSES).
     status: str
+    # Whether the member may confirm themselves on this track. Rides along
+    # because GET /tracks/ is manage_tournament-gated, so the member page has
+    # no other way to learn it — and without it, it can't tell whether to
+    # offer a Confirm control at all.
+    allow_confirm: bool = False
     # None on a "pending" entry: there's no row, so nothing has been updated.
     updated_at: datetime | None = None
 
     @classmethod
     def from_row(cls, row) -> "MembershipTrackStatusRead":
-        """Flattens the track relationship — `name`/`is_archived` live on
-        TournamentTrack, not on the status row itself, so from_attributes
-        alone can't build this."""
+        """Flattens the track relationship — `name`/`is_archived`/
+        `allow_confirm` live on TournamentTrack, not on the status row
+        itself, so from_attributes alone can't build this."""
         return cls(
             track_id=row.track_id,
             name=row.track.name,
             is_archived=row.track.is_archived,
             status=row.status,
+            allow_confirm=row.track.allow_confirm,
             updated_at=row.updated_at,
         )

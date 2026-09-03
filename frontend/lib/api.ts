@@ -627,6 +627,10 @@ export interface MembershipTrackStatus {
   // "pending" is read-only — a track the member has no row for at all. It is
   // never writable, hence TrackStatus (the write-side union) not carrying it.
   status:      TrackStatus | "pending"
+  // Whether the member may confirm themselves on this track. Carried here
+  // because GET /tracks/ is manage_tournament-gated, so a member page has no
+  // other way to learn it.
+  allow_confirm: boolean
   // Null on a pending entry: no row, so nothing has been updated.
   updated_at:  string | null
 }
@@ -1444,6 +1448,8 @@ export interface TournamentTrack {
   tournament_id: number
   name: string
   is_archived: boolean
+  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
+  allow_confirm: boolean
   created_at: string
   updated_at: string
 }

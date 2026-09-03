@@ -136,7 +136,7 @@ def test_member_reads_their_own_track_statuses(client, db, td_user, td_tournamen
     assert res.status_code == 200
     assert res.json()["track_statuses"] == [{
         "track_id": track["id"], "name": "Test Writing", "is_archived": False,
-        "status": "confirmed",
+        "status": "confirmed", "allow_confirm": False,
         "updated_at": res.json()["track_statuses"][0]["updated_at"],
     }]
 

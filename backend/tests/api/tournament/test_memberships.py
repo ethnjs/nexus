@@ -141,7 +141,8 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
     row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
     assert row["track_statuses"] == [{
         "track_id": track.id, "name": "Test Writing", "is_archived": False,
-        "status": "confirmed", "updated_at": row["track_statuses"][0]["updated_at"],
+        "status": "confirmed", "allow_confirm": False,
+        "updated_at": row["track_statuses"][0]["updated_at"],
     }]
 
 
@@ -1095,6 +1096,63 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     assert len(data["lunch"]) == 1
     assert data["lunch"][0]["value"] == "pizza"
     assert data["custom_responses"] == []
+
+
+def test_get_my_membership_track_statuses_include_pending(client, td_user, td_tournament, db):
+    """A track the member has never answered comes back as "pending" — those
+    are exactly the ones a self-service control has to offer."""
+    track = _make_track(db, td_tournament.id, "Test Writing", allow_confirm=True)
+    login(client, "td@test.com", "tdpass")
+    statuses = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()["track_statuses"]
+    entry = next(t for t in statuses if t["track_id"] == track.id)
+    assert entry["status"] == "pending"
+    assert entry["allow_confirm"] is True
+
+
+def test_track_statuses_carry_allow_confirm(client, td_user, td_tournament, db):
+    """The member page can't read GET /tracks/, so the flag rides on the
+    status itself — without it there's no way to know whether to offer a
+    Confirm control."""
+    from app.models.models import TournamentMembershipTrackStatus
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    track = _make_track(db, td_tournament.id, "Test Writing", allow_confirm=True)
+    db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/").json()
+    entry = next(t for t in data["track_statuses"] if t["track_id"] == track.id)
+    assert entry["allow_confirm"] is True
+
+
+def test_build_lunch_prefers_the_live_field_over_an_archived_one(client, td_user, td_tournament, db):
+    """An archived field doesn't reserve its key, so a live and an archived
+    lunch question can share one — question_type decides free-text vs badge
+    rendering, so the live one has to win rather than whichever came back
+    first."""
+    from app.models.models import TournamentMembershipLunch
+
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u["id"])
+    form = _make_form(db, td_user, td_tournament.id)
+    _make_field(
+        db, form, order=1, field_key="lunch_20260521_entree",
+        question_type="short_text", is_archived=True,
+    )
+    _make_field(
+        db, form, order=2, field_key="lunch_20260521_entree",
+        question_type="single_select_radio",
+    )
+    db.add(TournamentMembershipLunch(
+        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+    ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/").json()
+    assert data["lunch"][0]["question_type"] == "single_select_radio"
 
 
 def test_get_my_membership_needs_age_consent_when_collected_and_unanswered(client, td_tournament, other_user, db):

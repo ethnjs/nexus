@@ -316,7 +316,8 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
     def field_key_for(row) -> str:
         return f"lunch_{row.date.strftime('%Y%m%d')}_{row.category}"
 
-    type_by_key = dict(
+    type_by_key: dict[str, str] = {}
+    for field_key, question_type in (
         db.query(FormField.field_key, FormField.question_type)
         .join(Form, FormField.form_id == Form.id)
         .filter(
@@ -324,7 +325,14 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
             Form.tournament_id == membership.tournament_id,
             FormField.field_key.in_({field_key_for(row) for row in rows}),
         )
-    )
+        # Live fields first, then setdefault, so a live question wins over an
+        # archived one sharing its key — an archived field doesn't reserve its
+        # key, so both can exist at once, and question_type decides whether a
+        # row renders as free text or a badge. Same idiom as
+        # build_event_preferences.
+        .order_by(FormField.is_archived, FormField.id)
+    ):
+        type_by_key.setdefault(field_key, question_type)
 
     return [
         MembershipLunchRead(
@@ -376,6 +384,7 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
             name=track.name,
             is_archived=track.is_archived,
             status=PENDING_TRACK_STATUS,
+            allow_confirm=track.allow_confirm,
         )
         for track in live_tracks
         if track.id not in existing
