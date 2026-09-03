@@ -75,6 +75,24 @@ function applyBranchValue(option: EditableOption, value: string): EditableOption
 // Width every number bullet reserves, whatever number it shows.
 const NUMBER_BULLET_WIDTH = 24
 
+// The bullet's own size, and the row's flex gap before the Input — together
+// they say how far the `extra` block below has to be indented to line up with
+// the Input rather than with the bullet.
+const BULLET_SIZE = 18
+const BULLET_GAP = 8
+// How much wider the buttons-style pill swatch is than a radio/checkbox at
+// the same size — shared so the swatch and the indent below can't drift.
+const BUTTONS_BULLET_EXTRA = 6
+
+// The buttons swatch is a pill, not a circle/box, so it's wider than the
+// other bullets at the same size — hardcoding 18 here is what left the chips
+// short of the Input's left edge in that style.
+function bulletWidth(type: BulletType, displayStyle?: 'list' | 'buttons'): number {
+  if (type === 'none') return 0
+  if (type === 'number') return NUMBER_BULLET_WIDTH
+  return displayStyle === 'buttons' ? BULLET_SIZE + BUTTONS_BULLET_EXTRA : BULLET_SIZE
+}
+
 // The "this is what a respondent sees" bullet — purely decorative, so
 // pointerEvents: none keeps the row's own cursor (not RadioCircle/
 // Checkbox's disabled/locked "not-allowed") when hovering over it. In
@@ -105,7 +123,7 @@ function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: 
     return (
       <span style={{
         pointerEvents: 'none', display: 'block', flexShrink: 0,
-        width: `${size + 6}px`, height: `${size}px`,
+        width: `${size + BUTTONS_BULLET_EXTRA}px`, height: `${size}px`,
         border: '1px solid var(--color-border-strong)',
         borderRadius: 'var(--radius-md)',
         background: 'var(--color-surface)',
@@ -484,7 +502,7 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
         {/* 9px = (36px Input height - 18px bullet size) / 2 — centers the
             bullet against the Input's own box, same reasoning as the grip above. */}
         <div style={{ marginTop: '9px' }}>
-          <Bullet type={bulletType} size={18} number={number} displayStyle={displayStyle} />
+          <Bullet type={bulletType} size={BULLET_SIZE} number={number} displayStyle={displayStyle} />
         </div>
         <Input
           ref={inputRef}
@@ -518,7 +536,7 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           the row above spends before reaching the Input). No offset when
           there's no bullet to line up past. */}
       {extra && (
-        <div style={{ marginLeft: bulletType === 'none' ? 0 : `${(bulletType === 'number' ? NUMBER_BULLET_WIDTH : 18) + 8}px` }}>
+        <div style={{ marginLeft: bulletType === 'none' ? 0 : `${bulletWidth(bulletType, displayStyle) + BULLET_GAP}px` }}>
           {extra}
         </div>
       )}
