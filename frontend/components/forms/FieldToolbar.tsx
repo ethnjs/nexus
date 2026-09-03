@@ -8,7 +8,7 @@ import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { EditableField } from "@/lib/forms/editableField";
 import { EditableOption } from "@/components/forms/OptionsEditor";
-import { activePresetKind, isEntityBackedPreset } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, allowsCustomValues } from "@/lib/forms/fieldKeyPresets";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 type ActivePopover = "key" | "preset" | null;
@@ -133,7 +133,7 @@ export function FieldToolbar({
             <IconBranch size={14} />
           </Button>
         )}
-        {OPTION_BEARING_TYPES.includes(field.question_type) && !isEntityBackedPreset(activePresetKind(field.field_key)) && (
+        {OPTION_BEARING_TYPES.includes(field.question_type) && allowsCustomValues(activePresetKind(field.field_key)) && (
           <Button
             type="button" variant={field.customValuesEnabled ? "primary" : "secondary"} size="sm" iconOnly
             title={field.customValuesEnabled ? "Hide custom values" : "Set custom values"}

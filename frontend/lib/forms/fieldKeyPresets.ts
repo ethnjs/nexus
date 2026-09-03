@@ -20,6 +20,14 @@ export function isEntityBackedPreset(kind: PresetKind | null): kind is "availabi
   return kind === "availability" || kind === "event_preference";
 }
 
+// Whether a per-option `value` distinct from its label is even meaningful.
+// It only is when the value is freeform text the TD types: the entity-backed
+// presets carry id arrays and track_status carries assignment lists, and a
+// custom-values row would be editing a shape it can't represent.
+export function allowsCustomValues(kind: PresetKind | null): boolean {
+  return !isEntityBackedPreset(kind) && kind !== "track_status";
+}
+
 interface PresetMeta {
   kind: PresetKind;
   label: string;
