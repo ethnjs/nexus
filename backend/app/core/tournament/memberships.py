@@ -65,7 +65,7 @@ def resolve_person_refs(
     authors.
 
     Returns one shape, not a union. It used to hand back a whole
-    MembershipSlimResponse for anyone with a membership, which meant every
+    the whole roster for anyone with a membership, which meant every
     "invited by" line carried that person's email, phone, age flags, lunch
     choices and custom form answers — and their age flags never passed
     through gate_age_flags on the way. `roles=None` now carries the "no
@@ -417,8 +417,8 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
 
 
 def enrich_table_columns(db: Session, tournament, config: dict | None, memberships: list, responses: list) -> None:
-    """Fills in the optional MembershipSlimResponse fields the members table's
-    saved column config asks for, and only those.
+    """Fills in the roster fields the members table's saved column config
+    asks for, and only those.
 
     A roster is every member in the tournament, so this is the difference
     between one extra query and none at all — not between one and N. Each kind
@@ -428,7 +428,7 @@ def enrich_table_columns(db: Session, tournament, config: dict | None, membershi
     Mutates `responses` in place, positionally paired with `memberships`."""
     from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import (
-        AVAILABILITY_DAY_NAMESPACE, COLUMN_AGE, COLUMN_SHIRT_SIZE, DEFAULT_COLUMNS,
+        AVAILABILITY_DAY_NAMESPACE, COLUMN_AGE, DEFAULT_COLUMNS,
         FORM_FIELD_NAMESPACE, LUNCH_CATEGORY_NAMESPACE, MEMBERS_TABLE,
     )
     from app.models.models import (
@@ -443,7 +443,6 @@ def enrich_table_columns(db: Session, tournament, config: dict | None, membershi
         return
 
     wants_age = COLUMN_AGE in columns
-    wants_shirt = COLUMN_SHIRT_SIZE in columns
     wants_availability = any(c.startswith(AVAILABILITY_DAY_NAMESPACE) for c in columns)
     wants_lunch = any(c.startswith(LUNCH_CATEGORY_NAMESPACE) for c in columns)
     wants_custom = any(c.startswith(FORM_FIELD_NAMESPACE) for c in columns)
@@ -451,14 +450,15 @@ def enrich_table_columns(db: Session, tournament, config: dict | None, membershi
     membership_ids = [m.id for m in memberships]
 
     if wants_availability:
-        from app.schemas.tournament.membership import MembershipTableShiftRead
+        from app.schemas.tournament.membership import MembershipAvailabilityRead
 
         # The shift's start is an instant; column keys are tournament-local
         # days — same conversion build_catalog used to name them.
         rows = (
             db.query(
                 TournamentMembershipAvailability.membership_id,
-                TournamentShift.id, TournamentShift.label, TournamentShift.start,
+                TournamentShift.id, TournamentShift.label,
+                TournamentShift.start, TournamentShift.end,
             )
             .join(TournamentShift, TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id)
             .filter(TournamentMembershipAvailability.membership_id.in_(membership_ids))
@@ -466,11 +466,13 @@ def enrich_table_columns(db: Session, tournament, config: dict | None, membershi
             .all()
         )
         shifts_by_membership: dict[int, list] = {}
-        for membership_id, shift_id, label, start in rows:
+        for membership_id, shift_id, label, start, end in rows:
             shifts_by_membership.setdefault(membership_id, []).append(
-                MembershipTableShiftRead(
+                MembershipAvailabilityRead(
                     shift_id=shift_id,
                     label=label,
+                    start=start,
+                    end=end,
                     day=tournament_local_date(tournament, start).isoformat(),
                 )
             )
@@ -485,10 +487,8 @@ def enrich_table_columns(db: Session, tournament, config: dict | None, membershi
         if wants_age:
             response.is_over_18 = membership.is_over_18
             response.is_over_21 = membership.is_over_21
-        if wants_shirt:
-            response.shirt_size = membership.user.shirt_size
         if wants_availability:
-            response.availability_shifts = shifts_by_membership.get(membership.id, [])
+            response.availability = shifts_by_membership.get(membership.id, [])
         if wants_lunch:
             response.lunch = build_lunch_rows(lunch_by_membership.get(membership.id, []))
         if wants_custom:

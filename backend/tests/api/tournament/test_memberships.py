@@ -111,8 +111,11 @@ def test_list_memberships(client, td_user, td_tournament, db):
     assert len(response.json()) >= 2
 
 
-def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
-    """Roster view — slim user identity + roles, no onboarding/logistics fields."""
+def test_list_memberships_roster_shape(client, td_user, td_tournament, db):
+    """Roster and detail are one schema now. The route is manage_members-only,
+    so the staff-side fields are part of the row rather than a reason for a
+    second, narrower response class — what a caller does not want, it leaves
+    out of `fields`."""
     u = _make_user(db, "alice@example.com")
     _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
     login(client, "td@test.com", "tdpass")
@@ -121,7 +124,7 @@ def test_list_memberships_slim_shape(client, td_user, td_tournament, db):
     row = next(m for m in response.json() if m["user"]["id"] == u["id"])
     assert row["user"]["email"] == u["email"]
     assert row["roles"] == []
-    assert "notes" not in row
+    assert row["notes"] == "Allergic to nuts"
 
 
 def test_list_memberships_includes_track_statuses(client, td_user, td_tournament, db):
@@ -230,8 +233,11 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
-    assert row["availability_shifts"] == [
-        {"shift_id": shift.id, "label": "Morning", "day": "2026-03-01"},
+    assert row["availability"] == [
+        {
+            "shift_id": shift.id, "label": "Morning", "day": "2026-03-01",
+            "start": "2026-03-01T15:00:00Z", "end": "2026-03-01T19:00:00Z",
+        },
     ]
 
 
@@ -1287,66 +1293,6 @@ def test_get_my_membership_still_reachable_when_declined(client, td_tournament, 
 def test_get_my_membership_not_found_tournament(client, td_user):
     login(client, "td@test.com", "tdpass")
     assert client.get("/tournaments/9999/memberships/me/").status_code == 404
-
-
-# ---------------------------------------------------------------------------
-# Self-service update — PATCH .../me/
-# ---------------------------------------------------------------------------
-
-def test_update_my_membership_ignores_all_fields(client, td_tournament, db):
-    """MembershipMeUpdate has no fields left — onboarding data (role/event
-    preference, availability, lunch) now comes through the native form
-    response flow, not this endpoint. Sending any of it is a no-op, not an
-    error."""
-    u = _make_user(db, "volunteer@example.com")
-    from app.core.auth import hash_password
-    from app.models.models import User as UserModel
-    user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-    user.hashed_password = hash_password("volpass")
-    db.commit()
-    _make_membership(db, td_tournament.id, u["id"])
-
-    login(client, "volunteer@example.com", "volpass")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={"notes": "should not be saved", "status": "confirmed", "lunch_order": "Veggie Wrap"},
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["notes"] is None
-
-
-def test_update_my_membership_not_found(client, td_tournament, td_user):
-    """td_user has no membership in a tournament they didn't join — 404, not 403."""
-    login(client, "td@test.com", "tdpass")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id + 9999}/memberships/me/",
-        json={},
-    )
-    assert response.status_code == 404
-
-
-def test_update_my_membership_only_affects_own_membership(client, td_tournament, db):
-    """Two volunteers in the same tournament — one's self-update can't touch the other's row."""
-    from app.core.auth import hash_password
-    from app.models.models import User as UserModel
-
-    u1 = _make_user(db, "vol-a@example.com")
-    u2 = _make_user(db, "vol-b@example.com")
-    for u, pw in [(u1, "volpassA"), (u2, "volpassB")]:
-        user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
-        user.hashed_password = hash_password(pw)
-    db.commit()
-    m1 = _make_membership(db, td_tournament.id, u1["id"])
-    _make_membership(db, td_tournament.id, u2["id"])
-
-    login(client, "vol-a@example.com", "volpassA")
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/me/",
-        json={},
-    )
-    assert response.status_code == 200
-    assert response.json()["id"] == m1.id
 
 
 # ---------------------------------------------------------------------------

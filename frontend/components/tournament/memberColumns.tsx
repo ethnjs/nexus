@@ -146,7 +146,7 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
     case "shirt_size":
       return {
         key, label: "Shirt", width: WIDTHS.shirtSize,
-        render: (m) => <span style={TEXT_CELL}>{m.shirt_size ?? "—"}</span>,
+        render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
       };
     default:
       return null;
@@ -190,7 +190,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
         // that's an instant, and the viewer's timezone need not be the
         // tournament's, so deriving the day here could put a shift in the
         // wrong column.
-        const shifts = (m.availability_shifts ?? []).filter((shift) => shift.day === day);
+        const shifts = (m.availability ?? []).filter((shift) => shift.day === day);
         if (shifts.length === 0) return <Dash />;
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", minWidth: 0, justifyContent: "center" }}>

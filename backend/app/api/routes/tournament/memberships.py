@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, noload, selectinload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
@@ -36,7 +36,7 @@ from app.models.models import (
 from app.schemas.tournament.membership import (
     AgeDisclosureRequest, MembershipAvailabilityRead, MembershipAvailabilityUpdate,
     MembershipCoordinatorUpdate, MembershipFullResponse, MembershipMeResponse,
-    MembershipMeUpdate, MembershipSlimResponse, MembershipTrackStatusUpdate,
+    MembershipTrackStatusUpdate,
 )
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
@@ -62,7 +62,10 @@ def _build_me_response(
         # the tracks a self-service control needs to offer.
         track_statuses=build_track_statuses(db, membership),
         event_preferences=build_event_preferences(db, membership),
-        availability=[MembershipAvailabilityRead.from_row(row) for row in membership.availability_shifts],
+        availability=[
+            MembershipAvailabilityRead.from_row(row, tournament)
+            for row in membership.availability_shifts
+        ],
         lunch=build_lunch(db, membership),
         custom_responses=get_custom_form_answers(db, tournament.id, current_user.id),
     )
@@ -98,7 +101,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tou
 # custom answers). Omitted means no filtering and no enrichment, so a caller
 # with no opinion gets the plain roster, same as the detail route's param.
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[MembershipSlimResponse])
+@router.get("/", response_model=list[MembershipFullResponse])
 def list_memberships(
     tournament_id: int,
     include_declined: bool = Query(False),
@@ -128,6 +131,20 @@ def list_memberships(
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
             joinedload(TournamentMembership.join_code),
             joinedload(TournamentMembership.track_statuses),
+            joinedload(TournamentMembership.user).selectinload(User.competition_experience),
+            joinedload(TournamentMembership.user).selectinload(User.volunteer_experience),
+            joinedload(TournamentMembership.user).joinedload(User.university),
+            # noload, not selectinload: a roster is every member, so the
+            # onboarding answers are opt-in per column (enrich_table_columns)
+            # rather than free with the row. Validation would otherwise read
+            # them straight off these relationships — one lazy query per row
+            # for data no column asked for. noload hands validation an empty
+            # collection and never goes to the database at all; enrichment
+            # then fills in exactly what the saved column config wants,
+            # roster-wide in one query each.
+            noload(TournamentMembership.availability_shifts),
+            noload(TournamentMembership.lunch_selections),
+            noload(TournamentMembership.event_preferences),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
@@ -143,7 +160,7 @@ def list_memberships(
     memberships = query.order_by(TournamentMembership.id).all()
     # Age flags are derived, not stored, so they can't be part of the query.
     memberships = filter_age_flags(memberships, age)
-    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    responses = [MembershipFullResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
     # The viewer's own config decides both which optional columns to load and
     # what to drop from each row — see viewer_display_config.
@@ -193,7 +210,7 @@ def get_member_filter_options(
 # Tournaments are small enough (rarely 150+ members) to return the full
 # filtered list rather than paginating.
 # ---------------------------------------------------------------------------
-@router.get("/search/", response_model=list[MembershipSlimResponse])
+@router.get("/search/", response_model=list[MembershipFullResponse])
 def search_memberships(
     tournament_id: int,
     q: str | None = Query(default=None),
@@ -245,11 +262,26 @@ def search_memberships(
             joinedload(TournamentMembership.user),
             joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
             joinedload(TournamentMembership.join_code),
+            joinedload(TournamentMembership.track_statuses),
+            joinedload(TournamentMembership.user).selectinload(User.competition_experience),
+            joinedload(TournamentMembership.user).selectinload(User.volunteer_experience),
+            joinedload(TournamentMembership.user).joinedload(User.university),
+            # noload, not selectinload: a roster is every member, so the
+            # onboarding answers are opt-in per column (enrich_table_columns)
+            # rather than free with the row. Validation would otherwise read
+            # them straight off these relationships — one lazy query per row
+            # for data no column asked for. noload hands validation an empty
+            # collection and never goes to the database at all; enrichment
+            # then fills in exactly what the saved column config wants,
+            # roster-wide in one query each.
+            noload(TournamentMembership.availability_shifts),
+            noload(TournamentMembership.lunch_selections),
+            noload(TournamentMembership.event_preferences),
         )
         .order_by(TournamentMembership.id)
         .all()
     )
-    responses = [MembershipSlimResponse.model_validate(m) for m in memberships]
+    responses = [MembershipFullResponse.model_validate(m) for m in memberships]
     _resolve_join_code_creators(db, tournament_id, memberships, responses)
     return responses
 
@@ -379,43 +411,9 @@ def get_membership(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/me/ — self-service
-# Lets a volunteer update their own onboarding responses. Cannot touch
-# day-of logistics (notes) — that's manage_members-only.
-# ---------------------------------------------------------------------------
-@router.patch("/me/", response_model=MembershipFullResponse)
-def update_my_membership(
-    tournament_id: int,
-    payload: MembershipMeUpdate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
-
-    m = get_membership_by_user(db, tournament_id, current_user.id)
-    if not m:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")
-
-    update_data = payload.model_dump(exclude_none=True)
-
-    for field, value in update_data.items():
-        setattr(m, field, value)
-
-    db.commit()
-    db.refresh(m)
-    resp = MembershipFullResponse.model_validate(m)
-    resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
-    resp.event_preferences = build_event_preferences(db, m)
-    resp.lunch = build_lunch(db, m)
-    resp.track_statuses = build_track_statuses(db, m)
-    return JSONResponse(gate_age_flags(m, resp.model_dump(mode="json")))
-
-
-# ---------------------------------------------------------------------------
 # PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
-# Staff override — day-of logistics only (notes). Not onboarding
-# data; that's self-service via PATCH .../me/.
+# Staff override — day-of logistics only (notes). Onboarding data has no
+# write path here at all: it comes through the form write-through flow.
 # ---------------------------------------------------------------------------
 @router.patch("/{membership_id}/", response_model=MembershipFullResponse)
 def update_membership(
@@ -536,7 +534,7 @@ def update_my_track_status(
     if payload.status == "confirmed" and not track.allow_confirm:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="This track's confirmations are handled by the tournament staff",
+            detail="This track's confirmation is not open yet",
         )
     if payload.status == "interested" and track.allow_confirm:
         raise HTTPException(

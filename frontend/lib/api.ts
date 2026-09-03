@@ -664,6 +664,12 @@ export interface MembershipAvailability {
   label:    string
   start:    string
   end:      string
+  // The tournament-local calendar date the shift falls on, resolved
+  // server-side. Never derive this from `start` here: that's an instant and
+  // the viewer's timezone need not match the tournament's, so a local
+  // conversion drifts a day near midnight. The members table's
+  // availability_day: columns key off exactly this.
+  day:      string
 }
 
 // Matches MembershipLunchRead
@@ -794,14 +800,13 @@ export interface MembershipSlim {
   // column nobody turned on is never loaded.
   is_over_18?:       boolean | null
   is_over_21?:       boolean | null
-  shirt_size?:       string | null
   // Each shift tagged with the tournament-local day its column keys by —
   // resolved server-side, since a shift's start is an instant and the
   // viewer's timezone need not match the tournament's.
-  availability_shifts?: { shift_id: number; label: string; day: string }[]
+  availability?:     MembershipAvailability[]
   lunch?:            MembershipLunch[]
   custom_responses?: MembershipCustomAnswer[]
-  user:       UserSlim
+  user:       UserFull
 }
 
 // Matches MembershipFullResponse — the expanded side panel for a single member.

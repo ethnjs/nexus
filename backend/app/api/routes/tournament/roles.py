@@ -23,7 +23,7 @@ from app.models.models import TournamentMembership, TournamentMembershipRole, To
 from app.schemas.tournament.role import (
     RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
 )
-from app.schemas.tournament.membership import MembershipSlimResponse
+from app.schemas.tournament.membership import MembershipFullResponse
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -334,7 +334,7 @@ membership_roles_router = APIRouter(
 # Rank-bound validation still runs against every role_id in the request,
 # add or remove, whether or not it ends up being a no-op.
 # ---------------------------------------------------------------------------
-@membership_roles_router.patch("/", response_model=MembershipSlimResponse)
+@membership_roles_router.patch("/", response_model=MembershipFullResponse)
 def update_membership_roles(
     tournament_id: int,
     membership_id: int,
@@ -375,4 +375,4 @@ def update_membership_roles(
 
     db.commit()
     db.refresh(m)
-    return MembershipSlimResponse.model_validate(m)
+    return MembershipFullResponse.model_validate(m)
