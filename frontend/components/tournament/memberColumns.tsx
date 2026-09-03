@@ -139,6 +139,7 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
             isOver21={m.is_over_21}
             collectIsOver18={collectIsOver18}
             collectIsOver21={collectIsOver21}
+            compact
           />
         ),
       };

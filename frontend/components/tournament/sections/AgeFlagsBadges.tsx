@@ -19,12 +19,18 @@ interface AgeFlagsBadgesProps {
   // worth surfacing.
   collectIsOver18: boolean;
   collectIsOver21: boolean;
+  /** Table-cell form: the unknown badge drops its "Unknown" text and says it with the grey variant alone. */
+  compact?: boolean;
 }
 
-function AgeBadge({ value, label }: { value: boolean | null | undefined; label: "18+" | "21+" }) {
+function AgeBadge({ value, label, compact }: { value: boolean | null | undefined; label: "18+" | "21+"; compact?: boolean }) {
+  // Compact drops the word "Unknown" and leans on the grey variant to say the
+  // same thing — a table cell has no room for it, and the badge is already
+  // colour-coded three ways.
+  const unknown = compact ? label : `${label} Unknown`;
   return (
-    <Badge variant={value == null ? "default" : value ? "confirmed" : "declined"}>
-      {value == null ? `${label} Unknown` : value ? label : `Under ${label.replace("+", "")}`}
+    <Badge variant={value == null ? "default" : value ? "confirmed" : "declined"} title={value == null ? `${label} unknown` : undefined}>
+      {value == null ? unknown : value ? label : `Under ${label.replace("+", "")}`}
     </Badge>
   );
 }
@@ -32,15 +38,15 @@ function AgeBadge({ value, label }: { value: boolean | null | undefined; label: 
 // Content only, no PanelField wrapper — callers decide the label/layout
 // around it (MemberPanel embeds this inside its "Membership" card's grid;
 // the profile page may want its own placement).
-export function AgeFlagsBadges({ isOver18, isOver21, collectIsOver18, collectIsOver21 }: AgeFlagsBadgesProps) {
+export function AgeFlagsBadges({ isOver18, isOver21, collectIsOver18, collectIsOver21, compact }: AgeFlagsBadgesProps) {
   if (!collectIsOver18 && !collectIsOver21) {
     return <FieldValue muted>Unknown</FieldValue>;
   }
 
   return (
     <div style={{ display: "flex", gap: "6px" }}>
-      {collectIsOver18 && <AgeBadge value={isOver18} label="18+" />}
-      {collectIsOver21 && <AgeBadge value={isOver21} label="21+" />}
+      {collectIsOver18 && <AgeBadge value={isOver18} label="18+" compact={compact} />}
+      {collectIsOver21 && <AgeBadge value={isOver21} label="21+" compact={compact} />}
     </div>
   );
 }
