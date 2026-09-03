@@ -43,10 +43,10 @@ def get_role_id(db, tournament_id: int, label: str) -> int:
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/roles/ — any member can read
+# GET /tournaments/{tournament_id}/roles/ — manage_members or manage_roles
 # ---------------------------------------------------------------------------
 
-def test_list_roles_member_can_access(client, td_user, td_tournament):
+def test_list_roles_manage_members_can_access(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/roles/")
     assert response.status_code == 200
@@ -54,8 +54,29 @@ def test_list_roles_member_can_access(client, td_user, td_tournament):
     assert "Tournament Director" in labels
 
 
-def test_list_roles_volunteer_member_can_access(client, td_user, other_tournament, db):
+def test_list_roles_plain_member_forbidden(client, td_user, other_tournament, db):
+    """The catalog carries every role's rank, permissions and member count —
+    org structure a volunteer has no reason to enumerate. Their own roles
+    already ride on their membership."""
     grant_role(db, other_tournament, td_user, "Volunteer")
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{other_tournament.id}/roles/").status_code == 403
+
+
+def test_list_roles_manage_roles_can_access(client, td_user, other_tournament, db):
+    """manage_roles defines roles and manage_members assigns them; neither
+    implies the other, so the settings page's permission reads it too."""
+    from app.core.tournament.permissions import MANAGE_ROLES
+    from app.models.models import TournamentRole
+
+    # No default role holds manage_roles without manage_members, and it's the
+    # split that matters here.
+    db.add(TournamentRole(
+        tournament_id=other_tournament.id, label="Role Admin", rank=50,
+        permissions=[MANAGE_ROLES],
+    ))
+    db.commit()
+    grant_role(db, other_tournament, td_user, "Role Admin")
     login(client, "td@test.com", "tdpass")
     assert client.get(f"/tournaments/{other_tournament.id}/roles/").status_code == 200
 

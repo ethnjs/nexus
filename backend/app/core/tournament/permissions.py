@@ -300,3 +300,29 @@ def require_permission(
             )
         return current_user
     return _dependency
+
+
+def require_any_permission(*permissions: str):
+    """Same as require_permission, but any one of `permissions` will do.
+
+    For a resource two jobs legitimately need from different directions —
+    the role catalog is read both to assign roles (manage_members) and to
+    define them (manage_roles), and neither implies the other.
+    """
+    def _dependency(
+        tournament_id: int,
+        current_user: "User" = Depends(get_current_user),
+        db: Session = Depends(get_db),
+    ) -> "User":
+        if not has_any_membership(current_user, tournament_id, db):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Tournament not found",
+            )
+        if not any(has_permission(current_user, tournament_id, p, db) for p in permissions):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return current_user
+    return _dependency
