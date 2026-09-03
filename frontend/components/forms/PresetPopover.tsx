@@ -276,7 +276,7 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
     setSuffix(value);
     onFieldChange({ field_key: buildTrackStatusFieldKey(value) });
   }
-  return <Input label="Suffix" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Suffix is required." : undefined} />;
+  return <Input label="Key" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
 }
 
 function DayPicker({ label, date, tournamentDates, onChange, error }: {
@@ -344,7 +344,7 @@ function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors 
         error={showErrors && !parsed.date ? "Date is required." : undefined}
       />
       <Input
-        label="Suffix (optional)"
+        label="Key (optional)"
         placeholder="e.g. confirmation"
         value={suffix}
         onChange={(e) => setSuffix(e.target.value)}
@@ -374,13 +374,13 @@ function EventPreferenceParams({ field, onFieldChange, showErrors }: {
 
   return (
     <Input
-      label="Suffix"
+      label="Key"
       placeholder="e.g. morning session"
       value={suffix}
       onChange={(e) => handleChange(e.target.value)}
       size="sm"
       fullWidth
-      error={showErrors && !parsedSuffix ? "Suffix is required." : undefined}
+      error={showErrors && !parsedSuffix ? "Key is required." : undefined}
     />
   );
 }

@@ -160,9 +160,9 @@ const PRESET_INCOMPLETE_PREFIX = "This question's preset is incomplete";
 // field card.
 const PRESET_INCOMPLETE_REQUIREMENT: Record<PresetKind, string> = {
   availability: "pick a date",
-  event_preference: "enter a suffix",
+  event_preference: "enter a key",
   lunch: "pick a date and category",
-  track_status: "enter a suffix",
+  track_status: "enter a key",
 };
 
 export function presetIncompleteMessage(kind: PresetKind): string {
