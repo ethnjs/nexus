@@ -897,16 +897,28 @@ export const membershipsApi = {
   // surface plus eight repeatable filter params, and `list(id, false, undefined,
   // ...)` at the call site says nothing about what's being asked for.
   //
-  // `surface` both filters hidden items and decides which optional column data
-  // the rows carry (see enrich_table_columns). `filters` maps a param name to
-  // the values to include — omitted or empty means that filter doesn't apply.
+  // `surface` filters hidden items and, when `fields` is not given, decides
+  // which field groups the rows carry (see fields_for_surface). `filters`
+  // maps a param name to the values to include — omitted or empty means that
+  // filter doesn't apply.
   list: (tournamentId: number, opts: {
     includeDeclined?: boolean;
     surface?: string;
     filters?: Record<string, string[]>;
+    // Identity/authority narrowing — what the role pickers ask for. A picker
+    // is this roster with a name search and a role bound on it, which is why
+    // there is no separate search endpoint any more.
+    q?: string;
+    roleId?: number;
+    excludeRoleId?: number;
+    maxRank?: number;
   } = {}) => {
     const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
     if (opts.surface) params.set("surface", opts.surface);
+    if (opts.q) params.set("q", opts.q);
+    if (opts.roleId !== undefined) params.set("role_id", String(opts.roleId));
+    if (opts.excludeRoleId !== undefined) params.set("exclude_role_id", String(opts.excludeRoleId));
+    if (opts.maxRank !== undefined) params.set("max_rank", String(opts.maxRank));
     for (const [key, values] of Object.entries(opts.filters ?? {})) {
       // Repeated rather than comma-joined: a lunch value can legitimately
       // contain a comma ("Rice, beans").
@@ -939,19 +951,6 @@ export const membershipsApi = {
     api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
   updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
     api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
-  // role_id narrows to members holding that role; exclude_role_id drops
-  // members who already hold it — independent filters, combinable with q.
-  // max_rank drops members whose highest-authority role ties or outranks
-  // that rank (lower rank number = more authority) — callers pass their own
-  // rank so a search never surfaces someone they couldn't actually assign.
-  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number; max_rank?: number }) => {
-    const qs = new URLSearchParams();
-    if (params.q) qs.set('q', params.q)
-    if (params.role_id !== undefined) qs.set('role_id', String(params.role_id))
-    if (params.exclude_role_id !== undefined) qs.set('exclude_role_id', String(params.exclude_role_id))
-    if (params.max_rank !== undefined) qs.set('max_rank', String(params.max_rank))
-    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/search/?${qs.toString()}`)
-  },
 }
 
 // -------------------------------------------------------------------------

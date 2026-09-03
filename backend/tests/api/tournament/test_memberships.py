@@ -648,7 +648,7 @@ def test_search_memberships_excludes_declined(client, td_user, td_tournament, ot
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/search/").json()]
+    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()]
     assert membership.id not in ids
 
 
@@ -666,10 +666,51 @@ def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=
-# manage_members. Registered before /{membership_id}/ so it must not be
-# swallowed by that route.
+# GET /tournaments/{tournament_id}/memberships/?q=&role_id=&exclude_role_id=
+# manage_members. The role pickers: the same roster route, narrowed. There is
+# no separate search endpoint — it only ever existed because the roster
+# returned too much, which `fields` now answers.
 # ---------------------------------------------------------------------------
+
+def test_the_search_route_is_gone(client, td_user, td_tournament):
+    """Pinned so the route can't quietly come back the next time a screen
+    wants a narrower list.
+
+    422 rather than 404: with no literal /search/ route left, the path falls
+    through to /{membership_id}/ and "search" fails to coerce to an int. The
+    point is that it no longer returns a member list."""
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/")
+    assert response.status_code == 422
+
+
+def test_search_params_combine_with_roster_filters(client, td_user, td_tournament, db):
+    """The point of folding the two routes together: a name search and a
+    member-data filter are now expressible in one request, which they never
+    were while they lived on separate endpoints."""
+    from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
+
+    track = TournamentTrack(tournament_id=td_tournament.id, name="Test Writing")
+    db.add(track)
+    db.flush()
+    for email, first, confirmed in [
+        ("ana@example.com", "Ana", True),
+        ("anil@example.com", "Anil", False),
+        ("bea@example.com", "Bea", True),
+    ]:
+        u = _make_user(db, email, first_name=first)
+        m = _make_membership(db, td_tournament.id, u["id"])
+        if confirmed:
+            db.add(TournamentMembershipTrackStatus(
+                membership_id=m.id, track_id=track.id, status="confirmed",
+            ))
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/memberships/?q=an&track={track.id}:confirmed"
+    names = sorted(r["user"]["first_name"] for r in client.get(url).json())
+    assert names == ["Ana"]
+
 
 def test_search_memberships_by_name(client, td_user, td_tournament, db):
     zed = _make_user(db, "zed@example.com", first_name="Zed", last_name="Zephyr")
@@ -678,7 +719,7 @@ def test_search_memberships_by_name(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, priya["id"])
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?q=Priya")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?q=Priya")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["priya@example.com"]
@@ -691,7 +732,7 @@ def test_search_memberships_by_email(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, priya["id"])
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?q=zed@example")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?q=zed@example")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["zed@example.com"]
@@ -705,7 +746,7 @@ def test_search_memberships_by_role_id(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
 
     role_id = get_role_id_by_label(db, td_tournament.id, "Volunteer")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?role_id={role_id}")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?role_id={role_id}")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["coach@example.com"]
@@ -717,7 +758,7 @@ def test_search_memberships_exclude_role_id(client, td_user, td_tournament, db):
     role_id = get_role_id_by_label(db, td_tournament.id, "Tournament Director")
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/?exclude_role_id={role_id}")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?exclude_role_id={role_id}")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert "td@test.com" not in emails
@@ -727,7 +768,7 @@ def test_search_memberships_no_filters_returns_all(client, td_user, td_tournamen
     zed = _make_user(db, "zed@example.com")
     _make_membership(db, td_tournament.id, zed["id"])
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
     assert response.status_code == 200
     assert len(response.json()) >= 2
 
@@ -760,7 +801,7 @@ def test_search_memberships_max_rank_excludes_equal_and_higher_authority(
 
     login(client, "td@test.com", "tdpass")
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/search/?max_rank=50"
+        f"/tournaments/{td_tournament.id}/memberships/?max_rank=50"
     )
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
@@ -781,7 +822,7 @@ def test_search_memberships_max_rank_keeps_roleless_members(
 
     login(client, "td@test.com", "tdpass")
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/search/?max_rank=50"
+        f"/tournaments/{td_tournament.id}/memberships/?max_rank=50"
     )
     assert response.status_code == 200
     assert "roleless@example.com" in [m["user"]["email"] for m in response.json()]
@@ -791,14 +832,14 @@ def test_search_memberships_requires_manage_members(client, td_user, other_tourn
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/search/"
+        f"/tournaments/{other_tournament.id}/memberships/"
     ).status_code == 403
 
 
 def test_search_memberships_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/search/"
+        f"/tournaments/{other_tournament.id}/memberships/"
     ).status_code == 404
 
 

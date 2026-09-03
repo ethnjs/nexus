@@ -34,10 +34,10 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
   // would just 403 on save, so they shouldn't show up as pickable here.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.search(tournamentId, {
-        exclude_role_id: roleId,
+      membershipsApi.list(tournamentId, {
+        excludeRoleId: roleId,
         q: search.trim() || undefined,
-        max_rank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
+        maxRank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
       })
         .then(setCandidates)
         .catch(() => setError("Failed to load members."));

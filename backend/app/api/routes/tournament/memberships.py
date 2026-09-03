@@ -10,7 +10,7 @@ from app.core.tournament.display_config import (
     apply_display_config, viewer_display_config,
 )
 from app.core.tournament.member_filters import (
-    apply_member_filters, build_filter_options, filter_age_flags,
+    apply_member_filters, apply_member_search, build_filter_options, filter_age_flags,
 )
 from app.core.tournament.field_groups import (
     AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ROLES, TRACKS,
@@ -107,8 +107,16 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tou
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/?surface= — manage_members
-# Members-page roster: slim user identity + roles, plus track_statuses.
+# GET /tournaments/{tournament_id}/memberships/ — manage_members
+#
+# The one read of many memberships. The members-page roster, the roles
+# editor's member list and its add-members picker are all this route with
+# different query params — searching is not a different kind of read, and the
+# separate /search/ route that used to exist only because the roster returned
+# too much is gone now that `fields` says how much to return.
+#
+# Tournaments are small enough (rarely 150+ members) to return the full
+# filtered list rather than paginating.
 #
 # `surface` names which display_config surface to render for — the members
 # table passes "members_table", which both filters hidden items and decides
@@ -137,6 +145,13 @@ def list_memberships(
     volunteer_event: list[int] = Query(default=[]),
     age: list[str] = Query(default=[]),
     shift: list[str] = Query(default=[]),
+    # Identity/authority narrowing — what the role-assignment pickers ask for.
+    # A picker is this roster with a name search and a role bound on it, not a
+    # different kind of read, so it is the same route.
+    q: str | None = Query(default=None),
+    role_id: int | None = Query(default=None),
+    exclude_role_id: int | None = Query(default=None),
+    max_rank: int | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
@@ -163,6 +178,10 @@ def list_memberships(
         roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
         competition_events=competition_event, volunteer_events=volunteer_event,
         age_flags=age, shifts=shift,
+    )
+    query = apply_member_search(
+        query, db,
+        q=q, role_id=role_id, exclude_role_id=exclude_role_id, max_rank=max_rank,
     )
     memberships = query.order_by(TournamentMembership.id).all()
     # Age flags are derived, not stored, so they can't be part of the query.
@@ -199,94 +218,6 @@ def get_member_filter_options(
 ):
     tournament = get_tournament(tournament_id, db)
     return build_filter_options(db, tournament)
-
-
-# ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/search/?q=&role_id=&exclude_role_id=&max_rank=
-# manage_members. Member-data search: searches all tournament members by
-# name/email; role_id narrows to members holding that role (powers the roles
-# editor's "Manage Members" tab); exclude_role_id drops members who already
-# hold that role (powers its "Add Members" picker). max_rank drops members
-# whose highest-authority role ties or outranks that rank (lower rank number
-# = more authority) — the frontend passes the caller's own rank so the "Add
-# Members" picker never surfaces someone validate_role_action would reject
-# anyway. role_id, exclude_role_id, and max_rank are independent filters and
-# can be combined.
-# Registered before "/{membership_id}/" so the literal path always wins.
-# Tournaments are small enough (rarely 150+ members) to return the full
-# filtered list rather than paginating.
-# ---------------------------------------------------------------------------
-@router.get("/search/", response_model=list[MembershipFullResponse])
-def search_memberships(
-    tournament_id: int,
-    q: str | None = Query(default=None),
-    role_id: int | None = Query(default=None),
-    exclude_role_id: int | None = Query(default=None),
-    max_rank: int | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
-):
-    # No opt-in here (unlike the roster list) — this powers role-assignment
-    # pickers, and a declined member can't meaningfully hold a role anyway.
-    query = (
-        db.query(TournamentMembership)
-        .join(User, User.id == TournamentMembership.user_id)
-        .filter(TournamentMembership.tournament_id == tournament_id, ACTIVE_MEMBERSHIP_CLAUSE)
-    )
-    if q:
-        like = f"%{q}%"
-        query = query.filter(
-            (User.first_name.ilike(like)) | (User.last_name.ilike(like)) | (User.email.ilike(like))
-        )
-    if role_id is not None:
-        held_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == role_id)
-        )
-        query = query.filter(TournamentMembership.id.in_(held_role))
-    if exclude_role_id is not None:
-        held_by_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == exclude_role_id)
-        )
-        query = query.filter(TournamentMembership.id.notin_(held_by_role))
-    if max_rank is not None:
-        # Members with no roles have no authority and always pass. Members
-        # with roles are kept only if their highest-authority (lowest rank
-        # number) role is strictly less authoritative than max_rank.
-        outranks_or_ties = (
-            db.query(TournamentMembershipRole.membership_id)
-            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
-            .group_by(TournamentMembershipRole.membership_id)
-            .having(func.min(TournamentRole.rank) <= max_rank)
-        )
-        query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))
-
-    memberships = (
-        query
-        .options(
-            joinedload(TournamentMembership.user),
-            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
-            joinedload(TournamentMembership.join_code),
-            joinedload(TournamentMembership.track_statuses),
-            joinedload(TournamentMembership.user).selectinload(User.competition_experience),
-            joinedload(TournamentMembership.user).selectinload(User.volunteer_experience),
-            joinedload(TournamentMembership.user).joinedload(User.university),
-            # A picker needs a name and a role, never onboarding answers.
-            # noload hands validation an empty collection without a query;
-            # left lazy it would be one query per row. (Hand-listed only
-            # until this route folds into the list route, which derives its
-            # loaders from `fields`.)
-            noload(TournamentMembership.availability_shifts),
-            noload(TournamentMembership.lunch_selections),
-            noload(TournamentMembership.event_preferences),
-        )
-        .order_by(TournamentMembership.id)
-        .all()
-    )
-    responses = [MembershipFullResponse.model_validate(m) for m in memberships]
-    _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    return responses
 
 
 # ---------------------------------------------------------------------------

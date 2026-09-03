@@ -22,7 +22,7 @@ from sqlalchemy.orm import Query
 from app.models.models import (
     TournamentMembership, TournamentMembershipAvailability, TournamentMembershipEventPreference,
     TournamentMembershipLunch, TournamentMembershipRole, TournamentMembershipTrackStatus,
-    UserCompetitionExperience, UserVolunteerExperience,
+    TournamentRole, User, UserCompetitionExperience, UserVolunteerExperience,
 )
 
 # Sentinel accepted in the `role` filter for members holding no roles at all.
@@ -469,3 +469,67 @@ def _lunch_groups(db, fields, scoped, unslug, lunch_pattern, free_text_types) ->
 
 def _looks_dietary(category: str) -> bool:
     return any(word in category for word in ("dietary", "restriction", "allerg"))
+
+
+def apply_member_search(
+    query: Query,
+    db,
+    *,
+    q: str | None = None,
+    role_id: int | None = None,
+    exclude_role_id: int | None = None,
+    max_rank: int | None = None,
+) -> Query:
+    """The identity/authority narrowing the role-assignment pickers need.
+
+    Separate from apply_member_filters because it asks a different kind of
+    question: that one filters on what a member *answered*, this one on who
+    they are and how much authority they hold. Both apply to the same roster
+    query — a picker is the roster with a name search and a role bound on it,
+    which is why there is no longer a second route for it.
+
+    - `q` matches first name, last name or email.
+    - `role_id` keeps only members holding that role (the roles editor's
+      "Manage Members" tab).
+    - `exclude_role_id` drops members who already hold it (its "Add Members"
+      picker).
+    - `max_rank` drops members whose highest-authority role ties or outranks
+      that rank — lower rank number means more authority. Callers pass their
+      own rank so a picker never offers someone validate_role_action would
+      reject anyway.
+
+    All four are independent and combine.
+    """
+    if q:
+        like = f"%{q}%"
+        query = query.join(User, User.id == TournamentMembership.user_id).filter(
+            or_(
+                User.first_name.ilike(like),
+                User.last_name.ilike(like),
+                User.email.ilike(like),
+            )
+        )
+    if role_id is not None:
+        held_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == role_id)
+        )
+        query = query.filter(TournamentMembership.id.in_(held_role))
+    if exclude_role_id is not None:
+        held_by_role = (
+            db.query(TournamentMembershipRole.membership_id)
+            .filter(TournamentMembershipRole.role_id == exclude_role_id)
+        )
+        query = query.filter(TournamentMembership.id.notin_(held_by_role))
+    if max_rank is not None:
+        # Members with no roles have no authority and always pass. Members
+        # with roles are kept only if their highest-authority (lowest rank
+        # number) role is strictly less authoritative than max_rank.
+        outranks_or_ties = (
+            db.query(TournamentMembershipRole.membership_id)
+            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
+            .group_by(TournamentMembershipRole.membership_id)
+            .having(func.min(TournamentRole.rank) <= max_rank)
+        )
+        query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))
+    return query

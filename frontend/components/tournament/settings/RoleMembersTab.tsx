@@ -44,7 +44,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   // Debounced so search doesn't hit the server on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.search(tournamentId, { role_id: role.id, q: search.trim() || undefined })
+      membershipsApi.list(tournamentId, { roleId: role.id, q: search.trim() || undefined })
         .then(setMembers)
         .catch(() => setError("Failed to load members."));
     }, 300);
