@@ -111,6 +111,121 @@ def test_list_memberships(client, td_user, td_tournament, db):
     assert len(response.json()) >= 2
 
 
+# ---------------------------------------------------------------------------
+# `fields` — the query param that replaced the second response schema
+# ---------------------------------------------------------------------------
+
+def test_fields_narrows_to_the_named_groups(client, td_user, td_tournament, db):
+    """A role picker wants a name and an email. It should not have to accept a
+    whole profile plus every onboarding answer to get them."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
+    login(client, "td@test.com", "tdpass")
+
+    url = f"/tournaments/{td_tournament.id}/memberships/?fields=contact"
+    row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
+
+    assert row["user"]["email"] == u["email"]
+    # Identity is not a group — it comes without being asked for.
+    assert row["user"]["first_name"] == "Alice"
+    assert row["id"] and row["created_at"]
+    # Everything else is absent, not null.
+    for key in ("notes", "roles", "lunch", "availability", "track_statuses",
+                "event_preferences", "custom_responses", "source", "join_code"):
+        assert key not in row, f"{key} should be absent without its group"
+    for key in ("shirt_size", "volunteer_experience", "university"):
+        assert key not in row["user"]
+
+
+def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
+    """Distinct from omitting the param: an explicit empty value is a caller
+    saying it needs nothing but the row's identity."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+
+    url = f"/tournaments/{td_tournament.id}/memberships/?fields="
+    row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
+    assert row["user"]["first_name"] == "Alice"
+    assert "email" not in row["user"]
+    assert "roles" not in row
+
+
+def test_omitting_fields_still_returns_everything(client, td_user, td_tournament, db):
+    """A caller with no opinion is never punished with a surprise-empty
+    response — that would make `fields` a breaking change for every existing
+    client."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
+    login(client, "td@test.com", "tdpass")
+
+    row = next(
+        r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()
+        if r["user"]["id"] == u["id"]
+    )
+    for key in ("notes", "roles", "lunch", "availability", "track_statuses",
+                "event_preferences", "custom_responses", "source", "user"):
+        assert key in row
+
+
+def test_unknown_field_group_is_rejected(client, td_user, td_tournament, db):
+    """A typo must fail loudly — a silently dropped section is indistinguishable
+    from a member having no data."""
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?fields=contact,rolez")
+    assert response.status_code == 422
+    assert "rolez" in response.json()["detail"]
+
+
+def test_fields_applies_to_the_detail_route_too(client, td_user, td_tournament, db):
+    """Same contract on one row as on the roster — one serializer, not two."""
+    u = _make_user(db, "alice@example.com")
+    m = _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
+    login(client, "td@test.com", "tdpass")
+
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?fields=notes"
+    ).json()
+    assert body["notes"] == "Allergic to nuts"
+    assert "lunch" not in body
+    assert "email" not in body["user"]
+
+
+def test_fields_on_me_skips_the_builders(client, td_tournament, other_user, db):
+    """The provider that wraps every dashboard page reads four fields. Asking
+    for roles must not run the track/lunch/event-preference/custom builders."""
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    login(client, "other@test.com", "otherpass")
+
+    body = client.get(f"/tournaments/{td_tournament.id}/memberships/me/?fields=roles").json()
+    # Identity is never in a group — this is exactly what the provider reads.
+    assert body["membership_id"]
+    # Volunteer grants none, but the key is always there — the provider
+    # branches on it, so an absent key would break hasPermission().
+    assert body["permissions"] == []
+    assert body["is_owner"] is False
+    assert body["needs_age_consent"] is False
+    assert [r["label"] for r in body["roles"]] == ["Volunteer"]
+    for key in ("lunch", "availability", "track_statuses", "event_preferences",
+                "custom_responses"):
+        assert key not in body
+
+
+def test_explicit_fields_wins_over_the_surface_preset(client, td_user, td_tournament, db):
+    """`surface` only fills in for a caller with no preference. Unioning the
+    two would make narrowing unpredictable."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+
+    # members_table's defaults imply contact + membership + roles.
+    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table&fields=notes"
+    row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
+    assert "notes" in row
+    assert "roles" not in row
+    assert "email" not in row["user"]
+
+
 def test_list_memberships_roster_shape(client, td_user, td_tournament, db):
     """Roster and detail are one schema now. The route is manage_members-only,
     so the staff-side fields are part of the row rather than a reason for a
@@ -152,7 +267,12 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
 def test_list_memberships_applies_the_requested_surface_config(client, td_user, td_tournament, db):
     """The roster renders the members *table* surface, so that's the config it
     honours — the panel's own hidden set is a separate surface now that each
-    has its own controls."""
+    has its own controls.
+
+    Also pins how `fields` and `surface` compose: the track column is what
+    makes the tracks group requested at all, and `hidden` then empties it. A
+    present-but-empty list is filtering; an absent key would mean the group
+    was never asked for."""
     from app.models.models import TournamentTrack, TournamentMembershipTrackStatus
 
     u = _make_user(db, "alice@example.com")
@@ -161,7 +281,9 @@ def test_list_memberships_applies_the_requested_surface_config(client, td_user, 
     db.add(track)
     db.flush()
     db.add(TournamentMembershipTrackStatus(membership_id=m.id, track_id=track.id, status="confirmed"))
-    set_display_config(db, td_tournament, td_user, {"members_table": {"hidden": [f"track:{track.id}"]}})
+    set_display_config(db, td_tournament, td_user, {"members_table": {
+        "columns": [f"track:{track.id}"], "hidden": [f"track:{track.id}"],
+    }})
 
     login(client, "td@test.com", "tdpass")
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
@@ -190,7 +312,12 @@ def test_list_memberships_without_a_surface_is_unfiltered(client, td_user, td_to
 def test_list_memberships_enriches_only_configured_columns(client, td_user, td_tournament, db):
     """Column data is loaded only when a column asks for it — a roster is
     every member, so loading lunch/availability nobody turned on would cost
-    on every page load."""
+    on every page load.
+
+    `surface` resolves to the field groups its saved columns need (see
+    fields_for_surface), so a group no column reads is absent from the row
+    rather than empty: [] would claim this member has no lunch answers, and
+    they have one."""
     from app.models.models import TournamentMembershipLunch
 
     u = _make_user(db, "alice@example.com")
@@ -203,7 +330,7 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
 
     url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
-    assert row["lunch"] == []
+    assert "lunch" not in row
 
     set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["lunch_category:entree"]}})
     row = next(r for r in client.get(url).json() if r["id"] == m.id)

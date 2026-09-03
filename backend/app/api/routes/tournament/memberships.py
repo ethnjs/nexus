@@ -7,14 +7,18 @@ from sqlalchemy.orm import Session, joinedload, noload, selectinload
 from app.core.auth import get_current_user
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.display_config import (
-    MEMBERS_TABLE, apply_display_config, viewer_display_config,
+    apply_display_config, viewer_display_config,
 )
 from app.core.tournament.member_filters import (
     apply_member_filters, build_filter_options, filter_age_flags,
 )
+from app.core.tournament.field_groups import (
+    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ROLES, TRACKS,
+    dump_exclude, field_selection, loader_options, resolve_fields, wants,
+)
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
-    delete_tournament_form_responses, enrich_table_columns, gate_age_flags,
+    delete_tournament_form_responses, enrich_built_groups, gate_age_flags,
     get_custom_form_answers, get_membership_by_user, resolve_person_refs,
 )
 from app.core.tournament.permissions import (
@@ -43,9 +47,16 @@ from app.schemas.tournament.track import MembershipTrackStatusRead
 
 def _build_me_response(
     db: Session, tournament: Tournament, membership: TournamentMembership, current_user: User,
+    requested: frozenset[str] | None = None,
 ) -> JSONResponse:
     """Shared by GET .../me/ and POST .../me/age-disclosure/ — both return
-    the same shape for the caller's own membership."""
+    the same shape for the caller's own membership.
+
+    Every builder below is a query, and this route runs on every dashboard
+    page load (MyMembershipProvider wraps the whole tournament section), so
+    `requested` gating them is not a micro-optimisation: the provider reads
+    four identity fields and nothing else, and says so with fields=roles.
+    """
     permissions = sorted(get_user_permissions(current_user, tournament.id, db))
     is_owner = current_user.id == tournament.owner_id
     needs_age_consent = (
@@ -53,23 +64,27 @@ def _build_me_response(
         and membership.age_disclosure is None
     )
     resp = MembershipMeResponse(
-        membership_id=membership.id, is_owner=is_owner,
-        roles=membership.roles, permissions=permissions,
-        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
+        membership_id=membership.id, is_owner=is_owner, permissions=permissions,
         needs_age_consent=needs_age_consent,
+        roles=membership.roles if wants(requested, ROLES) else [],
+        is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         # build_track_statuses rather than the raw rows: it pads every live
         # track the member has no row for as "pending", and those are exactly
         # the tracks a self-service control needs to offer.
-        track_statuses=build_track_statuses(db, membership),
-        event_preferences=build_event_preferences(db, membership),
+        track_statuses=build_track_statuses(db, membership) if wants(requested, TRACKS) else [],
+        event_preferences=build_event_preferences(db, membership) if wants(requested, EVENT_PREFS) else [],
         availability=[
             MembershipAvailabilityRead.from_row(row, tournament)
             for row in membership.availability_shifts
-        ],
-        lunch=build_lunch(db, membership),
-        custom_responses=get_custom_form_answers(db, tournament.id, current_user.id),
+        ] if wants(requested, AVAILABILITY) else [],
+        lunch=build_lunch(db, membership) if wants(requested, LUNCH) else [],
+        custom_responses=(
+            get_custom_form_answers(db, tournament.id, current_user.id)
+            if wants(requested, CUSTOM) else []
+        ),
     )
-    return JSONResponse(gate_age_flags(membership, resp.model_dump(mode="json")))
+    data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
+    return JSONResponse(gate_age_flags(membership, data))
 
 
 def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: list[TournamentMembership], responses: list):
@@ -106,6 +121,9 @@ def list_memberships(
     tournament_id: int,
     include_declined: bool = Query(False),
     surface: str | None = Query(default=None),
+    # Which field groups to serialize. Omitted means everything; `surface`
+    # fills in for it when absent (see resolve_fields).
+    requested: frozenset[str] | None = Depends(field_selection),
     # Roster filters. Repeatable; different filters AND, values within one OR.
     # The paired ones ("2:confirmed", "protein:Sofritas", "2027-02-13:47")
     # keep the two halves together on purpose, and take "__any__" on the
@@ -123,28 +141,17 @@ def list_memberships(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     tournament = get_tournament(tournament_id, db)
+    # The viewer's own config decides both what a surface implies about
+    # `fields` and what to drop from each row — see viewer_display_config.
+    config = viewer_display_config(db, tournament_id, current_user.id)
+    requested = resolve_fields(requested, config, surface)
 
     query = (
         db.query(TournamentMembership)
         .options(
+            # Always: the row has to be able to name who it is about.
             joinedload(TournamentMembership.user),
-            joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
-            joinedload(TournamentMembership.join_code),
-            joinedload(TournamentMembership.track_statuses),
-            joinedload(TournamentMembership.user).selectinload(User.competition_experience),
-            joinedload(TournamentMembership.user).selectinload(User.volunteer_experience),
-            joinedload(TournamentMembership.user).joinedload(User.university),
-            # noload, not selectinload: a roster is every member, so the
-            # onboarding answers are opt-in per column (enrich_table_columns)
-            # rather than free with the row. Validation would otherwise read
-            # them straight off these relationships — one lazy query per row
-            # for data no column asked for. noload hands validation an empty
-            # collection and never goes to the database at all; enrichment
-            # then fills in exactly what the saved column config wants,
-            # roster-wide in one query each.
-            noload(TournamentMembership.availability_shifts),
-            noload(TournamentMembership.lunch_selections),
-            noload(TournamentMembership.event_preferences),
+            *loader_options(requested),
         )
         .filter(TournamentMembership.tournament_id == tournament_id)
     )
@@ -161,18 +168,17 @@ def list_memberships(
     # Age flags are derived, not stored, so they can't be part of the query.
     memberships = filter_age_flags(memberships, age)
     responses = [MembershipFullResponse.model_validate(m) for m in memberships]
-    _resolve_join_code_creators(db, tournament_id, memberships, responses)
-    # The viewer's own config decides both which optional columns to load and
-    # what to drop from each row — see viewer_display_config.
-    config = viewer_display_config(db, tournament_id, current_user.id)
-    if surface == MEMBERS_TABLE:
-        enrich_table_columns(db, tournament, config, memberships, responses)
-    # gate_age_flags per row, exactly as the detail route does: the Age column
-    # reads is_over_18/21, and a column being switched on must never override
-    # a member's withheld consent.
+    if wants(requested, MEMBERSHIP):
+        _resolve_join_code_creators(db, tournament_id, memberships, responses)
+    enrich_built_groups(db, tournament, requested, memberships, responses)
+    # gate_age_flags per row, exactly as the detail route does: asking for the
+    # age group must never override a member's withheld consent.
+    exclude = dump_exclude(requested)
     data = [
         apply_display_config(
-            config, surface, gate_age_flags(membership, resp.model_dump(mode="json")), tournament
+            config, surface,
+            gate_age_flags(membership, resp.model_dump(mode="json", exclude=exclude)),
+            tournament,
         )
         for membership, resp in zip(memberships, responses)
     ]
@@ -266,14 +272,11 @@ def search_memberships(
             joinedload(TournamentMembership.user).selectinload(User.competition_experience),
             joinedload(TournamentMembership.user).selectinload(User.volunteer_experience),
             joinedload(TournamentMembership.user).joinedload(User.university),
-            # noload, not selectinload: a roster is every member, so the
-            # onboarding answers are opt-in per column (enrich_table_columns)
-            # rather than free with the row. Validation would otherwise read
-            # them straight off these relationships — one lazy query per row
-            # for data no column asked for. noload hands validation an empty
-            # collection and never goes to the database at all; enrichment
-            # then fills in exactly what the saved column config wants,
-            # roster-wide in one query each.
+            # A picker needs a name and a role, never onboarding answers.
+            # noload hands validation an empty collection without a query;
+            # left lazy it would be one query per row. (Hand-listed only
+            # until this route folds into the list route, which derives its
+            # loaders from `fields`.)
             noload(TournamentMembership.availability_shifts),
             noload(TournamentMembership.lunch_selections),
             noload(TournamentMembership.event_preferences),
@@ -293,6 +296,9 @@ def search_memberships(
 @router.get("/me/", response_model=MembershipMeResponse)
 def get_my_membership(
     tournament_id: int,
+    # Which field groups to serialize. Omitted means everything; `surface`
+    # fills in for it when absent (see resolve_fields).
+    requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -318,9 +324,10 @@ def get_my_membership(
         resp = MembershipMeResponse(
             membership_id=None, is_owner=is_owner, roles=[], permissions=permissions,
         )
-        return JSONResponse(gate_age_flags(None, resp.model_dump(mode="json")))
+        data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
+        return JSONResponse(gate_age_flags(None, data))
 
-    return _build_me_response(db, tournament, membership, current_user)
+    return _build_me_response(db, tournament, membership, current_user, requested)
 
 
 # ---------------------------------------------------------------------------
@@ -376,6 +383,9 @@ def get_membership(
     tournament_id: int,
     membership_id: int,
     surface: str | None = Query(default=None),
+    # Which field groups to serialize. Omitted means everything; `surface`
+    # fills in for it when absent (see resolve_fields).
+    requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -389,24 +399,32 @@ def get_membership(
             detail="You don't have permission to view this member",
         )
 
+    config = viewer_display_config(db, tournament_id, current_user.id)
+    requested = resolve_fields(requested, config, surface)
+
     resp = MembershipFullResponse.model_validate(m)
     if not can_manage:
         resp.notes = None
-    resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
-    resp.event_preferences = build_event_preferences(db, m)
-    resp.lunch = build_lunch(db, m)
-    resp.track_statuses = build_track_statuses(db, m)
-    _resolve_join_code_creators(db, tournament_id, [m], [resp])
-    data = gate_age_flags(m, resp.model_dump(mode="json"))
+    # Built groups only — the rest came off the ORM. Unlike the roster these
+    # run per membership by definition; there is only one.
+    if wants(requested, CUSTOM):
+        resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
+    if wants(requested, EVENT_PREFS):
+        resp.event_preferences = build_event_preferences(db, m)
+    if wants(requested, LUNCH):
+        resp.lunch = build_lunch(db, m)
+    if wants(requested, TRACKS):
+        resp.track_statuses = build_track_statuses(db, m)
+    if wants(requested, MEMBERSHIP):
+        _resolve_join_code_creators(db, tournament_id, [m], [resp])
+    data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
     if not can_manage and data.get("join_code"):
         # A self-viewer is entitled to know who invited them, not to a read of
         # that person's standing in the tournament. Popped off the dict rather
         # than set null, so "withheld" stays distinct from the null that means
         # "holds no membership here" (see PersonRefResponse.roles).
         data["join_code"]["creator"].pop("roles", None)
-    data = apply_display_config(
-        viewer_display_config(db, tournament_id, current_user.id), surface, data, tournament
-    )
+    data = apply_display_config(config, surface, data, tournament)
     return JSONResponse(data)
 
 

@@ -320,6 +320,58 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
     return groups
 
 
+def lunch_field_key(row) -> str:
+    """The FormField key that produced one lunch row."""
+    return f"lunch_{row.date.strftime('%Y%m%d')}_{row.category}"
+
+
+def lunch_question_types(db: Session, tournament_id: int, field_keys: set[str]) -> dict[str, str]:
+    """field_key -> question_type for a tournament's lunch questions.
+
+    Split out of build_lunch so a roster resolves the whole table's types in
+    one query rather than one per member — the mapping is tournament-wide,
+    nothing about it varies by membership.
+    """
+    from app.models.models import Form, FormField
+
+    if not field_keys:
+        return {}
+
+    type_by_key: dict[str, str] = {}
+    for field_key, question_type in (
+        db.query(FormField.field_key, FormField.question_type)
+        .join(Form, FormField.form_id == Form.id)
+        .filter(
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            FormField.field_key.in_(field_keys),
+        )
+        # Live fields first, then setdefault, so a live question wins over an
+        # archived one sharing its key — an archived field doesn't reserve its
+        # key, so both can exist at once, and question_type decides whether a
+        # row renders as free text or a badge. Same idiom as
+        # build_event_preferences.
+        .order_by(FormField.is_archived, FormField.id)
+    ):
+        type_by_key.setdefault(field_key, question_type)
+    return type_by_key
+
+
+def build_lunch_rows(rows, type_by_key: dict[str, str]) -> list["MembershipLunchRead"]:
+    """Read shapes for lunch rows already in hand, given a resolved type map."""
+    from app.schemas.tournament.membership import MembershipLunchRead
+
+    return [
+        MembershipLunchRead(
+            date=row.date,
+            category=row.category,
+            value=row.value,
+            question_type=type_by_key.get(lunch_field_key(row)),
+        )
+        for row in rows
+    ]
+
+
 def build_lunch(db: Session, membership: TournamentMembership) -> list["MembershipLunchRead"]:
     """This membership's lunch rows, each carrying the question_type of the
     question that produced it.
@@ -330,43 +382,13 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
     rows back to fields by reconstructing that key. Archived fields count too
     — an answer given before the question was retired still has to render the
     way it was written."""
-    from app.models.models import Form, FormField
-    from app.schemas.tournament.membership import MembershipLunchRead
-
     rows = membership.lunch_selections
     if not rows:
         return []
-
-    def field_key_for(row) -> str:
-        return f"lunch_{row.date.strftime('%Y%m%d')}_{row.category}"
-
-    type_by_key: dict[str, str] = {}
-    for field_key, question_type in (
-        db.query(FormField.field_key, FormField.question_type)
-        .join(Form, FormField.form_id == Form.id)
-        .filter(
-            Form.owner_type == "tournament",
-            Form.tournament_id == membership.tournament_id,
-            FormField.field_key.in_({field_key_for(row) for row in rows}),
-        )
-        # Live fields first, then setdefault, so a live question wins over an
-        # archived one sharing its key — an archived field doesn't reserve its
-        # key, so both can exist at once, and question_type decides whether a
-        # row renders as free text or a badge. Same idiom as
-        # build_event_preferences.
-        .order_by(FormField.is_archived, FormField.id)
-    ):
-        type_by_key.setdefault(field_key, question_type)
-
-    return [
-        MembershipLunchRead(
-            date=row.date,
-            category=row.category,
-            value=row.value,
-            question_type=type_by_key.get(field_key_for(row)),
-        )
-        for row in rows
-    ]
+    types = lunch_question_types(
+        db, membership.tournament_id, {lunch_field_key(row) for row in rows},
+    )
+    return build_lunch_rows(rows, types)
 
 
 PENDING_TRACK_STATUS = "pending"
@@ -416,94 +438,94 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
     return sorted(entries, key=lambda e: e.name)
 
 
-def enrich_table_columns(db: Session, tournament, config: dict | None, memberships: list, responses: list) -> None:
-    """Fills in the roster fields the members table's saved column config
-    asks for, and only those.
+def get_custom_form_answers_bulk(
+    db: Session, tournament_id: int, user_ids: list[int],
+) -> dict[int, list["MembershipCustomAnswerRead"]]:
+    """get_custom_form_answers for many users in one query.
 
-    A roster is every member in the tournament, so this is the difference
-    between one extra query and none at all — not between one and N. Each kind
-    of data is fetched for the whole roster in a single query and then handed
-    out, never per membership.
+    The per-user version issued a query per row when the roster asked for
+    custom answers, which is the one thing a roster route must never do.
+    Same filtering, keyed by user_id; users with no answers are absent.
+    """
+    from app.core.form.validation import TOURNAMENT_PRESET_FIELD_KEY_PATTERNS
+    from app.models.models import Form, FormAnswer, FormField, FormResponse
+    from app.schemas.tournament.membership import MembershipCustomAnswerRead
 
-    Mutates `responses` in place, positionally paired with `memberships`."""
-    from app.core.tournament import tournament_local_date
-    from app.core.tournament.display_config import (
-        AVAILABILITY_DAY_NAMESPACE, COLUMN_AGE, DEFAULT_COLUMNS,
-        FORM_FIELD_NAMESPACE, LUNCH_CATEGORY_NAMESPACE, MEMBERS_TABLE,
+    if not user_ids:
+        return {}
+
+    rows = (
+        db.query(FormAnswer, FormField, Form, FormResponse.user_id)
+        .join(FormField, FormAnswer.field_id == FormField.id)
+        .join(Form, FormField.form_id == Form.id)
+        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
+        .filter(
+            FormResponse.user_id.in_(user_ids),
+            Form.owner_type == "tournament",
+            Form.tournament_id == tournament_id,
+            Form.status == "published",
+        )
+        .all()
     )
-    from app.models.models import (
-        TournamentMembershipAvailability, TournamentMembershipLunch, TournamentShift,
-    )
 
-    surface = (config or {}).get(MEMBERS_TABLE) or {}
-    columns = surface.get("columns")
-    if columns is None:
-        columns = list(DEFAULT_COLUMNS)
-    if not columns or not memberships:
+    by_user: dict[int, list] = {}
+    for answer, field, form, user_id in rows:
+        if any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS):
+            continue
+        by_user.setdefault(user_id, []).append(MembershipCustomAnswerRead(
+            form_title=form.title or form.name,
+            field_label=field.label,
+            field_key=field.field_key,
+            question_type=field.question_type,
+            value=answer.value,
+            field_id=field.id,
+        ))
+    return by_user
+
+
+def enrich_built_groups(db: Session, tournament, requested, memberships: list, responses: list) -> None:
+    """Fills the roster's *built* field groups — the ones whose final value
+    can't come off the ORM rows alone (see field_groups.FieldGroup.built).
+
+    Everything else `fields` selects is already handled at the query level by
+    field_groups.loader_options, which is why this no longer reads the
+    display config: what to include is `fields`' answer now, and a surface
+    that wants to narrow says so by resolving to a field set first (see
+    display_config.fields_for_surface).
+
+    A roster is every member in the tournament, so each group is resolved for
+    the whole page in one query and then handed out — never per membership.
+    Mutates `responses` in place, positionally paired with `memberships`.
+    """
+    from app.core.tournament.field_groups import CUSTOM, EVENT_PREFS, LUNCH, wants
+
+    if not memberships:
         return
 
-    wants_age = COLUMN_AGE in columns
-    wants_availability = any(c.startswith(AVAILABILITY_DAY_NAMESPACE) for c in columns)
-    wants_lunch = any(c.startswith(LUNCH_CATEGORY_NAMESPACE) for c in columns)
-    wants_custom = any(c.startswith(FORM_FIELD_NAMESPACE) for c in columns)
+    if wants(requested, LUNCH):
+        # The rows are already loaded (loader_options selectinloads them when
+        # the group is wanted); only the question_type map needs fetching,
+        # and it is tournament-wide rather than per member.
+        keys = {
+            lunch_field_key(row)
+            for membership in memberships
+            for row in membership.lunch_selections
+        }
+        types = lunch_question_types(db, tournament.id, keys)
+        for membership, response in zip(memberships, responses):
+            response.lunch = build_lunch_rows(membership.lunch_selections, types)
 
-    membership_ids = [m.id for m in memberships]
-
-    if wants_availability:
-        from app.schemas.tournament.membership import MembershipAvailabilityRead
-
-        # The shift's start is an instant; column keys are tournament-local
-        # days — same conversion build_catalog used to name them.
-        rows = (
-            db.query(
-                TournamentMembershipAvailability.membership_id,
-                TournamentShift.id, TournamentShift.label,
-                TournamentShift.start, TournamentShift.end,
-            )
-            .join(TournamentShift, TournamentMembershipAvailability.tournament_shift_id == TournamentShift.id)
-            .filter(TournamentMembershipAvailability.membership_id.in_(membership_ids))
-            .order_by(TournamentShift.start)
-            .all()
+    if wants(requested, CUSTOM):
+        by_user = get_custom_form_answers_bulk(
+            db, tournament.id, [m.user_id for m in memberships],
         )
-        shifts_by_membership: dict[int, list] = {}
-        for membership_id, shift_id, label, start, end in rows:
-            shifts_by_membership.setdefault(membership_id, []).append(
-                MembershipAvailabilityRead(
-                    shift_id=shift_id,
-                    label=label,
-                    start=start,
-                    end=end,
-                    day=tournament_local_date(tournament, start).isoformat(),
-                )
-            )
-    if wants_lunch:
-        lunch_by_membership: dict[int, list] = {}
-        for row in db.query(TournamentMembershipLunch).filter(
-            TournamentMembershipLunch.membership_id.in_(membership_ids)
-        ):
-            lunch_by_membership.setdefault(row.membership_id, []).append(row)
+        for membership, response in zip(memberships, responses):
+            response.custom_responses = by_user.get(membership.user_id, [])
 
-    for membership, response in zip(memberships, responses):
-        if wants_age:
-            response.is_over_18 = membership.is_over_18
-            response.is_over_21 = membership.is_over_21
-        if wants_availability:
-            response.availability = shifts_by_membership.get(membership.id, [])
-        if wants_lunch:
-            response.lunch = build_lunch_rows(lunch_by_membership.get(membership.id, []))
-        if wants_custom:
-            response.custom_responses = get_custom_form_answers(
-                db, tournament.id, membership.user_id
-            )
-
-
-def build_lunch_rows(rows) -> list["MembershipLunchRead"]:
-    """The plain read shape for lunch rows already in hand — no question_type
-    lookup, unlike build_lunch. The table keys off `category`, which the row
-    itself carries, so the source question's type is irrelevant there."""
-    from app.schemas.tournament.membership import MembershipLunchRead
-
-    return [
-        MembershipLunchRead(date=row.date, category=row.category, value=row.value)
-        for row in rows
-    ]
+    if wants(requested, EVENT_PREFS):
+        # Still per membership: build_event_preferences reverses each answer
+        # against the form options that produced it, and the reversal is
+        # keyed by which questions that member actually answered. No client
+        # asks a roster for this today; batch it if one starts.
+        for membership, response in zip(memberships, responses):
+            response.event_preferences = build_event_preferences(db, membership)

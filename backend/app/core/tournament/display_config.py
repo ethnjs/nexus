@@ -399,3 +399,98 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict, t
 
     data["hidden_sections"] = emptied
     return data
+
+
+# ---------------------------------------------------------------------------
+# Surface -> field groups
+#
+# `surface` and `fields` do different jobs — fields selects what a response
+# carries, surface filters what the viewer's saved config hides — but a
+# surface implies its own answer to the first question: a table showing five
+# columns needs exactly the groups those columns read.
+#
+# Deriving that here rather than making the client send it keeps one
+# vocabulary in one place. The members page would otherwise have to
+# reimplement this mapping and keep it in step with every column added.
+# ---------------------------------------------------------------------------
+_COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
+    COLUMN_EMAIL: ("contact",),
+    COLUMN_PHONE: ("contact",),
+    # account_age and joined read timestamps that are never in a group.
+    COLUMN_ACCOUNT_AGE: (),
+    COLUMN_JOINED: (),
+    COLUMN_METHOD: ("membership",),
+    COLUMN_AGE: ("age",),
+    COLUMN_SHIRT_SIZE: ("profile",),
+}
+
+_NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
+    (TRACK_NAMESPACE, "tracks"),
+    (LUNCH_CATEGORY_NAMESPACE, "lunch"),
+    (EVENT_PREF_NAMESPACE, "event_prefs"),
+    (FORM_FIELD_NAMESPACE, "custom"),
+    (AVAILABILITY_DAY_NAMESPACE, "availability"),
+)
+
+# Panel/member-page sections and the groups each one renders. A section
+# holding several kinds of thing pulls several groups — Membership shows join
+# provenance, roles, age flags and track statuses in one block.
+_SECTION_GROUPS: dict[str, tuple[str, ...]] = {
+    "membership": ("membership", "roles", "age", "tracks"),
+    "availability": ("availability",),
+    # dietary_restriction lives on the user profile, not on the lunch rows.
+    "lunch": ("lunch", "profile"),
+    "event_preferences": ("event_prefs",),
+    "education": ("profile",),
+    "competition_experience": ("profile",),
+    "volunteer_experience": ("profile",),
+    "logistics": ("profile",),
+}
+
+
+def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[str] | None:
+    """The field groups `surface` needs, or None for "no opinion".
+
+    None means the caller gets everything — same rule as an absent `fields`.
+    Only the surfaces whose config actually enumerates what they show can
+    narrow; anything else abstains rather than guessing.
+    """
+    if surface not in (MEMBERS_TABLE, MEMBERS_PANEL, MEMBER_PAGE):
+        return None
+
+    saved = (config or {}).get(surface) or {}
+
+    if surface == MEMBERS_TABLE:
+        columns = saved.get("columns")
+        if columns is None:
+            columns = list(DEFAULT_COLUMNS)
+        # Name and roles are the row's identity and its controls — they are
+        # not columns a TD can turn off (see FIXED_COLUMNS), so the table
+        # always needs roles whatever the saved config says.
+        groups = {"roles"}
+        for column in columns:
+            groups.update(_COLUMN_GROUPS.get(column, ()))
+            for namespace, group in _NAMESPACE_GROUPS:
+                if column.startswith(namespace):
+                    groups.add(group)
+        return frozenset(groups)
+
+    # Panel and member page: every section renders unless hidden, and a
+    # custom section holds custom answers.
+    hidden = set(saved.get("hidden") or [])
+    sections = saved.get("sections")
+    section_ids = (
+        [s.get("id") for s in sections if isinstance(s, dict)]
+        if isinstance(sections, list)
+        else list(DEFAULT_SECTION_ORDER) + [DEFAULT_CUSTOM_SECTION_ID]
+    )
+
+    groups: set[str] = set()
+    for section_id in section_ids:
+        if not section_id or section_id in hidden:
+            continue
+        if section_id.startswith(CUSTOM_SECTION_PREFIX):
+            groups.add("custom")
+            continue
+        groups.update(_SECTION_GROUPS.get(section_id, ()))
+    return frozenset(groups)

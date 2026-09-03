@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Query, status
 from sqlalchemy.orm import joinedload, noload, selectinload
 
 
@@ -285,3 +285,32 @@ def loader_options(requested: frozenset[str] | None) -> list:
             options.append(base.selectinload(attr) if included else base.noload(attr))
 
     return options
+
+
+def field_selection(fields: str | None = Query(default=None)) -> frozenset[str] | None:
+    """FastAPI dependency for the `fields` query param.
+
+    Declared here so every route that supports narrowing gets the same
+    param name, the same validation and the same Swagger description.
+    """
+    return parse_fields(fields)
+
+
+def resolve_fields(
+    requested: frozenset[str] | None,
+    config: dict | None,
+    surface: str | None,
+) -> frozenset[str] | None:
+    """Reconcile an explicit `fields` with what `surface` implies.
+
+    An explicit `fields` always wins — a caller that named its groups meant
+    them, and silently unioning in a surface's groups would make the
+    narrowing unpredictable. `surface` only fills in for a caller that
+    expressed no preference, which is what lets the members page ask for
+    "whatever my saved columns need" without enumerating it.
+    """
+    from app.core.tournament.display_config import fields_for_surface
+
+    if requested is not None:
+        return requested
+    return fields_for_surface(config, surface)
