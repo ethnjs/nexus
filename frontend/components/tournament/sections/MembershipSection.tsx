@@ -104,6 +104,7 @@ export function MembershipSection({
                     allRoles={allRoles}
                     canTouchRole={canTouchRole}
                     locked={locked}
+                    emptyLabel="None"
                     onUpdated={onRolesUpdated}
                   />
                 </PanelField>

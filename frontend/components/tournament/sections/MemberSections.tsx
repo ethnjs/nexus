@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import {
-  CanonicalEvent, DisplayConfigSection, MembershipFull, MembershipSlim, Role, TournamentShift,
+  DisplayConfigSection, MembershipFull, MembershipSlim, Role, TournamentShift,
 } from "@/lib/api";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
@@ -27,7 +27,6 @@ export interface MemberSectionsProps {
   sectionConfig: DisplayConfigSection[] | null;
   /** Every shift the tournament offers — sets the availability timeline's window. */
   shifts: TournamentShift[];
-  events: CanonicalEvent[];
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   /** Role editing off. Not the same as "can't act on this member": someone
@@ -118,12 +117,13 @@ const RENDERERS: Record<
   ),
   // The experience sections render whatever the data — each distinguishes
   // "None" (answered, has none) from "No info yet" (never answered), which
-  // an absent card can't.
+  // an absent card can't. No `events`: that's the picker catalog for
+  // view-edit mode, and each row already carries its own resolved event.
   competition_experience: (p) => (
-    <ProfileCard><CompetitionExperienceSection user={p.membership.user} mode="view" events={p.events} /></ProfileCard>
+    <ProfileCard><CompetitionExperienceSection user={p.membership.user} mode="view" /></ProfileCard>
   ),
   volunteer_experience: (p) => (
-    <ProfileCard><VolunteerExperienceSection user={p.membership.user} mode="view" events={p.events} /></ProfileCard>
+    <ProfileCard><VolunteerExperienceSection user={p.membership.user} mode="view" /></ProfileCard>
   ),
   logistics: (p, hiddenFields) => (
     <ProfileCard><LogisticsSection user={p.membership.user} hiddenFields={hiddenFields} /></ProfileCard>

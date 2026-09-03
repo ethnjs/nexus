@@ -2,8 +2,8 @@
 
 import { startTransition, useEffect, useState } from "react";
 import {
-  ApiError, CanonicalEvent, DisplayConfigSection, MembershipFull, MembershipSlim, Role,
-  TournamentShift, canonicalEventsApi, displayConfigApi, membershipsApi, tournamentShiftsApi,
+  ApiError, DisplayConfigSection, MembershipFull, MembershipSlim, Role,
+  TournamentShift, displayConfigApi, membershipsApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
@@ -57,7 +57,6 @@ export function MemberPanel({
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
   const [full, setFull] = useState<MembershipFull | null>(null);
-  const [events, setEvents] = useState<CanonicalEvent[]>([]);
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
@@ -80,7 +79,6 @@ export function MemberPanel({
     membershipsApi.get(tournamentId, membershipId, MEMBERS_PANEL)
       .then((data) => startTransition(() => setFull(data)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
-    canonicalEventsApi.list().then((data) => startTransition(() => setEvents(data))).catch(() => {});
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
     displayConfigApi.get(tournamentId)
       .then((config) => startTransition(() => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null)))
@@ -155,7 +153,6 @@ export function MemberPanel({
               membership={full}
               sectionConfig={sectionConfig}
               shifts={shifts}
-              events={events}
               allRoles={allRoles}
               canTouchRole={canTouchRole}
               rolesLocked={!canEditMember(full)}

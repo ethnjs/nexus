@@ -5,6 +5,7 @@ import { personName } from "@/lib/personDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
 import { ChipInput } from "@/components/ui/ChipInput";
+import { FieldValue } from "@/components/profile/PanelField";
 import { Popover } from "@/components/ui/Popover";
 import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
@@ -23,13 +24,18 @@ interface RolesCellProps {
    * docked panel, so the same roles aren't editable in two places at once.
    */
   readOnly?: boolean;
+  /** What to render instead of an empty chip row when the cell is inert — a
+      panel field wants to say "None", a table cell would rather stay blank. */
+  emptyLabel?: string;
   onUpdated: (updated: MembershipSlim) => void;
 }
 
 // Inline role editor — chips for held roles (removable), a checklist
 // popover to add/remove more. Shared between the roster table and the
 // member detail panel.
-export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, onUpdated }: RolesCellProps) {
+export function RolesCell({
+  tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, emptyLabel, onUpdated,
+}: RolesCellProps) {
   // Two different reasons the chips go inert; ChipInput only has the one knob.
   const inert = locked || readOnly;
   const { show } = useToast();
@@ -39,6 +45,12 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
 
   const heldIds = new Set(membership.roles.map((r) => r.id));
   const roleByLabel = new Map(membership.roles.map((r) => [r.label, r]));
+
+  // Inert with no chips and no add button is a blank cell, which reads as
+  // "still loading" rather than "holds no roles".
+  if (inert && membership.roles.length === 0 && emptyLabel) {
+    return <FieldValue muted>{emptyLabel}</FieldValue>;
+  }
 
   function rankLockReason(role: Role): string | undefined {
     if (canTouchRole(role)) return undefined;

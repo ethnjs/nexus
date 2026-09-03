@@ -3,8 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError, CanonicalEvent, MembershipFull, Role, TournamentShift,
-  canonicalEventsApi, membershipsApi, rolesApi, tournamentShiftsApi,
+  ApiError, MembershipFull, Role, TournamentShift,
+  membershipsApi, rolesApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -39,7 +39,6 @@ export default function MemberPage() {
   const { canManageMembers, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
 
   const [full, setFull] = useState<MembershipFull | null>(null);
-  const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
@@ -49,12 +48,16 @@ export default function MemberPage() {
     membershipsApi.get(tournamentId, membershipId)
       .then(setFull)
       .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
-    canonicalEventsApi.list().then(setEvents).catch(() => {});
     tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => {});
-    // Only used to render the roles a member already holds when the viewer
-    // can't edit them; a failure just means no chips to pick from.
-    rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
   }, [tournamentId, membershipId]);
+
+  // The catalog is only the *pickable* roles — the ones a member already
+  // holds ride on the membership itself. So it's needed only for the edit
+  // popover, and the route is manage_members/manage_roles gated anyway.
+  useEffect(() => {
+    if (!canManageMembers) return;
+    rolesApi.list(tournamentId).then(setAllRoles).catch(() => setAllRoles([]));
+  }, [tournamentId, canManageMembers]);
 
   if (error) {
     return (
@@ -112,7 +115,6 @@ export default function MemberPage() {
           membership={full}
           sectionConfig={null}
           shifts={shifts}
-          events={events}
           allRoles={allRoles}
           canTouchRole={canTouchRole}
           rolesLocked={rolesLocked}
