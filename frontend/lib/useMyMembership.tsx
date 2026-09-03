@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
-import { membershipsApi, MembershipMe, Permission } from "./api";
+import { membersApi, MembershipMe, Permission } from "./api";
 
 interface MyMembershipContextValue {
   membership: MembershipMe | null;
@@ -20,7 +20,7 @@ export function MyMembershipProvider({ tournamentId, children }: { tournamentId:
 
   useEffect(() => {
     setLoading(true);
-    membershipsApi.getMe(Number(tournamentId))
+    membersApi.getMe(Number(tournamentId))
       .then(setMembership)
       .catch(() => setMembership(null))
       .finally(() => setLoading(false));

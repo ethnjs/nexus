@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiError, MembershipSlim, membershipsApi, Role } from "@/lib/api";
+import { ApiError, MembershipSlim, membersApi, Role } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
@@ -61,7 +61,7 @@ export function RolesCell({
 
   async function handleRemove(role: Role) {
     try {
-      const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
+      const updated = await membersApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
       onUpdated(updated);
       show(`Removed ${role.label} from ${memberName}`);
     } catch (err: unknown) {
@@ -70,7 +70,7 @@ export function RolesCell({
   }
 
   async function handleAdd(role: Role) {
-    const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
+    const updated = await membersApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
     onUpdated(updated);
     show(`Added ${role.label} to ${memberName}`);
   }

@@ -472,7 +472,7 @@ def test_delete_role_manage_roles_holder_cannot_delete_higher_rank(client, td_us
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
+# PATCH /tournaments/{tournament_id}/members/{membership_id}/roles/
 # Batch add/remove
 # ---------------------------------------------------------------------------
 
@@ -483,7 +483,7 @@ def test_assign_roles_add_and_remove_in_one_call(client, td_user, td_tournament,
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{membership.id}/roles/",
         json={"add": [add_role_id], "remove": [remove_role_id]},
     )
     assert response.status_code == 200
@@ -498,7 +498,7 @@ def test_assign_roles_add_already_held_is_noop(client, td_user, td_tournament, o
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{membership.id}/roles/",
         json={"add": [role_id]},
     )
     assert response.status_code == 200
@@ -512,7 +512,7 @@ def test_assign_roles_remove_not_held_is_noop(client, td_user, td_tournament, ot
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{membership.id}/roles/",
         json={"remove": [unheld_role_id]},
     )
     assert response.status_code == 200
@@ -531,7 +531,7 @@ def test_assign_roles_self_tied_rank_role_forbidden(client, td_user, other_tourn
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{membership.id}/roles/",
         json={"remove": [role_id]},
     )
     assert response.status_code == 403
@@ -546,7 +546,7 @@ def test_assign_roles_self_promotion_blocked(client, td_user, other_tournament, 
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{membership.id}/roles/",
         json={"add": [higher.id]},
     )
     assert response.status_code == 403
@@ -562,7 +562,7 @@ def test_assign_roles_cannot_touch_role_that_outranks_actor(client, td_user, oth
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [higher.id]},
     )
     assert response.status_code == 403
@@ -593,7 +593,7 @@ def test_assign_roles_cannot_modify_member_who_outranks_actor(client, td_user, o
         .first()
     )
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{other_user_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{other_user_membership.id}/roles/",
         json={"add": [low_role.id]},
     )
     assert response.status_code == 403
@@ -603,7 +603,7 @@ def test_assign_roles_role_not_found(client, td_user, td_tournament, other_user,
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{membership.id}/roles/",
         json={"add": [9999]},
     )
     assert response.status_code == 404
@@ -613,7 +613,7 @@ def test_assign_roles_membership_not_found(client, td_user, td_tournament, db):
     role_id = get_role_id(db, td_tournament.id, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/9999/roles/",
+        f"/tournaments/{td_tournament.id}/members/9999/roles/",
         json={"add": [role_id]},
     )
     assert response.status_code == 404
@@ -636,7 +636,7 @@ def test_assign_roles_same_rank_as_actor_forbidden(client, td_user, other_tourna
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [sibling.id]},
     )
     assert response.status_code == 403
@@ -653,7 +653,7 @@ def test_assign_roles_one_rank_above_actor_forbidden(client, td_user, other_tour
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [senior.id]},
     )
     assert response.status_code == 403
@@ -673,7 +673,7 @@ def test_assign_roles_target_with_same_rank_as_actor_allowed(client, td_user, ot
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [low_role.id]},
     )
     assert response.status_code == 200
@@ -692,7 +692,7 @@ def test_assign_roles_target_one_rank_above_actor_forbidden(client, td_user, oth
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [low_role.id]},
     )
     assert response.status_code == 403
@@ -717,7 +717,7 @@ def test_assign_roles_owner_bypasses_rank_check(client, td_user, td_tournament, 
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [td_role_id]},
     )
     assert response.status_code == 200
@@ -741,7 +741,7 @@ def test_assign_roles_non_owner_with_stripped_roles_forbidden(client, td_user, t
     login(client, "other@test.com", "otherpass")
 
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{td_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [td_role_id]},
     )
     assert response.status_code == 403
@@ -756,7 +756,7 @@ def test_assign_roles_admin_bypasses_rank_check(client, admin_user, other_tourna
     login(client, "admin@test.com", "adminpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"remove": [coordinator_role_id]},
     )
     assert response.status_code == 200
@@ -775,7 +775,7 @@ def test_assign_roles_non_member_forbidden(client, td_user, other_tournament, ot
     role_id = get_role_id(db, other_tournament.id, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/roles/",
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/roles/",
         json={"add": [role_id]},
     )
     assert response.status_code == 404

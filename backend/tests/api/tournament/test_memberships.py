@@ -105,7 +105,7 @@ def test_list_memberships(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, u1["id"])
     _make_membership(db, td_tournament.id, u2["id"])
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/")
     assert response.status_code == 200
     # td_user's own membership (from tournament creation) + the two above
     assert len(response.json()) >= 2
@@ -122,7 +122,7 @@ def test_fields_narrows_to_the_named_groups(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
     login(client, "td@test.com", "tdpass")
 
-    url = f"/tournaments/{td_tournament.id}/memberships/?fields=contact"
+    url = f"/tournaments/{td_tournament.id}/members/?fields=contact"
     row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
 
     assert row["user"]["email"] == u["email"]
@@ -144,7 +144,7 @@ def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
 
-    url = f"/tournaments/{td_tournament.id}/memberships/?fields="
+    url = f"/tournaments/{td_tournament.id}/members/?fields="
     row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
     assert row["user"]["first_name"] == "Alice"
     assert "email" not in row["user"]
@@ -160,7 +160,7 @@ def test_omitting_fields_still_returns_everything(client, td_user, td_tournament
     login(client, "td@test.com", "tdpass")
 
     row = next(
-        r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()
+        r for r in client.get(f"/tournaments/{td_tournament.id}/members/").json()
         if r["user"]["id"] == u["id"]
     )
     for key in ("notes", "roles", "lunch", "availability", "track_statuses",
@@ -172,7 +172,7 @@ def test_unknown_field_group_is_rejected(client, td_user, td_tournament, db):
     """A typo must fail loudly — a silently dropped section is indistinguishable
     from a member having no data."""
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?fields=contact,rolez")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?fields=contact,rolez")
     assert response.status_code == 422
     assert "rolez" in response.json()["detail"]
 
@@ -184,7 +184,7 @@ def test_fields_applies_to_the_detail_route_too(client, td_user, td_tournament, 
     login(client, "td@test.com", "tdpass")
 
     body = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?fields=notes"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?fields=notes"
     ).json()
     assert body["notes"] == "Allergic to nuts"
     assert "lunch" not in body
@@ -197,7 +197,7 @@ def test_fields_on_me_skips_the_builders(client, td_tournament, other_user, db):
     grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
 
-    body = client.get(f"/tournaments/{td_tournament.id}/memberships/me/?fields=roles").json()
+    body = client.get(f"/tournaments/{td_tournament.id}/members/me/?fields=roles").json()
     # Identity is never in a group — this is exactly what the provider reads.
     assert body["membership_id"]
     # Volunteer grants none, but the key is always there — the provider
@@ -219,7 +219,7 @@ def test_explicit_fields_wins_over_the_surface_preset(client, td_user, td_tourna
     login(client, "td@test.com", "tdpass")
 
     # members_table's defaults imply contact + membership + roles.
-    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table&fields=notes"
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table&fields=notes"
     row = next(r for r in client.get(url).json() if r["user"]["id"] == u["id"])
     assert "notes" in row
     assert "roles" not in row
@@ -234,7 +234,7 @@ def test_list_memberships_roster_shape(client, td_user, td_tournament, db):
     u = _make_user(db, "alice@example.com")
     _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/")
     assert response.status_code == 200
     row = next(m for m in response.json() if m["user"]["id"] == u["id"])
     assert row["user"]["email"] == u["email"]
@@ -256,7 +256,7 @@ def test_list_memberships_includes_track_statuses(client, td_user, td_tournament
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
+    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/members/").json() if r["id"] == m.id)
     assert row["track_statuses"] == [{
         "track_id": track.id, "name": "Test Writing", "is_archived": False,
         "status": "confirmed", "allow_confirm": False,
@@ -286,7 +286,7 @@ def test_list_memberships_applies_the_requested_surface_config(client, td_user, 
     }})
 
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert row["track_statuses"] == []
 
@@ -305,7 +305,7 @@ def test_list_memberships_without_a_surface_is_unfiltered(client, td_user, td_to
     set_display_config(db, td_tournament, td_user, {"members_table": {"hidden": [f"track:{track.id}"]}})
 
     login(client, "td@test.com", "tdpass")
-    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/memberships/").json() if r["id"] == m.id)
+    row = next(r for r in client.get(f"/tournaments/{td_tournament.id}/members/").json() if r["id"] == m.id)
     assert [t["track_id"] for t in row["track_statuses"]] == [track.id]
 
 
@@ -328,7 +328,7 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     db.commit()
     login(client, "td@test.com", "tdpass")
 
-    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert "lunch" not in row
 
@@ -358,7 +358,7 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     )
 
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert row["availability"] == [
         {
@@ -383,7 +383,7 @@ def test_list_memberships_age_column_still_respects_consent(client, td_user, td_
     set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["age"]}})
 
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/?surface=members_table"
+    url = f"/tournaments/{td_tournament.id}/members/?surface=members_table"
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert "is_over_18" not in row
 
@@ -393,7 +393,7 @@ class TestRosterFilters:
     run in SQL. Different filters AND; values within one OR."""
 
     def _roster(self, client, tournament_id, query=""):
-        res = client.get(f"/tournaments/{tournament_id}/memberships/{query}")
+        res = client.get(f"/tournaments/{tournament_id}/members/{query}")
         assert res.status_code == 200, res.json()
         return {r["user"]["email"] for r in res.json()}
 
@@ -466,7 +466,7 @@ class TestRosterFilters:
         """A bad value off a stale bookmark shouldn't 422 the roster — that
         leaves a TD staring at an error with no way to clear it."""
         login(client, "td@test.com", "tdpass")
-        res = client.get(f"/tournaments/{td_tournament.id}/memberships/?track=nonsense")
+        res = client.get(f"/tournaments/{td_tournament.id}/members/?track=nonsense")
         assert res.status_code == 200
 
     def test_age_filter_respects_consent_and_collection(self, client, db, td_user, td_tournament):
@@ -515,7 +515,7 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        body = client.get(f"/tournaments/{td_tournament.id}/memberships/filter-options/").json()
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         assert [t["label"] for t in body["tracks"]] == ["Writing"]
         # Lunch comes back grouped by category: the modal adds the category
         # as a chip and narrows it from that chip's pill. Answered/not
@@ -544,7 +544,7 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        body = client.get(f"/tournaments/{td_tournament.id}/memberships/filter-options/").json()
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
         protein = next(g for g in body["lunch_categories"] if g["value"] == "protein")
         assert [o["value"] for o in protein["options"]] == ["Sofritas"]
 
@@ -613,7 +613,7 @@ def test_list_memberships_requires_manage_members(
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/"
+        f"/tournaments/{other_tournament.id}/members/"
     ).status_code == 403
 
 
@@ -621,7 +621,7 @@ def test_list_memberships_no_membership_in_tournament(client, td_user):
     """Membership existence check fires before permission — 404, not 403, so
     a tournament the user isn't in never leaks its existence."""
     login(client, "td@test.com", "tdpass")
-    assert client.get("/tournaments/9999/memberships/").status_code == 404
+    assert client.get("/tournaments/9999/members/").status_code == 404
 
 
 def test_list_memberships_excludes_declined_by_default(client, td_user, td_tournament, other_user, db):
@@ -629,7 +629,7 @@ def test_list_memberships_excludes_declined_by_default(client, td_user, td_tourn
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()]
+    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/members/").json()]
     assert membership.id not in ids
 
 
@@ -638,7 +638,7 @@ def test_list_memberships_includes_declined_when_opted_in(client, td_user, td_to
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?include_declined=true")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?include_declined=true")
     row = next(m for m in response.json() if m["id"] == membership.id)
     assert row["age_disclosure"] == "declined"
 
@@ -648,7 +648,7 @@ def test_search_memberships_excludes_declined(client, td_user, td_tournament, ot
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/memberships/").json()]
+    ids = [m["id"] for m in client.get(f"/tournaments/{td_tournament.id}/members/").json()]
     assert membership.id not in ids
 
 
@@ -659,14 +659,14 @@ def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
     membership = grant_role(db, td_tournament, user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/")
     assert response.status_code == 200
     row = next(m for m in response.json() if m["id"] == membership.id)
     assert [r["label"] for r in row["roles"]] == ["Volunteer"]
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/?q=&role_id=&exclude_role_id=
+# GET /tournaments/{tournament_id}/members/?q=&role_id=&exclude_role_id=
 # manage_members. The role pickers: the same roster route, narrowed. There is
 # no separate search endpoint — it only ever existed because the roster
 # returned too much, which `fields` now answers.
@@ -680,7 +680,7 @@ def test_the_search_route_is_gone(client, td_user, td_tournament):
     through to /{membership_id}/ and "search" fails to coerce to an int. The
     point is that it no longer returns a member list."""
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/search/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/search/")
     assert response.status_code == 422
 
 
@@ -707,7 +707,7 @@ def test_search_params_combine_with_roster_filters(client, td_user, td_tournamen
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/?q=an&track={track.id}:confirmed"
+    url = f"/tournaments/{td_tournament.id}/members/?q=an&track={track.id}:confirmed"
     names = sorted(r["user"]["first_name"] for r in client.get(url).json())
     assert names == ["Ana"]
 
@@ -719,7 +719,7 @@ def test_search_memberships_by_name(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, priya["id"])
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?q=Priya")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?q=Priya")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["priya@example.com"]
@@ -732,7 +732,7 @@ def test_search_memberships_by_email(client, td_user, td_tournament, db):
     _make_membership(db, td_tournament.id, priya["id"])
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?q=zed@example")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?q=zed@example")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["zed@example.com"]
@@ -746,7 +746,7 @@ def test_search_memberships_by_role_id(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
 
     role_id = get_role_id_by_label(db, td_tournament.id, "Volunteer")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?role_id={role_id}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?role_id={role_id}")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert emails == ["coach@example.com"]
@@ -758,7 +758,7 @@ def test_search_memberships_exclude_role_id(client, td_user, td_tournament, db):
     role_id = get_role_id_by_label(db, td_tournament.id, "Tournament Director")
     login(client, "td@test.com", "tdpass")
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/?exclude_role_id={role_id}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/?exclude_role_id={role_id}")
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
     assert "td@test.com" not in emails
@@ -768,7 +768,7 @@ def test_search_memberships_no_filters_returns_all(client, td_user, td_tournamen
     zed = _make_user(db, "zed@example.com")
     _make_membership(db, td_tournament.id, zed["id"])
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/")
     assert response.status_code == 200
     assert len(response.json()) >= 2
 
@@ -801,7 +801,7 @@ def test_search_memberships_max_rank_excludes_equal_and_higher_authority(
 
     login(client, "td@test.com", "tdpass")
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/?max_rank=50"
+        f"/tournaments/{td_tournament.id}/members/?max_rank=50"
     )
     assert response.status_code == 200
     emails = [m["user"]["email"] for m in response.json()]
@@ -822,7 +822,7 @@ def test_search_memberships_max_rank_keeps_roleless_members(
 
     login(client, "td@test.com", "tdpass")
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/?max_rank=50"
+        f"/tournaments/{td_tournament.id}/members/?max_rank=50"
     )
     assert response.status_code == 200
     assert "roleless@example.com" in [m["user"]["email"] for m in response.json()]
@@ -832,14 +832,14 @@ def test_search_memberships_requires_manage_members(client, td_user, other_tourn
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/"
+        f"/tournaments/{other_tournament.id}/members/"
     ).status_code == 403
 
 
 def test_search_memberships_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/"
+        f"/tournaments/{other_tournament.id}/members/"
     ).status_code == 404
 
 
@@ -852,7 +852,7 @@ def test_get_membership(client, td_user, td_tournament, db):
     m = _make_membership(db, td_tournament.id, u["id"], notes="Allergic to nuts")
     login(client, "td@test.com", "tdpass")
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     )
     assert response.status_code == 200
     data = response.json()
@@ -864,7 +864,7 @@ def test_get_membership(client, td_user, td_tournament, db):
 def test_get_membership_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{td_tournament.id}/memberships/9999/"
+        f"/tournaments/{td_tournament.id}/members/9999/"
     ).status_code == 404
 
 
@@ -874,7 +874,7 @@ def test_get_membership_wrong_tournament(client, td_user, td_tournament, other_t
     m = _make_membership(db, other_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     ).status_code == 404
 
 
@@ -888,7 +888,7 @@ def test_get_membership_self_without_manage_members(client, td_user, other_tourn
         .one()
     )
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{other_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{other_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     assert response.json()["id"] == m.id
 
@@ -906,7 +906,7 @@ def test_get_membership_self_view_hides_notes(client, td_user, other_tournament,
     db.commit()
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
     ).json()["notes"] is None
 
 
@@ -950,7 +950,7 @@ def test_join_code_creator_carries_name_and_roles_only(client, td_user, td_tourn
 
     login(client, "td@test.com", "tdpass")
     creator = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     ).json()["join_code"]["creator"]
     assert set(creator) == {"user_id", "membership_id", "first_name", "last_name", "roles"}
     assert creator["user_id"] == td_user.id
@@ -965,7 +965,7 @@ def test_self_viewer_sees_the_creator_name_without_roles(client, td_user, other_
 
     login(client, "td@test.com", "tdpass")
     creator = client.get(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
     ).json()["join_code"]["creator"]
     assert creator["first_name"] is not None
     # Absent, not null: null is the answer for "holds no membership here".
@@ -980,7 +980,7 @@ def test_get_membership_self_access_does_not_leak_others(client, td_user, other_
     m = _make_membership(db, other_tournament.id, other["id"])
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
     ).status_code == 403
 
 
@@ -990,7 +990,7 @@ def test_get_membership_requires_manage_members(client, td_user, other_tournamen
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     assert client.get(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
     ).status_code == 403
 
 
@@ -1000,7 +1000,7 @@ def test_get_membership_includes_roles(client, td_user, td_tournament, db):
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
     membership = grant_role(db, td_tournament, user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert response.status_code == 200
     assert [r["label"] for r in response.json()["roles"]] == ["Volunteer"]
 
@@ -1009,7 +1009,7 @@ def test_get_membership_availability_and_lunch_empty(client, td_user, td_tournam
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     data = response.json()
     assert data["availability"] == []
@@ -1038,7 +1038,7 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     data = response.json()
 
@@ -1058,7 +1058,7 @@ def test_get_membership_custom_responses_empty(client, td_user, td_tournament, d
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     assert response.json()["custom_responses"] == []
 
@@ -1071,7 +1071,7 @@ def test_get_membership_custom_responses_populated(client, td_user, td_tournamen
     _make_answer(db, u["id"], form, field, "opt_1")
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     custom = response.json()["custom_responses"]
     assert custom == [{
@@ -1091,7 +1091,7 @@ def test_get_membership_custom_responses_excludes_reserved_field_keys(client, td
     _make_answer(db, u["id"], form, reserved, "confirmed")
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     assert response.json()["custom_responses"] == []
 
@@ -1104,13 +1104,13 @@ def test_get_membership_custom_responses_excludes_unpublished_forms(client, td_u
     _make_answer(db, u["id"], draft_form, field, "opt_1")
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     assert response.json()["custom_responses"] == []
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/{id}/?surface= — display_config
+# GET /tournaments/{tournament_id}/members/{id}/?surface= — display_config
 # application (TASK.md 3.3)
 # ---------------------------------------------------------------------------
 
@@ -1139,7 +1139,7 @@ def test_get_membership_surface_hides_track_status(client, td_user, td_tournamen
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"track:{track.id}"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert response.json()["track_statuses"] == []
 
@@ -1156,7 +1156,7 @@ def test_get_membership_surface_hides_lunch_category(client, td_user, td_tournam
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["lunch_category:entree"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert response.json()["lunch"] == []
 
@@ -1174,7 +1174,7 @@ def test_get_membership_surface_hides_event_preference(client, td_user, td_tourn
     db.commit()
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["event_pref:rank"])
 
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert response.json()["event_preferences"] == []
 
@@ -1188,7 +1188,7 @@ def test_get_membership_surface_hides_custom_response(client, td_user, td_tourna
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"form_field:{field.id}"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert response.json()["custom_responses"] == []
 
@@ -1209,7 +1209,7 @@ def test_get_membership_surface_hides_availability_day(client, td_user, td_tourn
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"availability_day:{day}"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert response.json()["availability"] == []
 
@@ -1230,7 +1230,7 @@ def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament,
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"track:{track.id}"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     assert len(response.json()["track_statuses"]) == 1
 
@@ -1248,20 +1248,20 @@ def test_get_membership_surface_hiding_never_affects_age_flags(client, td_user, 
     _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["track:1", "lunch_category:entree", "event_pref:rank"])
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface={MEMBERS_PANEL}")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
     assert "is_over_18" not in response.json()
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/me/ — any member
+# GET /tournaments/{tournament_id}/members/me/ — any member
 # ---------------------------------------------------------------------------
 
 def test_get_my_membership_owner(client, td_user, td_tournament):
     """td_user is both the owner and holds Tournament Director — is_owner
     True and permissions come back as the full set regardless of role."""
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     data = response.json()
     assert data["is_owner"] is True
@@ -1282,7 +1282,7 @@ def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
     membership = grant_role(db, td_tournament, user, "Volunteer")
 
     login(client, "volunteer@example.com", "volpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     data = response.json()
     assert data["is_owner"] is False
@@ -1320,7 +1320,7 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     db.commit()
 
     login(client, "volunteer2@example.com", "volpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     data = response.json()
     # td_tournament doesn't collect either flag — omitted, not null (see the
@@ -1339,7 +1339,7 @@ def test_get_my_membership_track_statuses_include_pending(client, td_user, td_to
     are exactly the ones a self-service control has to offer."""
     track = _make_track(db, td_tournament.id, "Test Writing", allow_confirm=True)
     login(client, "td@test.com", "tdpass")
-    statuses = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()["track_statuses"]
+    statuses = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
     entry = next(t for t in statuses if t["track_id"] == track.id)
     assert entry["status"] == "pending"
     assert entry["allow_confirm"] is True
@@ -1358,7 +1358,7 @@ def test_track_statuses_carry_allow_confirm(client, td_user, td_tournament, db):
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/").json()
     entry = next(t for t in data["track_statuses"] if t["track_id"] == track.id)
     assert entry["allow_confirm"] is True
 
@@ -1387,7 +1387,7 @@ def test_build_lunch_prefers_the_live_field_over_an_archived_one(client, td_user
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/").json()
     assert data["lunch"][0]["question_type"] == "single_select_radio"
 
 
@@ -1396,7 +1396,7 @@ def test_get_my_membership_needs_age_consent_when_collected_and_unanswered(clien
     db.commit()
     grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
     assert data["needs_age_consent"] is True
 
 
@@ -1407,14 +1407,14 @@ def test_get_my_membership_needs_age_consent_false_once_answered(client, td_tour
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "other@test.com", "otherpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
     assert data["needs_age_consent"] is False
 
 
 def test_get_my_membership_needs_age_consent_false_when_not_collected(client, td_tournament, other_user, db):
     grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
     assert data["needs_age_consent"] is False
 
 
@@ -1423,7 +1423,7 @@ def test_get_my_membership_admin_without_membership(client, admin_user, td_tourn
     require_membership()'s admin bypass — membership_id/roles are
     null/empty but permissions come back as the full admin set."""
     login(client, "admin@test.com", "adminpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     data = response.json()
     assert data["membership_id"] is None
@@ -1440,7 +1440,7 @@ def test_get_my_membership_no_membership_returns_null_id(client, td_user, other_
     special-case "declined" from "never joined" without also opening the
     door to "never joined"."""
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{other_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{other_tournament.id}/members/me/")
     assert response.status_code == 200
     assert response.json()["membership_id"] is None
 
@@ -1453,18 +1453,18 @@ def test_get_my_membership_still_reachable_when_declined(client, td_tournament, 
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "other@test.com", "otherpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     assert response.json()["membership_id"] == membership.id
 
 
 def test_get_my_membership_not_found_tournament(client, td_user):
     login(client, "td@test.com", "tdpass")
-    assert client.get("/tournaments/9999/memberships/me/").status_code == 404
+    assert client.get("/tournaments/9999/members/me/").status_code == 404
 
 
 # ---------------------------------------------------------------------------
-# POST .../memberships/me/age-disclosure/ — self-service consent/decline
+# POST .../members/me/age-disclosure/ — self-service consent/decline
 # ---------------------------------------------------------------------------
 
 def test_age_disclosure_consent_sets_status_and_timestamp(client, td_tournament, other_user, db):
@@ -1474,7 +1474,7 @@ def test_age_disclosure_consent_sets_status_and_timestamp(client, td_tournament,
     login(client, "other@test.com", "otherpass")
 
     response = client.post(
-        f"/tournaments/{td_tournament.id}/memberships/me/age-disclosure/", json={"consent": True},
+        f"/tournaments/{td_tournament.id}/members/me/age-disclosure/", json={"consent": True},
     )
     assert response.status_code == 200
     assert response.json()["needs_age_consent"] is False
@@ -1510,7 +1510,7 @@ def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, ot
 
     login(client, "other@test.com", "otherpass")
     response = client.post(
-        f"/tournaments/{td_tournament.id}/memberships/me/age-disclosure/", json={"consent": False},
+        f"/tournaments/{td_tournament.id}/members/me/age-disclosure/", json={"consent": False},
     )
     assert response.status_code == 200
 
@@ -1531,7 +1531,7 @@ def test_age_disclosure_recanting_flips_back_to_consented(client, td_tournament,
 
     login(client, "other@test.com", "otherpass")
     response = client.post(
-        f"/tournaments/{td_tournament.id}/memberships/me/age-disclosure/", json={"consent": True},
+        f"/tournaments/{td_tournament.id}/members/me/age-disclosure/", json={"consent": True},
     )
     assert response.status_code == 200
     db.refresh(membership)
@@ -1541,14 +1541,14 @@ def test_age_disclosure_recanting_flips_back_to_consented(client, td_tournament,
 def test_age_disclosure_not_found_without_membership(client, td_tournament, td_user):
     login(client, "td@test.com", "tdpass")
     response = client.post(
-        f"/tournaments/{td_tournament.id + 9999}/memberships/me/age-disclosure/", json={"consent": True},
+        f"/tournaments/{td_tournament.id + 9999}/members/me/age-disclosure/", json={"consent": True},
     )
     assert response.status_code == 404
 
 
 def test_age_disclosure_unauthenticated_forbidden(client, td_tournament):
     assert client.post(
-        f"/tournaments/{td_tournament.id}/memberships/me/age-disclosure/", json={"consent": True},
+        f"/tournaments/{td_tournament.id}/members/me/age-disclosure/", json={"consent": True},
     ).status_code == 401
 
 
@@ -1561,7 +1561,7 @@ def test_update_membership_notes(client, td_user, td_tournament, db):
     m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/",
+        f"/tournaments/{td_tournament.id}/members/{m.id}/",
         json={"notes": "Needs early lunch"},
     )
     assert response.status_code == 200
@@ -1575,7 +1575,7 @@ def test_update_membership_ignores_onboarding_fields(client, td_user, td_tournam
     m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/",
+        f"/tournaments/{td_tournament.id}/members/{m.id}/",
         json={"lunch_order": "Changed by staff"},
     )
     assert response.status_code == 200
@@ -1588,7 +1588,7 @@ def test_update_membership_requires_manage_members(client, td_user, other_tourna
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/",
+        f"/tournaments/{other_tournament.id}/members/{m.id}/",
         json={"notes": "no permission"},
     )
     assert response.status_code == 403
@@ -1597,7 +1597,7 @@ def test_update_membership_requires_manage_members(client, td_user, other_tourna
 def test_update_membership_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.patch(
-        f"/tournaments/{td_tournament.id}/memberships/9999/",
+        f"/tournaments/{td_tournament.id}/members/9999/",
         json={"notes": "no such membership"},
     )
     assert response.status_code == 404
@@ -1647,14 +1647,14 @@ def test_put_my_availability_replaces_the_whole_set(client, td_user, td_tourname
     login(client, "td@test.com", "tdpass")
 
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/",
         json={"shift_ids": [morning.id, afternoon.id]},
     )
     assert response.status_code == 200
     assert {row["shift_id"] for row in response.json()} == {morning.id, afternoon.id}
 
     dropped = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/",
         json={"shift_ids": [afternoon.id]},
     )
     assert [row["shift_id"] for row in dropped.json()] == [afternoon.id]
@@ -1666,7 +1666,7 @@ def test_put_my_availability_rejects_another_tournaments_shift(
     foreign = _make_shift(db, other_tournament.id, "Elsewhere")
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/",
         json={"shift_ids": [foreign.id]},
     )
     assert response.status_code == 422
@@ -1677,7 +1677,7 @@ def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_
     track = _make_track(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
         json={"status": "declined"},
     )
     assert response.status_code == 200
@@ -1689,7 +1689,7 @@ def test_put_my_track_status_undeclines_to_interested(client, td_user, td_tourna
     move write-through itself refuses (see can_set_track_status)."""
     track = _make_track(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/"
+    url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
     client.put(url, json={"status": "declined"})
     response = client.put(url, json={"status": "interested"})
     assert response.status_code == 200
@@ -1700,7 +1700,7 @@ def test_put_my_track_status_cannot_self_confirm_by_default(client, td_user, td_
     track = _make_track(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
         json={"status": "confirmed"},
     )
     assert response.status_code == 403
@@ -1710,7 +1710,7 @@ def test_put_my_track_status_self_confirms_when_allowed(client, td_user, td_tour
     """With allow_confirm on, declined goes straight to confirmed."""
     track = _make_track(db, td_tournament.id, allow_confirm=True)
     login(client, "td@test.com", "tdpass")
-    url = f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/"
+    url = f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/"
     client.put(url, json={"status": "declined"})
     response = client.put(url, json={"status": "confirmed"})
     assert response.status_code == 200
@@ -1725,7 +1725,7 @@ def test_put_my_track_status_rejects_interested_when_confirm_allowed(
     track = _make_track(db, td_tournament.id, allow_confirm=True)
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
         json={"status": "interested"},
     )
     assert response.status_code == 422
@@ -1735,7 +1735,7 @@ def test_put_my_track_status_rejects_unknown_status(client, td_user, td_tourname
     track = _make_track(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
         json={"status": "maybe"},
     )
     assert response.status_code == 422
@@ -1747,7 +1747,7 @@ def test_put_my_track_status_rejects_archived_track(client, td_user, td_tourname
     db.commit()
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{track.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
         json={"status": "declined"},
     )
     assert response.status_code == 409
@@ -1759,7 +1759,7 @@ def test_put_my_track_status_scoped_to_the_tournament(
     foreign = _make_track(db, other_tournament.id, "Elsewhere")
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/memberships/me/track-statuses/{foreign.id}/",
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{foreign.id}/",
         json={"status": "declined"},
     )
     assert response.status_code == 404
@@ -1774,7 +1774,7 @@ def test_delete_membership(client, td_user, td_tournament, db):
     m = _make_membership(db, td_tournament.id, u["id"])
     login(client, "td@test.com", "tdpass")
     assert client.delete(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     ).status_code == 204
 
 
@@ -1789,7 +1789,7 @@ def test_delete_membership_deletes_form_responses(client, td_user, td_tournament
 
     login(client, "td@test.com", "tdpass")
     assert client.delete(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     ).status_code == 204
 
     assert db.query(FormResponse).filter_by(user_id=u["id"]).count() == 0
@@ -1810,7 +1810,7 @@ def test_delete_membership_keeps_other_tournaments_responses(
 
     login(client, "td@test.com", "tdpass")
     assert client.delete(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/"
     ).status_code == 204
 
     assert db.query(FormResponse).filter_by(form_id=other_form.id, user_id=u["id"]).count() == 1
@@ -1819,7 +1819,7 @@ def test_delete_membership_keeps_other_tournaments_responses(
 def test_delete_membership_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.delete(
-        f"/tournaments/{td_tournament.id}/memberships/9999/"
+        f"/tournaments/{td_tournament.id}/members/9999/"
     ).status_code == 404
 
 
@@ -1829,7 +1829,7 @@ def test_delete_membership_requires_manage_members(client, td_user, other_tourna
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.delete(
-        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
     )
     assert response.status_code == 403
 
@@ -1874,7 +1874,7 @@ def test_delete_membership_owner_target_forbidden(client, td_user, other_tournam
     login(client, "td@test.com", "tdpass")
 
     response = client.delete(
-        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/"
+        f"/tournaments/{other_tournament.id}/members/{owner_membership.id}/"
     )
     assert response.status_code == 403
 
@@ -1896,7 +1896,7 @@ def test_delete_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
     login(client, "td@test.com", "tdpass")
 
     response = client.delete(
-        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/"
+        f"/tournaments/{other_tournament.id}/members/{owner_membership.id}/"
     )
     assert response.status_code == 403
     assert db.query(TournamentMembership).filter(TournamentMembership.id == owner_membership.id).first() is not None
@@ -1915,7 +1915,7 @@ def test_delete_membership_target_outranks_actor_forbidden(client, td_user, othe
     login(client, "td@test.com", "tdpass")
 
     response = client.delete(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/"
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/"
     )
     assert response.status_code == 403
 
@@ -1933,7 +1933,7 @@ def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tourn
     login(client, "td@test.com", "tdpass")
 
     response = client.delete(
-        f"/tournaments/{other_tournament.id}/memberships/{target_membership.id}/"
+        f"/tournaments/{other_tournament.id}/members/{target_membership.id}/"
     )
     assert response.status_code == 204
 
@@ -1951,7 +1951,7 @@ def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
     login(client, "td@test.com", "tdpass")
 
     response = client.patch(
-        f"/tournaments/{other_tournament.id}/memberships/{owner_membership.id}/",
+        f"/tournaments/{other_tournament.id}/members/{owner_membership.id}/",
         json={"notes": "should not be allowed"},
     )
     assert response.status_code == 403
@@ -1980,7 +1980,7 @@ def _age_flags(client, db, tournament, user, dob):
     membership.age_disclosure = "consented"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{tournament.id}/memberships/{membership.id}/")
+    response = client.get(f"/tournaments/{tournament.id}/members/{membership.id}/")
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -2041,7 +2041,7 @@ def test_age_flags_omitted_when_tournament_does_not_collect(client, td_user, td_
     membership.age_disclosure = "consented"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" not in data
     assert "is_over_21" not in data
 
@@ -2054,7 +2054,7 @@ def test_age_flags_omitted_when_not_consented(client, td_user, td_tournament, ot
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
     # age_disclosure left null — never answered.
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" not in data
     assert "is_over_21" not in data
 
@@ -2067,7 +2067,7 @@ def test_age_flags_omitted_when_declined(client, td_user, td_tournament, other_u
     membership.age_disclosure = "declined"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" not in data
 
 
@@ -2082,7 +2082,7 @@ def test_age_flags_gated_independently_per_flag(client, td_user, td_tournament, 
     membership.age_disclosure = "consented"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" in data
     assert "is_over_21" not in data
 
@@ -2096,7 +2096,7 @@ def test_age_flags_shown_when_collected_and_consented(client, td_user, td_tourna
     membership.age_disclosure = "consented"
     db.commit()
     login(client, "td@test.com", "tdpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" in data
     assert "is_over_21" in data
 
@@ -2109,19 +2109,19 @@ def test_age_flags_gate_applies_to_my_membership_too(client, td_tournament, othe
     db.commit()
     grant_role(db, td_tournament, other_user, "Volunteer")
     login(client, "other@test.com", "otherpass")
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/me/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
     assert "is_over_18" not in data
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/me/ — leave a tournament
+# DELETE /tournaments/{tournament_id}/members/me/ — leave a tournament
 # ---------------------------------------------------------------------------
 
 def test_leave_tournament_member_can_leave(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
 
-    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 204
+    assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 204
     assert (
         db.query(TournamentMembership)
         .filter(
@@ -2137,7 +2137,7 @@ def test_leave_tournament_owner_must_transfer_first(client, td_user, td_tourname
     """Letting the owner walk would strand the tournament with an owner_id
     pointing at a non-member."""
     login(client, "td@test.com", "tdpass")
-    response = client.delete(f"/tournaments/{td_tournament.id}/memberships/me/")
+    response = client.delete(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 400
     assert "transfer ownership" in response.json()["detail"].lower()
 
@@ -2152,21 +2152,21 @@ def test_leave_tournament_owner_can_leave_after_transfer(
         json={"new_owner_id": other_user.id},
     )
 
-    assert client.delete(f"/tournaments/{td_tournament.id}/memberships/me/").status_code == 204
+    assert client.delete(f"/tournaments/{td_tournament.id}/members/me/").status_code == 204
 
 
 def test_leave_tournament_non_member_gets_404(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 404
+    assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 404
 
 
 def test_leave_tournament_not_found(client, td_user):
     login(client, "td@test.com", "tdpass")
-    assert client.delete("/tournaments/9999/memberships/me/").status_code == 404
+    assert client.delete("/tournaments/9999/members/me/").status_code == 404
 
 
 def test_leave_tournament_unauthenticated(client, td_tournament):
-    assert client.delete(f"/tournaments/{td_tournament.id}/memberships/me/").status_code == 401
+    assert client.delete(f"/tournaments/{td_tournament.id}/members/me/").status_code == 401
 
 
 def test_leave_tournament_drops_role_assignments(client, td_user, other_tournament, db):
@@ -2175,7 +2175,7 @@ def test_leave_tournament_drops_role_assignments(client, td_user, other_tourname
     membership_id = membership.id
     login(client, "td@test.com", "tdpass")
 
-    assert client.delete(f"/tournaments/{other_tournament.id}/memberships/me/").status_code == 204
+    assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 204
     assert (
         db.query(TournamentMembershipRole)
         .filter(TournamentMembershipRole.membership_id == membership_id)

@@ -301,20 +301,20 @@ def delete_role(
 
 # ---------------------------------------------------------------------------
 # Membership role assignment — a sub-resource of memberships, so nested under
-# /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Gated on
+# /tournaments/{tournament_id}/members/{membership_id}/roles/. Gated on
 # MANAGE_MEMBERS (assigning a role to a member is member data, not a
 # role-definition edit — see core/tournament/permissions.py), but kept in
 # this module rather than memberships.py since it shares get_scoped_or_404
 # usage and rank-bound logic with the role CRUD routes above.
 # ---------------------------------------------------------------------------
 membership_roles_router = APIRouter(
-    prefix="/tournaments/{tournament_id}/memberships/{membership_id}/roles",
+    prefix="/tournaments/{tournament_id}/members/{membership_id}/roles",
     tags=["tournaments"],
 )
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
+# PATCH /tournaments/{tournament_id}/members/{membership_id}/roles/
 # manage_members, rank-bound (see validate_role_action in core/tournament/roles.py)
 #
 # Assigning/removing a role on a member is member data (this member's role

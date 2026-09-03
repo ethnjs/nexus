@@ -8,7 +8,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Spinner } from "@/components/ui/Spinner";
 import { ChipInput, ChipStatus } from "@/components/ui/ChipInput";
 import { IconCheckCircle, IconXCircle } from "@/components/ui/Icons";
-import { invitesApi, membershipsApi, staffInvitesApi, Invite, StaffInviteResponse, ApiError } from "@/lib/api";
+import { invitesApi, membersApi, staffInvitesApi, Invite, StaffInviteResponse, ApiError } from "@/lib/api";
 import { PRESET_HOURS } from "@/lib/invitePresets";
 import { InviteFields } from "@/components/tournament/settings/InviteFields";
 
@@ -43,7 +43,7 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
     });
     // manage_invites alone (no manage_members) 403s here — that's fine, we
     // just skip the "already a member" warning entirely in that case.
-    membershipsApi.list(tournamentId)
+    membersApi.list(tournamentId)
       .then((members) => setMemberEmails(new Set(members.map((m) => m.user.email.toLowerCase()))))
       .catch(() => setMemberEmails(null));
   }, [tournamentId]);

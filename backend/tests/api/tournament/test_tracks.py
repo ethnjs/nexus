@@ -139,14 +139,14 @@ def _td_membership(db, td_user, td_tournament):
 
 
 def test_member_reads_their_own_track_statuses(client, db, td_user, td_tournament):
-    """memberships/me/ carries them so a member sees their own without
+    """members/me/ carries them so a member sees their own without
     manage_tournament, and with the track name resolved."""
     login(client, "td@test.com", "tdpass")
     track = _create_track(client, td_tournament.id, "Test Writing").json()
     membership = _td_membership(db, td_user, td_tournament)
     _set_status(db, membership.id, track["id"], "confirmed")
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     assert res.json()["track_statuses"] == [{
         "track_id": track["id"], "name": "Test Writing", "is_archived": False,
@@ -161,7 +161,7 @@ def test_member_detail_carries_track_statuses(client, db, td_user, td_tournament
     membership = _td_membership(db, td_user, td_tournament)
     _set_status(db, membership.id, track["id"], "interested")
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
     statuses = res.json()["track_statuses"]
     assert [(s["track_id"], s["name"], s["status"]) for s in statuses] == [
@@ -178,7 +178,7 @@ def test_archived_track_statuses_stay_readable(client, db, td_user, td_tournamen
     _set_status(db, membership.id, track["id"], "confirmed")
     client.patch(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/", json={"is_archived": True})
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     assert res.json()["track_statuses"][0]["is_archived"] is True
     assert res.json()["track_statuses"][0]["status"] == "confirmed"

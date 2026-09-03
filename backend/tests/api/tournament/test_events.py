@@ -355,8 +355,8 @@ def test_delete_event_not_found(client, td_user, td_tournament):
 
 
 # ---------------------------------------------------------------------------
-# Membership event preferences — grouped read on memberships/me/ and
-# memberships/{id}/. See app/schemas/tournament/membership.py's
+# Membership event preferences — grouped read on members/me/ and
+# members/{id}/. See app/schemas/tournament/membership.py's
 # MembershipEventPreferenceRead.
 # ---------------------------------------------------------------------------
 
@@ -419,7 +419,7 @@ def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_
     _add_preference(db, membership.id, "morning", e1["id"], 1)
     _add_preference(db, membership.id, "morning", e2["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
     options = res.json()["event_preferences"][0]["options"]
     assert len(options) == 1
@@ -439,7 +439,7 @@ def test_event_preferences_flag_answers_to_an_archived_option(client, db, td_use
     )
     _add_preference(db, membership.id, "morning", event["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
     option = res.json()["event_preferences"][0]["options"][0]
     assert option["label"] == "Retired Group"
@@ -455,7 +455,7 @@ def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, t
     _add_preference(db, membership.id, "morning", e2["id"], 2)
     _add_preference(db, membership.id, "morning", e1["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     # No form field defines these options, so each event is its own group,
     # labelled by the event and flagged archived (see build_event_preferences).
@@ -483,7 +483,7 @@ def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_us
     _add_preference(db, membership.id, "afternoon", e2["id"], None)
     _add_preference(db, membership.id, "afternoon", e1["id"], None)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     ids = [o["events"][0]["id"] for o in res.json()["event_preferences"][0]["options"]]
     assert ids == sorted([e1["id"], e2["id"]])
@@ -495,7 +495,7 @@ def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_
     _add_preference(db, membership.id, "morning", event["id"], 1)
     _add_preference(db, membership.id, "afternoon", event["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/me/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     assert [g["key"] for g in res.json()["event_preferences"]] == ["afternoon", "morning"]
 
@@ -505,7 +505,7 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
     membership = _td_membership(db, td_user, td_tournament)
     _add_preference(db, membership.id, "morning", event["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
     assert res.json()["event_preferences"] == [{
         "key": "morning",
@@ -515,13 +515,38 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
         }],
     }]
 
-def test_member_slim_response_has_no_event_preferences(client, db, td_user, td_tournament):
-    """Roster/search stays unchanged — the grouped shape is a full-response-only field."""
+def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td_tournament):
+    """The roster used to be a narrower schema that simply had no such field.
+    It is the same schema as the detail view now, so what keeps a whole
+    tournament's event preferences off a roster is the caller not asking:
+    a surface resolves to the groups its columns need, and no default column
+    reads them."""
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     membership = _td_membership(db, td_user, td_tournament)
     _add_preference(db, membership.id, "morning", event["id"], 1)
 
-    res = client.get(f"/tournaments/{td_tournament.id}/memberships/")
+    res = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table")
     assert res.status_code == 200
     assert "event_preferences" not in res.json()[0]
+
+
+def test_roster_returns_event_preferences_when_asked_for(client, db, td_user, td_tournament):
+    """The other half: one response shape, narrowed by the caller, so the
+    roster can serve them too rather than needing the detail route.
+
+    Deliberately a separate test rather than a second request in the one
+    above. The test client shares a single session across requests, so a
+    prior request's noload() leaves event_preferences already-loaded-as-empty
+    on the identity-mapped instance, and a later selectinload won't overwrite
+    an attribute that is already populated. Per-request sessions in
+    production make that impossible; two tests keep it out of the way here."""
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id).json()
+    membership = _td_membership(db, td_user, td_tournament)
+    _add_preference(db, membership.id, "morning", event["id"], 1)
+
+    res = client.get(f"/tournaments/{td_tournament.id}/members/?fields=event_prefs")
+    row = next(r for r in res.json() if r["id"] == membership.id)
+    assert [group["key"] for group in row["event_preferences"]] == ["morning"]
+

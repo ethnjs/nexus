@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, MembershipSlim, membershipsApi } from "@/lib/api";
+import { ApiError, MembershipSlim, membersApi } from "@/lib/api";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -34,7 +34,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
   // would just 403 on save, so they shouldn't show up as pickable here.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.list(tournamentId, {
+      membersApi.list(tournamentId, {
         excludeRoleId: roleId,
         q: search.trim() || undefined,
         maxRank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
@@ -60,7 +60,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
     setError(undefined);
     try {
       await Promise.all(
-        [...selected].map((membershipId) => membershipsApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
+        [...selected].map((membershipId) => membersApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
       );
       onAdded();
     } catch (err: unknown) {

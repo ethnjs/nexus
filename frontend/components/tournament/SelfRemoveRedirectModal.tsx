@@ -11,10 +11,10 @@ interface SelfRemoveRedirectModalProps {
 }
 
 // Removing yourself from a tournament isn't a roster action — the backend's
-// DELETE .../memberships/{id}/ (kick) route treats the owner's own row as
+// DELETE .../members/{id}/ (kick) route treats the owner's own row as
 // untouchable and doesn't carry the ownership-transfer guard leave_tournament
-// (DELETE .../memberships/me/) has. General settings' "Leave tournament" flow
-// is the one place that calls memberships/me/, so self-removal from the
+// (DELETE .../members/me/) has. General settings' "Leave tournament" flow
+// is the one place that calls members/me/, so self-removal from the
 // members page always routes there instead of opening RemoveMemberModal.
 export function SelfRemoveRedirectModal({ tournamentId, isOwner, onClose }: SelfRemoveRedirectModalProps) {
   const router = useRouter();

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { membershipsApi, ApiError, MembershipMe, Tournament } from "@/lib/api";
+import { membersApi, ApiError, MembershipMe, Tournament } from "@/lib/api";
 
 interface AgeDisclosureModalProps {
   tournamentId: number;
@@ -33,7 +33,7 @@ export function AgeDisclosureModal({ tournamentId, tournament, onResolved }: Age
     setSubmitting(true);
     setError(undefined);
     try {
-      const updated = await membershipsApi.setAgeDisclosure(tournamentId, consent);
+      const updated = await membersApi.setAgeDisclosure(tournamentId, consent);
       if (!consent) {
         // Declining blocks this tournament's pages (see TASK.md 2.4d) — the
         // member has nowhere left to go here.

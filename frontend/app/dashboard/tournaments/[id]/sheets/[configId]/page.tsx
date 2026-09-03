@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
-import { membershipsApi, sheetsApi, SheetConfig } from "@/lib/api";
+import { membersApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
 import { Modal } from "@/components/ui/Modal";
@@ -212,9 +212,9 @@ export default function ViewSheetConfigPage() {
     setDeleteLoading(true);
     setDeleteError("");
     try {
-      const memberships = await membershipsApi.list(tournamentId);
+      const memberships = await membersApi.list(tournamentId);
       await Promise.all(
-        memberships.map((m) => membershipsApi.delete(tournamentId, m.id))
+        memberships.map((m) => membersApi.delete(tournamentId, m.id))
       );
       await sheetsApi.deleteConfig(tournamentId, configId);
       router.push(`/dashboard/tournaments/${tournamentId}/sheets`);

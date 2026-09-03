@@ -102,12 +102,12 @@ def _resolve_join_code_creators(db: Session, tournament_id: int, memberships: li
         if m.join_code is not None:
             resp.join_code.creator = creators[m.join_code.created_by]
 
-# Routes nested: /tournaments/{tournament_id}/memberships/...
-router = APIRouter(prefix="/tournaments/{tournament_id}/memberships", tags=["tournaments"])
+# Routes nested: /tournaments/{tournament_id}/members/...
+router = APIRouter(prefix="/tournaments/{tournament_id}/members", tags=["tournaments"])
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/ — manage_members
+# GET /tournaments/{tournament_id}/members/ — manage_members
 #
 # The one read of many memberships. The members-page roster, the roles
 # editor's member list and its add-members picker are all this route with
@@ -205,7 +205,7 @@ def list_memberships(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/filter-options/ — manage_members
+# GET /tournaments/{tournament_id}/members/filter-options/ — manage_members
 # The values the roster's filter modal can offer, derived from what this
 # tournament actually holds. Registered before "/{membership_id}/" so the
 # literal path wins.
@@ -221,7 +221,7 @@ def get_member_filter_options(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/me/ — any member
+# GET /tournaments/{tournament_id}/members/me/ — any member
 # Registered before "/{membership_id}/" so the literal path wins.
 # ---------------------------------------------------------------------------
 @router.get("/me/", response_model=MembershipMeResponse)
@@ -262,7 +262,7 @@ def get_my_membership(
 
 
 # ---------------------------------------------------------------------------
-# POST /tournaments/{tournament_id}/memberships/me/age-disclosure/ — self-service
+# POST /tournaments/{tournament_id}/members/me/age-disclosure/ — self-service
 # Answers (or re-answers) the age-disclosure prompt. Decline is a *soft*
 # decline: it only ever sets a status column, never touches availability,
 # lunch, track statuses, or event preferences. Re-consenting from the same
@@ -296,7 +296,7 @@ def set_my_age_disclosure(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/{membership_id} — manage_members,
+# GET /tournaments/{tournament_id}/members/{membership_id} — manage_members,
 # or the member themselves.
 #
 # Self-access is what makes the member page (/members/{id}) reachable by the
@@ -360,7 +360,7 @@ def get_membership(
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
+# PATCH /tournaments/{tournament_id}/members/{membership_id} — manage_members (rank-bound)
 # Staff override — day-of logistics only (notes). Onboarding data has no
 # write path here at all: it comes through the form write-through flow.
 # ---------------------------------------------------------------------------
@@ -394,7 +394,7 @@ def update_membership(
 
 
 # ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/memberships/me/availability/ — self-service
+# PUT /tournaments/{tournament_id}/members/me/availability/ — self-service
 #
 # The member's own availability, edited from their member page rather than
 # through a form. Forms remain an input channel that writes the same rows
@@ -440,7 +440,7 @@ def update_my_availability(
 
 
 # ---------------------------------------------------------------------------
-# PUT /tournaments/{tournament_id}/memberships/me/track-statuses/{track_id}/
+# PUT /tournaments/{tournament_id}/members/me/track-statuses/{track_id}/
 # — self-service
 #
 # The three statuses split by who they belong to:
@@ -512,7 +512,7 @@ def update_my_track_status(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/me/ — self-service
+# DELETE /tournaments/{tournament_id}/members/me/ — self-service
 # Lets a non-owner leave a tournament. The owner must transfer ownership
 # first — leaving without doing so would strand the tournament ownerless.
 # Registered before "/{membership_id}/" so the literal path wins.
@@ -541,7 +541,7 @@ def leave_tournament(
 
 
 # ---------------------------------------------------------------------------
-# DELETE /tournaments/{tournament_id}/memberships/{membership_id} — manage_members (rank-bound)
+# DELETE /tournaments/{tournament_id}/members/{membership_id} — manage_members (rank-bound)
 # Removes a user from the tournament. Unlike leave_tournament (DELETE .../me/),
 # the actor here isn't necessarily removing themselves, so validate_member_target
 # both blocks the owner as a target outright and enforces the same rank

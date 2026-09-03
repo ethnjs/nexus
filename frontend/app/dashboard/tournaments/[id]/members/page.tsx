@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  membershipsApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
+  membersApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
@@ -329,7 +329,7 @@ export default function MembersPage() {
     // A filter change mid-flight has the same race on a smaller scale, so a
     // superseded response is dropped rather than allowed to overwrite.
     let current = true;
-    membershipsApi.list(tournamentId, {
+    membersApi.list(tournamentId, {
       surface: MEMBERS_TABLE,
       filters: membersFilterParams(filters),
     })

@@ -43,7 +43,7 @@ def is_declined(membership: "TournamentMembership") -> bool:
 def get_membership_by_user(db: Session, tournament_id: int, user_id: int, *options) -> TournamentMembership | None:
     """
     Fetch a membership by (tournament_id, user_id) rather than by membership
-    id — the .../memberships/me/ routes' lookup shape. Nullable, not a 404
+    id — the .../members/me/ routes' lookup shape. Nullable, not a 404
     helper: callers that must 404 on a missing row do that themselves
     (get_my_membership's GET route instead synthesizes a response for the
     admin-without-a-row case).
@@ -110,7 +110,7 @@ def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
     so a declined member is blocked from tournament pages generally
     (events, forms, roster, staff routes) without every call site needing
     its own check. The one deliberate exception is GET/POST
-    .../memberships/me/(age-disclosure)/, which bypass this dependency
+    .../members/me/(age-disclosure)/, which bypass this dependency
     entirely so a declined member can still see their own status and
     re-consent — see those routes."""
     if user.role == "admin":

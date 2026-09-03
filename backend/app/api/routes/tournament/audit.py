@@ -18,7 +18,7 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/audit-log", tags=["tourn
 # GET /tournaments/{tournament_id}/audit-log/actors/ — distinct actors who
 # have logged entries in this tournament, most-active first. Feeds the
 # "Filter by User" dropdown. manage_tournament only — deliberately not
-# folded into memberships/search/ (gated manage_members, a different
+# folded into members/ (gated manage_members, a different
 # permission, and "who's in the log" isn't "who's a member" anyway).
 # ---------------------------------------------------------------------------
 @router.get("/actors/", response_model=list[AuditLogActor])

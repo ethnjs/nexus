@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { membershipsApi, ApiError, MembershipSlim, Role } from "@/lib/api";
+import { membersApi, ApiError, MembershipSlim, Role } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
@@ -145,7 +145,7 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
       const add = [...rolesToAdd].filter((id) => !heldIds.has(id));
       const remove = [...rolesToRemove].filter((id) => heldIds.has(id));
       if (add.length === 0 && remove.length === 0) return m;
-      return membershipsApi.updateRoles(tournamentId, m.id, {
+      return membersApi.updateRoles(tournamentId, m.id, {
         add: add.length > 0 ? add : undefined,
         remove: remove.length > 0 ? remove : undefined,
       });

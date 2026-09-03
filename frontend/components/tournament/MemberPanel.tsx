@@ -3,7 +3,7 @@
 import { startTransition, useEffect, useState } from "react";
 import {
   ApiError, DisplayConfigSection, MembershipFull, MembershipSlim, Role,
-  TournamentShift, displayConfigApi, membershipsApi, tournamentShiftsApi,
+  TournamentShift, displayConfigApi, membersApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
@@ -76,7 +76,7 @@ export function MemberPanel({
   // that render blocks the frame and visibly stutters the slide; marked as a
   // transition, React can slice it across frames and let the animation win.
   useEffect(() => {
-    membershipsApi.get(tournamentId, membershipId, MEMBERS_PANEL)
+    membersApi.get(tournamentId, membershipId, MEMBERS_PANEL)
       .then((data) => startTransition(() => setFull(data)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});

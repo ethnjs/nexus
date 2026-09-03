@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { joinApi, membershipsApi, JoinPreviewTournament, ApiError } from "@/lib/api";
+import { joinApi, membersApi, JoinPreviewTournament, ApiError } from "@/lib/api";
 import { parseLocalDate } from "@/lib/date";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -130,7 +130,7 @@ function JoinPageContent() {
   useEffect(() => {
     if (authLoading || !user || !user.is_onboarding_complete) return;
     if (!preview || preview === "chapter") return;
-    membershipsApi.getMe(preview.target_id)
+    membersApi.getMe(preview.target_id)
       .then((me) => setAlreadyMember(me.membership_id !== null))
       .catch(() => setAlreadyMember(false))
       .finally(() => setMembershipChecked(true));

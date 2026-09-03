@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
-import { membershipsApi, tournamentsApi, MembershipSlim, ApiError } from "@/lib/api";
+import { membersApi, tournamentsApi, MembershipSlim, ApiError } from "@/lib/api";
 
 const CONFIRM_PHRASE = "TRANSFER OWNERSHIP";
 
@@ -30,7 +30,7 @@ export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, o
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    membershipsApi.list(tournamentId)
+    membersApi.list(tournamentId)
       .then((all) => setMembers(all.filter((m) => m.user.id !== currentUserId)))
       .catch(() => {});
   }, [tournamentId, currentUserId]);

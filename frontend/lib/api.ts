@@ -836,20 +836,12 @@ export interface MembershipFull {
   user:              UserFull
 }
 
-// PATCH .../memberships/me/ — self-service, onboarding responses only
-export interface MembershipMeUpdate {
-  role_preference?:  string[] | null
-  event_preference?: string[] | null
-  availability?:     AvailabilitySlot[] | null
-  lunch_order?:      Record<string, unknown> | string | null
-}
-
-// PATCH .../memberships/{id}/ — manage_members override, day-of logistics only
+// PATCH .../members/{id}/ — manage_members override, day-of logistics only
 export interface MembershipCoordinatorUpdate {
   notes?: string | null
 }
 
-// GET .../memberships/me/ — current user's membership + effective permissions
+// GET .../members/me/ — current user's membership + effective permissions
 export interface MembershipMe {
   membership_id: number | null
   is_owner:       boolean
@@ -890,7 +882,7 @@ export interface FilterOptionGroup {
   options: FilterOptionItem[]
 }
 
-export const membershipsApi = {
+export const membersApi = {
   // include_declined defaults to false server-side — a declined membership
   // is excluded from the roster unless a TD explicitly opts in.
   // An options object rather than positional args: the roster now takes a
@@ -924,33 +916,31 @@ export const membershipsApi = {
       // contain a comma ("Rice, beans").
       for (const value of values) params.append(key, value);
     }
-    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/?${params}`);
+    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/members/?${params}`);
   },
 
   // What the roster's filter modal can offer, derived from what the
   // tournament actually holds.
   filterOptions: (tournamentId: number) =>
-    api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/memberships/filter-options/`),
+    api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/members/filter-options/`),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
   get: (tournamentId: number, id: number, surface?: string) =>
-    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/${surface ? `?surface=${surface}` : ""}`),
+    api.get<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/${surface ? `?surface=${surface}` : ""}`),
   getMe: (tournamentId: number) =>
-    api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
+    api.get<MembershipMe>(`/tournaments/${tournamentId}/members/me/`),
   // consent=false is a soft decline — the row and all its data survive;
   // re-calling with consent=true flips straight back to active.
   setAgeDisclosure: (tournamentId: number, consent: boolean) =>
-    api.post<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/age-disclosure/`, { consent }),
+    api.post<MembershipMe>(`/tournaments/${tournamentId}/members/me/age-disclosure/`, { consent }),
   leaveMe: (tournamentId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/memberships/me/`),
-  updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
-    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
+    api.delete<void>(`/tournaments/${tournamentId}/members/me/`),
   update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
-    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
+    api.delete<void>(`/tournaments/${tournamentId}/members/${id}/`),
   updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
-    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
+    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
 }
 
 // -------------------------------------------------------------------------
@@ -1350,7 +1340,7 @@ export const sheetsApi = {
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
+    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/members/`)
     return memberships.map((m) => m.user.email)
   },
 }

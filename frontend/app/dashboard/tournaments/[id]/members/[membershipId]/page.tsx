@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ApiError, MembershipFull, Role, TournamentShift,
-  membershipsApi, rolesApi, tournamentShiftsApi,
+  membersApi, rolesApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
@@ -45,7 +45,7 @@ export default function MemberPage() {
 
   useEffect(() => {
     if (!Number.isFinite(tournamentId) || !Number.isFinite(membershipId)) return;
-    membershipsApi.get(tournamentId, membershipId)
+    membersApi.get(tournamentId, membershipId)
       .then(setFull)
       .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
     // The member-facing read: a self-viewer holds no manage_events, and all

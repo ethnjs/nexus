@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
-import { FilterOptionGroup, FilterOptionItem, MemberFilterOptions, membershipsApi } from "@/lib/api";
+import { FilterOptionGroup, FilterOptionItem, MemberFilterOptions, membersApi } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -376,7 +376,7 @@ export function MembersFilterModal({
   );
 
   useEffect(() => {
-    membershipsApi.filterOptions(tournamentId).then(setOptions).catch(() => setOptions(null));
+    membersApi.filterOptions(tournamentId).then(setOptions).catch(() => setOptions(null));
   }, [tournamentId]);
 
   function set(key: MembersFilterKey, values: Set<string>) {

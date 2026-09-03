@@ -368,7 +368,7 @@ def test_turning_toggle_on_does_not_retroactively_expose_unconsented_members(
     login(client, "td@test.com", "tdpass")
 
     # Before: not collected, unanswered — omitted either way.
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" not in data
 
     # TD turns it on.
@@ -376,7 +376,7 @@ def test_turning_toggle_on_does_not_retroactively_expose_unconsented_members(
     assert response.status_code == 200
 
     # After: collected now, but still never consented — still omitted, not null.
-    data = client.get(f"/tournaments/{td_tournament.id}/memberships/{membership.id}/").json()
+    data = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/").json()
     assert "is_over_18" not in data
 
 

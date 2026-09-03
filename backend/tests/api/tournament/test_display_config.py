@@ -359,7 +359,7 @@ def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournamen
     db.commit()
 
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{td_tournament.id}/memberships/{m.id}/")
+    response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     by_name = {t["name"]: t["status"] for t in response.json()["track_statuses"]}
     assert by_name == {"Answered Track": "confirmed", "Unanswered Track": "pending"}
@@ -385,7 +385,7 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
     ).status_code == 200
 
     response = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
     )
     assert response.status_code == 200
     assert [t["name"] for t in response.json()["track_statuses"]] == ["Shown Track"]
@@ -409,7 +409,7 @@ def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td
     ).status_code == 200
 
     body = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
     ).json()
     assert body["lunch"] == []
     assert body["hidden_sections"] == ["lunch"]
@@ -428,7 +428,7 @@ def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, t
 
     login(client, "td@test.com", "tdpass")
     body = client.get(
-        f"/tournaments/{td_tournament.id}/memberships/{m.id}/?surface=members_panel"
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
     ).json()
     assert len(body["lunch"]) == 1
     assert body["hidden_sections"] == []

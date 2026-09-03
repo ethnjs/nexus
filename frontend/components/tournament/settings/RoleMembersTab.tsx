@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, MembershipSlim, Role, membershipsApi } from "@/lib/api";
+import { ApiError, MembershipSlim, Role, membersApi } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Button } from "@/components/ui/Button";
@@ -44,7 +44,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   // Debounced so search doesn't hit the server on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.list(tournamentId, { roleId: role.id, q: search.trim() || undefined })
+      membersApi.list(tournamentId, { roleId: role.id, q: search.trim() || undefined })
         .then(setMembers)
         .catch(() => setError("Failed to load members."));
     }, 300);
@@ -60,7 +60,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
     setRemovingId(membershipId);
     setError(undefined);
     try {
-      await membershipsApi.updateRoles(tournamentId, membershipId, { remove: [role.id] });
+      await membersApi.updateRoles(tournamentId, membershipId, { remove: [role.id] });
       refetch();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Failed to remove member.");

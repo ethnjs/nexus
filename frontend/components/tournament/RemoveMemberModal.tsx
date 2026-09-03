@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { membershipsApi, ApiError } from "@/lib/api";
+import { membersApi, ApiError } from "@/lib/api";
 
 interface RemoveMemberModalProps {
   tournamentId: number;
@@ -21,7 +21,7 @@ export function RemoveMemberModal({ tournamentId, membershipId, memberName, onCl
     setError(undefined);
     setLoading(true);
     try {
-      await membershipsApi.delete(tournamentId, membershipId);
+      await membersApi.delete(tournamentId, membershipId);
       onRemoved();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
