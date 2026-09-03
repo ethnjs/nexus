@@ -64,7 +64,9 @@ def _build_me_response(
         and membership.age_disclosure is None
     )
     resp = MembershipMeResponse(
-        membership_id=membership.id, is_owner=is_owner, permissions=permissions,
+        id=membership.id, created_at=membership.created_at,
+        updated_at=membership.updated_at, user=membership.user,
+        is_owner=is_owner, permissions=permissions,
         needs_age_consent=needs_age_consent,
         roles=membership.roles if wants(requested, ROLES) else [],
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
@@ -252,8 +254,9 @@ def get_my_membership(
     # with no relationship to this tournament (this route no longer gates on
     # require_membership() — see above).
     if not membership:
+        # No id/user either — there is no membership to describe.
         resp = MembershipMeResponse(
-            membership_id=None, is_owner=is_owner, roles=[], permissions=permissions,
+            is_owner=is_owner, roles=[], permissions=permissions,
         )
         data = resp.model_dump(mode="json", exclude=dump_exclude(requested))
         return JSONResponse(gate_age_flags(None, data))
@@ -296,18 +299,17 @@ def set_my_age_disclosure(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/members/{membership_id} — manage_members,
-# or the member themselves.
+# GET /tournaments/{tournament_id}/members/{membership_id} — manage_members
 #
-# Self-access is what makes the member page (/members/{id}) reachable by the
-# person it's about. It isn't require_permission with an escape hatch bolted
-# on: that dependency 404s a caller who holds no permission at all, and a
-# member reading their own row is the ordinary case here, not an exception to
-# report on.
+# One rule, no exceptions: without manage_members (or tournament ownership,
+# which grants it) you cannot read anyone's row here, including your own.
+# Your own row has its own route — GET .../members/me/ — which returns the
+# same membership data plus what you may do in this tournament.
 #
-# `notes` is the one field self-access doesn't get — it's written *about* the
-# member by a coordinator (see MembershipCoordinatorUpdate), so it's dropped
-# for anyone without manage_members.
+# This used to allow self-access and then redact `notes` and the join code
+# creator's roles from an already-built response. Two audiences on one route
+# meant every field added had to be re-reasoned about for the weaker one; a
+# route per audience means the permission check is the whole answer.
 # ---------------------------------------------------------------------------
 @router.get("/{membership_id}/", response_model=MembershipFullResponse)
 def get_membership(
@@ -318,24 +320,15 @@ def get_membership(
     # fills in for it when absent (see resolve_fields).
     requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     tournament = get_tournament(tournament_id, db)
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
-
-    can_manage = MANAGE_MEMBERS in get_user_permissions(current_user, tournament_id, db)
-    if not can_manage and m.user_id != current_user.id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You don't have permission to view this member",
-        )
 
     config = viewer_display_config(db, tournament_id, current_user.id)
     requested = resolve_fields(requested, config, surface)
 
     resp = MembershipFullResponse.model_validate(m)
-    if not can_manage:
-        resp.notes = None
     # Built groups only — the rest came off the ORM. Unlike the roster these
     # run per membership by definition; there is only one.
     if wants(requested, CUSTOM):
@@ -349,12 +342,6 @@ def get_membership(
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, [m], [resp])
     data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
-    if not can_manage and data.get("join_code"):
-        # A self-viewer is entitled to know who invited them, not to a read of
-        # that person's standing in the tournament. Popped off the dict rather
-        # than set null, so "withheld" stays distinct from the null that means
-        # "holds no membership here" (see PersonRefResponse.roles).
-        data["join_code"]["creator"].pop("roles", None)
     data = apply_display_config(config, surface, data, tournament)
     return JSONResponse(data)
 

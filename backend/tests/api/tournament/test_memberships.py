@@ -199,7 +199,7 @@ def test_fields_on_me_skips_the_builders(client, td_tournament, other_user, db):
 
     body = client.get(f"/tournaments/{td_tournament.id}/members/me/?fields=roles").json()
     # Identity is never in a group — this is exactly what the provider reads.
-    assert body["membership_id"]
+    assert body["id"]
     # Volunteer grants none, but the key is always there — the provider
     # branches on it, so an absent key would break hasPermission().
     assert body["permissions"] == []
@@ -878,9 +878,14 @@ def test_get_membership_wrong_tournament(client, td_user, td_tournament, other_t
     ).status_code == 404
 
 
-def test_get_membership_self_without_manage_members(client, td_user, other_tournament, db):
-    """The member page is reachable by the person it's about — reading your
-    own membership needs no permission beyond being that member."""
+def test_get_membership_rejects_a_member_reading_their_own_row(client, td_user, other_tournament, db):
+    """One rule, no exceptions: this route is manage_members, and that
+    includes your own row. Your own row has its own route.
+
+    Self-access here used to be allowed and then redacted after the fact,
+    which meant every field added had to be re-reasoned about for the weaker
+    audience. A route per audience makes the permission check the whole
+    answer."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     m = (
         db.query(TournamentMembership)
@@ -888,14 +893,21 @@ def test_get_membership_self_without_manage_members(client, td_user, other_tourn
         .one()
     )
     login(client, "td@test.com", "tdpass")
-    response = client.get(f"/tournaments/{other_tournament.id}/members/{m.id}/")
-    assert response.status_code == 200
-    assert response.json()["id"] == m.id
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/members/{m.id}/"
+    ).status_code == 403
+
+    # ...and the member still reads their own membership, just not here.
+    me = client.get(f"/tournaments/{other_tournament.id}/members/me/")
+    assert me.status_code == 200
+    assert me.json()["id"] == m.id
 
 
-def test_get_membership_self_view_hides_notes(client, td_user, other_tournament, db):
-    """Notes are written about the member by a coordinator, so the member
-    doesn't get them back on their own page."""
+def test_me_returns_the_same_membership_data_a_manager_sees(client, td_user, other_tournament, db):
+    """A member is not shown less about themselves than a coordinator is —
+    the two responses differ by audience, not by fidelity. Notes are the
+    exception that proves it: written *about* the member by staff, so not
+    part of the membership data at all."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     m = (
         db.query(TournamentMembership)
@@ -904,10 +916,19 @@ def test_get_membership_self_view_hides_notes(client, td_user, other_tournament,
     )
     m.notes = "Flaky, do not schedule alone"
     db.commit()
+
     login(client, "td@test.com", "tdpass")
-    assert client.get(
-        f"/tournaments/{other_tournament.id}/members/{m.id}/"
-    ).json()["notes"] is None
+    body = client.get(f"/tournaments/{other_tournament.id}/members/me/").json()
+
+    assert body["id"] == m.id
+    assert body["user"]["email"] == td_user.email
+    assert body["created_at"]
+    # Audience-specific extras, meaningless on a manager's read of someone else.
+    assert body["permissions"] == []
+    assert body["needs_age_consent"] is False
+    # Staff-side fields have no place on the self response.
+    assert "notes" not in body
+    assert "join_code" not in body
 
 
 def _join_code_membership(db, tournament, member_user, creator_user):
@@ -957,24 +978,9 @@ def test_join_code_creator_carries_name_and_roles_only(client, td_user, td_tourn
     assert [r["label"] for r in creator["roles"]] == ["Tournament Director"]
 
 
-def test_self_viewer_sees_the_creator_name_without_roles(client, td_user, other_tournament, db):
-    """A member may know who invited them. Their inviter's standing in the
-    tournament is a separate question, and not theirs."""
-    grant_role(db, other_tournament, td_user, "Volunteer")
-    m = _join_code_membership(db, other_tournament, td_user, other_tournament.owner)
-
-    login(client, "td@test.com", "tdpass")
-    creator = client.get(
-        f"/tournaments/{other_tournament.id}/members/{m.id}/"
-    ).json()["join_code"]["creator"]
-    assert creator["first_name"] is not None
-    # Absent, not null: null is the answer for "holds no membership here".
-    assert "roles" not in creator
-
-
-def test_get_membership_self_access_does_not_leak_others(client, td_user, other_tournament, db):
-    """Self-access is exactly self — a member still can't read the row of
-    anyone else in the tournament."""
+def test_get_membership_does_not_leak_others(client, td_user, other_tournament, db):
+    """A plain member reads nobody's row here, their own included — see
+    test_get_membership_rejects_a_member_reading_their_own_row."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     other = _make_user(db)
     m = _make_membership(db, other_tournament.id, other["id"])
@@ -1265,7 +1271,7 @@ def test_get_my_membership_owner(client, td_user, td_tournament):
     assert response.status_code == 200
     data = response.json()
     assert data["is_owner"] is True
-    assert data["membership_id"] is not None
+    assert data["id"] is not None
     assert [r["label"] for r in data["roles"]] == ["Tournament Director"]
     assert len(data["permissions"]) > 0
 
@@ -1286,7 +1292,7 @@ def test_get_my_membership_non_owner_with_role(client, td_tournament, db):
     assert response.status_code == 200
     data = response.json()
     assert data["is_owner"] is False
-    assert data["membership_id"] == membership.id
+    assert data["id"] == membership.id
     assert [r["label"] for r in data["roles"]] == ["Volunteer"]
 
 
@@ -1426,7 +1432,7 @@ def test_get_my_membership_admin_without_membership(client, admin_user, td_tourn
     response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
     data = response.json()
-    assert data["membership_id"] is None
+    assert data["id"] is None
     assert data["is_owner"] is False
     assert data["roles"] == []
     assert len(data["permissions"]) > 0
@@ -1442,7 +1448,7 @@ def test_get_my_membership_no_membership_returns_null_id(client, td_user, other_
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{other_tournament.id}/members/me/")
     assert response.status_code == 200
-    assert response.json()["membership_id"] is None
+    assert response.json()["id"] is None
 
 
 def test_get_my_membership_still_reachable_when_declined(client, td_tournament, other_user, db):
@@ -1455,7 +1461,7 @@ def test_get_my_membership_still_reachable_when_declined(client, td_tournament, 
     login(client, "other@test.com", "otherpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert response.status_code == 200
-    assert response.json()["membership_id"] == membership.id
+    assert response.json()["id"] == membership.id
 
 
 def test_get_my_membership_not_found_tournament(client, td_user):

@@ -2,7 +2,7 @@
 
 import { ReactNode } from "react";
 import {
-  DisplayConfigSection, MembershipFull, MembershipSlim, Role, TournamentShift,
+  DisplayConfigSection, MembershipFull, MembershipView, Role, TournamentShift,
 } from "@/lib/api";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
@@ -20,7 +20,7 @@ import {
 
 export interface MemberSectionsProps {
   tournamentId: number;
-  membership: MembershipFull;
+  membership: MembershipView;
   /** Section order and per-section visibility. null = every section, in
       default order — what the member page passes, since it has no display
       config of its own. */
@@ -35,7 +35,7 @@ export interface MemberSectionsProps {
   rolesLocked: boolean;
   collectIsOver18: boolean;
   collectIsOver21: boolean;
-  onRolesUpdated: (updated: MembershipSlim) => void;
+  onRolesUpdated: (updated: MembershipFull) => void;
 }
 
 /**
@@ -59,7 +59,7 @@ export function MemberSections(props: MemberSectionsProps) {
   const hiddenSections = new Set(membership.hidden_sections ?? []);
   // `unassigned` is only non-empty once the catch-all section is deleted,
   // which is a TD choosing for those answers not to show.
-  const { assigned } = splitCustomAnswers(membership.custom_responses, sections);
+  const { assigned } = splitCustomAnswers(membership.custom_responses ?? [], sections);
 
   return (
     <>
@@ -100,18 +100,18 @@ const RENDERERS: Record<
       hiddenFields={hiddenFields}
     />
   ),
-  availability: (p) => <AvailabilitySection availability={p.membership.availability} allShifts={p.shifts} />,
+  availability: (p) => <AvailabilitySection availability={p.membership.availability ?? []} allShifts={p.shifts} />,
   // Lunch rows are filtered per category server-side; only the dietary
   // restriction is a static field of this section.
   lunch: (p, hiddenFields) => (
     <LunchSection
-      lunch={p.membership.lunch}
+      lunch={p.membership.lunch ?? []}
       dietaryRestriction={
         hiddenFields.has("dietary_restriction") ? null : p.membership.user.dietary_restriction
       }
     />
   ),
-  event_preferences: (p) => <EventPreferencesSection eventPreferences={p.membership.event_preferences} />,
+  event_preferences: (p) => <EventPreferencesSection eventPreferences={p.membership.event_preferences ?? []} />,
   education: (p, hiddenFields) => (
     <ProfileCard><EducationCareerSection user={p.membership.user} hiddenFields={hiddenFields} /></ProfileCard>
   ),

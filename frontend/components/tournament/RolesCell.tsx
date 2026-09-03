@@ -1,6 +1,6 @@
 "use client";
 
-import { ApiError, MembershipSlim, membersApi, Role } from "@/lib/api";
+import { ApiError, MembershipFull, MembershipView, membersApi, Role } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
@@ -12,7 +12,7 @@ import { IconPlus } from "@/components/ui/Icons";
 
 interface RolesCellProps {
   tournamentId: number;
-  membership: MembershipSlim;
+  membership: MembershipView;
   allRoles: Role[];
   /** Role-level rank gate — whether `role` can be added or removed at all (independent of which member holds it). */
   canTouchRole: (role: Role) => boolean;
@@ -27,7 +27,7 @@ interface RolesCellProps {
   /** What to render instead of an empty chip row when the cell is inert — a
       panel field wants to say "None", a table cell would rather stay blank. */
   emptyLabel?: string;
-  onUpdated: (updated: MembershipSlim) => void;
+  onUpdated: (updated: MembershipFull) => void;
 }
 
 // Inline role editor — chips for held roles (removable), a checklist
@@ -43,12 +43,12 @@ export function RolesCell({
   const memberName = userName(membership.user);
   const isSelf = currentUser?.id === membership.user.id;
 
-  const heldIds = new Set(membership.roles.map((r) => r.id));
-  const roleByLabel = new Map(membership.roles.map((r) => [r.label, r]));
+  const heldIds = new Set((membership.roles ?? []).map((r) => r.id));
+  const roleByLabel = new Map((membership.roles ?? []).map((r) => [r.label, r]));
 
   // Inert with no chips and no add button is a blank cell, which reads as
   // "still loading" rather than "holds no roles".
-  if (inert && membership.roles.length === 0 && emptyLabel) {
+  if (inert && (membership.roles ?? []).length === 0 && emptyLabel) {
     return <FieldValue muted>{emptyLabel}</FieldValue>;
   }
 
@@ -77,9 +77,9 @@ export function RolesCell({
 
   return (
     <ChipInput
-      value={membership.roles.map((r) => r.label)}
+      value={(membership.roles ?? []).map((r) => r.label)}
       onChange={(labels) => {
-        const removed = membership.roles.find((r) => !labels.includes(r.label));
+        const removed = (membership.roles ?? []).find((r) => !labels.includes(r.label));
         if (removed) handleRemove(removed);
       }}
       variant="transparent"

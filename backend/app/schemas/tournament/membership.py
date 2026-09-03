@@ -203,8 +203,20 @@ class MembershipBaseResponse(BaseModel):
     display-config artifacts — live on MembershipFullResponse instead.
 
     Every field defaults, because /members/me has to answer for a user who
-    may have no membership row at all (a site admin who never joined).
+    may have no membership row at all (a site admin who never joined) — see
+    the identity fields below, which MembershipFullResponse then narrows back
+    to required.
     """
+    # None only on /members/me for a caller with no membership row.
+    # MembershipFullResponse re-declares all four as required: a roster row
+    # that couldn't say who it was about would be meaningless.
+    id: int | None = None
+    # When they joined THIS tournament — distinct from user.created_at
+    # (their NEXUS account age).
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    user: UserFullResponse | None = None
+
     roles: list[RoleRead] = []
     track_statuses: list[MembershipTrackStatusRead] = []
 
@@ -264,13 +276,13 @@ class MembershipFullResponse(MembershipBaseResponse):
     """Manager-facing view of one membership. The roster row and the detail
     panel are the same shape, narrowed by the `fields` query parameter rather
     than by a second schema. Only reachable with manage_members."""
+    # Required here, unlike on the base — this route always has a row.
     id: int
-    tournament_id: int
-    # When they joined THIS tournament — distinct from user.created_at
-    # (their NEXUS account age).
     created_at: datetime
     updated_at: datetime
+    user: UserFullResponse
 
+    tournament_id: int
     source: str
     # Resolved server-side — see MembershipJoinCodeInfo. None when source
     # isn't "join_code". Supersedes the bare join_code_id FK.
@@ -287,17 +299,17 @@ class MembershipFullResponse(MembershipBaseResponse):
     # from the response, which is not the same as hidden.
     hidden_sections: list[str] = []
 
-    user: UserFullResponse
-
 
 class MembershipMeResponse(MembershipBaseResponse):
     """GET .../members/me/ — the caller's own membership plus what they may
     do here. The membership data itself is the base; everything added below
     answers "who am I in this tournament", which is meaningless for anyone
-    else and so has no place on the manager view."""
-    # None when the caller has no row at all — a site admin who never joined,
-    # or any authenticated user with no relationship to this tournament.
-    membership_id: int | None = None
+    else and so has no place on the manager view.
+
+    The membership data itself is identical to what manage_members reads
+    about someone else — a member is not shown less about themselves than a
+    coordinator is. The one asymmetry runs the other way: date_of_birth is
+    serialized to nobody, only the derived is_over_18/21 flags are."""
     is_owner: bool = False
     permissions: list[str] = []
     # True when the tournament collects an age flag and this member hasn't

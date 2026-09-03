@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { MembershipSlim, Role } from "@/lib/api";
+import { MembershipView, Role } from "@/lib/api";
 
 export interface MemberRoleLock {
   canManageMembers: boolean;
@@ -32,7 +32,7 @@ export interface MemberRoleLock {
    * see the redirect modal on the members page — this hook only reports
    * backend-permission, not UI routing).
    */
-  canEditMember: (target: MembershipSlim) => boolean;
+  canEditMember: (target: MembershipView) => boolean;
 }
 
 export function useMemberRoleLock(): MemberRoleLock {
@@ -46,7 +46,7 @@ export function useMemberRoleLock(): MemberRoleLock {
   const bypassRankBound = isAdmin || isOwner;
 
   const ownRank = useMemo(() => {
-    if (!membership || membership.roles.length === 0) return null;
+    if (!membership?.roles?.length) return null;
     return Math.min(...membership.roles.map((r) => r.rank));
   }, [membership]);
 
@@ -56,13 +56,13 @@ export function useMemberRoleLock(): MemberRoleLock {
     return role.rank > ownRank;
   }
 
-  function canEditMember(target: MembershipSlim): boolean {
+  function canEditMember(target: MembershipView): boolean {
     if (isArchived) return false;
     if (bypassRankBound) return true;
     if (selectedTournament && target.user.id === selectedTournament.owner_id) return false;
     if (ownRank === null) return false;
     if (currentUser && target.user.id === currentUser.id) return true;
-    if (target.roles.length === 0) return true;
+    if (!target.roles?.length) return true;
     const targetRank = Math.min(...target.roles.map((r) => r.rank));
     return targetRank >= ownRank;
   }

@@ -130,8 +130,8 @@ function JoinPageContent() {
   useEffect(() => {
     if (authLoading || !user || !user.is_onboarding_complete) return;
     if (!preview || preview === "chapter") return;
-    membersApi.getMe(preview.target_id)
-      .then((me) => setAlreadyMember(me.membership_id !== null))
+    membersApi.getMe(preview.target_id, [])
+      .then((me) => setAlreadyMember(me.id !== null))
       .catch(() => setAlreadyMember(false))
       .finally(() => setMembershipChecked(true));
   }, [authLoading, user, preview]);

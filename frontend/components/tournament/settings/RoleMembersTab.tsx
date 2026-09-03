@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, MembershipSlim, Role, membersApi } from "@/lib/api";
+import { ApiError, MembershipFull, Role, membersApi } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Button } from "@/components/ui/Button";
@@ -22,7 +22,7 @@ interface RoleMembersTabProps {
 
 export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMembersTabProps) {
   const [search, setSearch] = useState("");
-  const [members, setMembers] = useState<MembershipSlim[] | null>(null);
+  const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [removingId, setRemovingId] = useState<number | null>(null);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -35,16 +35,16 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
   // check 2) — a member who strictly outranks the actor would just 403 on
   // remove, so the X is locked instead of letting that happen. Ties are
   // fine here: two peers at the same rank can still edit each other.
-  function outranksActor(m: MembershipSlim): boolean {
+  function outranksActor(m: MembershipFull): boolean {
     if (bypassRankBound || m.user.id === currentUser?.id || ownRank === null) return false;
-    if (m.roles.length === 0) return false;
-    return Math.min(...m.roles.map((r) => r.rank)) < ownRank;
+    if ((m.roles ?? []).length === 0) return false;
+    return Math.min(...(m.roles ?? []).map((r) => r.rank)) < ownRank;
   }
 
   // Debounced so search doesn't hit the server on every keystroke.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membersApi.list(tournamentId, { roleId: role.id, q: search.trim() || undefined })
+      membersApi.list(tournamentId, { fields: ["contact", "roles"], roleId: role.id, q: search.trim() || undefined })
         .then(setMembers)
         .catch(() => setError("Failed to load members."));
     }, 300);

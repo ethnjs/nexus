@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, CSSProperties } from "react";
-import { MembershipSlim } from "@/lib/api";
+import { MembershipFull } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { formatDateTime, formatDuration } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
@@ -82,7 +82,7 @@ export interface MemberColumn {
   width: string;
   /** Columns centre by default; "start" is for values read left-to-right at length, where a centred ellipsis reads badly. */
   align?: "start";
-  render: (membership: MembershipSlim) => ReactNode;
+  render: (membership: MembershipFull) => ReactNode;
 }
 
 // The coarse duration ("3mo") with the exact moment behind it on hover —
@@ -175,7 +175,7 @@ function entityColumn(key: string, label: string): MemberColumn | null {
     return {
       key, label, width: WIDTHS.track,
       render: (m) => {
-        const status = m.track_statuses.find((t) => t.track_id === trackId);
+        const status = (m.track_statuses ?? []).find((t) => t.track_id === trackId);
         if (!status) return <Dash />;
         return <Badge variant={status.status === "pending" ? "pending" : status.status}>{status.status}</Badge>;
       },

@@ -31,7 +31,7 @@ export function useRoleLock(): RoleLock {
   const canCreateRoles = canManageRoles && !isArchived;
 
   const ownRank = useMemo(() => {
-    if (!membership || membership.roles.length === 0) return null;
+    if (!membership?.roles?.length) return null;
     return Math.min(...membership.roles.map((r) => r.rank));
   }, [membership]);
 

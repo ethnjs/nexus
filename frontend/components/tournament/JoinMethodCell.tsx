@@ -1,6 +1,6 @@
 "use client";
 
-import { MembershipSlim } from "@/lib/api";
+import { MembershipView } from "@/lib/api";
 import { personName } from "@/lib/personDisplay";
 import { SOURCE_LABELS } from "@/lib/membershipDisplay";
 import { Badge } from "@/components/ui/Badge";
@@ -11,7 +11,12 @@ import { HoverCard } from "@/components/ui/HoverCard";
 // The code is on the badge rather than behind the hover so two members'
 // invites can be told apart at a glance down the roster column.
 // Shared between the roster table and the member detail panel.
-export function JoinMethodCell({ membership, style }: { membership: MembershipSlim; style?: React.CSSProperties }) {
+export function JoinMethodCell({ membership, style }: { membership: MembershipView; style?: React.CSSProperties }) {
+  // `source` belongs to the `membership` field group. A caller that didn't
+  // ask for it has nothing to render here — distinct from a member whose
+  // join method is unknown, which can't happen.
+  if (!membership.source) return null;
+
   if (membership.source !== "join_code" || !membership.join_code) {
     return (
       <Badge variant="default" style={style}>

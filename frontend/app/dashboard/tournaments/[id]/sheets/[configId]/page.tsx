@@ -212,7 +212,7 @@ export default function ViewSheetConfigPage() {
     setDeleteLoading(true);
     setDeleteError("");
     try {
-      const memberships = await membersApi.list(tournamentId);
+      const memberships = await membersApi.list(tournamentId, { fields: [] });
       await Promise.all(
         memberships.map((m) => membersApi.delete(tournamentId, m.id))
       );

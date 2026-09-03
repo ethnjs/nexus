@@ -45,10 +45,12 @@ from sqlalchemy.orm import joinedload, noload, selectinload
 # force the table to pull the whole profile for one scalar.
 # ---------------------------------------------------------------------------
 ALWAYS_KEYS = frozenset({
-    # MembershipFullResponse
-    "id", "tournament_id", "created_at", "updated_at", "user",
+    # Which membership this is, on both responses. Null on /members/me only
+    # when the caller has no membership row at all.
+    "id", "created_at", "updated_at", "user",
+    "tournament_id",
     # MembershipMeResponse — who the caller is here and what they may do.
-    "membership_id", "is_owner", "permissions", "needs_age_consent",
+    "is_owner", "permissions", "needs_age_consent",
     # Set by apply_display_config, not by fields — see the note on
     # MembershipFullResponse.hidden_sections.
     "hidden_sections",

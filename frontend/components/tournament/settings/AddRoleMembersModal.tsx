@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, MembershipSlim, membersApi } from "@/lib/api";
+import { ApiError, MembershipFull, membersApi } from "@/lib/api";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -21,7 +21,7 @@ interface AddRoleMembersModalProps {
 
 export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, onAdded }: AddRoleMembersModalProps) {
   const [search, setSearch] = useState("");
-  const [candidates, setCandidates] = useState<MembershipSlim[] | null>(null);
+  const [candidates, setCandidates] = useState<MembershipFull[] | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -35,6 +35,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
   useEffect(() => {
     const timer = setTimeout(() => {
       membersApi.list(tournamentId, {
+        fields: ["contact", "roles"],
         excludeRoleId: roleId,
         q: search.trim() || undefined,
         maxRank: !bypassRankBound && ownRank !== null ? ownRank : undefined,

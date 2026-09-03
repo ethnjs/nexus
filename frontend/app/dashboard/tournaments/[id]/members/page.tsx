@@ -3,7 +3,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  membersApi, rolesApi, displayConfigApi, MembershipSlim, Role, ApiError,
+  membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
 } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
@@ -88,11 +88,11 @@ const SORT_FIELD_OPTIONS = [
   { value: "account_age", label: "Account age" },
 ];
 
-function memberName(m: MembershipSlim): string {
+function memberName(m: MembershipFull): string {
   return `${m.user.first_name ?? ""} ${m.user.last_name ?? ""}`.trim() || m.user.email;
 }
 
-function sortValue(m: MembershipSlim, field: SortField): string | number {
+function sortValue(m: MembershipFull, field: SortField): string | number {
   switch (field) {
     case "first_name": return (m.user.first_name ?? "").toLowerCase();
     case "last_name": return (m.user.last_name ?? "").toLowerCase();
@@ -112,7 +112,7 @@ const MemberRow = memo(function MemberRow({
   columns,
 }: {
   tournamentId: number;
-  membership: MembershipSlim;
+  membership: MembershipFull;
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   /** Shared gate for both role editing and removal — mirrors the backend's validate_member_target: archived, target is the tournament owner, or target outranks the actor. */
@@ -121,10 +121,10 @@ const MemberRow = memo(function MemberRow({
   isSelf: boolean;
   /** Archived tournaments hide the remove control entirely rather than showing it disabled. */
   isArchived: boolean;
-  onUpdated: (updated: MembershipSlim) => void;
+  onUpdated: (updated: MembershipFull) => void;
   onFocus: (id: number) => void;
-  onRemove: (membership: MembershipSlim) => void;
-  onSelfRemove: (membership: MembershipSlim) => void;
+  onRemove: (membership: MembershipFull) => void;
+  onSelfRemove: (membership: MembershipFull) => void;
   selectMode: boolean;
   selected: boolean;
   /** Open panel has unsaved changes — switching focus/selection is frozen until it resolves. */
@@ -255,7 +255,7 @@ export default function MembersPage() {
   const { selectedTournament } = useTournament();
   const { canManageMembers, isArchived, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
 
-  const [members, setMembers] = useState<MembershipSlim[] | null>(null);
+  const [members, setMembers] = useState<MembershipFull[] | null>(null);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -281,8 +281,8 @@ export default function MembersPage() {
   const [sortField, setSortField] = useState<SortField>("joined");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const [removeTarget, setRemoveTarget] = useState<MembershipSlim | null>(null);
-  const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipSlim | null>(null);
+  const [removeTarget, setRemoveTarget] = useState<MembershipFull | null>(null);
+  const [selfRemoveTarget, setSelfRemoveTarget] = useState<MembershipFull | null>(null);
 
   // The two mutually-exclusive panel flows ("Expand" a single member vs.
   // Select mode) and the dirty gate that freezes both — shared with the
@@ -309,7 +309,7 @@ export default function MembersPage() {
   const roleLockRef = useRef({ canTouchRole, canEditMember });
   useEffect(() => { roleLockRef.current = { canTouchRole, canEditMember }; });
   const canTouchRoleStable = useCallback((role: Role) => roleLockRef.current.canTouchRole(role), []);
-  const canEditMemberStable = useCallback((target: MembershipSlim) => roleLockRef.current.canEditMember(target), []);
+  const canEditMemberStable = useCallback((target: MembershipFull) => roleLockRef.current.canEditMember(target), []);
 
   // Same ref trick, for a different reason: toggleSelected's identity changes
   // every time the selection does, and focusItem's whenever the dirty flag
@@ -430,7 +430,7 @@ export default function MembersPage() {
     [allRoles]
   );
 
-  const handleMemberUpdated = useCallback((updated: MembershipSlim) => {
+  const handleMemberUpdated = useCallback((updated: MembershipFull) => {
     setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
   }, []);
 

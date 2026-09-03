@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError, MembershipFull, Role, TournamentShift,
-  membersApi, rolesApi, tournamentShiftsApi,
+  ApiError, MembershipView, Role, TournamentShift,
+  asMembershipView, membersApi, rolesApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
+import { useMyMembership } from "@/lib/useMyMembership";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -25,9 +26,11 @@ import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
  * passes no `surface` — nothing is stripped server-side, and
  * `sectionConfig={null}` renders every section in default order.
  *
- * Reachable by anyone with manage_members, and by the member themselves
- * (the API enforces both, see get_membership). A self-viewer gets the same
- * sections minus the coordinator notes, which the server withholds.
+ * Reachable by anyone with manage_members, and by the member themselves —
+ * but by two different routes. GET /members/{id}/ is manage_members, full
+ * stop; a member reads their own row from GET /members/me/, which returns
+ * the same membership data plus what they may do here. Both satisfy
+ * MembershipView, so the sections below don't care which one answered.
  */
 export default function MemberPage() {
   const params = useParams();
@@ -36,22 +39,47 @@ export default function MemberPage() {
   const membershipId = Number(params.membershipId);
 
   const { selectedTournament } = useTournament();
+  const { membership: me } = useMyMembership();
   const { canManageMembers, membershipLoading, canTouchRole, canEditMember } = useMemberRoleLock();
 
-  const [full, setFull] = useState<MembershipFull | null>(null);
+  const [full, setFull] = useState<MembershipView | null>(null);
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
 
+  // Which route answers depends on who is asking, not on which page this is.
+  // Wait for the provider before deciding: guessing wrong means a 403 the
+  // member would see as "no access" to their own page.
+  const isSelf = me?.id === membershipId;
+
   useEffect(() => {
     if (!Number.isFinite(tournamentId) || !Number.isFinite(membershipId)) return;
-    membersApi.get(tournamentId, membershipId)
-      .then(setFull)
+    if (membershipLoading) return;
+
+    // A non-manager gets their own row and nobody else's, so anything but
+    // their own id is refused here rather than fetched — otherwise /me would
+    // happily render the caller's own record under someone else's URL.
+    if (!canManageMembers && !isSelf) {
+      setError(new ApiError(403, "You can only view your own member page."));
+      return;
+    }
+
+    const load = canManageMembers
+      ? membersApi.get(tournamentId, membershipId)
+      : membersApi.getMe(tournamentId).then(asMembershipView);
+
+    load
+      .then((view) => {
+        if (view) return setFull(view);
+        // getMe answered with no membership row — the caller is not a member
+        // of this tournament, so there is nothing of theirs to show.
+        setError(new ApiError(403, "Not a member of this tournament."));
+      })
       .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
     // The member-facing read: a self-viewer holds no manage_events, and all
     // this sets is the availability timeline's window.
     tournamentShiftsApi.list(tournamentId, { public: true }).then(setShifts).catch(() => setShifts([]));
-  }, [tournamentId, membershipId]);
+  }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf]);
 
   // The catalog is only the *pickable* roles — the ones a member already
   // holds ride on the membership itself. So it's needed only for the edit

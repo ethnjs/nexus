@@ -20,7 +20,7 @@ export function MyMembershipProvider({ tournamentId, children }: { tournamentId:
 
   useEffect(() => {
     setLoading(true);
-    membersApi.getMe(Number(tournamentId))
+    membersApi.getMe(Number(tournamentId), ["roles"])
       .then(setMembership)
       .catch(() => setMembership(null))
       .finally(() => setLoading(false));

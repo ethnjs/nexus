@@ -43,7 +43,7 @@ export function StaffInviteModal({ tournamentId, onClose, onSent }: StaffInviteM
     });
     // manage_invites alone (no manage_members) 403s here — that's fine, we
     // just skip the "already a member" warning entirely in that case.
-    membersApi.list(tournamentId)
+    membersApi.list(tournamentId, { fields: ["contact"] })
       .then((members) => setMemberEmails(new Set(members.map((m) => m.user.email.toLowerCase()))))
       .catch(() => setMemberEmails(null));
   }, [tournamentId]);

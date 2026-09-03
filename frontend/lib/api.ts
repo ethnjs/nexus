@@ -770,70 +770,98 @@ export interface PersonRef {
 }
 
 export interface MembershipJoinCodeInfo {
+  id:      number
   code:    string
   label:   string | null
   creator: PersonRef
 }
 
-// Matches MembershipSlimResponse — members-page roster row. No onboarding/
-// logistics fields; those live behind the per-member expand panel (MembershipFull).
-export interface MembershipSlim {
-  id:         number
-  source:     MembershipSource
-  join_code:  MembershipJoinCodeInfo | null
+// The `fields` vocabulary — mirrors field_groups.GROUPS. Identity (id,
+// created_at, the member's name) is never in a group and always comes back;
+// these select membership *data*.
+export type MembershipField =
+  | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
+  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age';
+
+// Matches MembershipBaseResponse — the membership data the member themselves
+// owns: what they answered, what they were assigned, what they're available
+// for. MembershipFull and MembershipMe both extend it, and it is what a
+// component wanting "a membership" should take.
+//
+// Every group is optional because `fields` decides what a response carries:
+// an absent key means the caller didn't ask for that group. `null`/`[]` keep
+// their ordinary meanings — no value, and no rows — so never treat a missing
+// key as empty. Omit `fields` entirely to get everything.
+export interface MembershipBase {
+  /** null on GET /members/me/ only, for a caller with no membership row. */
+  id:         number | null
   // When they joined THIS tournament — distinct from user.created_at
   // (their NEXUS account age).
-  created_at: string
-  updated_at: string
-  // null/"consented"/"declined" — only meaningful when the roster was
-  // fetched with include_declined=true; a default fetch never returns a
-  // declined row at all. Optional since MembershipFull (a structurally
-  // wider type used interchangeably in a few places) doesn't carry it.
-  age_disclosure?: 'consented' | 'declined' | null
-  roles:      Role[]
-  // Already filtered server-side by whichever display_config surface the
-  // roster was fetched for (?surface=members_table).
-  track_statuses: MembershipTrackStatus[]
-  // ---- Optional table-column data -------------------------------------
-  // Populated only when the members table's saved column config asks for it
-  // (see enrich_table_columns) — a roster is every member, so data for a
-  // column nobody turned on is never loaded.
+  created_at: string | null
+  updated_at: string | null
+  user:       UserFull | null
+
+  roles?:            Role[]
+  track_statuses?:   MembershipTrackStatus[]
+  // Omitted (not null) unless the tournament collects the flag and the member
+  // has consented — see gate_age_flags. Never treat `undefined` as `false`.
   is_over_18?:       boolean | null
   is_over_21?:       boolean | null
-  // Each shift tagged with the tournament-local day its column keys by —
-  // resolved server-side, since a shift's start is an instant and the
-  // viewer's timezone need not match the tournament's.
   availability?:     MembershipAvailability[]
   lunch?:            MembershipLunch[]
+  event_preferences?: MembershipEventPreference[]
   custom_responses?: MembershipCustomAnswer[]
-  user:       UserFull
 }
 
-// Matches MembershipFullResponse — the expanded side panel for a single member.
-export interface MembershipFull {
+// Matches MembershipFullResponse — GET /members/ and /members/{id}/, both
+// manage_members. The roster row and the detail panel are the same type;
+// what differs between them is the `fields` each asks for.
+export interface MembershipFull extends MembershipBase {
+  // Always present here: a row that couldn't say who it was about would be
+  // meaningless. MembershipBase widens these for the no-membership /me case.
   id:                number
-  tournament_id:     number
-  notes:             string | null
-  source:            MembershipSource
-  join_code:         MembershipJoinCodeInfo | null
-  // Omitted entirely (not `null`) unless the tournament collects this flag
-  // and the member has consented — optional here to match. Never treat
-  // `undefined` as `false`.
-  is_over_18?:       boolean | null
-  is_over_21?:       boolean | null
   created_at:        string
   updated_at:        string
-  track_statuses:    MembershipTrackStatus[]
-  event_preferences: MembershipEventPreference[]
-  availability:      MembershipAvailability[]
-  lunch:             MembershipLunch[]
-  custom_responses:  MembershipCustomAnswer[]
+  user:              UserFull
+
+  tournament_id:     number
+  source?:           MembershipSource
+  join_code?:        MembershipJoinCodeInfo | null
+  // null/"consented"/"declined" — lets a fetch with include_declined=true
+  // tell declined members apart from active ones.
+  age_disclosure?:   'consented' | 'declined' | null
+  notes?:            string | null
   // Sections this surface's display config emptied out. A section renders
   // even with no data ("No info yet"), so an empty list no longer means
-  // "hidden" — this is what says so.
+  // "hidden" — this is what says so. Reports display_config removals only:
+  // a group never requested via `fields` is absent, which is not the same.
   hidden_sections?:  string[]
-  roles:             Role[]
-  user:              UserFull
+}
+
+// What a component rendering "a member's record" can take: the shared
+// membership data, plus the staff-side fields when the caller happened to
+// have them. Both MembershipFull (a manager's read) and MembershipMe (your
+// own) satisfy it, which is what lets the member page render the same
+// sections whichever route it fetched from.
+export type MembershipView =
+  Omit<MembershipBase, "id" | "created_at" | "updated_at" | "user"> & {
+    // Narrowed from MembershipBase: a view of a membership implies there is
+    // one. MembershipBase widens these for the one case that has none — a
+    // GET /members/me/ by someone who never joined — and asMembershipView
+    // is where that case gets ruled out.
+    id:         number
+    created_at: string
+    updated_at: string
+    user:       UserFull
+  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections">>;
+
+/** A MembershipMe as the member sections can render it, or null when the
+ *  caller holds no membership in this tournament — nothing to show. */
+export function asMembershipView(me: MembershipMe): MembershipView | null {
+  if (me.id === null || me.created_at === null || me.updated_at === null || me.user === null) {
+    return null;
+  }
+  return { ...me, id: me.id, created_at: me.created_at, updated_at: me.updated_at, user: me.user };
 }
 
 // PATCH .../members/{id}/ — manage_members override, day-of logistics only
@@ -841,13 +869,12 @@ export interface MembershipCoordinatorUpdate {
   notes?: string | null
 }
 
-// GET .../members/me/ — current user's membership + effective permissions
-export interface MembershipMe {
-  membership_id: number | null
-  is_owner:       boolean
-  roles:          Role[]
-  permissions:    Permission[]
-  track_statuses: MembershipTrackStatus[]
+// Matches MembershipMeResponse — GET /members/me/, the caller's own row plus
+// what they may do here. The membership data is identical to what
+// manage_members reads about someone else; only the extras below differ.
+export interface MembershipMe extends MembershipBase {
+  is_owner:          boolean
+  permissions:       Permission[]
   // True only while the tournament collects an age flag and this member
   // hasn't answered yet — drives the blocking consent modal. False once
   // answered either way (consented or declined), not just while consented.
@@ -896,6 +923,10 @@ export const membersApi = {
   list: (tournamentId: number, opts: {
     includeDeclined?: boolean;
     surface?: string;
+    // Which field groups to return. Omit for everything; pass [] for
+    // identity only. `surface` fills in when this is omitted, so the members
+    // table doesn't have to restate what its saved columns need.
+    fields?: MembershipField[];
     filters?: Record<string, string[]>;
     // Identity/authority narrowing — what the role pickers ask for. A picker
     // is this roster with a name search and a role bound on it, which is why
@@ -907,6 +938,7 @@ export const membersApi = {
   } = {}) => {
     const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
     if (opts.surface) params.set("surface", opts.surface);
+    if (opts.fields) params.set("fields", opts.fields.join(","));
     if (opts.q) params.set("q", opts.q);
     if (opts.roleId !== undefined) params.set("role_id", String(opts.roleId));
     if (opts.excludeRoleId !== undefined) params.set("exclude_role_id", String(opts.excludeRoleId));
@@ -916,7 +948,7 @@ export const membersApi = {
       // contain a comma ("Rice, beans").
       for (const value of values) params.append(key, value);
     }
-    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/members/?${params}`);
+    return api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?${params}`);
   },
 
   // What the roster's filter modal can offer, derived from what the
@@ -925,10 +957,17 @@ export const membersApi = {
     api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/members/filter-options/`),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
-  get: (tournamentId: number, id: number, surface?: string) =>
-    api.get<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/${surface ? `?surface=${surface}` : ""}`),
-  getMe: (tournamentId: number) =>
-    api.get<MembershipMe>(`/tournaments/${tournamentId}/members/me/`),
+  get: (tournamentId: number, id: number, surface?: string, fields?: MembershipField[]) => {
+    const qs = new URLSearchParams();
+    if (surface) qs.set("surface", surface);
+    if (fields) qs.set("fields", fields.join(","));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api.get<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/${suffix}`);
+  },
+  getMe: (tournamentId: number, fields?: MembershipField[]) => {
+    const suffix = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<MembershipMe>(`/tournaments/${tournamentId}/members/me/${suffix}`);
+  },
   // consent=false is a soft decline — the row and all its data survive;
   // re-calling with consent=true flips straight back to active.
   setAgeDisclosure: (tournamentId: number, consent: boolean) =>
@@ -940,7 +979,7 @@ export const membersApi = {
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/members/${id}/`),
   updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
-    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
 }
 
 // -------------------------------------------------------------------------
@@ -1340,7 +1379,7 @@ export const sheetsApi = {
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/members/`)
+    const memberships = await api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?fields=contact`)
     return memberships.map((m) => m.user.email)
   },
 }

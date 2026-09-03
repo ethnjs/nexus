@@ -2,7 +2,7 @@
 
 import { startTransition, useEffect, useState } from "react";
 import {
-  ApiError, DisplayConfigSection, MembershipFull, MembershipSlim, Role,
+  ApiError, DisplayConfigSection, MembershipFull, Role,
   TournamentShift, displayConfigApi, membersApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
@@ -23,7 +23,7 @@ interface MemberPanelProps {
   membershipId: number;
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
-  canEditMember: (target: MembershipSlim) => boolean;
+  canEditMember: (target: MembershipFull) => boolean;
   /** Tournament's age-disclosure toggles — the Age field is dropped entirely when neither is on, since there's nothing to show for any member. */
   collectIsOver18: boolean;
   collectIsOver21: boolean;
@@ -32,11 +32,11 @@ interface MemberPanelProps {
   /** This panel is showing the current user's own membership — removal redirects to the General Settings leave flow. */
   isSelf?: boolean;
   /** Opens the caller's remove-member confirmation. Omit to hide the control (e.g. a surface with no removal flow). */
-  onRemove?: (membership: MembershipSlim) => void;
-  onSelfRemove?: (membership: MembershipSlim) => void;
+  onRemove?: (membership: MembershipFull) => void;
+  onSelfRemove?: (membership: MembershipFull) => void;
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
-  onUpdated?: (updated: MembershipSlim) => void;
+  onUpdated?: (updated: MembershipFull) => void;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while this panel is showing one member of a multi-select). */
   onPrev?: () => void;
   onNext?: () => void;
@@ -85,7 +85,7 @@ export function MemberPanel({
       .catch(() => {});
   }, [tournamentId, membershipId, reloadKey]);
 
-  function handleRolesUpdated(updated: MembershipSlim) {
+  function handleRolesUpdated(updated: MembershipFull) {
     setFull((f) => (f ? { ...f, roles: updated.roles } : f));
     onUpdated?.(updated);
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { MembershipFull, MembershipSlim, Role } from "@/lib/api";
+import { MembershipFull, MembershipView, Role } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -12,13 +12,13 @@ import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges"
 
 interface MembershipSectionProps {
   tournamentId: number;
-  membership: MembershipFull;
+  membership: MembershipView;
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   locked: boolean;
   collectIsOver18: boolean;
   collectIsOver21: boolean;
-  onRolesUpdated: (updated: MembershipSlim) => void;
+  onRolesUpdated: (updated: MembershipFull) => void;
   /**
    * Field ids the TD turned off for this section — "joined", "join_method",
    * "roles", "age". Individual tracks aren't here: they're entities filtered
@@ -41,7 +41,7 @@ export function MembershipSection({
   // Tracks are hidden individually via the surface's hidden list, which the
   // server already applies — so an empty list here means every track was
   // turned off (or none exist), and the field has nothing to show either way.
-  const showTracks = membership.track_statuses.length > 0;
+  const showTracks = (membership.track_statuses ?? []).length > 0;
   const showRoles = shows("roles");
   const showAge = shows("age") && (collectIsOver18 || collectIsOver21);
 
@@ -57,7 +57,7 @@ export function MembershipSection({
             <FieldGrid>
               {showJoined && (
                 <PanelField label="Joined">
-                  <FieldValue>{formatDate(membership.created_at)}</FieldValue>
+                  <FieldValue>{membership.created_at ? formatDate(membership.created_at) : "—"}</FieldValue>
                 </PanelField>
               )}
               {showMethod && (
@@ -73,7 +73,7 @@ export function MembershipSection({
               {showTracks && (
                 <PanelField label="Tracks">
                   <FieldList>
-                    {membership.track_statuses.map((ts) => (
+                    {(membership.track_statuses ?? []).map((ts) => (
                       // Every live track appears, answered or not — a
                       // "pending" one is a member who still owes an answer,
                       // which absence alone wouldn't show. An archived

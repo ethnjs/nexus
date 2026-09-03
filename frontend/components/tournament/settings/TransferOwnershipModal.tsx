@@ -5,7 +5,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
-import { membersApi, tournamentsApi, MembershipSlim, ApiError } from "@/lib/api";
+import { membersApi, tournamentsApi, MembershipFull, ApiError } from "@/lib/api";
 
 const CONFIRM_PHRASE = "TRANSFER OWNERSHIP";
 
@@ -16,21 +16,21 @@ interface TransferOwnershipModalProps {
   onTransferred: () => void;
 }
 
-function memberLabel(m: MembershipSlim) {
+function memberLabel(m: MembershipFull) {
   const name = [m.user.first_name, m.user.last_name].filter(Boolean).join(" ") || "Unnamed";
   return `${name} — ${m.user.email}`;
 }
 
 export function TransferOwnershipModal({ tournamentId, currentUserId, onClose, onTransferred }: TransferOwnershipModalProps) {
-  const [members, setMembers] = useState<MembershipSlim[]>([]);
+  const [members, setMembers] = useState<MembershipFull[]>([]);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<MembershipSlim | null>(null);
+  const [selected, setSelected] = useState<MembershipFull | null>(null);
   const [confirmText, setConfirmText] = useState("");
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    membersApi.list(tournamentId)
+    membersApi.list(tournamentId, { fields: ["contact"] })
       .then((all) => setMembers(all.filter((m) => m.user.id !== currentUserId)))
       .catch(() => {});
   }, [tournamentId, currentUserId]);

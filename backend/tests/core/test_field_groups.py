@@ -170,10 +170,10 @@ def test_one_exclude_set_serves_both_response_models():
     """The Me response has no notes/source/user, and excluding a field a
     model doesn't declare is a no-op — which is what lets the same exclude
     dict be reused across both audiences."""
-    me = MembershipMeResponse(membership_id=7, is_owner=False, permissions=["manage_members"])
+    me = MembershipMeResponse(id=7, is_owner=False, permissions=["manage_members"])
     data = me.model_dump(mode="json", exclude=dump_exclude(frozenset({"roles"})))
 
-    assert data["membership_id"] == 7
+    assert data["id"] == 7
     assert data["permissions"] == ["manage_members"]
     assert data["roles"] == []
     assert "lunch" not in data
