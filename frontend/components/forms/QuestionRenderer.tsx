@@ -100,6 +100,24 @@ interface QuestionRendererProps {
 // availability, where GET /forms/{id}/ resolves `value` into each grouped
 // shift's own start/end (see optionDisplayLabel) so the option can show its
 // time range alongside the TD-typed label.
+// The required marker rides the last word rather than following the label as
+// a free-floating node: a label that fills its line to within a few px would
+// otherwise wrap the lone asterisk onto a line of its own. Only the tail is
+// nowrap, so everything before it still wraps normally.
+function QuestionLabel({ label, required }: { label: string; required: boolean }) {
+  if (!required) return <>{label}</>
+  const split = label.lastIndexOf(' ')
+  return (
+    <>
+      {split === -1 ? null : label.slice(0, split + 1)}
+      <span style={{ whiteSpace: 'nowrap' }}>
+        {split === -1 ? label : label.slice(split + 1)}
+        <span style={{ color: 'var(--color-danger)' }}> *</span>
+      </span>
+    </>
+  )
+}
+
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
@@ -115,8 +133,7 @@ export function QuestionRenderer({
               so the builder's collapsed card can open straight into it. Inert
               everywhere else. */}
           <span data-focus="label" style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            {field.label || 'Untitled question'}
-            {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+            <QuestionLabel label={field.label || 'Untitled question'} required={!!config.required} />
           </span>
           {field.description && (
             <p data-focus="description" style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
