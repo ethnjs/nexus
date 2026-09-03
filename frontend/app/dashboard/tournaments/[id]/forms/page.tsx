@@ -35,7 +35,10 @@ function FormRow({ form, isLast }: {
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={() => router.push(`/forms/${form.id}/edit`)}
+      // New tab, same as the Edit button: the builder is a long-lived editing
+      // session, and losing this list (with its filters and scroll) to go back
+      // and forth is worse than an extra tab.
+      onClick={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
       style={{
         display: "grid", gridTemplateColumns: FORM_ROW_COLUMNS, alignItems: "center",
         gap: "8px", padding: "10px 12px", cursor: "pointer",
@@ -155,10 +158,14 @@ export default function FormsPage() {
     );
   }
 
-  // Submit -> POST -> redirect straight into the builder. title/description
-  // are set later, inside the builder — not part of this modal.
+  // Submit -> POST -> builder in a new tab. title/description are set later,
+  // inside the builder — not part of this modal.
   function handleCreated(form: Form) {
     window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer");
+    setCreating(false);
+    // The builder opened in the other tab, so this list would otherwise sit
+    // here without the row that was just created.
+    formsApi.listForTournament(tournamentId).then(setForms).catch(() => {});
   }
 
   return (
