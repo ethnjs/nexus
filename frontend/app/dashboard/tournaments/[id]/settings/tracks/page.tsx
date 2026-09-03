@@ -184,7 +184,7 @@ function AddTrackPopover({ tournamentId, existingNames, onCreated, trigger }: {
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           <Input
             label="Track name"
-            placeholder="e.g. Debate"
+            placeholder="e.g. Test Writing"
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(close); } }}
