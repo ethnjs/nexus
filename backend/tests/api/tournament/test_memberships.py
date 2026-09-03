@@ -703,6 +703,50 @@ def test_get_membership_wrong_tournament(client, td_user, td_tournament, other_t
     ).status_code == 404
 
 
+def test_get_membership_self_without_manage_members(client, td_user, other_tournament, db):
+    """The member page is reachable by the person it's about — reading your
+    own membership needs no permission beyond being that member."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    m = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=other_tournament.id, user_id=td_user.id)
+        .one()
+    )
+    login(client, "td@test.com", "tdpass")
+    response = client.get(f"/tournaments/{other_tournament.id}/memberships/{m.id}/")
+    assert response.status_code == 200
+    assert response.json()["id"] == m.id
+
+
+def test_get_membership_self_view_hides_notes(client, td_user, other_tournament, db):
+    """Notes are written about the member by a coordinator, so the member
+    doesn't get them back on their own page."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    m = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=other_tournament.id, user_id=td_user.id)
+        .one()
+    )
+    m.notes = "Flaky, do not schedule alone"
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+    ).json()["notes"] is None
+
+
+def test_get_membership_self_access_does_not_leak_others(client, td_user, other_tournament, db):
+    """Self-access is exactly self — a member still can't read the row of
+    anyone else in the tournament."""
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    other = _make_user(db)
+    m = _make_membership(db, other_tournament.id, other["id"])
+    login(client, "td@test.com", "tdpass")
+    assert client.get(
+        f"/tournaments/{other_tournament.id}/memberships/{m.id}/"
+    ).status_code == 403
+
+
 def test_get_membership_requires_manage_members(client, td_user, other_tournament, db):
     u = _make_user(db)
     m = _make_membership(db, other_tournament.id, u["id"])

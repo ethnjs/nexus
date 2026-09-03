@@ -320,7 +320,18 @@ def set_my_age_disclosure(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/memberships/{membership_id} — manage_members
+# GET /tournaments/{tournament_id}/memberships/{membership_id} — manage_members,
+# or the member themselves.
+#
+# Self-access is what makes the member page (/members/{id}) reachable by the
+# person it's about. It isn't require_permission with an escape hatch bolted
+# on: that dependency 404s a caller who holds no permission at all, and a
+# member reading their own row is the ordinary case here, not an exception to
+# report on.
+#
+# `notes` is the one field self-access doesn't get — it's written *about* the
+# member by a coordinator (see MembershipCoordinatorUpdate), so it's dropped
+# for anyone without manage_members.
 # ---------------------------------------------------------------------------
 @router.get("/{membership_id}/", response_model=MembershipFullResponse)
 def get_membership(
@@ -328,10 +339,21 @@ def get_membership(
     membership_id: int,
     surface: str | None = Query(default=None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+    current_user: User = Depends(get_current_user),
 ):
+    get_tournament(tournament_id, db)
     m = get_scoped_or_404(db, TournamentMembership, membership_id, tournament_id, "Membership")
+
+    can_manage = MANAGE_MEMBERS in get_user_permissions(current_user, tournament_id, db)
+    if not can_manage and m.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't have permission to view this member",
+        )
+
     resp = MembershipFullResponse.model_validate(m)
+    if not can_manage:
+        resp.notes = None
     resp.custom_responses = get_custom_form_answers(db, tournament_id, m.user_id)
     resp.event_preferences = build_event_preferences(db, m)
     resp.lunch = build_lunch(db, m)

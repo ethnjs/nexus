@@ -8,23 +8,11 @@ import {
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import { ProfileCard } from "@/components/profile/ProfileCard";
-import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
-import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
-import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
-import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
-import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
-import { LunchSection } from "@/components/tournament/sections/LunchSection";
-import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
-import { CustomResponsesSection } from "@/components/tournament/sections/CustomResponsesSection";
+import { MemberSections } from "@/components/tournament/sections/MemberSections";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
 import { PanelSectionsModal } from "@/components/tournament/PanelSectionsModal";
 import { Button } from "@/components/ui/Button";
-import { IconEye, IconTrash } from "@/components/ui/Icons";
-import {
-  hiddenFieldsOf, isCustomSection, orderedSections, splitCustomAnswers,
-} from "@/lib/panelSections";
-import { MembershipSection } from "@/components/tournament/sections/MembershipSection";
+import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -104,88 +92,6 @@ export function MemberPanel({
     onUpdated?.(updated);
   }
 
-  const hiddenSections = new Set(full?.hidden_sections ?? []);
-
-  // One renderer per section id. Ordering, visibility and per-field hiding
-  // are all decided by the saved config above; this only says how a given
-  // section draws itself.
-  function renderSection(section: DisplayConfigSection) {
-    if (!full) return null;
-    // `hidden_sections` is a separate mechanism from `section.hidden`: the TD
-    // turned a section off explicitly there, whereas this covers a section
-    // whose every item was filtered away by the hidden-item list.
-    if (hiddenSections.has(section.id)) return null;
-
-    const hiddenFields = hiddenFieldsOf(section);
-    // `unassigned` is only non-empty once the catch-all section is deleted,
-    // which is a TD choosing for those answers not to show.
-    const { assigned } = splitCustomAnswers(
-      full.custom_responses, orderedSections(sectionConfig),
-    );
-
-    if (isCustomSection(section.id)) {
-      return (
-        <CustomResponsesSection
-          title={section.title || "Custom Responses"}
-          customResponses={assigned.get(section.id) ?? []}
-        />
-      );
-    }
-
-    switch (section.id) {
-      case "membership":
-        return (
-          <MembershipSection
-            tournamentId={tournamentId}
-            membership={full}
-            allRoles={allRoles}
-            canTouchRole={canTouchRole}
-            locked={!canEditMember(full)}
-            collectIsOver18={collectIsOver18}
-            collectIsOver21={collectIsOver21}
-            onRolesUpdated={handleRolesUpdated}
-            hiddenFields={hiddenFields}
-          />
-        );
-      case "availability":
-        return <AvailabilitySection availability={full.availability} allShifts={shifts} />;
-      case "lunch":
-        return (
-          // Lunch rows are filtered per category server-side; only the
-          // dietary restriction is a static field of this section.
-          <LunchSection
-            lunch={full.lunch}
-            dietaryRestriction={
-              hiddenFields.has("dietary_restriction") ? null : full.user.dietary_restriction
-            }
-          />
-        );
-      case "event_preferences":
-        return <EventPreferencesSection eventPreferences={full.event_preferences} />;
-      case "education":
-        return <ProfileCard><EducationCareerSection user={full.user} hiddenFields={hiddenFields} /></ProfileCard>;
-      case "competition_experience":
-        // Rendered whatever the data — the section itself distinguishes
-        // "None" (answered, has none) from "No info yet" (never answered),
-        // which an absent card can't.
-        return (
-          <ProfileCard>
-            <CompetitionExperienceSection user={full.user} mode="view" events={events} />
-          </ProfileCard>
-        );
-      case "volunteer_experience":
-        return (
-          <ProfileCard>
-            <VolunteerExperienceSection user={full.user} mode="view" events={events} />
-          </ProfileCard>
-        );
-      case "logistics":
-        return <ProfileCard><LogisticsSection user={full.user} hiddenFields={hiddenFields} /></ProfileCard>;
-      default:
-        return null;
-    }
-  }
-
   return (
     <DockedPanel
       onClose={onClose}
@@ -211,6 +117,18 @@ export function MemberPanel({
               <IconTrash size={14} style={{ color: "var(--color-danger)" }} />
             </Button>
           )}
+          {/* The panel is the configurable, skimmable view; the page is the
+              whole record with nothing hidden. */}
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly
+            title="Open full page"
+            onClick={() => window.open(
+              `/dashboard/tournaments/${tournamentId}/members/${membershipId}`,
+              "_blank", "noopener,noreferrer",
+            )}
+          >
+            <IconExpand size={14} />
+          </Button>
           <Button
             type="button" variant="secondary" size="sm" iconOnly
             title="Configure panel"
@@ -232,9 +150,19 @@ export function MemberPanel({
           <>
             <ProfileHeader user={full.user} />
 
-            {orderedSections(sectionConfig).map((section) => (
-              <div key={section.id}>{renderSection(section)}</div>
-            ))}
+            <MemberSections
+              tournamentId={tournamentId}
+              membership={full}
+              sectionConfig={sectionConfig}
+              shifts={shifts}
+              events={events}
+              allRoles={allRoles}
+              canTouchRole={canTouchRole}
+              rolesLocked={!canEditMember(full)}
+              collectIsOver18={collectIsOver18}
+              collectIsOver21={collectIsOver21}
+              onRolesUpdated={handleRolesUpdated}
+            />
           </>
         )}
       </div>
