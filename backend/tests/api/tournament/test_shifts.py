@@ -358,7 +358,7 @@ def test_setting_shifts_links_the_event_to_their_tracks(client, td_user, td_tour
     shift = _make_shift(client, td_tournament.id).json()
 
     body = _set_shifts(client, td_tournament.id, event["id"], [shift["id"]]).json()
-    assert body["track_ids"] == [shift["track_id"]]
+    assert [t["id"] for t in body["tracks"]] == [shift["track_id"]]
 
 
 def test_clearing_shifts_keeps_the_track_link(client, td_user, td_tournament):
@@ -371,20 +371,22 @@ def test_clearing_shifts_keeps_the_track_link(client, td_user, td_tournament):
 
     body = _set_shifts(client, td_tournament.id, event["id"], []).json()
     assert body["shifts"] == []
-    assert body["track_ids"] == [shift["track_id"]]
+    assert [t["id"] for t in body["tracks"]] == [shift["track_id"]]
 
 
-def test_event_days_come_from_its_shifts(client, td_user, td_tournament):
+def test_event_schedule_comes_from_its_shifts(client, td_user, td_tournament):
+    """An event has no dates of its own — reading its schedule means reading
+    the shifts attached to it."""
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id)
     shift = _make_shift(client, td_tournament.id).json()
 
-    assert _set_shifts(client, td_tournament.id, event["id"], []).json()["days"] == []
+    assert _set_shifts(client, td_tournament.id, event["id"], []).json()["shifts"] == []
     body = _set_shifts(client, td_tournament.id, event["id"], [shift["id"]]).json()
-    assert body["days"] == [EVENT_DATE]
+    assert [s["start"][:10] for s in body["shifts"]] == [EVENT_DATE]
 
 
-def test_event_on_a_cosmetic_track_has_no_days(client, td_user, td_tournament):
+def test_event_on_a_cosmetic_track_has_no_shifts(client, td_user, td_tournament):
     """Test Writing has no schedule, so an event on it has none either — which
     is exactly why the track link can't be derived from shifts."""
     login(client, "td@test.com", "tdpass")
@@ -393,8 +395,7 @@ def test_event_on_a_cosmetic_track_has_no_days(client, td_user, td_tournament):
     ).json()
     event = _make_event(client, td_tournament.id, track_ids=[track["id"]])
 
-    assert event["track_ids"] == [track["id"]]
-    assert event["days"] == []
+    assert [t["id"] for t in event["tracks"]] == [track["id"]]
     assert event["shifts"] == []
 
 

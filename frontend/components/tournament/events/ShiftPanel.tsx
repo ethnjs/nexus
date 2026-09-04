@@ -360,7 +360,7 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
   // its shifts, so there are no event bounds left to fit inside.
   const candidates = useMemo(() => {
     const attachedIds = new Set(attached.map((e) => e.id));
-    return events.filter((e) => !attachedIds.has(e.id) && e.track_ids.includes(trackId));
+    return events.filter((e) => !attachedIds.has(e.id) && e.tracks.some((t) => t.id === trackId));
   }, [events, attached, trackId]);
 
   const divisions = useMemo(

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { TournamentEvent, TournamentDivision } from '@/lib/api'
-import { eventName, eventNameWithDivision } from '@/lib/eventDisplay'
+import { eventFirstDay, eventName, eventNameWithDivision } from '@/lib/eventDisplay'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -51,7 +51,7 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
     case 'division': return e.division ?? ''
     // An event has no time of its own — its schedule is its shifts, so
     // the first day it runs is what there is to sort by.
-    case 'day': return e.days[0] ?? ''
+    case 'day': return eventFirstDay(e)
   }
 }
 

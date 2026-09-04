@@ -1,10 +1,11 @@
 from __future__ import annotations
-from datetime import date, datetime
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
 from app.schemas.tournament.shift import TournamentShiftRead
+from app.schemas.tournament.track import TournamentTrackRead
 
 VALID_EVENT_TYPES = {"standard", "trial"}
 
@@ -121,11 +122,10 @@ class EventRead(BaseModel):
     floor: str | None = None
     volunteers_needed: int | None = None
     shifts: list[TournamentShiftRead] = []
-    # Every day this event runs, derived from its shifts. A list, not a
-    # range — and empty for an event on a cosmetic track, which has no
-    # schedule at all.
-    days: list[date] = []
-    track_ids: list[int] = []
+    # The tracks themselves, not just their ids: every staff-side reader of
+    # an event wants the track's name and dates, and re-joining them against
+    # a separately fetched catalog is the only alternative.
+    tracks: list[TournamentTrackRead] = []
     created_at: datetime
     updated_at: datetime
 
@@ -138,8 +138,8 @@ class EventMemberRead(BaseModel):
     Deliberately only what names an event: `building`/`room`/`floor` are the
     physical assignment, which stays staff-side until the day, and
     `volunteers_needed` is a staffing target rather than anything a member
-    acts on. The event's days are out too — they're a by-product of whichever
-    shifts happen to be attached yet, so publishing them would imply a
+    acts on. The shifts and tracks are out too — they're a by-product of
+    whatever happens to be attached yet, so publishing them would imply a
     schedule the TD hasn't committed to.
 
     Matches the {id, name, division} shape resolve_field_options already

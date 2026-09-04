@@ -165,7 +165,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
 
   // Every track at least one selected event is on — the only ones "Remove
   // track" makes sense for.
-  const attachedTracks = allTracks.filter((t) => events.some((e) => e.track_ids.includes(t.id)));
+  const attachedTracks = allTracks.filter((t) => events.some((e) => e.tracks.some((et) => et.id === t.id)));
   const pendingAddTracks = allTracks.filter((t) => tracksToAdd.has(t.id));
   const pendingRemoveTracks = attachedTracks.filter((t) => tracksToRemove.has(t.id));
 
@@ -223,7 +223,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
         patch.shift_ids = [...new Set([...kept, ...shiftsToAdd])];
       }
       if (tracksToAdd.size > 0 || tracksToRemove.size > 0) {
-        const kept = current.track_ids.filter((id) => !tracksToRemove.has(id));
+        const kept = current.tracks.map((t) => t.id).filter((id) => !tracksToRemove.has(id));
         patch.track_ids = [...new Set([...kept, ...tracksToAdd])];
       }
 

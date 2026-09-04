@@ -54,7 +54,7 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     room: event?.room ?? "",
     floor: event?.floor ?? "",
     volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
-    trackIds: event?.track_ids ?? [],
+    trackIds: event?.tracks.map((t) => t.id) ?? [],
   };
 }
 
@@ -174,7 +174,7 @@ export function EventPanel({
   const eligibleShifts = useMemo(() => {
     if (!allShifts || !current) return [];
     const attachedIds = new Set(current.shifts.map((s) => s.id));
-    const eventTracks = new Set(current.track_ids);
+    const eventTracks = new Set(current.tracks.map((t) => t.id));
     return allShifts.filter((s) => !attachedIds.has(s.id) && eventTracks.has(s.track_id));
   }, [allShifts, current]);
 
@@ -221,7 +221,7 @@ export function EventPanel({
   // has no dates and can hold no shift, and an unsaved track change isn't
   // attachable yet, so both are filtered out.
   const newShiftTracks = useMemo(
-    () => tracks.filter((t) => t.is_primary && (current?.track_ids ?? []).includes(t.id)),
+    () => tracks.filter((t) => t.is_primary && (current?.tracks ?? []).some((et) => et.id === t.id)),
     [tracks, current],
   );
 

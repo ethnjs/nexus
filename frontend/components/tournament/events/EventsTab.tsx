@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { tournamentEventsApi, tournamentTracksApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
+import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -24,7 +24,7 @@ import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { useAuth } from "@/lib/useAuth";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
-import { eventName } from "@/lib/eventDisplay";
+import { eventFirstDay, eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
@@ -71,7 +71,7 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
     case "division": return e.division ?? "";
     // An event has no time of its own — its schedule is its shifts, so
     // the first day it runs is what there is to sort by.
-    case "day": return e.days[0] ?? "";
+    case "day": return eventFirstDay(e);
   }
 }
 
@@ -94,9 +94,6 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // there's no row to select yet.
   const [creatingNew, setCreatingNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
-  // Live tracks, for badging each row. Cosmetic ones included — an event on
-  // Test Writing is exactly the case the event/track bridge exists for.
-  const [trackNames, setTrackNames] = useState<Map<number, string>>(new Map());
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
@@ -141,9 +138,6 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
   useEffect(() => {
     loadEvents();
-    tournamentTracksApi.list(tournamentId, { public: true })
-      .then((tracks) => setTrackNames(new Map(tracks.map((t) => [t.id, t.name]))))
-      .catch(() => {});
   }, [tournamentId]);
 
   const divisionOptions = useMemo(() => {
@@ -443,7 +437,6 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 <EventRow
                   key={e.id}
                   event={e}
-                  trackNames={trackNames}
                   isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents && !isArchived}
                   onFocus={() => focusEvent(e.id)}
@@ -511,11 +504,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 }
 
 function EventRow({
-  event, trackNames, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
 }: {
   event: TournamentEvent;
-  /** Track id -> name, so a row can badge its tracks without its own fetch. */
-  trackNames: Map<number, string>;
   isLast: boolean;
   canDelete: boolean;
   onFocus: () => void;
@@ -592,16 +583,9 @@ function EventRow({
           derivable from its shifts, but they are the same days its track
           already names — the track is the thing that isn't inferable. */}
       <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-        {(() => {
-          // An id with no name is a track the catalog hasn't loaded yet (or
-          // one that has gone away). A badge reading "—" would claim the
-          // event is on a track called nothing, so those are dropped and the
-          // row falls back to the plain dash.
-          const named = event.track_ids.filter((id) => trackNames.has(id));
-          return named.length > 0
-            ? named.map((id) => <Badge key={id}>{trackNames.get(id)}</Badge>)
-            : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>;
-        })()}
+        {event.tracks.length > 0
+          ? event.tracks.map((t) => <Badge key={t.id}>{t.name}</Badge>)
+          : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {event.shifts.length}

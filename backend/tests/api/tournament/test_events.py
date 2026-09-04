@@ -103,7 +103,7 @@ def test_create_event_has_no_times_of_its_own(client, td_user, td_tournament):
     a gap day, so it is now unreachable rather than merely discouraged."""
     login(client, "td@test.com", "tdpass")
     body = _make_event(client, td_tournament.id).json()
-    assert body["days"] == []
+    assert body["shifts"] == []
     assert "start_time" not in body and "end_time" not in body
 
 
@@ -122,7 +122,9 @@ def test_create_event_with_tracks(client, td_user, td_tournament):
         f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
     ).json()
     body = _make_event(client, td_tournament.id, track_ids=[track["id"]]).json()
-    assert body["track_ids"] == [track["id"]]
+    assert [t["id"] for t in body["tracks"]] == [track["id"]]
+    # The whole track object rides along, not just its id.
+    assert body["tracks"][0]["name"] == "Test Writing"
 
 
 def test_create_event_with_unknown_track_rejected(client, td_user, td_tournament):
@@ -332,7 +334,7 @@ def test_update_event_replaces_the_whole_track_set(client, td_user, td_tournamen
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
         json={"track_ids": [second["id"]]},
     ).json()
-    assert body["track_ids"] == [second["id"]]
+    assert [t["id"] for t in body["tracks"]] == [second["id"]]
 
 
 def test_update_event_volunteer_cannot_patch(

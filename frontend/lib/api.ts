@@ -580,12 +580,11 @@ export interface TournamentEvent {
   floor:             string | null
   volunteers_needed: number | null
   shifts:            TournamentShift[]
-  // Every day this event runs, derived from its shifts — a list, not a
-  // range, and empty for an event on a cosmetic track (no schedule at all).
-  days:              string[]
-  // The tracks this event belongs to. Not derived from shifts: a cosmetic
-  // track has none, so the link has to be stated outright.
-  track_ids:         number[]
+  // The tracks this event belongs to, in schedule order. Not derived from
+  // shifts: a cosmetic track has none, so the link is stated outright. Full
+  // objects, not ids — readers want the name and dates too. Written back as
+  // track_ids (see TournamentEventInput).
+  tracks:            TournamentTrack[]
   created_at:        string
   updated_at:        string
 }

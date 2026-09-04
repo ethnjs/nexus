@@ -33,8 +33,8 @@ def _validate_division(division: str | None, tournament) -> None:
 
 
 # There is no bounds check on an event any more. An event has no times of its
-# own — its schedule is the union of its shifts (TournamentEvent.days), and
-# each of those is already bounded by its own track's date range. That also
+# own — its schedule is the union of its shifts, and each of those is
+# already bounded by its own track's date range. That also
 # closes a hole the old check couldn't: with Day 1 on Feb 13 and Day 2 on
 # Feb 20, an event on Feb 16 fell inside the tournament's span and passed,
 # even though the tournament doesn't run that day. No shift exists there, so
@@ -77,12 +77,16 @@ def _apply_shifts_and_tracks(
 
     resolved: list[TournamentTrack] = list(event.tracks)
     if track_ids is not None:
+        # Archived (pending-delete) tracks are resolved too, then judged
+        # below. Filtering them out here made an event's own track set
+        # unwritable: EventRead reports every track the event holds, so an
+        # event blocking a track's purge could not be saved at all — any PATCH
+        # echoing back its own tracks came back "Unknown track".
         tracks = (
             db.query(TournamentTrack)
             .filter(
                 TournamentTrack.tournament_id == tournament_id,
                 TournamentTrack.id.in_(track_ids),
-                TournamentTrack.is_archived.is_(False),
             )
             .all()
         ) if track_ids else []
@@ -91,6 +95,16 @@ def _apply_shifts_and_tracks(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Unknown track {sorted(missing)[0]}",
+            )
+        # Keeping a pending-delete link is allowed — that is what a round-trip
+        # does, and dropping it silently would unblock a purge the TD hasn't
+        # asked for. Adding a *new* one isn't: the track is on its way out.
+        held = {track.id for track in event.tracks}
+        newly_archived = sorted(t.id for t in tracks if t.is_archived and t.id not in held)
+        if newly_archived:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Track {newly_archived[0]} is pending deletion; restore it first",
             )
         resolved = tracks
 
@@ -142,10 +156,13 @@ def list_events(
 
     query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
     if not public:
-        # Only the staff shape carries shifts; loading them for a member read
-        # would be a join nobody looks at.
+        # Only the staff shape carries shifts and tracks; loading them for a
+        # member read would be joins nobody looks at.
         query = query.options(
-            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events)
+            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events),
+            # TournamentTrackRead embeds the university, so load it here too —
+            # otherwise serializing the tracks is a query per event.
+            joinedload(TournamentEvent.tracks).joinedload(TournamentTrack.university),
         )
     events = (
         query

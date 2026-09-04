@@ -692,25 +692,12 @@ class TournamentEvent(Base):
     # shifts: a cosmetic track (Test Writing) has no shifts by construction,
     # so a shift-derived link could never reach it — and Circuits genuinely
     # belongs to both Test Writing and Day 1.
+    # Ordered by date so EventRead renders an event's tracks in schedule
+    # order; cosmetic tracks (no start_date) sort last.
     tracks = relationship(
-        "TournamentTrack", secondary="tournament_event_tracks", back_populates="events"
+        "TournamentTrack", secondary="tournament_event_tracks", back_populates="events",
+        order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
-
-    @property
-    def days(self) -> list[date]:
-        """Every day this event runs, from its shifts — a list, not a range,
-        for the same reason Tournament.dates is one. An event with no shifts
-        (anything on a cosmetic track) correctly has no days at all.
-
-        Naive UTC dates. Callers that need them in the tournament's own
-        timezone should use tournament_local_date on the shift bounds."""
-        return sorted({shift.start.date() for shift in self.shifts})
-
-    @property
-    def track_ids(self) -> list[int]:
-        """Ids alone, for EventRead — a caller that wants the tracks
-        themselves already has the tournament's catalog."""
-        return sorted(track.id for track in self.tracks)
 
     @property
     def display_name(self) -> str | None:
