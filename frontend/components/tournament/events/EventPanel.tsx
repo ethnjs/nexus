@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { ChipInput } from "@/components/ui/ChipInput";
+import { PENDING_TRACK_NOTE, pendingTracks } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
@@ -215,6 +216,10 @@ export function EventPanel({
   }
 
   const trackNames = useMemo(() => new Map(tracks.map((t) => [t.id, t.name])), [tracks]);
+  const pendingTrackNames = useMemo(
+    () => new Set(pendingTracks(tracks).map((t) => t.name)),
+    [tracks],
+  );
 
   // The backend refuses a *new* link to a pending-delete track but allows an
   // existing one to round-trip, so the picker offers exactly that: live
@@ -321,6 +326,11 @@ export function EventPanel({
               disableInput
               locked={locked}
               fullWidth
+              // A pending-delete track reads as a warning rather than a
+              // normal chip: this event is one of the references holding it
+              // there, which is not obvious from the name alone.
+              getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
+              getChipTooltip={(name) => (pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined)}
               addButton={!locked && (
                 <Popover
                   trigger={

@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
+import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision, TournamentTrack } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -182,6 +183,13 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     [events, selectedIds]
   );
 
+  // Deduped across every event — the same pending track can hold dozens.
+  const eventTracks = useMemo(() => {
+    const byId = new Map<number, TournamentTrack>();
+    for (const event of events ?? []) for (const track of event.tracks) byId.set(track.id, track);
+    return [...byId.values()];
+  }, [events]);
+
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
   // The editors don't render here — they're pushed into the layout shell's
@@ -294,6 +302,10 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           {loadError}
         </p>
       )}
+
+      {/* Only the tracks these events actually hold — a pending-delete track
+          with nothing on this page isn't this page's problem. */}
+      <PendingTrackBanner tracks={eventTracks} subject="events" />
 
       {events.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
@@ -525,6 +537,9 @@ function EventRow({
   // Two different reasons a row might be clickable: toggling a checkbox in
   // Select mode, or switching which row the single-edit panel shows. Never
   // both at once — the two flows are mutually exclusive.
+  // This event is one of the references keeping a pending-delete track
+  // alive — flagged here so the ones to repoint are findable in the table.
+  const isPending = event.tracks.some((t) => t.is_archived);
   const clickable = (selectMode || focusActive) && !selectionLocked;
   const handleRowClick = selectMode ? onToggleSelect : onFocus;
   const highlighted = selectMode ? selected : focused;
@@ -540,7 +555,9 @@ function EventRow({
         display: "grid", gridTemplateColumns: eventColumns(selectMode), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
+        background: highlighted || hovered
+          ? "var(--color-bg)"
+          : isPending ? "var(--color-warning-subtle)" : "transparent",
         transition: "background 100ms ease, grid-template-columns 200ms ease",
         cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
@@ -584,7 +601,11 @@ function EventRow({
           already names — the track is the thing that isn't inferable. */}
       <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
         {event.tracks.length > 0
-          ? event.tracks.map((t) => <Badge key={t.id}>{t.name}</Badge>)
+          ? event.tracks.map((t) => (
+              <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
+                {t.name}
+              </Badge>
+            ))
           : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>

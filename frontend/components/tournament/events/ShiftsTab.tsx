@@ -11,6 +11,7 @@ import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Spinner } from "@/components/ui/Spinner";
@@ -69,8 +70,8 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
       .catch(() => setTracks([]));
   }, [tournamentId]);
 
-  const trackName = useCallback(
-    (trackId: number) => tracks.find((t) => t.id === trackId)?.name ?? "—",
+  const trackById = useCallback(
+    (trackId: number) => tracks.find((t) => t.id === trackId),
     [tracks],
   );
 
@@ -82,6 +83,11 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   }, [shifts, trackFilter]);
 
   const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleShifts, (s) => s.id);
+
+  const shiftTracks = useMemo(() => {
+    const ids = new Set((shifts ?? []).map((s) => s.track_id));
+    return tracks.filter((t) => ids.has(t.id));
+  }, [shifts, tracks]);
 
   const handleSaved = useCallback((saved: TournamentShift) => {
     setShifts((prev) => {
@@ -206,6 +212,9 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         </p>
       )}
 
+      {/* Only the tracks these shifts are actually on. */}
+      <PendingTrackBanner tracks={shiftTracks} subject="shifts" />
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
         {/* Only shown with more than one competition day — with a single
             track every shift is on it, and the filter would be a no-op. */}
@@ -256,7 +265,7 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
             <ShiftRow
               key={shift.id}
               shift={shift}
-              trackName={trackName(shift.track_id)}
+              track={trackById(shift.track_id)}
               isLast={i === visibleShifts.length - 1}
               focused={focusedId === shift.id}
               canEdit={canEdit}
@@ -287,9 +296,10 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
 // Read-only: every edit, including delete, happens in the panel. A row that
 // both previews and edits meant two ways to change the same thing, and only
 // one of them could show a shift's events.
-function ShiftRow({ shift, trackName, isLast, focused, canEdit, onClick, onDelete }: {
+function ShiftRow({ shift, track, isLast, focused, canEdit, onClick, onDelete }: {
   shift: TournamentShift;
-  trackName: string;
+  /** Undefined only while the catalog is still loading. */
+  track: TournamentTrack | undefined;
   isLast: boolean;
   focused: boolean;
   canEdit: boolean;
@@ -307,14 +317,23 @@ function ShiftRow({ shift, trackName, isLast, focused, canEdit, onClick, onDelet
         display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: focused ? "var(--color-accent-subtle)" : hovered ? "var(--color-bg)" : "transparent",
+        background: focused
+          ? "var(--color-accent-subtle)"
+          : hovered
+            ? "var(--color-bg)"
+            : track?.is_archived ? "var(--color-warning-subtle)" : "transparent",
         cursor: "pointer",
         transition: "background 100ms ease",
       }}
     >
       <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{shift.label}</span>
       <span style={{ display: "flex", minWidth: 0 }}>
-        <Badge>{trackName}</Badge>
+        <Badge
+          variant={track?.is_archived ? "warning" : "default"}
+          title={track?.is_archived ? PENDING_TRACK_NOTE : undefined}
+        >
+          {track?.name ?? "—"}
+        </Badge>
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
         {formatTimeOfDay(toTimeInput(shift.start))}
