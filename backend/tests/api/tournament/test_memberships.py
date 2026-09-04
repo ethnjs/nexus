@@ -8,7 +8,7 @@ from app.models.models import (
     Form, FormAnswer, FormField, FormResponse,
     TournamentMembership, TournamentMembershipRole, TournamentRole,
 )
-from tests.conftest import grant_role, login, set_display_config
+from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
 
 def get_role_id_by_label(db, tournament_id: int, label: str) -> int:
@@ -345,8 +345,7 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
 
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
-    shift = TournamentShift(
-        tournament_id=td_tournament.id, label="Morning",
+    shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
         start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
         end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
     )
@@ -590,8 +589,7 @@ class TestRosterFilters:
         from app.core.tournament import tournament_local_date
         from app.models.models import TournamentMembershipAvailability, TournamentShift
 
-        morning = TournamentShift(
-            tournament_id=td_tournament.id, label="Impound",
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Impound",
             start=datetime(2026, 5, 21, 15, 0, tzinfo=dt_timezone.utc),
             end=datetime(2026, 5, 21, 17, 0, tzinfo=dt_timezone.utc),
         )
@@ -1032,8 +1030,7 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
 
-    shift = TournamentShift(
-        tournament_id=td_tournament.id, label="Morning",
+    shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
         start=datetime(2026, 5, 21, 8, 0), end=datetime(2026, 5, 21, 12, 0),
     )
     db.add(shift)
@@ -1317,8 +1314,7 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     db.commit()
     membership = grant_role(db, td_tournament, user, "Volunteer")
 
-    shift = TournamentShift(
-        tournament_id=td_tournament.id, label="Morning",
+    shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
         start=datetime(2026, 5, 21, 8, 0), end=datetime(2026, 5, 21, 12, 0),
     )
     db.add(shift)
@@ -1506,8 +1502,7 @@ def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, ot
     db.commit()
     membership = grant_role(db, td_tournament, other_user, "Volunteer")
 
-    shift = TournamentShift(
-        tournament_id=td_tournament.id, label="Morning",
+    shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
         start=datetime(2026, 5, 21, 8, 0), end=datetime(2026, 5, 21, 12, 0),
     )
     db.add(shift)
@@ -1620,8 +1615,7 @@ def test_update_membership_not_found(client, td_user, td_tournament):
 def _make_shift(db, tournament_id, label="Morning", day=1):
     from app.models.models import TournamentShift
 
-    shift = TournamentShift(
-        tournament_id=tournament_id, label=label,
+    shift = TournamentShift(tournament_id=tournament_id, track_id=primary_track_id(db, tournament_id), label=label,
         start=datetime(2026, 3, day, 15, 0, tzinfo=timezone.utc),
         end=datetime(2026, 3, day, 19, 0, tzinfo=timezone.utc),
     )

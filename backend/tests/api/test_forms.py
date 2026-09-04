@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy.orm.attributes import flag_modified
 
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, primary_track_id
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 
 from app.models.models import (
@@ -283,7 +283,7 @@ class TestTournamentFormPrerequisites:
         form = _make_form(db, td_user, td_tournament)
         role = db.query(TournamentRole).filter(TournamentRole.tournament_id == td_tournament.id).first()
         now = datetime.now(timezone.utc)
-        shift = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=now, end=now + timedelta(hours=2))
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=now, end=now + timedelta(hours=2))
         db.add(shift)
         db.commit()
         self._link(db, form, td_tournament)
@@ -307,7 +307,7 @@ class TestTournamentFormPrerequisites:
         self._link(db, form, td_tournament)
         other_role = db.query(TournamentRole).filter(TournamentRole.tournament_id == other_tournament.id).first()
         now = datetime.now(timezone.utc)
-        other_shift = TournamentShift(tournament_id=other_tournament.id, label="Other", start=now, end=now + timedelta(hours=2))
+        other_shift = TournamentShift(tournament_id=other_tournament.id, track_id=primary_track_id(db, other_tournament.id), label="Other", start=now, end=now + timedelta(hours=2))
         db.add(other_shift)
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1273,8 +1273,7 @@ class TestListArchivedFields:
     def test_config_comes_back_unresolved(self, client, db, td_user, td_tournament):
         """It's read only to be sent straight back to PUT .../fields/, so the
         option values must be the round-trippable ids, not a rendering."""
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1409,8 +1408,7 @@ class TestInvalidateField:
     def test_availability_write_through_is_left_alone(self, client, db, td_user, td_tournament):
         """Availability rows are shared with whatever else covers that day, so
         this field's contribution can't be separated out after the fact."""
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1701,8 +1699,7 @@ class TestAnswerSnapshotting:
 class TestWriteThroughOnSubmit:
     def test_availability_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id,
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id),
             label="Saturday",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8),
@@ -1750,8 +1747,8 @@ class TestWriteThroughOnSubmit:
 
     def test_grouped_availability_option_writes_one_row_per_shift(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
@@ -1773,8 +1770,7 @@ class TestWriteThroughOnSubmit:
         off `value` directly iterated the dict's keys and fed the strings
         "shift_ids"/"track_statuses" into the shift set."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1806,8 +1802,8 @@ class TestWriteThroughOnSubmit:
 
     def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
@@ -1952,8 +1948,7 @@ class TestWriteThroughOnSubmit:
         """One field, both targets — the track opt-in doesn't displace the
         availability write-through."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1999,8 +1994,8 @@ class TestWriteThroughOnSubmit:
 
     def test_deselecting_option_keeps_shift_still_covered_by_another(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
@@ -2032,8 +2027,8 @@ class TestWriteThroughOnSubmit:
         Sunday form must not disturb the Saturday availability a different
         form collected. Write-through is bounded by the days a submission
         actually asked about."""
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
 
@@ -2062,8 +2057,8 @@ class TestWriteThroughOnSubmit:
         """The TD drops a shift out of an option. A member who re-answers must
         actually lose it — if ownership came from the options' current
         contents, that shift would belong to nothing and linger forever."""
-        one = TournamentShift(tournament_id=td_tournament.id, label="Early", start=datetime(2026, 3, 15, 8, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 10, tzinfo=timezone.utc))
-        two = TournamentShift(tournament_id=td_tournament.id, label="Mid", start=datetime(2026, 3, 15, 10, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 12, tzinfo=timezone.utc))
+        one = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Early", start=datetime(2026, 3, 15, 8, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 10, tzinfo=timezone.utc))
+        two = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Mid", start=datetime(2026, 3, 15, 10, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 12, tzinfo=timezone.utc))
         db.add_all([one, two])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -2092,8 +2087,8 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {two.id}
 
     def test_two_availability_fields_disjoint_selections_both_persist(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -2121,7 +2116,7 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {saturday.id, sunday.id}
 
     def test_two_availability_fields_overlapping_selections_dedupe(self, client, db, td_user, td_tournament):
-        shared = TournamentShift(tournament_id=td_tournament.id, label="Shared", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        shared = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Shared", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add(shared)
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
@@ -2152,8 +2147,8 @@ class TestWriteThroughOnSubmit:
         assert [row.tournament_shift_id for row in rows] == [shared.id]
 
     def test_blanking_one_of_two_availability_fields_only_clears_its_own_shifts(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")

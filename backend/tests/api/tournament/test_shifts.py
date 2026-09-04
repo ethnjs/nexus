@@ -6,15 +6,22 @@ from tests.conftest import grant_role, login
 
 from app.models.models import Form, FormField, TournamentMembership, TournamentMembershipAvailability
 
-# td_tournament spans [today, today + 1 day] — event/shift times must fall
-# within that window now that tournament-bounds validation exists.
+# td_tournament's primary track spans [today, today + 1 day] — a shift is
+# bounded by its *track's* range, not the tournament's, so these are the same
+# window only while the tournament has one track.
 EVENT_DATE = date.today().isoformat()
 BEFORE_TOURNAMENT = (date.today() - timedelta(days=1)).isoformat()
 AFTER_TOURNAMENT = (date.today() + timedelta(days=3)).isoformat()
 
 
+def _primary_track(client, tournament_id):
+    tracks = client.get(f"/tournaments/{tournament_id}/tracks/?public=true").json()
+    return next(t for t in tracks if t["is_primary"])["id"]
+
+
 def _make_shift(client, tournament_id, **overrides):
     payload = {
+        "track_id": _primary_track(client, tournament_id),
         "label": "Shift 1",
         "start": EVENT_DATE + "T08:00:00Z",
         "end": EVENT_DATE + "T12:00:00Z",
@@ -54,19 +61,19 @@ def test_create_shift_end_before_start_rejected(client, td_user, td_tournament):
     assert response.status_code == 422
 
 
-def test_create_shift_before_tournament_start_rejected(client, td_user, td_tournament):
+def test_create_shift_before_track_start_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_shift(client, td_tournament.id, start=BEFORE_TOURNAMENT + "T08:00:00Z", end=BEFORE_TOURNAMENT + "T12:00:00Z")
     assert response.status_code == 409
 
 
-def test_create_shift_after_tournament_end_rejected(client, td_user, td_tournament):
+def test_create_shift_after_track_end_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_shift(client, td_tournament.id, start=AFTER_TOURNAMENT + "T08:00:00Z", end=AFTER_TOURNAMENT + "T12:00:00Z")
     assert response.status_code == 409
 
 
-def test_update_shift_outside_tournament_bounds_rejected(client, td_user, td_tournament):
+def test_update_shift_outside_track_bounds_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_shift(client, td_tournament.id).json()
     response = client.patch(
@@ -85,36 +92,112 @@ def test_list_shifts(client, td_user, td_tournament):
     assert len(response.json()) == 2
 
 
-def test_list_shifts_public_readable_by_plain_member(client, td_user, other_tournament, db):
-    """Same shape as the staff read for now — a shift is a label and a time
-    range, which any member answering an availability question already sees."""
+def test_list_shifts_readable_by_plain_member(client, td_user, other_tournament, db):
+    """Membership is the whole gate: the member edit page needs the catalog to
+    render its own availability, and a shift is only a label and a time range,
+    which any member answering an availability question already sees."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/shifts/?public=true").status_code == 200
+    assert client.get(f"/tournaments/{other_tournament.id}/shifts/").status_code == 200
 
 
-def test_list_shifts_without_public_still_requires_manage_events(
-    client, td_user, other_tournament, db,
-):
-    grant_role(db, other_tournament, td_user, "Volunteer")
+def test_list_shifts_still_requires_membership(client, td_user, other_tournament):
     login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/shifts/").status_code == 403
+    assert client.get(f"/tournaments/{other_tournament.id}/shifts/").status_code == 404
 
 
-def test_list_shifts_public_still_requires_membership(client, td_user, other_tournament):
-    login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/shifts/?public=true").status_code == 404
-
-
-def test_shift_writes_are_never_public(client, td_user, other_tournament, db):
-    """The param is a read concept — it must not become a way in for writes."""
+def test_shift_writes_still_require_manage_events(client, td_user, other_tournament, db):
+    """Relaxing the read must not relax the write."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
     response = client.post(
-        f"/tournaments/{other_tournament.id}/shifts/?public=true",
-        json={"label": "Sneaky", "start": EVENT_DATE + "T08:00:00Z", "end": EVENT_DATE + "T12:00:00Z"},
+        f"/tournaments/{other_tournament.id}/shifts/",
+        json={"track_id": 1, "label": "Sneaky",
+              "start": EVENT_DATE + "T08:00:00Z", "end": EVENT_DATE + "T12:00:00Z"},
     )
     assert response.status_code == 403
+
+
+def test_list_shifts_filtered_by_track(client, db, td_user, td_tournament):
+    """Availability is scoped to a track's day, so the catalog can be too."""
+    login(client, "td@test.com", "tdpass")
+    _make_shift(client, td_tournament.id, label="On main")
+    main = _primary_track(client, td_tournament.id)
+
+    body = client.get(f"/tournaments/{td_tournament.id}/shifts/?track_id={main}").json()
+    assert [s["label"] for s in body] == ["On main"]
+    assert client.get(f"/tournaments/{td_tournament.id}/shifts/?track_id={main + 999}").json() == []
+
+
+def test_shift_cannot_be_placed_on_a_cosmetic_track(client, td_user, td_tournament):
+    """A cosmetic track has no dates, so there is no range for the shift to
+    fall inside — and nothing would ever validate it."""
+    login(client, "td@test.com", "tdpass")
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()
+    response = _make_shift(client, td_tournament.id, track_id=track["id"])
+    assert response.status_code == 409
+    assert "no dates" in response.json()["detail"]
+
+
+def test_track_with_shifts_cannot_be_deleted(client, td_user, td_tournament, db):
+    """Shifts carry member availability — deleting a track is not a licence to
+    destroy answers people gave."""
+    login(client, "td@test.com", "tdpass")
+    second = client.post(f"/tournaments/{td_tournament.id}/tracks/", json={
+        "name": "Day 2", "is_primary": True,
+        "start_date": EVENT_DATE, "end_date": EVENT_DATE,
+        "location": "Elsewhere", "division": ["B"],
+    }).json()
+    _make_shift(client, td_tournament.id, track_id=second["id"])
+
+    response = client.delete(f"/tournaments/{td_tournament.id}/tracks/{second['id']}/")
+    assert response.status_code == 200
+    assert response.json()["purged"] is False
+    assert response.json()["blocked_by"] == ["1 shift(s)"]
+
+
+def test_moving_the_last_shift_off_a_pending_track_purges_it(client, td_user, td_tournament, db):
+    """Repointing the blocker - not deleting it - is what finishes the delete."""
+    from app.models.models import TournamentTrack
+
+    login(client, "td@test.com", "tdpass")
+    main = _primary_track(client, td_tournament.id)
+    second = client.post(f"/tournaments/{td_tournament.id}/tracks/", json={
+        "name": "Day 2", "is_primary": True,
+        "start_date": EVENT_DATE, "end_date": EVENT_DATE,
+        "location": "Elsewhere", "division": ["B"],
+    }).json()
+    shift = _make_shift(client, td_tournament.id, track_id=second["id"]).json()
+
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/tracks/{second['id']}/"
+    ).json()["purged"] is False
+
+    moved = client.patch(
+        f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/", json={"track_id": main},
+    )
+    assert moved.status_code == 200
+    assert db.query(TournamentTrack).filter(TournamentTrack.id == second["id"]).count() == 0
+
+
+def test_deleting_the_last_shift_on_a_pending_track_purges_it(client, td_user, td_tournament, db):
+    from app.models.models import TournamentTrack
+
+    login(client, "td@test.com", "tdpass")
+    second = client.post(f"/tournaments/{td_tournament.id}/tracks/", json={
+        "name": "Day 2", "is_primary": True,
+        "start_date": EVENT_DATE, "end_date": EVENT_DATE,
+        "location": "Elsewhere", "division": ["B"],
+    }).json()
+    shift = _make_shift(client, td_tournament.id, track_id=second["id"]).json()
+    client.delete(f"/tournaments/{td_tournament.id}/tracks/{second['id']}/")
+
+    assert client.delete(
+        f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/"
+    ).status_code == 204
+    assert db.query(TournamentTrack).filter(TournamentTrack.id == second["id"]).count() == 0
 
 
 def test_update_shift(client, td_user, td_tournament):
@@ -233,10 +316,17 @@ def test_delete_shift_allowed_when_only_referenced_by_archived_field(client, db,
     assert client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
 
 
-def test_shift_routes_require_manage_events(client, td_user, other_tournament, db):
+def test_shift_write_routes_require_manage_events(client, td_user, other_tournament, db):
+    """The read is membership-gated (see above); every write still isn't."""
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
-    assert client.get(f"/tournaments/{other_tournament.id}/shifts/").status_code == 403
+    base = f"/tournaments/{other_tournament.id}/shifts/"
+    assert client.post(base, json={
+        "track_id": 1, "label": "Nope",
+        "start": EVENT_DATE + "T08:00:00Z", "end": EVENT_DATE + "T12:00:00Z",
+    }).status_code == 403
+    assert client.patch(f"{base}1/", json={"label": "Nope"}).status_code == 403
+    assert client.delete(f"{base}1/").status_code == 403
 
 
 # ---------------------------------------------------------------------------

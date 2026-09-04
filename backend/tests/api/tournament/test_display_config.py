@@ -5,7 +5,7 @@ from app.models.models import (
     Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
     TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack,
 )
-from tests.conftest import grant_role, login, set_display_config
+from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
 
 # ---------------------------------------------------------------------------
@@ -322,18 +322,15 @@ def test_get_display_config_catalog_includes_availability_days(client, td_user, 
     from app.models.models import TournamentShift
 
     db.add_all([
-        TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 1, 15, 0, tzinfo=timezone.utc),
             end=datetime(2026, 3, 1, 19, 0, tzinfo=timezone.utc),
         ),
-        TournamentShift(
-            tournament_id=td_tournament.id, label="Afternoon",
+        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon",
             start=datetime(2026, 3, 1, 20, 0, tzinfo=timezone.utc),
             end=datetime(2026, 3, 1, 23, 0, tzinfo=timezone.utc),
         ),
-        TournamentShift(
-            tournament_id=td_tournament.id, label="Day two",
+        TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Day two",
             start=datetime(2026, 3, 2, 15, 0, tzinfo=timezone.utc),
             end=datetime(2026, 3, 2, 19, 0, tzinfo=timezone.utc),
         ),

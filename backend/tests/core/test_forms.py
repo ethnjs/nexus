@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from tests.conftest import grant_role
+from tests.conftest import grant_role, primary_track_id
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 
 from datetime import datetime, timedelta, timezone
@@ -100,7 +100,7 @@ def _chapter_lead(db, chapter, email="chapterlead@test.com", password="LeadPass1
 
 
 def _make_shift(db, tournament, label, start, end):
-    shift = TournamentShift(tournament_id=tournament.id, label=label, start=start, end=end)
+    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id), label=label, start=start, end=end)
     db.add(shift)
     db.flush()
     return shift

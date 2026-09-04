@@ -23,6 +23,7 @@ from app.core.form.validation import (
     validate_tournament_preset,
 )
 from app.models.models import Form, FormField, TournamentEvent, TournamentShift, TournamentTrack
+from tests.conftest import primary_track_id
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +86,7 @@ def _make_field(db, form, *, order=1, field_key="favorite_color", question_type=
 
 def _make_shift(db, tournament, label="Saturday", day=None):
     start = datetime(2026, 3, 15, tzinfo=timezone.utc) if day is None else day
-    shift = TournamentShift(
-        tournament_id=tournament.id,
+    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
         label=label,
         start=start,
         end=start + timedelta(hours=8),

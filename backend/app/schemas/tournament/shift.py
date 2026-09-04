@@ -4,6 +4,10 @@ from pydantic import BaseModel, model_validator
 
 
 class TournamentShiftCreate(BaseModel):
+    # Which primary track's day this shift falls on. Required: a shift with no
+    # track has no date range to validate against and no availability question
+    # can ever reach it.
+    track_id: int
     label: str
     start: datetime
     end: datetime
@@ -16,6 +20,9 @@ class TournamentShiftCreate(BaseModel):
 
 
 class TournamentShiftUpdate(BaseModel):
+    # Moving a shift between tracks is how a TD "fixes" the reference that
+    # blocks a pending track delete — see purge_pending_tracks.
+    track_id: int | None = None
     label: str | None = None
     start: datetime | None = None
     end: datetime | None = None
@@ -30,6 +37,7 @@ class TournamentShiftUpdate(BaseModel):
 class TournamentShiftRead(BaseModel):
     id: int
     tournament_id: int
+    track_id: int
     label: str
     start: datetime
     end: datetime

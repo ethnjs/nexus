@@ -27,11 +27,11 @@ from app.models.models import (
     TournamentShift,
     TournamentTrack,
 )
+from tests.conftest import primary_track_id
 
 
 def _make_shift(db, tournament, label="Shift"):
-    shift = TournamentShift(
-        tournament_id=tournament.id,
+    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id),
         label=label,
         start=datetime.now(timezone.utc),
         end=datetime.now(timezone.utc) + timedelta(hours=4),

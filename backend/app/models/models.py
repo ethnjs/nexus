@@ -717,6 +717,15 @@ class TournamentShift(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    # Which day of the tournament this shift belongs to. Required, and always
+    # a *primary* track: a shift is a time range, and only a primary track has
+    # dates for it to fall inside. A cosmetic track (Test Writing) has no
+    # schedule and therefore no shifts — which is exactly why events reach it
+    # through tournament_event_tracks rather than through shifts.
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
     label = Column(String(255), nullable=False)
     start = Column(DateTime(timezone=True), nullable=False)
     end = Column(DateTime(timezone=True), nullable=False)
@@ -724,6 +733,7 @@ class TournamentShift(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="event_shifts")
+    track = relationship("TournamentTrack", back_populates="shifts")
     tournament_events = relationship(
         "TournamentEvent", secondary="tournament_event_shifts", back_populates="shifts"
     )
@@ -800,6 +810,7 @@ class TournamentTrack(Base):
 
     tournament = relationship("Tournament", back_populates="tracks")
     university = relationship("University", back_populates="tracks")
+    shifts = relationship("TournamentShift", back_populates="track", cascade="all, delete-orphan")
     member_statuses = relationship(
         "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
     )

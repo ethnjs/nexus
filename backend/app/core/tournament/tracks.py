@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session
 
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament.audit import TRACK_PURGED, log_action
-from app.models.models import TournamentMembershipTrackStatus, TournamentTrack
+from app.models.models import TournamentMembershipTrackStatus, TournamentShift, TournamentTrack
 
 
 def track_blocking_references(db: Session, tournament_id: int, track_id: int) -> list[str]:
@@ -39,8 +39,21 @@ def track_blocking_references(db: Session, tournament_id: int, track_id: int) ->
 
     Empty means the track can be hard-deleted right now. The strings are
     surfaced straight to the TD in the delete response so they know what to
-    repoint. Shifts join this list once they carry a track_id."""
+    repoint.
+
+    Shifts block rather than cascade even though the FK would happily take
+    them: a shift carries member availability, and deleting a track is not a
+    licence to destroy answers people gave. The TD moves the shifts to another
+    track (or deletes them, which has its own availability guard) and the
+    track then purges itself."""
     blockers: list[str] = []
+    shift_count = (
+        db.query(TournamentShift)
+        .filter(TournamentShift.track_id == track_id)
+        .count()
+    )
+    if shift_count:
+        blockers.append(f"{shift_count} shift(s)")
     if track_referenced_by_form_field(db, tournament_id, track_id):
         blockers.append("a form field")
     return blockers

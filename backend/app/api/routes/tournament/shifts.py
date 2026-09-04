@@ -1,12 +1,17 @@
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.form import shift_referenced_by_live_field
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
-from app.core.tournament.permissions import MANAGE_EVENTS, require_catalog_read, require_permission
+from app.core.tournament.permissions import (
+    MANAGE_EVENTS, require_membership, require_permission,
+)
+from app.core.tournament.tracks import purge_pending_tracks
 from app.db.session import get_db
-from app.models.models import TournamentEvent, TournamentEventShift, TournamentShift, User
+from app.models.models import (
+    TournamentEvent, TournamentEventShift, TournamentShift, TournamentTrack, User,
+)
 from app.schemas.tournament.shift import TournamentShiftCreate, TournamentShiftRead, TournamentShiftUpdate
 
 # Routes are nested: /tournaments/{tournament_id}/shifts/...
@@ -14,42 +19,70 @@ router = APIRouter(prefix="/tournaments/{tournament_id}/shifts", tags=["tourname
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/shifts/ — manage_events, or any member
-# with ?public=true
+# GET /tournaments/{tournament_id}/shifts/ — any member.
 #
-# Same shape either way for now: a shift is a label and a time range, and any
-# member who has answered an availability question has already seen those
-# resolved into its options. The param still exists so the member-facing read
-# is explicit at the call site rather than an accident of permissions.
+# Not manage_events-gated: the member edit page needs the catalog to render
+# its own availability, and a shift is only a label and a time range. Any
+# member who has answered an availability question has already seen these
+# resolved into its options. Writes below still require manage_events.
+#
+# ?track_id= narrows to one track's day, which is the unit availability is
+# scoped to — see shift_ids_on_track.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[TournamentShiftRead])
 def list_shifts(
     tournament_id: int,
+    track_id: int | None = Query(None),
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
+    current_user: User = Depends(require_membership()),
 ):
     get_tournament(tournament_id, db)
-    return (
+    query = (
         db.query(TournamentShift)
         .options(selectinload(TournamentShift.tournament_events))
         .filter(TournamentShift.tournament_id == tournament_id)
-        .order_by(TournamentShift.start)
-        .all()
     )
+    if track_id is not None:
+        query = query.filter(TournamentShift.track_id == track_id)
+    return query.order_by(TournamentShift.start).all()
 
 
-def _validate_tournament_bounds(shift: TournamentShift, tournament) -> None:
-    """Compared in the tournament's own timezone — start_date/end_date are
-    naive local dates, not UTC ones."""
-    if tournament_local_date(tournament, shift.start) < tournament.first_day:
+def _resolve_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrack:
+    """The track a shift is being placed on, rejected unless it can actually
+    hold one. Only a primary track has dates, and a shift with no date range
+    to sit inside is unvalidatable; a pending-delete track is on its way out,
+    so adding a shift would only deepen the reference that blocks it."""
+    track = get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
+    if track.is_archived:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Shift start falls before the tournament's start_date",
+            detail="This track is pending deletion",
         )
-    if tournament_local_date(tournament, shift.end) > tournament.last_day:
+    if not track.is_primary:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Shift end falls after the tournament's end_date",
+            detail=f"'{track.name}' has no dates — only a primary track can hold shifts",
+        )
+    return track
+
+
+def _validate_track_bounds(shift: TournamentShift, track: TournamentTrack, tournament) -> None:
+    """A shift belongs to one track's day(s), so it's bounded by that track's
+    own range rather than the tournament's. That distinction is the point of
+    tracks: with Day 1 on Feb 13 and Day 2 on Feb 20, the tournament spans
+    both, but a Day 1 shift on Feb 20 is a mistake.
+
+    Compared in the tournament's own timezone — a track's start/end are naive
+    local dates, not UTC ones."""
+    if tournament_local_date(tournament, shift.start) < track.start_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Shift start falls before '{track.name}' begins",
+        )
+    if tournament_local_date(tournament, shift.end) > track.end_date:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Shift end falls after '{track.name}' ends",
         )
 
 
@@ -66,8 +99,9 @@ def create_shift(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
 
+    track = _resolve_track(db, tournament_id, payload.track_id)
     shift = TournamentShift(tournament_id=tournament_id, **payload.model_dump())
-    _validate_tournament_bounds(shift, tournament)
+    _validate_track_bounds(shift, track, tournament)
     db.add(shift)
     db.commit()
     db.refresh(shift)
@@ -89,11 +123,19 @@ def update_shift(
     require_not_archived(tournament)
 
     shift = get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
+    previous_track_id = shift.track_id
 
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(shift, field, value)
 
-    _validate_tournament_bounds(shift, tournament)
+    track = _resolve_track(db, tournament_id, shift.track_id)
+    _validate_track_bounds(shift, track, tournament)
+
+    # Moving the shift off a track may have cleared the last reference
+    # keeping a pending-delete track alive. Same transaction as the move, so a
+    # failed edit can't purge a track as a side effect.
+    if shift.track_id != previous_track_id:
+        purge_pending_tracks(db, tournament_id, current_user.id)
 
     db.commit()
     db.refresh(shift)
@@ -141,6 +183,9 @@ def delete_shift(
         )
 
     db.delete(shift)
+    db.flush()
+    # That may have been the track's last shift — see the PATCH above.
+    purge_pending_tracks(db, tournament_id, current_user.id)
     db.commit()
 
 

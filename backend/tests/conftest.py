@@ -206,6 +206,24 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     return tournament
 
 
+def primary_track_id(db: Session, tournament_id: int) -> int:
+    """The tournament's primary track — where its dates live, and the only
+    kind of track a shift may belong to. Every tournament has exactly one
+    unless a test made more, so tests that just need *a* track for a shift
+    can reach for this instead of building their own."""
+    return (
+        db.query(TournamentTrack.id)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.is_primary.is_(True),
+            TournamentTrack.is_archived.is_(False),
+        )
+        .order_by(TournamentTrack.start_date, TournamentTrack.id)
+        .limit(1)
+        .scalar()
+    )
+
+
 def set_display_config(db, tournament, user, config: dict) -> None:
     """Write one viewer's display config. It lives on their membership row,
     not the tournament — every surface renders per viewer now, so a test
