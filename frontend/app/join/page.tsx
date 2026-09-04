@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { joinApi, membersApi, JoinPreviewTournament, ApiError } from "@/lib/api";
-import { parseLocalDate } from "@/lib/date";
+import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { Checkbox } from "@/components/ui/Checkbox";
@@ -41,15 +41,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
-  const fmt = (d: string) =>
-    parseLocalDate(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-  const dateRange = preview.end_date !== preview.start_date
-    ? `${fmt(preview.start_date)} – ${fmt(preview.end_date)}`
-    : fmt(preview.start_date);
-
-  const place = preview.university?.name ?? preview.location;
-  const year = parseLocalDate(preview.start_date).getFullYear();
+  const rows = tournamentFactRows(preview, "long");
+  const year = tournamentYear(preview);
 
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
@@ -61,14 +54,13 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
       </h2>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "6px" }}>
-        {place && (
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            <IconLocation />{place}
+        {rows.map((row) => (
+          <span key={row.key} style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            {row.name && <span style={{ fontWeight: 600, color: "var(--color-text-tertiary)" }}>{row.name}</span>}
+            {row.place && <><IconLocation />{row.place}</>}
+            {row.dates && <><IconCalendar />{row.dates}</>}
           </span>
-        )}
-        <span style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-          <IconCalendar />{dateRange}
-        </span>
+        ))}
       </div>
 
       <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap", marginTop: "6px" }}>

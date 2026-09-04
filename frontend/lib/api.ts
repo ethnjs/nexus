@@ -365,19 +365,77 @@ export const TOURNAMENT_STATES = [
 ] as const
 export type TournamentState = typeof TOURNAMENT_STATES[number]
 
+// A track is a tournament's unit of when/where/what. A *primary* track is a
+// real competition day and carries all of start_date/end_date/division plus
+// exactly one of university/location; a *cosmetic* one (e.g. "Test Writing")
+// carries none of them. The tournament derives its own dates/location/division
+// from its primary tracks — see Tournament below.
+export interface TournamentTrack {
+  id:            number
+  tournament_id: number
+  name:          string
+  is_primary:    boolean
+  start_date:    string | null
+  end_date:      string | null
+  university:    University | null
+  location:      string | null
+  division:      TournamentDivision[] | null
+  // Pending delete, NOT a TD-facing archive: set by DELETE /tracks/ when
+  // something still references the track, cleared by POST .../restore/.
+  // Never PATCH-able, and only ever visible in the settings listing.
+  is_archived:   boolean
+  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
+  allow_confirm: boolean
+  created_at:    string
+  updated_at:    string
+}
+
+// Sent on POST /tournaments/ and POST /tracks/. The primary/cosmetic
+// invariant is enforced server-side (422), so a form that lets a user set
+// dates without is_primary will be rejected rather than silently dropped.
+export interface TournamentTrackCreate {
+  name:           string
+  is_primary?:    boolean
+  start_date?:    string | null
+  end_date?:      string | null
+  university_id?: number | null
+  location?:      string | null
+  division?:      TournamentDivision[] | null
+  allow_confirm?: boolean
+}
+
+export type TournamentTrackUpdate = Partial<TournamentTrackCreate>
+
+// What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
+// purged: false means the track is now pending-delete and `blocked_by`
+// names the TD-authored references holding it there.
+export interface TournamentTrackDeleteResult {
+  purged:              boolean
+  blocked_by:          string[]
+  member_rows_deleted: number
+}
+
 // Shared fields — mirrors backend TournamentPublic, the base for
 // Tournament, TournamentSummary (dashboard list), and JoinPreviewTournament
 // (public join preview).
 export interface TournamentPublic {
   name:        string
   short_name:  string | null
-  start_date:  string
-  end_date:    string
+  // Every day the tournament actually runs — a list, never a range. Day 1 on
+  // Feb 13 and Day 2 on Feb 20 means those two days, not the eight between
+  // them. Derived from the primary tracks; there is no start_date/end_date.
+  dates:       string[]
+  // Resolve only when there is exactly one primary track — two venues have
+  // no single answer, and a caller renders `tracks` per row instead.
   university:  University | null
   location:    string | null
   state:       TournamentState
   level:       TournamentLevel
+  // Union across the primary tracks.
   division:    TournamentDivision[]
+  // Live tracks only — pending-delete ones are excluded everywhere except
+  // the settings listing (tournamentTracksApi.list without `public`).
+  tracks:      TournamentTrack[]
   is_verified: boolean
   // TD opt-in to collecting each age threshold — surfaced here (not just on
   // Tournament) so the join flow can decide whether to show the consent
@@ -409,33 +467,25 @@ export interface TournamentSummary extends TournamentPublic {
   updated_at:      string
 }
 
-// location xor university_id — exactly one required, matches backend TournamentCreate
-export type TournamentCreate = {
+// No dates/venue/divisions here — those belong to tracks, and at least one
+// track must be primary. Both Create and Update are extra="forbid" on the
+// backend: sending the old flat fields is a 422, not a silent drop.
+export interface TournamentCreate {
   name:        string
   short_name?: string | null
-  start_date:  string
-  end_date:    string
   state:       TournamentState
   level:       TournamentLevel
-  division:    TournamentDivision[]
+  tracks:      TournamentTrackCreate[]
   // IANA name — set once from the creator's browser timezone, no update path.
   timezone:    string
   is_public?:  boolean
-} & (
-  | { location: string; university_id?: never }
-  | { university_id: number; location?: never }
-)
+}
 
 export interface TournamentUpdate {
   name?:          string
   short_name?:    string | null
-  start_date?:    string
-  end_date?:      string
-  university_id?: number | null
-  location?:      string | null
   state?:         TournamentState
   level?:         TournamentLevel
-  division?:      TournamentDivision[]
   is_public?:     boolean
   collect_is_over_18?: boolean
   collect_is_over_21?: boolean
@@ -472,6 +522,9 @@ export const adminTournamentsApi = {
 export interface TournamentShift {
   id:            number
   tournament_id: number
+  // The primary track whose day this shift falls on. Required — a shift with
+  // no track has no date range to validate against.
+  track_id:      number
   label:         string
   start:         string
   end:           string
@@ -483,19 +536,20 @@ export interface TournamentShift {
 }
 
 export interface TournamentShiftInput {
-  label: string
-  start: string
-  end:   string
+  track_id: number
+  label:    string
+  start:    string
+  end:      string
 }
 
-// `public: true` asks for the member-facing read of a catalog: holding a
-// membership is the whole gate, and the response carries only what a member
-// is meant to see. Without it the route wants the staff permission
-// (manage_events here) and answers with the full shape.
+// Reading the shift catalog is membership-gated, not manage_events — the
+// member edit page needs it, and TournamentShift carries nothing
+// confidential. Writes still require manage_events, so there is no `public`
+// variant of this one.
 export const tournamentShiftsApi = {
-  list: (tournamentId: number, opts: { public?: boolean } = {}) =>
+  list: (tournamentId: number, opts: { trackId?: number } = {}) =>
     api.get<TournamentShift[]>(
-      `/tournaments/${tournamentId}/shifts/${opts.public ? "?public=true" : ""}`,
+      `/tournaments/${tournamentId}/shifts/${opts.trackId ? `?track_id=${opts.trackId}` : ""}`,
     ),
   create: (tournamentId: number, body: TournamentShiftInput) =>
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
@@ -504,12 +558,6 @@ export const tournamentShiftsApi = {
   // Cascades — detaches from any events it was attached to, no confirmation guard.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
-  // 409 on either bounds violation (outside the event's start/end) or
-  // overlap with another shift already attached to the same event.
-  attach: (tournamentId: number, eventId: number, shiftId: number) =>
-    api.post<TournamentShift>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`, {}),
-  detach: (tournamentId: number, eventId: number, shiftId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`),
 }
 
 // -------------------------------------------------------------------------
@@ -531,11 +579,13 @@ export interface TournamentEvent {
   room:              string | null
   floor:             string | null
   volunteers_needed: number | null
-  // Nullable — a tournament's event schedule isn't known at planning time.
-  // Warn in the UI on unset times rather than blocking on them.
-  start_time:        string | null
-  end_time:          string | null
   shifts:            TournamentShift[]
+  // Every day this event runs, derived from its shifts — a list, not a
+  // range, and empty for an event on a cosmetic track (no schedule at all).
+  days:              string[]
+  // The tracks this event belongs to. Not derived from shifts: a cosmetic
+  // track has none, so the link has to be stated outright.
+  track_ids:         number[]
   created_at:        string
   updated_at:        string
 }
@@ -549,8 +599,12 @@ export interface TournamentEventInput {
   room?:              string | null
   floor?:             string | null
   volunteers_needed?: number | null
-  start_time?:        string | null
-  end_time?:          string | null
+  // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
+  // rather than adding to them. Omit either to leave it alone. Setting
+  // shift_ids also adds those shifts' tracks to track_ids; clearing a shift
+  // never removes a track.
+  shift_ids?:         number[]
+  track_ids?:         number[]
 }
 
 export interface EventLoadDefaultsSkipped {
@@ -661,6 +715,10 @@ export interface AvailabilitySlot {
 // carries the shift id).
 export interface MembershipAvailability {
   shift_id: number
+  // What availability is scoped to. Two sites running the same Saturday are
+  // separate tracks, so the members table keys its columns off this, not off
+  // `day` — which stays only for display grouping.
+  track_id: number
   label:    string
   start:    string
   end:      string
@@ -674,7 +732,9 @@ export interface MembershipAvailability {
 
 // Matches MembershipLunchRead
 export interface MembershipLunch {
-  date:     string
+  track_id:   number
+  // Rides along so a renderer never needs a second catalog request.
+  track_name: string
   category: string
   // The short canonical form ("Sofritas"), not the form's full option text
   // ("Sofritas (Vegan)") — see MembershipLunchRead.
@@ -706,11 +766,14 @@ export interface MembershipEventPreferenceOption {
   events:      MembershipEventPreferenceEvent[]
 }
 
-// Matches MembershipEventPreferenceRead — one event_preference_{suffix}
-// question's answer, grouped by key then by the option picked.
+// Matches MembershipEventPreferenceRead — one event_preference_{track_id}
+// question's answer, grouped by track then by the option picked. Each track
+// is its own axis: a member ranks Day 1's events separately from Test
+// Writing's, so the response is a list.
 export interface MembershipEventPreference {
-  key:     string
-  options: MembershipEventPreferenceOption[]
+  track_id:   number
+  track_name: string
+  options:    MembershipEventPreferenceOption[]
 }
 
 // Matches MembershipCustomAnswerRead — one answer to a form field that
@@ -980,6 +1043,70 @@ export const membersApi = {
     api.delete<void>(`/tournaments/${tournamentId}/members/${id}/`),
   updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
+
+  // ---- Self-service: what the member may change about themselves --------
+  // One request backs the whole member edit page.
+  getMyOptions: (tournamentId: number) =>
+    api.get<MyOptionsResponse>(`/tournaments/${tournamentId}/members/me/options/`),
+  // Whole-set within the track — anything left out is a withdrawal. `status`
+  // travels with the shifts because the two move together: "Not available"
+  // is `{ shift_ids: [], status: "declined" }` in one call, so a member can
+  // never be left declined with shifts still selected.
+  updateMyAvailability: (tournamentId: number, trackId: number, body: { shift_ids: number[]; status?: TrackStatus }) =>
+    api.put<MembershipAvailability[]>(
+      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`, body,
+    ),
+  // Send `option_ids` for a question with options, `text` for a free-text
+  // one — the question's type decides, and the wrong one is a 422.
+  updateMyLunch: (tournamentId: number, trackId: number, category: string, body: { option_ids?: string[]; text?: string | null }) =>
+    api.put<MembershipLunch[]>(
+      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`, body,
+    ),
+  // Whole-set for the track. Ranks are required and must be contiguous from
+  // 1 on ranked_choice, and omitted on every other question type.
+  updateMyEventPreferences: (tournamentId: number, trackId: number, selections: MyEventPreferenceSelection[]) =>
+    api.put<MembershipEventPreference[]>(
+      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`, { selections },
+    ),
+  // See backend/track-status-rules.md: `declined` always; `confirmed` only
+  // with the track's allow_confirm; `interested` only without it.
+  updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
+    api.put<MembershipTrackStatus>(
+      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`, { status },
+    ),
+}
+
+// GET /members/me/options/ — everything the member edit page needs, grouped
+// the way the page is laid out: one section per live track. A track with no
+// questions still appears, since its status is always the member's to set.
+export interface MyTrackOptions {
+  track_id:      number
+  track_name:    string
+  is_primary:    boolean
+  allow_confirm: boolean
+  // Null when the member has no row for this track at all.
+  status:        TrackStatus | null
+  // Fields come back in get_form_for_rendering shape with config.options
+  // already resolved, which is what lets the page reuse QuestionRenderer
+  // instead of growing a second set of answer widgets.
+  availability:  FormField[]
+  // This member's currently-selected shifts *on this track* — the whole-set
+  // that a PUT to this track replaces.
+  selected_shift_ids: number[]
+  lunch:              (FormField & { category: string })[]
+  lunch_selections:   { category: string; value: string; label: string }[]
+  // At most one preference question per track, by construction.
+  event_preferences:            FormField | null
+  event_preference_selections:  { tournament_event_id: number; rank: number | null }[]
+}
+
+export interface MyOptionsResponse {
+  tracks: MyTrackOptions[]
+}
+
+export interface MyEventPreferenceSelection {
+  option_id: string
+  rank?:     number | null
 }
 
 // -------------------------------------------------------------------------
@@ -1514,17 +1641,6 @@ export interface TournamentEventMember {
   division: string | null
 }
 
-export interface TournamentTrack {
-  id: number
-  tournament_id: number
-  name: string
-  is_archived: boolean
-  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
-  allow_confirm: boolean
-  created_at: string
-  updated_at: string
-}
-
 export interface MemberForm {
   id:            string
   name:          string
@@ -1748,17 +1864,24 @@ export const tournamentOnboardingApi = {
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 }
 
+// `public: true` is the member-facing read — live tracks only. The staff
+// listing is the one place pending-delete tracks appear at all, which is what
+// makes restoring one possible.
 export const tournamentTracksApi = {
   list: (tournamentId: number, opts: { public?: boolean } = {}) =>
     api.get<TournamentTrack[]>(
       `/tournaments/${tournamentId}/tracks/${opts.public ? "?public=true" : ""}`,
     ),
-  create: (tournamentId: number, name: string) =>
-    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, { name }),
-  update: (tournamentId: number, trackId: number, body: { name?: string; is_archived?: boolean }) =>
+  create: (tournamentId: number, body: TournamentTrackCreate) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, body),
+  update: (tournamentId: number, trackId: number, body: TournamentTrackUpdate) =>
     api.patch<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/`, body),
+  // 200 with a body, not 204 — `purged: false` means it went pending-delete
+  // instead, and `blocked_by` says what the TD has to repoint first.
   delete: (tournamentId: number, trackId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
+    api.delete<TournamentTrackDeleteResult>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
+  restore: (tournamentId: number, trackId: number) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
 }
 
 // Namespaced strings — "track:3", "lunch_category:entree", "event_pref:key",

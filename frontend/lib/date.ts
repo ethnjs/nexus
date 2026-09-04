@@ -8,7 +8,7 @@ export function todayLocalDateString(): string {
   return `${year}-${month}-${day}`;
 }
 
-// Parses a "YYYY-MM-DD" date-only string (e.g. Tournament.start_date/end_date)
+// Parses a "YYYY-MM-DD" date-only string (e.g. a day from Tournament.dates)
 // into a local-time Date. new Date(d) instead reads the string as UTC
 // midnight, which shifts to the previous day in negative-UTC-offset
 // timezones — splitting and constructing a local Date avoids that.
@@ -22,19 +22,4 @@ export function toLocalDateString(d: Date): string {
   const month = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-// Every individual day in [start, end] inclusive, as YYYY-MM-DD strings —
-// a tournament's actual running days, for pickers (availability/lunch
-// presets) that should offer "pick one of this tournament's days" rather
-// than an unconstrained date input.
-export function enumerateDates(start: string, end: string): string[] {
-  const dates: string[] = [];
-  const cursor = parseLocalDate(start);
-  const endDate = parseLocalDate(end);
-  while (cursor <= endDate) {
-    dates.push(toLocalDateString(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return dates;
 }

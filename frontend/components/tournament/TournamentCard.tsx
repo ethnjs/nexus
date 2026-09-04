@@ -1,21 +1,13 @@
 import { TournamentSummary } from "@/lib/api";
-import { parseLocalDate } from "@/lib/date";
+import { tournamentDisplayName, tournamentFactRows } from "@/lib/tournamentDisplay";
 import { Card } from "@/components/ui/Card";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 export function TournamentCard({ tournament, onClick }: { tournament: TournamentSummary; onClick: () => void }) {
-  const fmt = (d: string) =>
-    parseLocalDate(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-
-  const dateRange = tournament.start_date
-    ? tournament.end_date && tournament.end_date !== tournament.start_date
-      ? `${fmt(tournament.start_date)} – ${fmt(tournament.end_date)}`
-      : fmt(tournament.start_date)
-    : null;
-
-  const year = parseLocalDate(tournament.start_date).getFullYear();
-  const displayName = `${year} ${tournament.short_name || tournament.name}`;
-  const place = tournament.location || tournament.university?.name;
+  // One row for a single-site tournament, one per primary track for a
+  // regional running two venues — see tournamentFactRows.
+  const rows = tournamentFactRows(tournament);
+  const displayName = tournamentDisplayName(tournament);
 
   return (
     <Card
@@ -28,18 +20,27 @@ export function TournamentCard({ tournament, onClick }: { tournament: Tournament
         {displayName}
       </h3>
       <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
-        {place && (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
-            <IconLocation />
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{place}</span>
+        {rows.map((row) => (
+          <div key={row.key} style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+            {row.name && (
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600, color: "var(--color-text-tertiary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                {row.name}
+              </span>
+            )}
+            {row.place && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
+                <IconLocation />
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{row.place}</span>
+              </div>
+            )}
+            {row.dates && (
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
+                <IconCalendar />
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{row.dates}</span>
+              </div>
+            )}
           </div>
-        )}
-        {dateRange && (
-          <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "var(--color-text-secondary)" }}>
-            <IconCalendar />
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{dateRange}</span>
-          </div>
-        )}
+        ))}
       </div>
       <div style={{ paddingTop: "14px", borderTop: "1px solid var(--color-border)", display: "flex", gap: "20px" }}>
         <div>

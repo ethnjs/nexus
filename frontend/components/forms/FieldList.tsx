@@ -9,7 +9,6 @@ import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
 import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, FieldChange, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
-import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -62,10 +61,10 @@ export function FieldList({ form }: { form: Form }) {
   // is_multi_day, ...) rather than threading the individual fields each
   // consumer happens to need through every layer between here and them.
   // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament). tournamentDates below is just its derived day list, for
+  // tournament). tournamentDates is the days it actually runs, for
   // PresetPopover's date pickers.
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  const tournamentDates = tournament ? enumerateDates(tournament.start_date, tournament.end_date) : [];
+  const tournamentDates = tournament?.dates ?? [];
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
