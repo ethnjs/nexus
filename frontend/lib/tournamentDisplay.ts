@@ -50,19 +50,24 @@ export function formatDates(dates: string[], style: DateStyle = "short"): string
   return `${body}, ${parseLocalDate(dates[0]).getFullYear()}`;
 }
 
-/** A track's own days, for the per-track rows a multi-site tournament shows. */
-export function formatTrackDates(track: TournamentTrack, style: DateStyle = "short"): string | null {
-  if (!track.start_date || !track.end_date) return null;
+/** An inclusive start/end pair, rendered the same way a day list is. */
+export function formatDayRange(start: string | null, end: string | null, style: DateStyle = "short"): string | null {
+  if (!start || !end || end < start) return null;
   const days: string[] = [];
-  const cursor = parseLocalDate(track.start_date);
-  const end = parseLocalDate(track.end_date);
-  while (cursor <= end) {
+  const cursor = parseLocalDate(start);
+  const last = parseLocalDate(end);
+  while (cursor <= last) {
     days.push(
       `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`,
     );
     cursor.setDate(cursor.getDate() + 1);
   }
   return formatDates(days, style);
+}
+
+/** A track's own days, for the per-track rows a multi-site tournament shows. */
+export function formatTrackDates(track: TournamentTrack, style: DateStyle = "short"): string | null {
+  return formatDayRange(track.start_date, track.end_date, style);
 }
 
 /** Where a tournament or track happens — university name wins over free text. */

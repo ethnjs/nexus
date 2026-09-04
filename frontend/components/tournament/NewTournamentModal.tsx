@@ -10,12 +10,12 @@ import {
   EMPTY_TRACK_DRAFT, TrackDraft, trackDraftPayload, validateTrackDraft,
 } from '@/lib/trackDraft'
 import { todayLocalDateString } from '@/lib/date'
-import { TrackFields } from '@/components/tournament/TrackFields'
+import { TrackFields, TrackSummary } from '@/components/tournament/TrackFields'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
-import { IconPlus, IconTrash } from '@/components/ui/Icons'
+import { IconChevronDown, IconChevronRight, IconPlus, IconTrash } from '@/components/ui/Icons'
 
 interface NewTournamentModalProps {
   onClose: () => void
@@ -52,6 +52,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   const [advanced, setAdvanced] = useState(false)
   const [trackRows, setTrackRows] = useState<TrackRow[]>([])
   const [trackErrors, setTrackErrors] = useState<Record<number, Record<string, string>>>({})
+  const [expandedKey, setExpandedKey] = useState<number | null>(null)
 
   useEffect(() => {
     universitiesApi.list().then(setUniversities).catch(() => {})
@@ -65,8 +66,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   // isn't a re-entry. The name defaults to the tournament's, which is exactly
   // what simple mode would have created.
   function enableAdvanced() {
+    const key = Date.now()
+    setExpandedKey(key)
     setTrackRows([{
-      key: Date.now(),
+      key,
       draft: {
         ...EMPTY_TRACK_DRAFT,
         name: name.trim() || 'Day 1',
@@ -82,8 +85,28 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     setAdvanced(true)
   }
 
+  // The way back. The first competition day becomes the single site again —
+  // any further tracks are dropped, which is the whole point of going back,
+  // so the button says so rather than doing it silently.
+  function disableAdvanced() {
+    const primary = trackRows.find((row) => row.draft.is_primary)?.draft
+    if (primary) {
+      setLocationText(primary.location)
+      setMatchedUniversity(universities.find((u) => u.id === primary.university_id) ?? null)
+      setStartDate(primary.start_date)
+      setEndDate(primary.end_date)
+      setDivision(primary.division)
+    }
+    setTrackRows([])
+    setTrackErrors({})
+    setErrors({})
+    setAdvanced(false)
+  }
+
   function addTrackRow() {
-    setTrackRows((rows) => [...rows, { key: Date.now(), draft: EMPTY_TRACK_DRAFT }])
+    const key = Date.now()
+    setTrackRows((rows) => [...rows, { key, draft: EMPTY_TRACK_DRAFT }])
+    setExpandedKey(key)
   }
 
   function updateTrackRow(key: number, updates: Partial<TrackDraft>) {
@@ -164,8 +187,17 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   }
 
   return (
-    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false}>
+    // Advanced widens the modal rather than lengthening it: details on the
+    // left, the track list on the right, so a four-track regional doesn't
+    // become a page-tall form.
+    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 880 : 440}>
       <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div style={{
+          display: advanced ? 'grid' : 'flex',
+          gridTemplateColumns: advanced ? 'minmax(0, 1fr) minmax(0, 1fr)' : undefined,
+          flexDirection: 'column', alignItems: 'start', gap: advanced ? '24px' : '14px',
+        }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
         <Input
           label="Name"
           required
@@ -279,65 +311,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           </div>
         )}
 
-        {advanced ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div>
-              <div style={{
-                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
-                textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
-              }}>
-                Tracks<span style={{ color: 'var(--color-danger)' }}> *</span>
-              </div>
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                One per competition day, plus anything undated — test writing, review — that members sign
-                up for separately. The tournament&rsquo;s dates, venue and divisions come from these.
-              </p>
-            </div>
-
-            {trackRows.map((row) => (
-              <div key={row.key} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-                  <Input
-                    label="Track name"
-                    font="sans"
-                    fullWidth
-                    placeholder="e.g. Day 1 or Test Writing"
-                    value={row.draft.name}
-                    onChange={(e) => updateTrackRow(row.key, { name: e.target.value })}
-                    error={trackErrors[row.key]?.name}
-                  />
-                  {trackRows.length > 1 && (
-                    <Button
-                      type="button" variant="secondary" size="md" iconOnly
-                      title="Remove track"
-                      aria-label={`Remove ${row.draft.name.trim() || 'track'}`}
-                      onClick={() => setTrackRows((rows) => rows.filter((other) => other.key !== row.key))}
-                      style={{ width: '36px', padding: 0, color: 'var(--color-danger)', flexShrink: 0 }}
-                    >
-                      <IconTrash size={14} />
-                    </Button>
-                  )}
-                </div>
-                <TrackFields
-                  draft={row.draft}
-                  errors={trackErrors[row.key] ?? {}}
-                  universities={universities}
-                  locked={false}
-                  onChange={(updates) => updateTrackRow(row.key, updates)}
-                />
-              </div>
-            ))}
-
-            {errors.tracks && (
-              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
-                {errors.tracks}
-              </p>
-            )}
-            <Button type="button" variant="secondary" size="sm" onClick={addTrackRow} style={{ alignSelf: 'flex-start' }}>
-              <IconPlus size={14} /> Add track
-            </Button>
-          </div>
-        ) : (
+        {!advanced && (
           <button
             type="button"
             onClick={enableAdvanced}
@@ -350,6 +324,105 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
             Runs at more than one site, or has undated tracks?
           </button>
         )}
+        </div>
+
+        {advanced && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
+              }}>
+                Tracks<span style={{ color: 'var(--color-danger)' }}> *</span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                One per competition day, plus anything undated — test writing, review — that members sign
+                up for separately. The tournament&rsquo;s dates, venue and divisions come from these.{' '}
+                <button
+                  type="button"
+                  onClick={disableAdvanced}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    font: 'inherit', color: 'var(--color-text-tertiary)',
+                    textDecoration: 'underline', textUnderlineOffset: '2px',
+                  }}
+                >
+                  Back to a single site
+                </button>
+                {trackRows.length > 1 && ' — keeps the first competition day only.'}
+              </p>
+            </div>
+
+            <div style={{ border: '1px solid var(--color-border)', borderRadius: '8px', overflow: 'hidden' }}>
+              {trackRows.map((row, i) => {
+                const expanded = expandedKey === row.key
+                const invalid = !!trackErrors[row.key]
+                return (
+                  <div key={row.key} style={{ borderBottom: i === trackRows.length - 1 ? 'none' : '1px solid var(--color-border)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px 12px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setExpandedKey((cur) => (cur === row.key ? null : row.key))}
+                        aria-label={expanded ? 'Collapse track' : 'Edit track'}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        {expanded ? <IconChevronDown size={14} /> : <IconChevronRight size={14} />}
+                        <span style={{
+                          fontFamily: 'var(--font-sans)', fontSize: '14px', fontWeight: 500,
+                          color: invalid ? 'var(--color-danger)' : 'var(--color-text-primary)',
+                        }}>
+                          {row.draft.name.trim() || 'Untitled track'}
+                        </span>
+                        <TrackSummary draft={row.draft} />
+                      </button>
+                      {trackRows.length > 1 && (
+                        <Button
+                          type="button" variant="secondary" size="sm" iconOnly
+                          title="Remove track"
+                          aria-label={`Remove ${row.draft.name.trim() || 'track'}`}
+                          onClick={() => setTrackRows((rows) => rows.filter((other) => other.key !== row.key))}
+                          style={{ width: '28px', height: '28px', padding: 0, color: 'var(--color-danger)', flexShrink: 0 }}
+                        >
+                          <IconTrash size={14} />
+                        </Button>
+                      )}
+                    </div>
+                    {expanded && (
+                      <div style={{ padding: '4px 12px 16px 34px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        <Input
+                          label="Name"
+                          font="sans"
+                          fullWidth
+                          placeholder="e.g. Day 1 or Test Writing"
+                          value={row.draft.name}
+                          onChange={(e) => updateTrackRow(row.key, { name: e.target.value })}
+                          error={trackErrors[row.key]?.name}
+                        />
+                        <TrackFields
+                          draft={row.draft}
+                          errors={trackErrors[row.key] ?? {}}
+                          universities={universities}
+                          locked={false}
+                          onChange={(updates) => updateTrackRow(row.key, updates)}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {errors.tracks && (
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
+                {errors.tracks}
+              </p>
+            )}
+            <Button type="button" variant="secondary" size="sm" onClick={addTrackRow} style={{ alignSelf: 'flex-start' }}>
+              <IconPlus size={14} /> Add track
+            </Button>
+          </div>
+        )}
+        </div>
 
         {errors.form && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>

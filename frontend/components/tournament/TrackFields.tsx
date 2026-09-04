@@ -4,11 +4,14 @@ import { ReactNode, useState } from "react";
 import { TournamentDivision, University, TOURNAMENT_DIVISIONS } from "@/lib/api";
 import { TrackDraft } from "@/lib/trackDraft";
 import { todayLocalDateString } from "@/lib/date";
+import { formatDayRange } from "@/lib/tournamentDisplay";
+import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
+import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 /**
  * The primary/cosmetic fields, shared by every row. The when/where/what only
@@ -143,5 +146,33 @@ export function FieldRow({ label, helper, children }: { label: string; helper?: 
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * The one-line "where and when" for a collapsed track row, read off a draft
+ * rather than a saved track — so an accordion shows what has been typed, not
+ * what was last saved.
+ */
+export function TrackSummary({ draft }: { draft: TrackDraft }) {
+  if (!draft.is_primary) return null;
+  const dates = formatDayRange(draft.start_date || null, draft.end_date || null);
+  const place = draft.location.trim() || null;
+  if (!place && !dates && draft.division.length === 0) return null;
+
+  return (
+    <span style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
+      {place && (
+        <span style={{ display: "flex", alignItems: "center", gap: "5px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <IconLocation />{place}
+        </span>
+      )}
+      {dates && (
+        <span style={{ display: "flex", alignItems: "center", gap: "5px", whiteSpace: "nowrap" }}>
+          <IconCalendar />{dates}
+        </span>
+      )}
+      {draft.division.map((d) => <Badge key={d}>{d}</Badge>)}
+    </span>
   );
 }
