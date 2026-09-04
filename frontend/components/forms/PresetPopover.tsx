@@ -7,9 +7,8 @@ import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
 import { IconPresets, IconX } from "@/components/ui/Icons";
-import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
-import { FormQuestionType } from "@/lib/api";
+import { FormQuestionType, TournamentTrack } from "@/lib/api";
 import { EditableField } from "@/lib/forms/editableField";
 import {
   PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError, isFieldKeyError,
@@ -53,29 +52,29 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
   { value: "lunch", label: "Lunch" },
-  { value: "track_status", label: "Track" },
+  { value: "track_status", label: "Track Status" },
 ];
 
-// Reserved-key presets (availability_{date}, event_preference_{suffix},
-// lunch_{date}_{category}) — split into their own toolbar popover from
+// Reserved-key presets (availability_{track_id}, event_preference_{track_id},
+// lunch_{track_id}_{category}) — split into their own toolbar popover from
 // FieldKeyPopover's plain free-text key, since a preset now needs its own
 // parameter input(s) (a date, a suffix, a date+category pair) rather than
 // being a single fixed field_key a TD picks off a list. Choosing/changing a
 // preset here keeps the TD's option rows and their branch targets — only each
 // value's *shape* is rewritten to fit the new kind (see reshapeOptions).
 export function PresetPopover({
-  field, onFieldChange, tournamentDates, onOpen, errors, saveAttempt, open, onOpenChange,
+  field, onFieldChange, tracks, onOpen, errors, saveAttempt, open, onOpenChange,
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
-  /** The tournament's individual running days, ascending — availability/
-      lunch pick from these rather than an unconstrained date input. Empty
-      while still loading (or on a chapter-owned form with no tournament). */
-  tournamentDates: string[];
-  /** Fires when the panel opens — FieldList uses this to refetch the
-      tournament's date range right then, rather than relying on a snapshot
-      fetched once whenever the page first loaded (which could be stale by
-      the time this actually gets opened, in a tab left open a while). */
+  /** The tournament's live tracks — every reserved key but track_status is
+      scoped to one. Empty while still loading (or on a chapter-owned form
+      with no tournament). */
+  tracks: TournamentTrack[];
+  /** Fires when the panel opens — FieldList uses this to refetch the track
+      catalog right then, rather than relying on a snapshot taken whenever
+      the page first loaded (which could be stale by the time this actually
+      gets opened, in a tab left open a while). */
   onOpen?: () => void;
   errors: string[];
   /** Bumped by FieldList each time a Save attempt fails validation — see
@@ -140,15 +139,18 @@ export function PresetPopover({
     }
     const meta = PRESETS[kind];
     const questionType = meta.allowedQuestionTypes.includes(field.question_type) ? field.question_type : meta.defaultQuestionType;
-    // A tournament with exactly one running day has nothing to actually
-    // choose for a date-based preset, so it's filled in immediately rather
-    // than leaving a "pick the one option you have" control behind.
-    const soleDay = tournamentDates.length === 1 ? tournamentDates[0] : undefined;
+    // A tournament with exactly one track has nothing to actually choose, so
+    // it's filled in immediately rather than leaving a "pick the one option
+    // you have" control behind. Availability is the exception: only a
+    // competition day can hold shifts, so a sole *cosmetic* track is not an
+    // answer for it.
+    const soleTrack = tracks.length === 1 ? tracks[0] : undefined;
+    const soleAvailabilityTrack = soleTrack?.is_primary ? soleTrack : undefined;
     const fieldKey =
-      kind === "availability" ? buildAvailabilityFieldKey(soleDay ?? "")
-      : kind === "lunch" ? buildLunchFieldKey(soleDay ?? "", "")
-      : kind === "track_status" ? "track_status_"
-      : "event_preference_";
+      kind === "availability" ? buildAvailabilityFieldKey(soleAvailabilityTrack?.id ?? null)
+      : kind === "lunch" ? buildLunchFieldKey(soleTrack?.id ?? null, "")
+      : kind === "event_preference" ? buildEventPreferenceFieldKey(soleTrack?.id ?? null)
+      : "track_status_";
     // Seeds one starter row for the option-bearing types — entity-shaped (an
     // empty id array to fill in via the picker) for availability/
     // event_preference, plain freeform for lunch — rather than leaving the TD
@@ -225,7 +227,7 @@ export function PresetPopover({
           )}
           {presetKind === "availability" && (
             <>
-              <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!incompleteError} />
+              <AvailabilityParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
                 <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
                 <Toggle
@@ -239,7 +241,7 @@ export function PresetPopover({
                           const shiftIds = option.value.every((value) => typeof value === "number")
                             ? option.value as number[]
                             : [];
-                          return { ...option, value: { shift_ids: shiftIds, track_statuses: [] } };
+                          return { ...option, value: { shift_ids: shiftIds, track_status: "" } };
                         }
                         if (!checked && typeof option.value === "object" && !Array.isArray(option.value)) {
                           return { ...option, value: option.value.shift_ids ?? [] };
@@ -253,10 +255,10 @@ export function PresetPopover({
             </>
           )}
           {presetKind === "event_preference" && (
-            <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!incompleteError} />
+            <EventPreferenceParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
           )}
           {presetKind === "lunch" && (
-            <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!incompleteError} />
+            <LunchParams field={field} onFieldChange={onFieldChange} tracks={tracks} showErrors={!!incompleteError} />
           )}
           {presetKind === "track_status" && (
             <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!incompleteError} />
@@ -279,34 +281,34 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
   return <Input label="Key" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
 }
 
-function DayPicker({ label, date, tournamentDates, onChange, error }: {
+// A track that isn't in the live catalog is one that has been purged since
+// this question was written; the picker shows it as a missing selection
+// rather than silently reading as "none", which would look like the TD
+// simply hadn't picked yet.
+function TrackPicker({ label, trackId, tracks, onChange, error }: {
   label: string;
-  date: string;
-  tournamentDates: string[];
-  onChange: (date: string) => void;
+  trackId: number | null;
+  tracks: TournamentTrack[];
+  onChange: (trackId: number) => void;
   error?: string;
 }) {
-  // A sole tournament day is auto-applied the instant the preset is picked
-  // (see applyPresetKind), but that can race the tournamentDates fetch — if
-  // it resolves *after* the preset was already chosen, retroactively fill
-  // it in here too rather than leaving the field stuck on the sentinel with
-  // a picker that has nothing left to pick. Only PresetPopover has this
-  // race (tournamentDates is fetched separately from the rest of the forms
-  // builder), so it stays local here rather than in TournamentDayPicker
-  // itself — there's also never really a missing-date error to show while
-  // it's unresolved.
+  // A sole track is auto-applied the instant the preset is picked (see
+  // applyPresetKind), but that can race the catalog fetch — if it resolves
+  // *after* the preset was chosen, fill it in here too rather than leaving
+  // the field stuck on the sentinel with a picker that has nothing to pick.
   useEffect(() => {
-    if (!date && tournamentDates.length === 1) onChange(tournamentDates[0]);
+    if (trackId === null && tracks.length === 1) onChange(tracks[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tournamentDates]);
+  }, [tracks]);
 
   return (
-    <TournamentDayPicker
+    <Dropdown
       label={label}
-      value={date}
-      onChange={onChange}
-      days={tournamentDates}
-      placeholder="Select a date"
+      value={trackId !== null ? String(trackId) : ""}
+      onChange={(value) => onChange(Number(value))}
+      options={tracks.map((track) => ({ value: String(track.id), label: track.name }))}
+      placeholder={tracks.length === 0 ? "Loading tracks…" : "Select a track"}
+      locked={tracks.length === 0}
       size="sm"
       fullWidth
       error={error}
@@ -319,29 +321,32 @@ function DayPicker({ label, date, tournamentDates, onChange, error }: {
 // Unlike lunch's category, the suffix here is optional: it only exists to
 // disambiguate two fields sharing a date across different forms, so leaving
 // it blank is a valid, complete field_key on its own.
-function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[]; showErrors: boolean;
+function AvailabilityParams({ field, onFieldChange, tracks, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
 }) {
   const parsed = parseAvailabilityFieldKey(field.field_key);
   const [suffix, setSuffixState] = useState(parsed.suffix);
+  // Competition days only: a cosmetic track has no shifts, so an
+  // availability question on one could never offer anything to pick.
+  const shiftTracks = tracks.filter((track) => track.is_primary);
 
-  function setDate(newDate: string) {
-    onFieldChange({ field_key: buildAvailabilityFieldKey(newDate, suffix) });
+  function setTrack(trackId: number) {
+    onFieldChange({ field_key: buildAvailabilityFieldKey(trackId, suffix) });
   }
 
   function setSuffix(newSuffix: string) {
     setSuffixState(newSuffix);
-    onFieldChange({ field_key: buildAvailabilityFieldKey(parsed.date, newSuffix) });
+    onFieldChange({ field_key: buildAvailabilityFieldKey(parsed.trackId, newSuffix) });
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <DayPicker
-        label="Date"
-        date={parsed.date}
-        tournamentDates={tournamentDates}
-        onChange={setDate}
-        error={showErrors && !parsed.date ? "Date is required." : undefined}
+      <TrackPicker
+        label="Track"
+        trackId={parsed.trackId}
+        tracks={shiftTracks}
+        onChange={setTrack}
+        error={showErrors && parsed.trackId === null ? "Track is required." : undefined}
       />
       <Input
         label="Key (optional)"
@@ -355,32 +360,18 @@ function AvailabilityParams({ field, onFieldChange, tournamentDates, showErrors 
   );
 }
 
-// Local suffix state, synced FROM field_key but not read straight back out
-// of it on every keystroke — same reasoning as LunchParams below:
-// buildEventPreferenceFieldKey slugifies (and trims trailing separators),
-// so a display value derived straight from field_key would eat the
-// trailing space after each word, making a multi-word suffix like
-// "morning session" impossible to type.
-function EventPreferenceParams({ field, onFieldChange, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
+function EventPreferenceParams({ field, onFieldChange, tracks, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
 }) {
-  const { suffix: parsedSuffix } = parseEventPreferenceFieldKey(field.field_key);
-  const [suffix, setSuffix] = useState(parsedSuffix);
-
-  function handleChange(newSuffix: string) {
-    setSuffix(newSuffix);
-    onFieldChange({ field_key: buildEventPreferenceFieldKey(newSuffix) });
-  }
+  const { trackId } = parseEventPreferenceFieldKey(field.field_key);
 
   return (
-    <Input
-      label="Key"
-      placeholder="e.g. morning session"
-      value={suffix}
-      onChange={(e) => handleChange(e.target.value)}
-      size="sm"
-      fullWidth
-      error={showErrors && !parsedSuffix ? "Key is required." : undefined}
+    <TrackPicker
+      label="Track"
+      trackId={trackId}
+      tracks={tracks}
+      onChange={(next) => onFieldChange({ field_key: buildEventPreferenceFieldKey(next) })}
+      error={showErrors && trackId === null ? "Track is required." : undefined}
     />
   );
 }
@@ -393,31 +384,31 @@ function EventPreferenceParams({ field, onFieldChange, showErrors }: {
 // character typed until a date happens to already be set too. Local state
 // lets each half hold what was actually typed regardless of whether the
 // other one is filled in yet.
-function LunchParams({ field, onFieldChange, tournamentDates, showErrors }: {
-  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tournamentDates: string[]; showErrors: boolean;
+function LunchParams({ field, onFieldChange, tracks, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; tracks: TournamentTrack[]; showErrors: boolean;
 }) {
   const parsed = parseLunchFieldKey(field.field_key);
-  const [date, setDateState] = useState(parsed.date);
+  const [trackId, setTrackIdState] = useState(parsed.trackId);
   const [category, setCategoryState] = useState(parsed.category);
 
-  function setDate(newDate: string) {
-    setDateState(newDate);
-    onFieldChange({ field_key: buildLunchFieldKey(newDate, category) });
+  function setTrack(next: number) {
+    setTrackIdState(next);
+    onFieldChange({ field_key: buildLunchFieldKey(next, category) });
   }
 
   function setCategory(newCategory: string) {
     setCategoryState(newCategory);
-    onFieldChange({ field_key: buildLunchFieldKey(date, newCategory) });
+    onFieldChange({ field_key: buildLunchFieldKey(trackId, newCategory) });
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <DayPicker
-        label="Date"
-        date={date}
-        tournamentDates={tournamentDates}
-        onChange={setDate}
-        error={showErrors && !date ? "Date is required." : undefined}
+      <TrackPicker
+        label="Track"
+        trackId={trackId}
+        tracks={tracks}
+        onChange={setTrack}
+        error={showErrors && trackId === null ? "Track is required." : undefined}
       />
       <Input
         label="Category"

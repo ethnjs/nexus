@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TournamentTrack } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { IconPlus, IconDescription, IconButton, IconBranch, IconSwap } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
@@ -21,7 +22,7 @@ type ActivePopover = "key" | "preset" | null;
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates, onOpenPresets, presetsEnabled,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tracks, onOpenPresets, presetsEnabled,
   showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
@@ -33,7 +34,7 @@ export function FieldToolbar({
   saveAttempt: number;
   /** The tournament's individual running days — passed through to
       PresetPopover's availability/lunch date pickers. */
-  tournamentDates: string[];
+  tracks: TournamentTrack[];
   /** Fires when the presets panel opens — see PresetPopover's onOpen. */
   onOpenPresets?: () => void;
   presetsEnabled: boolean;
@@ -108,7 +109,7 @@ export function FieldToolbar({
         {presetsEnabled && <PresetPopover
           field={field}
           onFieldChange={onFieldChange}
-          tournamentDates={tournamentDates}
+          tracks={tracks}
           onOpen={onOpenPresets}
           errors={errors}
           saveAttempt={saveAttempt}

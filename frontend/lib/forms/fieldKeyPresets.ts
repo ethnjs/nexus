@@ -2,13 +2,17 @@ import { FormQuestionType } from "@/lib/api";
 
 // Reserved field_key patterns — mirrors backend/app/core/form/validation.py
 // exactly (AVAILABILITY_FIELD_KEY_PATTERN / EVENT_PREFERENCE_FIELD_KEY_PATTERN
-// / LUNCH_FIELD_KEY_PATTERN). All three are now parameterized (a date and/or
-// TD-chosen suffix), not a single fixed string — a tournament can have
-// multiple fields under the same reserved prefix (one per date for
-// availability, one per independently-ranked axis for event preference, one
-// per date+category for lunch). See backend/form-question-types-reference.md
-// ("Reserved field_keys") for the full contract, including why availability
-// merges into one centralized pool while event_preference/lunch don't.
+// / LUNCH_FIELD_KEY_PATTERN).
+//
+// The numeric slot in each is a **TournamentTrack id**, not a date. Track is
+// the scope a question is actually asked about: a track carries its own
+// dates, venue and division, so "which day" and "which site" stop being
+// separate questions. An id rather than a name, so renaming "Day 1" doesn't
+// orphan every key and answer pointing at it.
+//
+// See backend/form-question-types-reference.md ("Reserved field_keys") for
+// the full contract, including why availability merges into one centralized
+// pool while event_preference/lunch don't.
 export type PresetKind = "availability" | "event_preference" | "lunch" | "track_status";
 
 // availability/event_preference draw their options from real tournament
@@ -63,9 +67,9 @@ export const PRESETS: Record<PresetKind, PresetMeta> = {
   },
 };
 
-const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})(?:_([a-z0-9_]+))?$/;
-const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_([a-z0-9_]+)$/;
-const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
+const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d+)(?:_([a-z0-9_]+))?$/;
+const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_(\d+)$/;
+const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d+)_([a-z0-9_]+)$/;
 const TRACK_STATUS_FIELD_KEY_PATTERN = /^track_status_([a-z0-9_]+)$/;
 
 // The preset currently active on a field_key, if any — prefix-based, not
@@ -86,50 +90,50 @@ export function activePresetKind(fieldKey: string): PresetKind | null {
   return null;
 }
 
-// availability_{YYYYMMDD}[_{suffix}] — the suffix is optional, TD-typed free
-// text (slugified), used only to let two fields share the same date across
-// different forms without colliding on field_key (see
-// backend/app/core/form/validation.py's AVAILABILITY_FIELD_KEY_PATTERN).
-export function parseAvailabilityFieldKey(fieldKey: string): { date: string; suffix: string } {
+// availability_{track_id}[_{suffix}] — the suffix is optional, TD-typed free
+// text (slugified), used only to let two fields cover the same track across
+// different forms (a general form and a judges-only one both asking about
+// Day 1) without colliding on field_key. The track is what actually scopes
+// the question: it pins which shifts this field's write-through may touch.
+export function parseAvailabilityFieldKey(fieldKey: string): { trackId: number | null; suffix: string } {
   const match = AVAILABILITY_FIELD_KEY_PATTERN.exec(fieldKey);
-  if (!match) return { date: "", suffix: "" };
-  const [, y, m, d, suffix] = match;
-  return { date: `${y}-${m}-${d}`, suffix: suffix ?? "" };
+  if (!match) return { trackId: null, suffix: "" };
+  const [, trackId, suffix] = match;
+  return { trackId: Number(trackId), suffix: suffix ?? "" };
 }
 
-export function buildAvailabilityFieldKey(date: string, suffix: string = ""): string {
-  if (!date) return "availability_";
+export function buildAvailabilityFieldKey(trackId: number | null, suffix: string = ""): string {
+  if (trackId === null) return "availability_";
   const slug = slugifyFieldKeyPart(suffix);
-  const base = `availability_${date.replaceAll("-", "")}`;
-  return slug ? `${base}_${slug}` : base;
+  return slug ? `availability_${trackId}_${slug}` : `availability_${trackId}`;
 }
 
-// event_preference_{suffix} — the suffix is TD-typed free text (slugified),
-// not a date, so there's no fixed-width pattern to parse positionally like
-// the date-based presets.
-export function parseEventPreferenceFieldKey(fieldKey: string): { suffix: string } {
+// event_preference_{track_id} — no suffix, so exactly one preference
+// question per track. The track is the whole storage scope (the write-through
+// table has no `key`): two questions on one track would write into one pool
+// and their ranks would collide, with no way to say whose rank-1 is whose.
+export function parseEventPreferenceFieldKey(fieldKey: string): { trackId: number | null } {
   const match = EVENT_PREFERENCE_FIELD_KEY_PATTERN.exec(fieldKey);
-  return { suffix: match ? match[1] : "" };
+  return { trackId: match ? Number(match[1]) : null };
 }
 
-export function buildEventPreferenceFieldKey(suffix: string): string {
-  const slug = slugifyFieldKeyPart(suffix);
-  return slug ? `event_preference_${slug}` : "event_preference_";
+export function buildEventPreferenceFieldKey(trackId: number | null): string {
+  return trackId === null ? "event_preference_" : `event_preference_${trackId}`;
 }
 
-// lunch_{YYYYMMDD}_{category} — one date+category pair per lunch field (not
+// lunch_{track_id}_{category} — one track+category pair per lunch field (not
 // per option; a lunch field's options are just that lunch's food choices).
-export function parseLunchFieldKey(fieldKey: string): { date: string; category: string } {
+export function parseLunchFieldKey(fieldKey: string): { trackId: number | null; category: string } {
   const match = LUNCH_FIELD_KEY_PATTERN.exec(fieldKey);
-  if (!match) return { date: "", category: "" };
-  const [, y, m, d, category] = match;
-  return { date: `${y}-${m}-${d}`, category };
+  if (!match) return { trackId: null, category: "" };
+  const [, trackId, category] = match;
+  return { trackId: Number(trackId), category };
 }
 
-export function buildLunchFieldKey(date: string, category: string): string {
+export function buildLunchFieldKey(trackId: number | null, category: string): string {
   const slug = slugifyFieldKeyPart(category);
-  if (!date || !slug) return "lunch_";
-  return `lunch_${date.replaceAll("-", "")}_${slug}`;
+  if (trackId === null || !slug) return "lunch_";
+  return `lunch_${trackId}_${slug}`;
 }
 
 export function parseTrackStatusFieldKey(fieldKey: string): { suffix: string } {
@@ -159,9 +163,9 @@ const PRESET_INCOMPLETE_PREFIX = "This question's preset is incomplete";
 // isPresetError, to route that same message to PresetPopover instead of the
 // field card.
 const PRESET_INCOMPLETE_REQUIREMENT: Record<PresetKind, string> = {
-  availability: "pick a date",
-  event_preference: "enter a key",
-  lunch: "pick a date and category",
+  availability: "pick a track",
+  event_preference: "pick a track",
+  lunch: "pick a track and category",
   track_status: "enter a key",
 };
 

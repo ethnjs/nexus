@@ -61,10 +61,9 @@ export function FieldList({ form }: { form: Form }) {
   // is_multi_day, ...) rather than threading the individual fields each
   // consumer happens to need through every layer between here and them.
   // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament). tournamentDates is the days it actually runs, for
-  // PresetPopover's date pickers.
+  // tournament). `tracks` is what PresetPopover binds a preset to.
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  const tournamentDates = tournament?.dates ?? [];
+  const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
@@ -657,7 +656,7 @@ export function FieldList({ form }: { form: Form }) {
           onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
-          tournamentDates={tournamentDates}
+          tracks={tracks}
           presetsEnabled={form.tournament_id != null}
           onOpenPresets={loadTournament}
           errors={validation.errorsFor(expandedField.clientKey)}

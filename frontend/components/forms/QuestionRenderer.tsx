@@ -13,7 +13,10 @@ import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
 import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
 import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
-import { activePresetKind, isEntityBackedPreset } from '@/lib/forms/fieldKeyPresets'
+import {
+  activePresetKind, isEntityBackedPreset,
+  parseAvailabilityFieldKey, parseEventPreferenceFieldKey,
+} from '@/lib/forms/fieldKeyPresets'
 import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -390,6 +393,12 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
   const isEntityBackedKind = isEntityBackedPreset(presetKind)
+  // The track named in the field's own key — scopes what the entity pickers
+  // may offer. track_status names no track, so it has none.
+  const presetTrackId =
+    presetKind === 'availability' ? parseAvailabilityFieldKey(field.field_key ?? '').trackId
+    : presetKind === 'event_preference' ? parseEventPreferenceFieldKey(field.field_key ?? '').trackId
+    : null
   const hasTracks = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
   // tournament null means the entity-backed editor has no scope to fetch
   // shifts/events from — falls through to the read-only preview at the
@@ -425,6 +434,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
         {isEntity || usesTrackEditor ? (
           <EntityOptionsEditor
             fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
+            trackId={presetTrackId}
             tournament={tournament!}
             questionType={field.question_type}
             options={allOptions}

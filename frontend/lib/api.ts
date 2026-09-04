@@ -1548,7 +1548,10 @@ export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment { n
 export interface AvailabilityTrackStatusValue {
   shift_ids?: number[]
   shifts?: ResolvedShiftOption[]
-  track_statuses: TrackStatusAssignment[] | ResolvedTrackStatusAssignment[]
+  /** The status this option sets on the field's own track — "" until the TD
+   *  picks one. Not a list: availability_{track_id} names exactly one track,
+   *  which is what track_status_* fields can't do. */
+  track_status: TrackStatus | ""
 }
 
 // value shape after GET-time resolution for availability/event_preference —
