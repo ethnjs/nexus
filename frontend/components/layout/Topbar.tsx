@@ -63,7 +63,6 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
         options={tournaments.map((t) => ({
           value: String(t.id),
           label: tournamentDisplayName(t),
-          subtitle: t.location || t.university?.name,
         }))}
         placeholder="Select tournament…"
         width={280}

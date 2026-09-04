@@ -62,6 +62,12 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     universitiesApi.list().then(setUniversities).catch(() => {})
   }, [])
 
+  // What simple mode names its one track: the short name where the TD set
+  // one, the same preference tournamentDisplayName uses for the header.
+  function trackName() {
+    return shortName.trim() || name.trim()
+  }
+
   function toggleDivision(d: TournamentDivision) {
     setDivision((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])
   }
@@ -76,7 +82,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       key,
       draft: {
         ...EMPTY_TRACK_DRAFT,
-        name: name.trim() || 'Day 1',
+        name: trackName() || 'Day 1',
         is_primary: true,
         start_date: startDate,
         end_date: endDate,
@@ -135,7 +141,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       // The tournament's whole schedule, as the one competition day it is.
       return [{
         ...EMPTY_TRACK_DRAFT,
-        name: name.trim(),
+        name: trackName(),
         is_primary: true,
         start_date: startDate,
         end_date: endDate,
