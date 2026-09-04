@@ -555,9 +555,9 @@ function EventRow({
         display: "grid", gridTemplateColumns: eventColumns(selectMode), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: highlighted || hovered
-          ? "var(--color-bg)"
-          : isPending ? "var(--color-warning-subtle)" : "transparent",
+        background: isPending
+          ? (highlighted || hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
+          : (highlighted || hovered ? "var(--color-bg)" : "transparent"),
         transition: "background 100ms ease, grid-template-columns 200ms ease",
         cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}

@@ -317,11 +317,11 @@ function ShiftRow({ shift, track, isLast, focused, canEdit, onClick, onDelete }:
         display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: focused
-          ? "var(--color-accent-subtle)"
-          : hovered
-            ? "var(--color-bg)"
-            : track?.is_archived ? "var(--color-warning-subtle)" : "transparent",
+        background: track?.is_archived && !focused
+          ? (hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
+          : focused
+            ? "var(--color-accent-subtle)"
+            : hovered ? "var(--color-bg)" : "transparent",
         cursor: "pointer",
         transition: "background 100ms ease",
       }}
