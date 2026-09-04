@@ -8,9 +8,12 @@ import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { IconLock } from "@/components/ui/Icons";
-import { EventsTab } from "@/components/tournament/events/EventsTab";
+import { ShiftsTab } from "@/components/tournament/events/ShiftsTab";
 
-export default function EventsPage() {
+// Its own route rather than a tab under Events: a shift belongs to a track,
+// not to an event, and it is the thing availability is collected against —
+// it outranks being a sub-view of the event catalog.
+export default function ShiftsPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
 
@@ -32,7 +35,7 @@ export default function EventsPage() {
   if (!canManageEvents) {
     return (
       <div>
-        <PageHeader heading="Events" />
+        <PageHeader heading="Shifts" />
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconLock size={28} />}
@@ -46,9 +49,8 @@ export default function EventsPage() {
 
   return (
     <div>
-      <PageHeader heading="Events" />
-
-      <EventsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
+      <PageHeader heading="Shifts" />
+      <ShiftsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
     </div>
   );
 }

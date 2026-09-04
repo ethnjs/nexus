@@ -5,11 +5,12 @@ import {
   tournamentShiftsApi, tournamentEventsApi, tournamentTracksApi, ApiError,
   TournamentEvent, TournamentShift, TournamentTrack,
 } from "@/lib/api";
-import { formatTimeOfDay, formatDayLabel, toDateInput, toTimeInput } from "@/lib/timeFormat";
+import { formatTimeOfDay, toTimeInput } from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Spinner } from "@/components/ui/Spinner";
@@ -18,8 +19,8 @@ import { ShiftPanel, SHIFT_PANEL_WIDTH } from "@/components/tournament/events/Sh
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { IconPlus, IconCalendar, IconEdit, IconTrash } from "@/components/ui/Icons";
 
-// Label / Track / Day / Start / End / Events / Actions
-const SHIFT_ROW_COLUMNS = "1.5fr 1fr 1.1fr 0.7fr 0.7fr 70px 80px";
+// Label / Track / Start / End / Events / Actions
+const SHIFT_ROW_COLUMNS = "1.6fr 1fr 0.8fr 0.8fr 70px 80px";
 
 const ALL_TRACKS = "all";
 
@@ -243,7 +244,6 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
           }}>
             <span>Shifts — {visibleShifts.length}</span>
             <span>Track</span>
-            <span>Day</span>
             <span>Start</span>
             <span>End</span>
             <span style={{ textAlign: "center" }}>Events</span>
@@ -311,11 +311,8 @@ function ShiftRow({ shift, trackName, isLast, focused, canEdit, onClick, onDelet
       }}
     >
       <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{shift.label}</span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {trackName}
-      </span>
-      <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
-        {formatDayLabel(toDateInput(shift.start))}
+      <span style={{ display: "flex", minWidth: 0 }}>
+        <Badge>{trackName}</Badge>
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
         {formatTimeOfDay(toTimeInput(shift.start))}

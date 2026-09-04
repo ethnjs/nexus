@@ -14,11 +14,11 @@ import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow"
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
-import { Popover } from "@/components/ui/Popover";
+import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
-import { IconPlus, IconTrash, IconEvents, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconTrash, IconEvents, IconSearch, IconX } from "@/components/ui/Icons";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -57,6 +57,8 @@ function draftWithDayDefault(
   const draft = draftFromShift(shift, defaultTrackId);
   if (!draft.day && draft.trackId !== null) {
     const days = trackDays(tracks.find((t) => t.id === draft.trackId));
+    // Only when there is nothing to choose — a multi-day track gets a
+    // picker, and pre-filling it would be a guess at which day was meant.
     if (days.length === 1) draft.day = days[0];
   }
   return draft;
@@ -127,7 +129,9 @@ export function ShiftPanel({
       // may not exist on the new track at all.
       if (p.trackId !== undefined && p.trackId !== d.trackId) {
         const nextDays = trackDays(tracks.find((t) => t.id === p.trackId));
-        next.day = nextDays.includes(d.day) ? d.day : (nextDays.length === 1 ? nextDays[0] : "");
+        // A single-day track has no choice to offer, so the picker isn't
+        // rendered at all and the day is filled in from here instead.
+        next.day = nextDays.includes(d.day) ? d.day : (nextDays[0] ?? "");
       }
       return next;
     });
@@ -190,20 +194,6 @@ export function ShiftPanel({
     setSaveError(undefined);
   }
 
-  const attachedEvents = useMemo(
-    () => (current ? events.filter((e) => e.shifts.some((s) => s.id === current.id)) : []),
-    [events, current],
-  );
-
-  // An event on this shift's track that doesn't already hold it. The track,
-  // not the clock, is the constraint now: an event's own schedule *is* its
-  // shifts, so there are no event bounds left to fit inside.
-  const eligibleEvents = useMemo(() => {
-    if (!current) return [];
-    const attachedIds = new Set(attachedEvents.map((e) => e.id));
-    return events.filter((e) => !attachedIds.has(e.id) && e.track_ids.includes(current.track_id));
-  }, [events, attachedEvents, current]);
-
   // An event's shifts are a property of the event, set whole-set — there is
   // no attach/detach route to call, so both directions are one PATCH.
   async function setEventShifts(event: TournamentEvent, shiftIds: number[]) {
@@ -256,7 +246,7 @@ export function ShiftPanel({
 
           {/* Only competition days appear: a cosmetic track has no dates for
               a shift to sit inside, and the backend refuses one outright. */}
-          <SettingsRow label="Track" helper="Which competition day this shift belongs to.">
+          <SettingsRow label="Track">
             <Dropdown
               fullWidth
               locked={locked}
@@ -268,17 +258,19 @@ export function ShiftPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Day">
-            <TournamentDayPicker
-              value={draft.day}
-              onChange={(v) => patch({ day: v })}
-              days={days}
-              placeholder={draft.trackId === null ? "Pick a track first" : "Select a day"}
-              locked={locked || draft.trackId === null}
-              fullWidth
-              error={fieldErrors.day}
-            />
-          </SettingsRow>
+          {days.length > 1 && (
+            <SettingsRow label="Day">
+              <TournamentDayPicker
+                value={draft.day}
+                onChange={(v) => patch({ day: v })}
+                days={days}
+                placeholder="Select a day"
+                locked={locked}
+                fullWidth
+                error={fieldErrors.day}
+              />
+            </SettingsRow>
+          )}
 
           <SettingsRow label="Start">
             <Input
@@ -299,71 +291,17 @@ export function ShiftPanel({
 
         {/* Needs a real shift id to attach to, so this only appears once the
             shift has been created — same rule EventPanel's Shifts section
-            follows. */}
+            follows. Not a SettingsSection: attaching events is a working
+            surface with its own search and filters, not a labelled field. */}
         {!isNew && current && (
-          <SettingsSection title="Events">
-            <SettingsRow label={`Events — ${attachedEvents.length}`} last>
-              {attachedEvents.length > 0 && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "10px" }}>
-                  {attachedEvents.map((event) => (
-                    <div
-                      key={event.id}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
-                        padding: "8px 10px", borderRadius: "var(--radius-md)",
-                        border: "1px solid var(--color-border)",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
-                        <IconEvents size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
-                        <span style={{
-                          fontFamily: "var(--font-sans)", fontSize: "13px",
-                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                        }}>
-                          {eventNameWithDivision(event)}
-                        </span>
-                      </div>
-                      {!locked && (
-                        <Button
-                          type="button" variant="ghost" size="xs" iconOnly title="Remove"
-                          onClick={() => setEventShifts(event, event.shifts.filter((s) => s.id !== current.id).map((s) => s.id)).catch(() => {})}
-                        >
-                          <IconX size={12} />
-                        </Button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {!locked && (
-                <Popover
-                  trigger={
-                    <Button type="button" variant="secondary" size="sm" fullWidth>
-                      <IconPlus size={12} /> Add event
-                    </Button>
-                  }
-                  items={eligibleEvents}
-                  getKey={(e) => e.id}
-                  renderLabel={(e) => eventNameWithDivision(e)}
-                  emptyMessage="No events on this track yet."
-                  onSelect={(event) => setEventShifts(event, [...event.shifts.map((s) => s.id), current.id])}
-                  width={280}
-                  checklist
-                  // Everything offered here is by construction not attached
-                  // yet; checklist mode just keeps the popover open across
-                  // several picks instead of closing after each one.
-                  isSelected={() => false}
-                />
-              )}
-
-              {eventError && (
-                <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "8px" }}>
-                  {eventError}
-                </p>
-              )}
-            </SettingsRow>
-          </SettingsSection>
+          <ShiftEventsSection
+            shiftId={current.id}
+            trackId={current.track_id}
+            events={events}
+            locked={locked}
+            error={eventError}
+            onSetEventShifts={setEventShifts}
+          />
         )}
 
         {!locked && !isNew && current && (
@@ -399,4 +337,174 @@ export function ShiftPanel({
 function eventNameWithDivision(e: TournamentEvent): string {
   const name = e.event?.name ?? e.name ?? "—";
   return e.division ? `${name} ${e.division}` : name;
+}
+
+const ALL = "all";
+
+/**
+ * The events this shift covers, and a picker for adding more.
+ *
+ * A popover was fine when a shift had a handful of candidates inside its own
+ * time window. The window is gone — everything on the track is eligible — so
+ * a regional's 40-odd events need searching and filtering, not scrolling.
+ */
+function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEventShifts }: {
+  shiftId: number;
+  trackId: number;
+  events: TournamentEvent[];
+  locked: boolean;
+  error?: string;
+  onSetEventShifts: (event: TournamentEvent, shiftIds: number[]) => Promise<void>;
+}) {
+  const [search, setSearch] = useState("");
+  const [division, setDivision] = useState<string>(ALL);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  const attached = useMemo(
+    () => events.filter((e) => e.shifts.some((s) => s.id === shiftId)),
+    [events, shiftId],
+  );
+
+  // Everything on this shift's track that doesn't already hold it. The
+  // track, not the clock, is the constraint now: an event's schedule *is*
+  // its shifts, so there are no event bounds left to fit inside.
+  const candidates = useMemo(() => {
+    const attachedIds = new Set(attached.map((e) => e.id));
+    return events.filter((e) => !attachedIds.has(e.id) && e.track_ids.includes(trackId));
+  }, [events, attached, trackId]);
+
+  const divisions = useMemo(
+    () => [...new Set(candidates.map((e) => e.division).filter(Boolean))].sort() as string[],
+    [candidates],
+  );
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return candidates.filter((e) => {
+      if (division !== ALL && e.division !== division) return false;
+      return !q || eventNameWithDivision(e).toLowerCase().includes(q);
+    });
+  }, [candidates, search, division]);
+
+  async function toggle(event: TournamentEvent, attach: boolean) {
+    setBusyId(event.id);
+    const ids = event.shifts.map((s) => s.id);
+    try {
+      await onSetEventShifts(event, attach ? [...ids, shiftId] : ids.filter((id) => id !== shiftId));
+    } catch {
+      // Surfaced by the caller's own error state.
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: "24px" }}>
+      <div style={{
+        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
+        marginBottom: "10px",
+      }}>
+        Events — {attached.length}
+      </div>
+
+      {attached.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}>
+          {attached.map((event) => (
+            <div
+              key={event.id}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                padding: "8px 10px", borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                <IconEvents size={13} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
+                <span style={{
+                  fontFamily: "var(--font-sans)", fontSize: "13px",
+                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                }}>
+                  {eventNameWithDivision(event)}
+                </span>
+              </div>
+              {!locked && (
+                <Button
+                  type="button" variant="ghost" size="xs" iconOnly title="Remove"
+                  loading={busyId === event.id}
+                  onClick={() => toggle(event, false)}
+                >
+                  <IconX size={12} />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!locked && (
+        <div style={{
+          border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)",
+          padding: "10px", display: "flex", flexDirection: "column", gap: "10px",
+        }}>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <Input
+              size="sm" font="sans" fullWidth
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search events on this track"
+              icon={<IconSearch size={13} />}
+            />
+            {divisions.length > 1 && (
+              <ButtonGroup
+                options={[{ value: ALL, label: "All" }, ...divisions.map((d) => ({ value: d, label: d }))]}
+                value={division}
+                onChange={setDivision}
+                size="sm"
+              />
+            )}
+          </div>
+
+          {/* Capped and scrolled rather than growing the panel — a track can
+              hold every event in the tournament. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: "4px", maxHeight: "240px", overflowY: "auto" }}>
+            {visible.length === 0 ? (
+              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: "4px 2px" }}>
+                {candidates.length === 0
+                  ? "Every event on this track is already covered by this shift."
+                  : "No events match that search."}
+              </p>
+            ) : visible.map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                onClick={() => toggle(event, true)}
+                disabled={busyId === event.id}
+                style={{
+                  display: "flex", alignItems: "center", gap: "8px",
+                  padding: "6px 8px", borderRadius: "var(--radius-sm)",
+                  background: "none", border: "none", cursor: "pointer", textAlign: "left",
+                  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
+                  opacity: busyId === event.id ? 0.5 : 1,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--color-bg)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "none"; }}
+              >
+                <IconPlus size={12} style={{ color: "var(--color-text-tertiary)", flexShrink: 0 }} />
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {eventNameWithDivision(event)}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", marginTop: "8px" }}>
+          {error}
+        </p>
+      )}
+    </div>
+  );
 }

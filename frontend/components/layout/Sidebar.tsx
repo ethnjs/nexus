@@ -10,6 +10,7 @@ import {
   IconMembers,
   IconSettings,
   IconChevronDown,
+  IconCalendar,
 } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -23,6 +24,7 @@ export const EXPANDED_W  = 192;
 const NAV_ITEMS = [
   { segment: "overview", icon: <IconHome />,  label: "Overview" },
   { segment: "events",   icon: <IconEvents />, label: "Events" },
+  { segment: "shifts",   icon: <IconCalendar />, label: "Shifts" },
   { segment: "forms",    icon: <IconForms />,  label: "Forms" },
   { segment: "members",  icon: <IconMembers />, label: "Members" },
 ];

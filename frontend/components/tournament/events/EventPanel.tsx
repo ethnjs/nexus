@@ -8,7 +8,6 @@ import {
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
-import { formatDates } from "@/lib/tournamentDisplay";
 import { enumerateDays } from "@/lib/date";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
@@ -294,15 +293,6 @@ export function EventPanel({
               onChange={(v) => patch({ event_type: v as "standard" | "trial" })}
               locked={locked}
             />
-          </SettingsRow>
-
-          {/* An event's *when* is the union of its shifts, so there is
-              nothing to edit here — this is the read-out of that. Empty for
-              an event on a cosmetic track, which has no schedule at all. */}
-          <SettingsRow label="Days" helper="Taken from this event's shifts.">
-            <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-              {current && current.days.length > 0 ? formatDates(current.days) : "—"}
-            </span>
           </SettingsRow>
 
           {/* Adding a shift adds its track automatically; this is how an

@@ -2,8 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
-import { formatDates } from "@/lib/tournamentDisplay";
+import { tournamentEventsApi, tournamentTracksApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +28,7 @@ import { eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
-const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 220px 80px 70px";
+const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 200px 80px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
@@ -95,6 +94,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // there's no row to select yet.
   const [creatingNew, setCreatingNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
+  // Live tracks, for badging each row. Cosmetic ones included — an event on
+  // Test Writing is exactly the case the event/track bridge exists for.
+  const [trackNames, setTrackNames] = useState<Map<number, string>>(new Map());
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
@@ -139,6 +141,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
   useEffect(() => {
     loadEvents();
+    tournamentTracksApi.list(tournamentId, { public: true })
+      .then((tracks) => setTrackNames(new Map(tracks.map((t) => [t.id, t.name]))))
+      .catch(() => {});
   }, [tournamentId]);
 
   const divisionOptions = useMemo(() => {
@@ -426,7 +431,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               <span style={{ textAlign: "center" }}>Division</span>
               <span style={{ textAlign: "center" }}>Type</span>
               <span>Category</span>
-              <span style={{ textAlign: "center" }}>Days</span>
+              <span>Tracks</span>
               <span style={{ textAlign: "center" }}>Shifts</span>
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
@@ -438,6 +443,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 <EventRow
                   key={e.id}
                   event={e}
+                  trackNames={trackNames}
                   isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents && !isArchived}
                   onFocus={() => focusEvent(e.id)}
@@ -505,9 +511,11 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 }
 
 function EventRow({
-  event, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, trackNames, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
 }: {
   event: TournamentEvent;
+  /** Track id -> name, so a row can badge its tracks without its own fetch. */
+  trackNames: Map<number, string>;
   isLast: boolean;
   canDelete: boolean;
   onFocus: () => void;
@@ -580,10 +588,13 @@ function EventRow({
       }}>
         {event.event?.category.name ?? ""}
       </span>
-      {/* Derived from the event's shifts — a list of days, and empty for an
-          event on a cosmetic track, which has no schedule at all. */}
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.days.length > 0 ? formatDates(event.days) : "—"}
+      {/* Which parts of the tournament this event belongs to. The days are
+          derivable from its shifts, but they are the same days its track
+          already names — the track is the thing that isn't inferable. */}
+      <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
+        {event.track_ids.length > 0
+          ? event.track_ids.map((id) => <Badge key={id}>{trackNames.get(id) ?? "—"}</Badge>)
+          : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {event.shifts.length}
