@@ -15,6 +15,7 @@ import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow"
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { ChipInput } from "@/components/ui/ChipInput";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
@@ -167,13 +168,15 @@ export function EventPanel({
     setSaveError(undefined);
   }
 
-  // Any shift the event doesn't already hold. There are no event bounds to
-  // check against any more — the event's schedule *is* its shifts — so the
-  // only rule left is the backend's: two shifts on one event can't overlap.
+  // Shifts on a track this event is already on, minus the ones it holds.
+  // Not every shift in the tournament: attaching one adds its track
+  // server-side, so an unfiltered list would let an event join a track as a
+  // side effect of picking a time. Add the track above first.
   const eligibleShifts = useMemo(() => {
     if (!allShifts || !current) return [];
     const attachedIds = new Set(current.shifts.map((s) => s.id));
-    return allShifts.filter((s) => !attachedIds.has(s.id));
+    const eventTracks = new Set(current.track_ids);
+    return allShifts.filter((s) => !attachedIds.has(s.id) && eventTracks.has(s.track_id));
   }, [allShifts, current]);
 
   // An event's shifts are a property of the event, set whole-set — there is
@@ -211,6 +214,8 @@ export function EventPanel({
     if (!current) return;
     await setShiftIds(current.shifts.filter((s) => s.id !== shiftId).map((s) => s.id)).catch(() => {});
   }
+
+  const trackNames = useMemo(() => new Map(tracks.map((t) => [t.id, t.name])), [tracks]);
 
   // Creating a shift from here needs one track and one of its days. With no
   // track or several there is no answer, so the control simply isn't offered.
@@ -298,19 +303,38 @@ export function EventPanel({
           {/* Adding a shift adds its track automatically; this is how an
               event reaches an undated track (Test Writing) that has no
               shifts to infer it from. */}
-          <SettingsRow label="Tracks" helper="Which parts of the tournament this event belongs to.">
-            <ButtonGroup
-              options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
-              value={draft.trackIds.map(String)}
-              onChange={(v) => {
-                const id = Number(v);
-                patch({
-                  trackIds: draft.trackIds.includes(id)
-                    ? draft.trackIds.filter((x) => x !== id)
-                    : [...draft.trackIds, id],
-                });
-              }}
+          <SettingsRow label="Tracks">
+            <ChipInput
+              value={draft.trackIds.map((id) => trackNames.get(id) ?? String(id))}
+              onChange={(names) => patch({
+                trackIds: draft.trackIds.filter((id) => names.includes(trackNames.get(id) ?? String(id))),
+              })}
+              variant="transparent"
+              size="sm"
+              disableInput
               locked={locked}
+              fullWidth
+              addButton={!locked && (
+                <Popover
+                  trigger={
+                    <Button type="button" variant="secondary" size="sm" iconOnly title="Add track" style={{ padding: 0, flexShrink: 0 }}>
+                      <IconPlus size={14} />
+                    </Button>
+                  }
+                  items={tracks}
+                  getKey={(t) => t.id}
+                  renderLabel={(t) => t.name}
+                  checklist
+                  isSelected={(t) => draft.trackIds.includes(t.id)}
+                  onSelect={(t) => patch({
+                    trackIds: draft.trackIds.includes(t.id)
+                      ? draft.trackIds.filter((x) => x !== t.id)
+                      : [...draft.trackIds, t.id],
+                  })}
+                  emptyMessage="No tracks yet."
+                  width={280}
+                />
+              )}
             />
           </SettingsRow>
 
@@ -429,9 +453,11 @@ export function EventPanel({
                         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
                         marginTop: "8px",
                       }}>
-                        {newShiftTrack
-                          ? "No shifts left to add — create one above."
-                          : "No shifts left to add. Put this event on a single competition day to create one here."}
+                        {current.track_ids.length === 0
+                          ? "Add a track above to attach shifts from it."
+                          : newShiftTrack
+                            ? "No shifts left on this event's track — create one above."
+                            : "No shifts left on this event's tracks. Put it on a single competition day to create one here."}
                       </p>
                     )}
                   </div>
