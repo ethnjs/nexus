@@ -46,6 +46,8 @@ from app.core.form.write_through import (
     parse_event_preference_field_key,
     parse_lunch_field_key,
     shift_ids_on_tracks,
+    lunch_values_from_answer,
+    event_preference_items_from_answer,
     sync_availability,
     sync_event_preferences,
     sync_lunch,
@@ -1205,56 +1207,20 @@ def _write_through_reserved_fields(
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
             lunch_track_id, category = parse_lunch_field_key(field.field_key)
-            if field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES:
-                # No options to resolve — the answer itself is the selection.
-                # Blank clears the row rather than storing an empty one, so
-                # an erased answer reads the same as never having answered.
-                text = value.strip() if isinstance(value, str) else ""
-                values = [{"value": text, "label": text}] if text else []
-            else:
-                # `selected` is now option_id(s) (see branching.py's matching
-                # and PlainOption/BranchingOption's option_id) — resolve each
-                # back to its stored value/label snapshot before write-through.
-                values = [
-                    {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
-                    for v in selected
-                    if v in options_by_id
-                ]
-            sync_lunch(db, membership.id, lunch_track_id, category, values)
+            sync_lunch(
+                db, membership.id, lunch_track_id, category,
+                lunch_values_from_answer(field, value),
+            )
             continue
 
         if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
-            pref_track_id = parse_event_preference_field_key(field.field_key)
-            items: list[dict] = []
-            if field.question_type == "ranked_choice":
-                # `value` here is a rank -> option_id dict (see the raw
-                # payload shape and _stored_answer_option_ids' ranked_choice
-                # exception), not the flattened `selected` list every other
-                # branch reads — ranked_choice never matches any other
-                # reserved pattern, so this is the only place it needs one.
-                for rank, option_id in (value if isinstance(value, dict) else {}).items():
-                    option = options_by_id.get(option_id)
-                    if option is None:
-                        continue
-                    for event_id in option.get("value") or []:
-                        items.append({"tournament_event_id": event_id, "rank": int(rank)})
-            else:
-                # single_select_dropdown: one option at rank 1.
-                # multi_select_checkbox: every selected option, unranked —
-                # options are mutually exclusive by event (see
-                # validate_event_preference_options), so no event can
-                # collide across two selected options here.
-                rank = 1 if field.question_type == "single_select_dropdown" else None
-                for option_id in selected:
-                    option = options_by_id.get(option_id)
-                    if option is None:
-                        continue
-                    for event_id in option.get("value") or []:
-                        items.append({"tournament_event_id": event_id, "rank": rank})
             # A track has exactly one preference question (unlike
             # availability's shared per-track pool), so this can sync straight
             # from this field's answer with no cross-field union needed.
-            sync_event_preferences(db, membership.id, pref_track_id, items)
+            sync_event_preferences(
+                db, membership.id, parse_event_preference_field_key(field.field_key),
+                event_preference_items_from_answer(field, value),
+            )
             continue
 
     if availability_track_ids:
@@ -1355,8 +1321,6 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
     options survive the key change (they're freeform text, not entity ids).
     """
     lunch_track_id, category = parse_lunch_field_key(field.field_key)
-    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
-    free_text = field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES
 
     rows = (
         db.query(FormAnswer.value, TournamentMembership.id)
@@ -1370,21 +1334,17 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
     )
 
     for value, membership_id in rows:
-        if free_text:
-            text = value.strip() if isinstance(value, str) else ""
-            values = [{"value": text, "label": text}] if text else []
-        else:
-            # Stored select answers hold {option_id, value, label} snapshots
-            # rather than bare ids — same unwrapping _stored_answer_option_ids
-            # does when replaying from storage.
+        # Stored select answers hold {option_id, value, label} snapshots rather
+        # than bare ids — unwrap to ids first, the same way
+        # _stored_answer_option_ids does when replaying from storage, since
+        # lunch_values_from_answer expects the id form a live submission sends.
+        if field.question_type not in LUNCH_FREE_TEXT_QUESTION_TYPES:
             items = value if isinstance(value, list) else ([value] if value else [])
-            option_ids = [i.get("option_id") if isinstance(i, dict) else i for i in items]
-            values = [
-                {"value": options_by_id[oid]["value"], "label": options_by_id[oid]["label"]}
-                for oid in option_ids
-                if oid in options_by_id
-            ]
-        sync_lunch(db, membership_id, lunch_track_id, category, values)
+            value = [i.get("option_id") if isinstance(i, dict) else i for i in items]
+        sync_lunch(
+            db, membership_id, lunch_track_id, category,
+            lunch_values_from_answer(field, value),
+        )
 
 
 def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_track_id, category) -> None:

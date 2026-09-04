@@ -187,6 +187,75 @@ def sync_event_preferences(
     db.flush()
 
 
+# ---------------------------------------------------------------------------
+# answer -> rows
+#
+# Turning one stored answer into the rows its sync function wants. Split out of
+# the response routes because there is now a second writer: the member's own
+# edit page writes the same tables directly, and a second implementation of
+# these shapes would drift from this one silently. The subtleties worth not
+# duplicating are the option_id -> value/label snapshot lookup, ranked_choice's
+# rank->option_id payload (every other question type hands over a flat list),
+# and the rank each question type implies.
+# ---------------------------------------------------------------------------
+
+def lunch_values_from_answer(field, value) -> list[dict]:
+    """One lunch answer as `{"value", "label"}` rows for sync_lunch.
+
+    A free-text question stores the typed answer itself; anything else stores
+    option ids that resolve back through the field's own option snapshots.
+    Blank free text clears the rows rather than storing an empty one, so an
+    erased answer reads the same as never having answered."""
+    from app.core.form.validation import LUNCH_FREE_TEXT_QUESTION_TYPES
+
+    if field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES:
+        text = value.strip() if isinstance(value, str) else ""
+        return [{"value": text, "label": text}] if text else []
+
+    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+    selected = value if isinstance(value, list) else ([value] if value else [])
+    return [
+        {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
+        for v in selected
+        if v in options_by_id
+    ]
+
+
+def event_preference_items_from_answer(field, value) -> list[dict]:
+    """One event-preference answer as `{"tournament_event_id", "rank"}` rows
+    for sync_event_preferences.
+
+    Each selected option expands into one row per event it groups. The rank
+    depends on the question type: `ranked_choice` carries its own (and is the
+    one type whose stored value is a rank -> option_id mapping rather than a
+    flat list), `single_select_dropdown` implies rank 1, and
+    `multi_select_checkbox` is unranked."""
+    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+    items: list[dict] = []
+
+    if field.question_type == "ranked_choice":
+        for rank, option_id in (value if isinstance(value, dict) else {}).items():
+            option = options_by_id.get(option_id)
+            if option is None:
+                continue
+            for event_id in option.get("value") or []:
+                items.append({"tournament_event_id": event_id, "rank": int(rank)})
+        return items
+
+    # Options are mutually exclusive by event (see
+    # validate_event_preference_options), so no event can collide across two
+    # selected options here.
+    rank = 1 if field.question_type == "single_select_dropdown" else None
+    selected = value if isinstance(value, list) else ([value] if value else [])
+    for option_id in selected:
+        option = options_by_id.get(option_id)
+        if option is None:
+            continue
+        for event_id in option.get("value") or []:
+            items.append({"tournament_event_id": event_id, "rank": rank})
+    return items
+
+
 TRACK_STATUSES = ("interested", "confirmed", "declined")
 
 
