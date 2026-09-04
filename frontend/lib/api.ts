@@ -1863,9 +1863,10 @@ export const tournamentOnboardingApi = {
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 }
 
-// `public: true` is the member-facing read — live tracks only. The staff
-// listing is the one place pending-delete tracks appear at all, which is what
-// makes restoring one possible.
+// `public: true` is the member-facing read: same rows, membership alone is
+// the gate. Both listings include pending-delete tracks, flagged by
+// `is_archived` — filter them out wherever a picker offers a *new* link,
+// since the backend refuses one.
 export const tournamentTracksApi = {
   list: (tournamentId: number, opts: { public?: boolean } = {}) =>
     api.get<TournamentTrack[]>(

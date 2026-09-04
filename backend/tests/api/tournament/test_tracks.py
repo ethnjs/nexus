@@ -260,18 +260,22 @@ def test_restoring_a_live_track_is_a_conflict(client, td_user, td_tournament):
     ).status_code == 409
 
 
-def test_pending_track_is_hidden_from_the_member_catalog(client, db, td_user, td_tournament):
+def test_pending_track_is_listed_for_both_audiences(client, db, td_user, td_tournament):
+    """A pending-delete track still exists and is still referenced, so both
+    reads name it — flagged, not hidden, and sorted last."""
     login(client, "td@test.com", "tdpass")
     referenced = _create_track(client, td_tournament.id, "Referenced").json()
     _track_form_field(db, td_user, td_tournament.id, referenced["id"])
     client.delete(f"/tournaments/{td_tournament.id}/tracks/{referenced['id']}/")
 
-    public = client.get(f"/tournaments/{td_tournament.id}/tracks/?public=true").json()
-    assert referenced["id"] not in [row["id"] for row in public]
-
-    # Settings still sees it, so the TD can restore a mistake.
-    staff = client.get(f"/tournaments/{td_tournament.id}/tracks/").json()
-    assert referenced["id"] in [row["id"] for row in staff]
+    for url in (
+        f"/tournaments/{td_tournament.id}/tracks/?public=true",
+        f"/tournaments/{td_tournament.id}/tracks/",
+    ):
+        rows = client.get(url).json()
+        pending = [row for row in rows if row["id"] == referenced["id"]]
+        assert pending and pending[0]["is_archived"] is True
+        assert rows[-1]["id"] == referenced["id"]
 
 
 def test_deleting_a_track_takes_its_member_statuses_with_it(client, db, td_user, td_tournament):

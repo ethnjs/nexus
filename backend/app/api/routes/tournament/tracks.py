@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -50,23 +50,21 @@ def _validate_state(track: TournamentTrack) -> None:
 # GET /tournaments/{tournament_id}/tracks/ — manage_tournament, or any member
 # with ?public=true.
 #
-# Pending-delete tracks are included only for the manage_tournament audience:
-# tournament settings is the one place they still exist, so a TD can see what
-# is blocking the delete and restore the track if it was a mistake. Members
-# get the live catalog, since a track on its way out is not something to
-# answer questions about.
+# Both audiences see pending-delete tracks — they carry `is_archived`, so a
+# caller that only wants the live catalog can say so. Hiding them here meant
+# a reader couldn't even name a track something still references, which is
+# precisely the state a pending delete exists to describe. They sort last.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[TournamentTrackRead])
 def list_tracks(
     tournament_id: int,
-    public: bool = Query(False),
     db: Session = Depends(get_db),
+    # ?public=true is read by the dependency, not here — both audiences now
+    # get the same rows, so it only decides which permission is required.
     current_user: User = Depends(require_catalog_read(MANAGE_TOURNAMENT)),
 ):
     get_tournament(tournament_id, db)
     query = db.query(TournamentTrack).filter(TournamentTrack.tournament_id == tournament_id)
-    if public:
-        query = query.filter(TournamentTrack.is_archived.is_(False))
     return query.order_by(
         TournamentTrack.is_archived, TournamentTrack.is_primary.desc(), TournamentTrack.name
     ).all()

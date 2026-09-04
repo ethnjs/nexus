@@ -166,6 +166,10 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   // Every track at least one selected event is on — the only ones "Remove
   // track" makes sense for.
   const attachedTracks = allTracks.filter((t) => events.some((e) => e.tracks.some((et) => et.id === t.id)));
+  // Add offers live tracks only — the backend refuses a new link to one that
+  // is pending delete. Remove still lists them, since that link exists and
+  // dropping it is exactly what unblocks the delete.
+  const addableTracks = allTracks.filter((t) => !t.is_archived);
   const pendingAddTracks = allTracks.filter((t) => tracksToAdd.has(t.id));
   const pendingRemoveTracks = attachedTracks.filter((t) => tracksToRemove.has(t.id));
 
@@ -304,7 +308,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
                     <IconPlus size={12} /> Add track
                   </Button>
                 }
-                items={allTracks}
+                items={addableTracks}
                 getKey={(t) => t.id}
                 renderLabel={(t) => t.name}
                 emptyMessage="No tracks exist yet in this tournament."

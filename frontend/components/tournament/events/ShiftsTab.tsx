@@ -34,6 +34,8 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   // Only competition days can hold shifts — a cosmetic track has no range to
   // validate against, so it never appears in the filter or the panel.
+  // Pending-delete days stay in: their shifts still exist and still need a
+  // name, and the panel filters them out of its own picker.
   const [tracks, setTracks] = useState<TournamentTrack[]>([]);
   // Fetched once so the panel's Events section can filter locally instead of
   // a round-trip per shift.

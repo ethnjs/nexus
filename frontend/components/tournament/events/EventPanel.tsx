@@ -216,12 +216,22 @@ export function EventPanel({
 
   const trackNames = useMemo(() => new Map(tracks.map((t) => [t.id, t.name])), [tracks]);
 
+  // The backend refuses a *new* link to a pending-delete track but allows an
+  // existing one to round-trip, so the picker offers exactly that: live
+  // tracks, plus any the event already holds.
+  const selectableTracks = useMemo(
+    () => tracks.filter((t) => !t.is_archived || draft.trackIds.includes(t.id)),
+    [tracks, draft.trackIds],
+  );
+
   // The competition days a new shift could land on: this event's own tracks.
   // The form picks between them, so several is fine — but a cosmetic track
   // has no dates and can hold no shift, and an unsaved track change isn't
   // attachable yet, so both are filtered out.
   const newShiftTracks = useMemo(
-    () => tracks.filter((t) => t.is_primary && (current?.tracks ?? []).some((et) => et.id === t.id)),
+    () => tracks.filter(
+      (t) => t.is_primary && !t.is_archived && (current?.tracks ?? []).some((et) => et.id === t.id),
+    ),
     [tracks, current],
   );
 
@@ -318,7 +328,7 @@ export function EventPanel({
                       <IconPlus size={14} />
                     </Button>
                   }
-                  items={tracks}
+                  items={selectableTracks}
                   getKey={(t) => t.id}
                   renderLabel={(t) => t.name}
                   checklist

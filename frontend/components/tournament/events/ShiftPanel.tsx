@@ -67,7 +67,11 @@ interface ShiftPanelProps {
   tournamentId: number;
   /** null = creating a new shift. */
   shift: TournamentShift | null;
-  /** Competition days only — a cosmetic track has no dates to validate against and can hold no shifts. */
+  /**
+   * Competition days only — a cosmetic track has no dates to validate
+   * against and can hold no shifts. May include pending-delete days, which
+   * this panel offers only as the track a shift is already on.
+   */
   tracks: TournamentTrack[];
   /** The whole tournament's events, so the Events section can filter locally. */
   events: TournamentEvent[];
@@ -113,6 +117,13 @@ export function ShiftPanel({
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   const track = tracks.find((t) => t.id === draft.trackId);
+  // A pending-delete track can't take a shift (the backend 409s), so it is
+  // only offered as the track the shift is already on — dropping it outright
+  // would leave an existing shift's Track field looking blank.
+  const trackOptions = useMemo(
+    () => tracks.filter((t) => !t.is_archived || t.id === shift?.track_id),
+    [tracks, shift],
+  );
 
   function patch(p: Partial<ShiftDraft>) {
     setDraft((d) => {
@@ -245,8 +256,8 @@ export function ShiftPanel({
               locked={locked}
               value={draft.trackId !== null ? String(draft.trackId) : ""}
               onChange={(v) => patch({ trackId: Number(v) })}
-              options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
-              placeholder={tracks.length === 0 ? "No competition days yet" : "Select a track"}
+              options={trackOptions.map((t) => ({ value: String(t.id), label: t.name }))}
+              placeholder={trackOptions.length === 0 ? "No competition days yet" : "Select a track"}
               error={fieldErrors.trackId}
             />
           </SettingsRow>
