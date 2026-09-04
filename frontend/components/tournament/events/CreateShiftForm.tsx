@@ -96,8 +96,8 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
       )}
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px", marginTop: "2px" }}>
         <Button type="button" variant="secondary" size="xs" onClick={onCancel} disabled={saving}>Cancel</Button>
-        <Button type="button" variant="primary" size="xs" onClick={handleSubmit} disabled={saving}>
-          {saving ? "Creating…" : "Create"}
+        <Button type="button" variant="primary" size="xs" onClick={handleSubmit} loading={saving}>
+          Create
         </Button>
       </div>
     </div>
