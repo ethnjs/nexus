@@ -399,14 +399,16 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
   }
 
   return (
-    <div style={{ marginBottom: "24px" }}>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        marginBottom: "10px",
-      }}>
-        Events — {attached.length}
-      </div>
+    <SettingsSection title="Events">
+      <div style={{ padding: "20px 0" }}>
+        <div style={{
+          fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)",
+          marginBottom: "10px",
+        }}>
+          {attached.length === 0
+            ? "This shift covers no events yet."
+            : `${attached.length} event${attached.length === 1 ? "" : "s"} on this shift.`}
+        </div>
 
       {attached.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginBottom: "12px" }}>
@@ -505,6 +507,7 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
           {error}
         </p>
       )}
-    </div>
+      </div>
+    </SettingsSection>
   );
 }
