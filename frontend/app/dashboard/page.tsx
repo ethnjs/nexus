@@ -156,12 +156,19 @@ export default function DashboardPage() {
               </Button>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+            // Masonry via CSS columns, not grid: a card's height is its
+            // content, and a multi-site tournament listing a row per track is
+            // legitimately taller than a single-day one. A grid would either
+            // stretch every card to the tallest or leave a ragged bottom row.
+            // (grid-template-rows: masonry isn't shipping in Chrome yet.)
+            <div style={{ columnWidth: "280px", columnGap: "16px" }}>
               {tournaments.map((t) => (
-                <TournamentCard
-                  key={t.id} tournament={t}
-                  onClick={() => router.push(`/dashboard/tournaments/${t.id}/overview`)}
-                />
+                <div key={t.id} style={{ breakInside: "avoid", marginBottom: "16px" }}>
+                  <TournamentCard
+                    tournament={t}
+                    onClick={() => router.push(`/dashboard/tournaments/${t.id}/overview`)}
+                  />
+                </div>
               ))}
             </div>
           )}
