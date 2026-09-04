@@ -6,7 +6,6 @@ import {
   TournamentEvent, TournamentShift, TournamentTrack,
 } from "@/lib/api";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { enumerateDays } from "@/lib/date";
 import { toDateInput, toTimeInput, fromDayAndTime } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
@@ -16,7 +15,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
+import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { IconPlus, IconTrash, IconEvents, IconSearch, IconX } from "@/components/ui/Icons";
 
@@ -62,12 +61,6 @@ function draftWithDayDefault(
     if (days.length === 1) draft.day = days[0];
   }
   return draft;
-}
-
-/** The days a shift on this track may fall on — its own range, not the tournament's. */
-function trackDays(track: TournamentTrack | undefined): string[] {
-  if (!track?.start_date || !track.end_date) return [];
-  return enumerateDays(track.start_date, track.end_date);
 }
 
 interface ShiftPanelProps {
@@ -119,7 +112,7 @@ export function ShiftPanel({
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
-  const days = trackDays(tracks.find((t) => t.id === draft.trackId));
+  const track = tracks.find((t) => t.id === draft.trackId);
 
   function patch(p: Partial<ShiftDraft>) {
     setDraft((d) => {
@@ -258,19 +251,16 @@ export function ShiftPanel({
             />
           </SettingsRow>
 
-          {days.length > 1 && (
-            <SettingsRow label="Day">
-              <TournamentDayPicker
-                value={draft.day}
-                onChange={(v) => patch({ day: v })}
-                days={days}
-                placeholder="Select a day"
-                locked={locked}
-                fullWidth
-                error={fieldErrors.day}
-              />
-            </SettingsRow>
-          )}
+          <SettingsRow label="Day">
+            <TrackDayPicker
+              value={draft.day}
+              onChange={(v) => patch({ day: v })}
+              track={track}
+              locked={locked}
+              fullWidth
+              error={fieldErrors.day}
+            />
+          </SettingsRow>
 
           <SettingsRow label="Start">
             <Input

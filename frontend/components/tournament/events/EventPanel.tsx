@@ -8,7 +8,6 @@ import {
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
-import { enumerateDays } from "@/lib/date";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -217,16 +216,14 @@ export function EventPanel({
 
   const trackNames = useMemo(() => new Map(tracks.map((t) => [t.id, t.name])), [tracks]);
 
-  // Creating a shift from here needs one track and one of its days. With no
-  // track or several there is no answer, so the control simply isn't offered.
-  const newShiftTrack = useMemo(() => {
-    if (draft.trackIds.length !== 1) return null;
-    const track = tracks.find((t) => t.id === draft.trackIds[0]);
-    return track?.is_primary ? track : null;
-  }, [draft.trackIds, tracks]);
-  const newShiftDays = newShiftTrack?.start_date && newShiftTrack.end_date
-    ? enumerateDays(newShiftTrack.start_date, newShiftTrack.end_date)
-    : [];
+  // The competition days a new shift could land on: this event's own tracks.
+  // The form picks between them, so several is fine — but a cosmetic track
+  // has no dates and can hold no shift, and an unsaved track change isn't
+  // attachable yet, so both are filtered out.
+  const newShiftTracks = useMemo(
+    () => tracks.filter((t) => t.is_primary && (current?.track_ids ?? []).includes(t.id)),
+    [tracks, current],
+  );
 
   const categoryName = draft.event_id
     ? (canonicalEvents.find((e) => e.id === draft.event_id)?.category.name ?? current?.event?.category.name)
@@ -420,10 +417,11 @@ export function EventPanel({
                           width={280}
                         />
                       )}
-                      {/* A new shift needs a track and one of its days, so
-                          this only appears once the event is on exactly one
-                          track — with none or several there is no answer. */}
-                      {newShiftTrack && (
+                      {/* A new shift needs a track, and the form asks for
+                          one — but only from the tracks this event is
+                          already on, so creating a shift can't quietly move
+                          the event somewhere new. */}
+                      {newShiftTracks.length > 0 && (
                         <FormPopover
                           width={300}
                           trigger={
@@ -435,9 +433,7 @@ export function EventPanel({
                           {(close) => (
                             <CreateShiftForm
                               tournamentId={tournamentId}
-                              trackId={newShiftTrack.id}
-                              day={newShiftTrack.start_date ?? ""}
-                              days={newShiftDays.length > 1 ? newShiftDays : undefined}
+                              tracks={newShiftTracks}
                               onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
                               onCancel={close}
                             />
@@ -453,11 +449,9 @@ export function EventPanel({
                         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
                         marginTop: "8px",
                       }}>
-                        {current.track_ids.length === 0
-                          ? "Add a track above to attach shifts from it."
-                          : newShiftTrack
-                            ? "No shifts left on this event's track — create one above."
-                            : "No shifts left on this event's tracks. Put it on a single competition day to create one here."}
+                        {newShiftTracks.length === 0
+                          ? "Add a competition day above, and save, to attach shifts from it."
+                          : "No shifts left on this event's tracks — create one above."}
                       </p>
                     )}
                   </div>
