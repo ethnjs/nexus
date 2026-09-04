@@ -10,12 +10,54 @@ from app.schemas.user import UserFullResponse
 
 
 class MembershipAvailabilityUpdate(BaseModel):
-    """Self-service availability — the member's whole set of shifts for this
-    tournament, not a delta. A member editing their own page is stating what
-    they're available for now, so anything absent is a withdrawal; the
-    per-day scoping write-through needs (see sync_availability) exists to
-    keep two forms from treading on each other, which doesn't apply here."""
+    """Self-service availability — the member's whole set of shifts for one
+    track, not a delta. A member editing their own page is stating what they
+    are available for on that track now, so anything absent is a withdrawal.
+
+    Scoped to a track rather than the whole tournament because the edit page
+    is laid out per track: saving Day 1 must not disturb Day 2, which the
+    member may not even have been shown."""
     shift_ids: list[int] = []
+    # Set alongside the shifts in one call, since the two move together: the
+    # "Not available" control clears the shifts *and* declines the track, and
+    # picking a group again re-opts in. Omitted leaves the status alone.
+    status: str | None = None
+
+    @field_validator("status")
+    @classmethod
+    def _known_status(cls, value: str | None) -> str | None:
+        from app.core.form.write_through import TRACK_STATUSES
+
+        if value is not None and value not in TRACK_STATUSES:
+            raise ValueError(f"status must be one of {', '.join(TRACK_STATUSES)}")
+        return value
+
+
+class MembershipLunchUpdate(BaseModel):
+    """Self-service lunch for one (track, category).
+
+    That pair is the unit sync_lunch is scoped to, so a PUT here can't
+    disturb another category or another track's answer to the same one."""
+    # Option ids for a select question; `text` for a free-text one. Exactly
+    # one applies — which, is decided by the question's type, so sending the
+    # wrong one is a 422 rather than something to guess at.
+    option_ids: list[str] = []
+    text: str | None = None
+
+
+class MembershipEventPreferenceSelection(BaseModel):
+    option_id: str
+    # Required for ranked_choice, rejected on multi_select_checkbox, and set
+    # by the server for single_select_dropdown — see the route.
+    rank: int | None = None
+
+
+class MembershipEventPreferenceUpdate(BaseModel):
+    """Self-service event preferences for one track, whole-set.
+
+    A track has exactly one preference question, so it owns its rows outright
+    and there is nothing else on the track for a replace to damage."""
+    selections: list[MembershipEventPreferenceSelection] = []
 
 
 class MembershipTrackStatusUpdate(BaseModel):

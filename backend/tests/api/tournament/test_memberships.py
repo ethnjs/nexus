@@ -1657,37 +1657,384 @@ def _my_membership(db, tournament, user):
     )
 
 
-def test_put_my_availability_replaces_the_whole_set(client, td_user, td_tournament, db):
-    """Whole-set, not a per-day delta: the page shows every shift at once, so
-    a shift left out is a withdrawal."""
+def _lunch_field(db, td_user, tournament, track_id, category, question_type="single_select_radio", options=None):
+    """A published lunch question the member is allowed to answer."""
+    from app.models.models import Form, FormField
+
+    form = Form(
+        name=f"lunch-{track_id}-{category}", title="Lunch", owner_type="tournament",
+        tournament_id=tournament.id, status="published", created_by=td_user.id,
+    )
+    db.add(form)
+    db.flush()
+    config = {"required": False}
+    if options is not None:
+        config["options"] = options
+    field = FormField(
+        form_id=form.id, order=0, label=category.title(),
+        question_type=question_type, field_key=f"lunch_{track_id}_{category}", config=config,
+    )
+    db.add(field)
+    db.commit()
+    return field
+
+
+def _pref_field(db, td_user, tournament, track_id, options, question_type="ranked_choice", ranks=None):
+    from app.models.models import Form, FormField
+
+    form = Form(
+        name=f"prefs-{track_id}", title="Events", owner_type="tournament",
+        tournament_id=tournament.id, status="published", created_by=td_user.id,
+    )
+    db.add(form)
+    db.flush()
+    config = {"required": False, "options": options}
+    if ranks is not None:
+        config["ranks"] = ranks
+    field = FormField(
+        form_id=form.id, order=0, label="Events",
+        question_type=question_type, field_key=f"event_preference_{track_id}", config=config,
+    )
+    db.add(field)
+    db.commit()
+    return field
+
+
+def test_put_my_availability_replaces_the_whole_set_for_that_track(client, td_user, td_tournament, db):
+    """Whole-set within the track: the page shows that track's groups all at
+    once, so a shift left out is a withdrawal."""
     morning = _make_shift(db, td_tournament.id, "Morning", day=1)
     afternoon = _make_shift(db, td_tournament.id, "Afternoon", day=2)
+    track_id = primary_track_id(db, td_tournament.id)
     login(client, "td@test.com", "tdpass")
 
     response = client.put(
-        f"/tournaments/{td_tournament.id}/members/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/",
         json={"shift_ids": [morning.id, afternoon.id]},
     )
     assert response.status_code == 200
     assert {row["shift_id"] for row in response.json()} == {morning.id, afternoon.id}
 
     dropped = client.put(
-        f"/tournaments/{td_tournament.id}/members/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/",
         json={"shift_ids": [afternoon.id]},
     )
     assert [row["shift_id"] for row in dropped.json()] == [afternoon.id]
 
 
-def test_put_my_availability_rejects_another_tournaments_shift(
+def test_put_my_availability_leaves_another_track_alone(client, td_user, td_tournament, db):
+    """Saving Day 1 must not touch Day 2 — the member may not even have been
+    shown it."""
+    from app.models.models import TournamentShift, TournamentTrack
+
+    other = TournamentTrack(
+        tournament_id=td_tournament.id, name="Day 2", is_primary=True,
+        start_date=date.today(), end_date=date.today() + timedelta(days=1),
+        location="Elsewhere", division=["B"],
+    )
+    db.add(other)
+    db.flush()
+    mine = _make_shift(db, td_tournament.id, "Morning", day=1)
+    theirs = TournamentShift(
+        tournament_id=td_tournament.id, track_id=other.id, label="Day 2 morning",
+        start=datetime(2026, 3, 3, 15, 0, tzinfo=timezone.utc),
+        end=datetime(2026, 3, 3, 19, 0, tzinfo=timezone.utc),
+    )
+    db.add(theirs)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/availability"
+    client.put(f"{base}/{other.id}/", json={"shift_ids": [theirs.id]})
+    client.put(f"{base}/{primary_track_id(db, td_tournament.id)}/", json={"shift_ids": [mine.id]})
+
+    # Clearing track one leaves track two's shift standing.
+    remaining = client.put(
+        f"{base}/{primary_track_id(db, td_tournament.id)}/", json={"shift_ids": []},
+    )
+    assert [row["shift_id"] for row in remaining.json()] == [theirs.id]
+
+
+def test_put_my_availability_rejects_a_shift_from_another_track(
     client, td_user, td_tournament, other_tournament, db,
 ):
     foreign = _make_shift(db, other_tournament.id, "Elsewhere")
     login(client, "td@test.com", "tdpass")
     response = client.put(
-        f"/tournaments/{td_tournament.id}/members/me/availability/",
+        f"/tournaments/{td_tournament.id}/members/me/availability/{primary_track_id(db, td_tournament.id)}/",
         json={"shift_ids": [foreign.id]},
     )
     assert response.status_code == 422
+
+
+def test_not_available_clears_shifts_and_declines_in_one_call(client, td_user, td_tournament, db):
+    """The "Not available" control is one action, so it is one request — a
+    member can never be left declined with shifts still selected."""
+    shift = _make_shift(db, td_tournament.id, "Morning", day=1)
+    track_id = primary_track_id(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/"
+
+    client.put(base, json={"shift_ids": [shift.id]})
+    response = client.put(base, json={"shift_ids": [], "status": "declined"})
+    assert response.status_code == 200
+    assert response.json() == []
+
+    statuses = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+    assert next(s for s in statuses if s["track_id"] == track_id)["status"] == "declined"
+
+
+def test_picking_a_group_again_re_opts_in(client, td_user, td_tournament, db):
+    """Un-declining is exactly what form write-through refuses, and exactly
+    what the member's own page has to allow."""
+    shift = _make_shift(db, td_tournament.id, "Morning", day=1)
+    track_id = primary_track_id(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/"
+
+    client.put(base, json={"shift_ids": [], "status": "declined"})
+    response = client.put(base, json={"shift_ids": [shift.id], "status": "interested"})
+    assert response.status_code == 200
+
+    statuses = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()["track_statuses"]
+    assert next(s for s in statuses if s["track_id"] == track_id)["status"] == "interested"
+
+
+# ---------------------------------------------------------------------------
+# Self-service: the options catalog
+# ---------------------------------------------------------------------------
+
+def test_my_options_groups_questions_by_track(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    writing = _make_track(db, td_tournament.id, "Test Writing")
+    _lunch_field(
+        db, td_user, td_tournament, track_id, "protein",
+        options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}],
+    )
+    login(client, "td@test.com", "tdpass")
+
+    body = client.get(f"/tournaments/{td_tournament.id}/members/me/options/").json()
+    by_name = {t["track_name"]: t for t in body["tracks"]}
+    assert set(by_name) == {"Main", "Test Writing"}
+    assert [f["field_key"] for f in by_name["Main"]["lunch"]] == [f"lunch_{track_id}_protein"]
+    # A track with no questions still appears — its status is always the
+    # member's to set.
+    assert by_name["Test Writing"]["lunch"] == []
+    assert by_name["Test Writing"]["availability"] == []
+    assert by_name["Test Writing"]["allow_confirm"] is False
+
+
+def test_my_options_excludes_draft_and_archived_questions(client, td_user, td_tournament, db):
+    """A member may not newly pick an option no published question offers —
+    stricter than the read builders, which do consult archived fields so an
+    old answer still renders."""
+    from app.models.models import Form, FormField
+
+    track_id = primary_track_id(db, td_tournament.id)
+    draft = Form(
+        name="draft", title="Draft", owner_type="tournament",
+        tournament_id=td_tournament.id, status="draft", created_by=td_user.id,
+    )
+    published = Form(
+        name="pub", title="Pub", owner_type="tournament",
+        tournament_id=td_tournament.id, status="published", created_by=td_user.id,
+    )
+    db.add_all([draft, published])
+    db.flush()
+    db.add_all([
+        FormField(form_id=draft.id, order=0, label="Drink", question_type="short_text",
+                  field_key=f"lunch_{track_id}_drink", config={"required": False}),
+        FormField(form_id=published.id, order=0, label="Dessert", question_type="short_text",
+                  field_key=f"lunch_{track_id}_dessert", config={"required": False},
+                  is_archived=True),
+    ])
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    body = client.get(f"/tournaments/{td_tournament.id}/members/me/options/").json()
+    main = next(t for t in body["tracks"] if t["track_name"] == "Main")
+    assert main["lunch"] == []
+
+
+def test_my_options_carries_current_answers(client, td_user, td_tournament, db):
+    shift = _make_shift(db, td_tournament.id, "Morning", day=1)
+    track_id = primary_track_id(db, td_tournament.id)
+    login(client, "td@test.com", "tdpass")
+    client.put(
+        f"/tournaments/{td_tournament.id}/members/me/availability/{track_id}/",
+        json={"shift_ids": [shift.id], "status": "interested"},
+    )
+
+    body = client.get(f"/tournaments/{td_tournament.id}/members/me/options/").json()
+    main = next(t for t in body["tracks"] if t["track_id"] == track_id)
+    assert main["selected_shift_ids"] == [shift.id]
+    assert main["status"] == "interested"
+
+
+# ---------------------------------------------------------------------------
+# Self-service: lunch
+# ---------------------------------------------------------------------------
+
+def test_put_my_lunch_stores_the_option_label(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    _lunch_field(
+        db, td_user, td_tournament, track_id, "protein",
+        options=[
+            {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+            {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
+        ],
+    )
+    login(client, "td@test.com", "tdpass")
+
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}/protein/",
+        json={"option_ids": ["opt_tofu"]},
+    )
+    assert response.status_code == 200
+    assert [row["value"] for row in response.json()] == ["tofu"]
+
+
+def test_put_my_lunch_leaves_other_categories_alone(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    _lunch_field(db, td_user, td_tournament, track_id, "protein",
+                 options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
+    _lunch_field(db, td_user, td_tournament, track_id, "drink",
+                 options=[{"option_id": "opt_water", "value": "water", "label": "Water"}])
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
+
+    client.put(f"{base}/protein/", json={"option_ids": ["opt_chicken"]})
+    body = client.put(f"{base}/drink/", json={"option_ids": ["opt_water"]}).json()
+    assert {row["category"] for row in body} == {"protein", "drink"}
+
+    cleared = client.put(f"{base}/protein/", json={"option_ids": []}).json()
+    assert [row["category"] for row in cleared] == ["drink"]
+
+
+def test_put_my_lunch_free_text(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    _lunch_field(db, td_user, td_tournament, track_id, "notes", question_type="short_text")
+    login(client, "td@test.com", "tdpass")
+
+    body = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}/notes/",
+        json={"text": "no nuts please"},
+    ).json()
+    assert [row["value"] for row in body] == ["no nuts please"]
+
+
+def test_put_my_lunch_rejects_the_wrong_answer_shape(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    _lunch_field(db, td_user, td_tournament, track_id, "notes", question_type="short_text")
+    _lunch_field(db, td_user, td_tournament, track_id, "protein",
+                 options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
+
+    assert client.put(f"{base}/notes/", json={"option_ids": ["opt_x"]}).status_code == 422
+    assert client.put(f"{base}/protein/", json={"text": "chicken"}).status_code == 422
+
+
+def test_put_my_lunch_rejects_unknown_option_and_missing_question(client, td_user, td_tournament, db):
+    track_id = primary_track_id(db, td_tournament.id)
+    _lunch_field(db, td_user, td_tournament, track_id, "protein",
+                 options=[{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}])
+    login(client, "td@test.com", "tdpass")
+    base = f"/tournaments/{td_tournament.id}/members/me/lunch/{track_id}"
+
+    assert client.put(f"{base}/protein/", json={"option_ids": ["opt_nope"]}).status_code == 422
+    assert client.put(f"{base}/dessert/", json={"option_ids": []}).status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Self-service: event preferences
+# ---------------------------------------------------------------------------
+
+def _two_events(db, td_tournament):
+    from app.models.models import TournamentEvent
+
+    one = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy", division="C")
+    two = TournamentEvent(tournament_id=td_tournament.id, name="Astronomy", division="C")
+    db.add_all([one, two])
+    db.commit()
+    return one, two
+
+
+def test_put_my_event_preferences_ranked(client, td_user, td_tournament, db):
+    one, two = _two_events(db, td_tournament)
+    track_id = primary_track_id(db, td_tournament.id)
+    _pref_field(db, td_user, td_tournament, track_id, [
+        {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
+        {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
+    ])
+    login(client, "td@test.com", "tdpass")
+
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/members/me/event-preferences/{track_id}/",
+        json={"selections": [
+            {"option_id": "opt_2", "rank": 1},
+            {"option_id": "opt_1", "rank": 2},
+        ]},
+    )
+    assert response.status_code == 200
+    group = next(g for g in response.json() if g["track_id"] == track_id)
+    assert [o["label"] for o in group["options"]] == ["Astronomy", "Anatomy"]
+
+
+def test_put_my_event_preferences_rejects_non_contiguous_ranks(client, td_user, td_tournament, db):
+    one, two = _two_events(db, td_tournament)
+    track_id = primary_track_id(db, td_tournament.id)
+    _pref_field(db, td_user, td_tournament, track_id, [
+        {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
+        {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
+    ])
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/members/me/event-preferences/{track_id}/"
+
+    assert client.put(url, json={"selections": [
+        {"option_id": "opt_1", "rank": 1}, {"option_id": "opt_2", "rank": 3},
+    ]}).status_code == 422
+    assert client.put(url, json={"selections": [
+        {"option_id": "opt_1", "rank": 1}, {"option_id": "opt_2", "rank": 1},
+    ]}).status_code == 422
+    assert client.put(url, json={"selections": [
+        {"option_id": "opt_1"},
+    ]}).status_code == 422
+
+
+def test_put_my_event_preferences_replaces_the_whole_track(client, td_user, td_tournament, db):
+    one, two = _two_events(db, td_tournament)
+    track_id = primary_track_id(db, td_tournament.id)
+    _pref_field(db, td_user, td_tournament, track_id, [
+        {"option_id": "opt_1", "value": [one.id], "label": "Anatomy"},
+        {"option_id": "opt_2", "value": [two.id], "label": "Astronomy"},
+    ])
+    login(client, "td@test.com", "tdpass")
+    url = f"/tournaments/{td_tournament.id}/members/me/event-preferences/{track_id}/"
+
+    client.put(url, json={"selections": [{"option_id": "opt_1", "rank": 1}]})
+    body = client.put(url, json={"selections": [{"option_id": "opt_2", "rank": 1}]}).json()
+    group = next(g for g in body if g["track_id"] == track_id)
+    assert [o["label"] for o in group["options"]] == ["Astronomy"]
+
+    assert client.put(url, json={"selections": []}).json() == []
+
+
+def test_self_service_writes_reject_a_pending_delete_track(client, td_user, td_tournament, db):
+    """A track on its way out is not something to invite an answer to."""
+    track = _make_track(db, td_tournament.id, "Retired")
+    track.is_archived = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/members/me/availability/{track.id}/",
+        json={"shift_ids": []},
+    ).status_code == 409
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/members/me/track-statuses/{track.id}/",
+        json={"status": "declined"},
+    ).status_code == 409
 
 
 def test_put_my_track_status_declines_without_allow_confirm(client, td_user, td_tournament, db):
