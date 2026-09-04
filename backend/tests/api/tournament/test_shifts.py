@@ -1,10 +1,12 @@
 """Tests for /tournaments/{tournament_id}/shifts endpoints (TournamentShift model)
 and event/shift attach-detach."""
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, primary_track_id
 
-from app.models.models import Form, FormField, TournamentMembership, TournamentMembershipAvailability
+from app.models.models import (
+    Form, FormField, TournamentMembership, TournamentMembershipAvailability, TournamentShift,
+)
 
 # td_tournament's primary track spans [today, today + 1 day] — a shift is
 # bounded by its *track's* range, not the tournament's, so these are the same
@@ -35,11 +37,17 @@ def _make_event(client, tournament_id, **overrides):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "start_time": EVENT_DATE + "T08:00:00Z",
-        "end_time": EVENT_DATE + "T16:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload).json()
+
+
+def _set_shifts(client, tournament_id, event_id, shift_ids):
+    """An event's shifts are a property of the event, set whole-set through
+    the event itself — there is no attach/detach route."""
+    return client.patch(
+        f"/tournaments/{tournament_id}/events/{event_id}/", json={"shift_ids": shift_ids},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -218,8 +226,8 @@ def test_shift_event_count(client, td_user, td_tournament):
 
     event1 = _make_event(client, td_tournament.id, name="Boomilever")
     event2 = _make_event(client, td_tournament.id, name="Hovercraft")
-    client.post(f"/tournaments/{td_tournament.id}/events/{event1['id']}/shifts/{shift['id']}/")
-    client.post(f"/tournaments/{td_tournament.id}/events/{event2['id']}/shifts/{shift['id']}/")
+    _set_shifts(client, td_tournament.id, event1["id"], [shift["id"]])
+    _set_shifts(client, td_tournament.id, event2["id"], [shift["id"]])
 
     listed = client.get(f"/tournaments/{td_tournament.id}/shifts/").json()
     assert next(s for s in listed if s["id"] == shift["id"])["event_count"] == 2
@@ -237,12 +245,8 @@ def test_delete_shift_attached_to_two_events_detaches_both(client, td_user, td_t
     event1 = _make_event(client, td_tournament.id, name="Boomilever")
     event2 = _make_event(client, td_tournament.id, name="Hovercraft")
 
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event1['id']}/shifts/{shift['id']}/"
-    ).status_code == 201
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event2['id']}/shifts/{shift['id']}/"
-    ).status_code == 201
+    assert _set_shifts(client, td_tournament.id, event1["id"], [shift["id"]]).status_code == 200
+    assert _set_shifts(client, td_tournament.id, event2["id"], [shift["id"]]).status_code == 200
 
     assert client.delete(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/").status_code == 204
 
@@ -330,96 +334,137 @@ def test_shift_write_routes_require_manage_events(client, td_user, other_tournam
 
 
 # ---------------------------------------------------------------------------
-# Attach / detach
+# An event's shift set
+#
+# Set through the event, not through attach/detach routes — see
+# events.py's _apply_shifts_and_tracks.
 # ---------------------------------------------------------------------------
 
-def test_attach_shift_success(client, td_user, td_tournament):
+def test_set_event_shifts(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id)
     shift = _make_shift(client, td_tournament.id).json()
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/"
-    )
-    assert response.status_code == 201
-    updated_event = client.get(f"/tournaments/{td_tournament.id}/events/{event['id']}/").json()
-    assert len(updated_event["shifts"]) == 1
+
+    response = _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+    assert response.status_code == 200
+    assert len(response.json()["shifts"]) == 1
 
 
-def test_attach_shift_outside_event_bounds_rejected(client, td_user, td_tournament):
+def test_setting_shifts_links_the_event_to_their_tracks(client, td_user, td_tournament):
+    """An event scheduled on Day 1 plainly runs on Day 1 — the TD shouldn't
+    have to say so twice."""
     login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T10:00:00Z")
-    shift = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T09:00:00Z", end=EVENT_DATE + "T11:00:00Z").json()
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/"
-    )
-    assert response.status_code == 409
-
-
-def test_attach_shift_event_missing_times_rejected(client, td_user, td_tournament):
-    """Event start_time/end_time are nullable at create time — but a shift
-    can't be bounds-checked against an event that has neither set."""
-    login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time=None, end_time=None)
+    event = _make_event(client, td_tournament.id)
     shift = _make_shift(client, td_tournament.id).json()
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/"
-    )
+
+    body = _set_shifts(client, td_tournament.id, event["id"], [shift["id"]]).json()
+    assert body["track_ids"] == [shift["track_id"]]
+
+
+def test_clearing_shifts_keeps_the_track_link(client, td_user, td_tournament):
+    """A TD reshuffling a schedule shouldn't silently lose track membership —
+    and an event can belong to a track it has no shifts on at all."""
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id)
+    shift = _make_shift(client, td_tournament.id).json()
+    _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+
+    body = _set_shifts(client, td_tournament.id, event["id"], []).json()
+    assert body["shifts"] == []
+    assert body["track_ids"] == [shift["track_id"]]
+
+
+def test_event_days_come_from_its_shifts(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id)
+    shift = _make_shift(client, td_tournament.id).json()
+
+    assert _set_shifts(client, td_tournament.id, event["id"], []).json()["days"] == []
+    body = _set_shifts(client, td_tournament.id, event["id"], [shift["id"]]).json()
+    assert body["days"] == [EVENT_DATE]
+
+
+def test_event_on_a_cosmetic_track_has_no_days(client, td_user, td_tournament):
+    """Test Writing has no schedule, so an event on it has none either — which
+    is exactly why the track link can't be derived from shifts."""
+    login(client, "td@test.com", "tdpass")
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()
+    event = _make_event(client, td_tournament.id, track_ids=[track["id"]])
+
+    assert event["track_ids"] == [track["id"]]
+    assert event["days"] == []
+    assert event["shifts"] == []
+
+
+def test_overlapping_shifts_on_one_event_rejected(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id)
+    early = _make_shift(client, td_tournament.id, label="Early",
+                        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
+    late = _make_shift(client, td_tournament.id, label="Late",
+                       start=EVENT_DATE + "T11:00:00Z", end=EVENT_DATE + "T15:00:00Z").json()
+
+    response = _set_shifts(client, td_tournament.id, event["id"], [early["id"], late["id"]])
     assert response.status_code == 409
 
 
-def test_attach_overlapping_shift_rejected(client, td_user, td_tournament):
+def test_adjacent_shifts_on_one_event_allowed(client, td_user, td_tournament):
+    """end == start is adjacency, not overlap."""
     login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T16:00:00Z")
-    shift1 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
-    shift2 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T11:00:00Z", end=EVENT_DATE + "T15:00:00Z").json()
+    event = _make_event(client, td_tournament.id)
+    first = _make_shift(client, td_tournament.id, label="Morning",
+                        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
+    second = _make_shift(client, td_tournament.id, label="Afternoon",
+                         start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z").json()
 
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift1['id']}/"
-    ).status_code == 201
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift2['id']}/"
-    )
-    assert response.status_code == 409
+    response = _set_shifts(client, td_tournament.id, event["id"], [first["id"], second["id"]])
+    assert response.status_code == 200
+    assert len(response.json()["shifts"]) == 2
 
 
-def test_attach_adjacent_shift_succeeds(client, td_user, td_tournament):
-    login(client, "td@test.com", "tdpass")
-    event = _make_event(client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z", end_time=EVENT_DATE + "T16:00:00Z")
-    shift1 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z").json()
-    shift2 = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z").json()
-
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift1['id']}/"
-    ).status_code == 201
-    response = client.post(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift2['id']}/"
-    )
-    assert response.status_code == 201
-
-
-def test_same_shift_attached_to_multiple_events_succeeds(client, td_user, td_tournament):
+def test_same_shift_on_multiple_events(client, td_user, td_tournament):
     """Reuse case — a shift isn't scoped to a single event."""
     login(client, "td@test.com", "tdpass")
     shift = _make_shift(client, td_tournament.id).json()
-    event1 = _make_event(client, td_tournament.id, name="Boomilever")
-    event2 = _make_event(client, td_tournament.id, name="Hovercraft")
+    one = _make_event(client, td_tournament.id, name="Boomilever")
+    two = _make_event(client, td_tournament.id, name="Hovercraft")
 
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event1['id']}/shifts/{shift['id']}/"
-    ).status_code == 201
-    assert client.post(
-        f"/tournaments/{td_tournament.id}/events/{event2['id']}/shifts/{shift['id']}/"
-    ).status_code == 201
+    assert _set_shifts(client, td_tournament.id, one["id"], [shift["id"]]).status_code == 200
+    assert _set_shifts(client, td_tournament.id, two["id"], [shift["id"]]).status_code == 200
 
 
-def test_detach_shift(client, td_user, td_tournament):
+def test_unknown_shift_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id)
-    shift = _make_shift(client, td_tournament.id).json()
-    client.post(f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/")
+    assert _set_shifts(client, td_tournament.id, event["id"], [9999]).status_code == 422
 
-    response = client.delete(f"/tournaments/{td_tournament.id}/events/{event['id']}/shifts/{shift['id']}/")
-    assert response.status_code == 204
 
-    updated_event = client.get(f"/tournaments/{td_tournament.id}/events/{event['id']}/").json()
-    assert updated_event["shifts"] == []
+def test_shifts_from_another_tournament_rejected(client, td_user, td_tournament, other_tournament, db):
+    login(client, "td@test.com", "tdpass")
+    event = _make_event(client, td_tournament.id)
+    foreign = TournamentShift(
+        tournament_id=other_tournament.id,
+        track_id=primary_track_id(db, other_tournament.id),
+        label="Elsewhere",
+        start=datetime.now(timezone.utc),
+        end=datetime.now(timezone.utc) + timedelta(hours=2),
+    )
+    db.add(foreign)
+    db.commit()
+
+    assert _set_shifts(client, td_tournament.id, event["id"], [foreign.id]).status_code == 422
+
+
+def test_track_with_events_cannot_be_deleted(client, td_user, td_tournament):
+    """The bridge is a TD-authored reference, same class as shifts."""
+    login(client, "td@test.com", "tdpass")
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()
+    _make_event(client, td_tournament.id, track_ids=[track["id"]])
+
+    response = client.delete(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/")
+    assert response.json()["purged"] is False
+    assert response.json()["blocked_by"] == ["1 event(s)"]

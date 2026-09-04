@@ -3,12 +3,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_local_date
+from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, require_catalog_read, require_permission,
 )
 from app.db.session import get_db
-from app.models.models import SeasonEvent, TournamentEvent, TournamentShift, User
+from app.models.models import (
+    SeasonEvent, TournamentEvent, TournamentShift, TournamentTrack, User,
+)
 from app.schemas.tournament.event import (
     EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
     EventUpdate,
@@ -30,29 +32,92 @@ def _validate_division(division: str | None, tournament) -> None:
         )
 
 
-def _validate_tournament_bounds(event: TournamentEvent, tournament) -> None:
-    """start_time/end_time are nullable (planning starts before per-event
-    times are known), so only bound whichever ones are set. Compared in the
-    tournament's own timezone — first_day/last_day are naive local dates,
-    not UTC ones. Both are derived from the primary tracks; with no dated
-    track there is no range to bound against, so nothing is rejected.
+# There is no bounds check on an event any more. An event has no times of its
+# own — its schedule is the union of its shifts (TournamentEvent.days), and
+# each of those is already bounded by its own track's date range. That also
+# closes a hole the old check couldn't: with Day 1 on Feb 13 and Day 2 on
+# Feb 20, an event on Feb 16 fell inside the tournament's span and passed,
+# even though the tournament doesn't run that day. No shift exists there, so
+# it is now unreachable rather than merely discouraged.
 
-    Still the loose first-to-last span, so an event can currently land on a
-    gap day between two tracks. That is settled by removing an event's own
-    times entirely and deriving them from its shifts — see the plan's B3 —
-    rather than by tightening this check now."""
-    if tournament.first_day is None or tournament.last_day is None:
-        return
-    if event.start_time is not None and tournament_local_date(tournament, event.start_time) < tournament.first_day:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Event start_time falls before the tournament's start_date",
-        )
-    if event.end_time is not None and tournament_local_date(tournament, event.end_time) > tournament.last_day:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Event end_time falls after the tournament's end_date",
-        )
+
+def _apply_shifts_and_tracks(
+    db: Session, event: TournamentEvent, tournament_id: int,
+    shift_ids: list[int] | None, track_ids: list[int] | None,
+) -> None:
+    """Writes an event's shift and track sets, whole-set.
+
+    Both are properties of the event rather than sub-resources: there is no
+    per-link lifecycle to manage, so a caller sets the list it wants and the
+    difference is applied for it.
+
+    Setting shifts *adds* their tracks — an event scheduled on Day 1 plainly
+    runs on Day 1. Removing a shift never removes a track: a TD reshuffling a
+    schedule shouldn't silently lose track membership, and an event can
+    legitimately belong to a track it has no shifts on at all (Test Writing
+    has no shifts to give it).
+    """
+    if shift_ids is not None:
+        shifts = (
+            db.query(TournamentShift)
+            .filter(
+                TournamentShift.tournament_id == tournament_id,
+                TournamentShift.id.in_(shift_ids),
+            )
+            .all()
+        ) if shift_ids else []
+        missing = set(shift_ids) - {s.id for s in shifts}
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown shift {sorted(missing)[0]}",
+            )
+        _validate_no_overlap(shifts)
+        event.shifts = shifts
+
+    resolved: list[TournamentTrack] = list(event.tracks)
+    if track_ids is not None:
+        tracks = (
+            db.query(TournamentTrack)
+            .filter(
+                TournamentTrack.tournament_id == tournament_id,
+                TournamentTrack.id.in_(track_ids),
+                TournamentTrack.is_archived.is_(False),
+            )
+            .all()
+        ) if track_ids else []
+        missing = set(track_ids) - {t.id for t in tracks}
+        if missing:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Unknown track {sorted(missing)[0]}",
+            )
+        resolved = tracks
+
+    if shift_ids is not None:
+        by_id = {t.id: t for t in resolved}
+        for shift in event.shifts:
+            by_id.setdefault(shift.track_id, shift.track)
+        resolved = list(by_id.values())
+
+    if track_ids is not None or shift_ids is not None:
+        event.tracks = resolved
+
+
+def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
+    """Two shifts on one event can't overlap — one person can only staff an
+    event once at a time, which is the rule assignments build on. Adjacent
+    (end == start) is fine; only strict overlap is rejected."""
+    ordered = sorted(shifts, key=lambda s: s.start)
+    for earlier, later in zip(ordered, ordered[1:]):
+        if later.start < earlier.end:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"Shift '{later.label}' overlaps '{earlier.label}' "
+                    "— an event's shifts must not overlap"
+                ),
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -128,9 +193,12 @@ def create_event(
 
     _validate_division(payload.division, tournament)
 
-    event = TournamentEvent(**payload.model_dump())
-    _validate_tournament_bounds(event, tournament)
+    data = payload.model_dump()
+    shift_ids = data.pop("shift_ids")
+    track_ids = data.pop("track_ids")
+    event = TournamentEvent(**data)
     db.add(event)
+    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, track_ids)
     try:
         db.commit()
     except IntegrityError:
@@ -163,10 +231,11 @@ def update_event(
     if "division" in update_data:
         _validate_division(update_data["division"], tournament)
 
+    shift_ids = update_data.pop("shift_ids", None)
+    track_ids = update_data.pop("track_ids", None)
     for field, value in update_data.items():
         setattr(event, field, value)
-
-    _validate_tournament_bounds(event, tournament)
+    _apply_shifts_and_tracks(db, event, tournament_id, shift_ids, track_ids)
 
     if event.name is None and event.event_id is None:
         raise HTTPException(

@@ -675,10 +675,10 @@ class TournamentEvent(Base):
 
     volunteers_needed = Column(Integer, nullable=True)
 
-    # Nullable — tournament planning starts before per-event times are known.
-    # Frontend is expected to warn on unset times, not block on them here.
-    start_time = Column(DateTime(timezone=True), nullable=True)
-    end_time = Column(DateTime(timezone=True), nullable=True)
+    # No start_time/end_time: an event's schedule is the union of the shifts
+    # attached to it (see `days`). Its own times were a second, unreliable
+    # answer to the same question — nullable through planning, and free to
+    # disagree with the shifts people actually sign up for.
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
@@ -688,6 +688,29 @@ class TournamentEvent(Base):
     shifts = relationship(
         "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
     )
+    # Which tracks this event runs on. Explicit rather than derived through
+    # shifts: a cosmetic track (Test Writing) has no shifts by construction,
+    # so a shift-derived link could never reach it — and Circuits genuinely
+    # belongs to both Test Writing and Day 1.
+    tracks = relationship(
+        "TournamentTrack", secondary="tournament_event_tracks", back_populates="events"
+    )
+
+    @property
+    def days(self) -> list[date]:
+        """Every day this event runs, from its shifts — a list, not a range,
+        for the same reason Tournament.dates is one. An event with no shifts
+        (anything on a cosmetic track) correctly has no days at all.
+
+        Naive UTC dates. Callers that need them in the tournament's own
+        timezone should use tournament_local_date on the shift bounds."""
+        return sorted({shift.start.date() for shift in self.shifts})
+
+    @property
+    def track_ids(self) -> list[int]:
+        """Ids alone, for EventRead — a caller that wants the tracks
+        themselves already has the tournament's catalog."""
+        return sorted(track.id for track in self.tracks)
 
     @property
     def display_name(self) -> str | None:
@@ -811,6 +834,9 @@ class TournamentTrack(Base):
     tournament = relationship("Tournament", back_populates="tracks")
     university = relationship("University", back_populates="tracks")
     shifts = relationship("TournamentShift", back_populates="track", cascade="all, delete-orphan")
+    events = relationship(
+        "TournamentEvent", secondary="tournament_event_tracks", back_populates="tracks"
+    )
     member_statuses = relationship(
         "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
     )
@@ -845,6 +871,22 @@ class TournamentEventShift(Base):
 
     tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
     tournament_shift_id = Column(Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"), primary_key=True)
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventTracks — bridge table: TournamentEvent <-> TournamentTrack.
+#
+# Which tracks an event runs on. Not derivable from shifts: a cosmetic track
+# has no shifts, so Test Writing could never hold an event under a derived
+# rule. Writing an event's shift set auto-adds those shifts' tracks here;
+# clearing a shift never removes one, since a TD reshuffling a schedule
+# shouldn't silently lose track membership.
+# ---------------------------------------------------------------------------
+class TournamentEventTrack(Base):
+    __tablename__ = "tournament_event_tracks"
+
+    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
+    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
 
 
 # ---------------------------------------------------------------------------

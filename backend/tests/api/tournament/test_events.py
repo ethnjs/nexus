@@ -17,8 +17,6 @@ def _make_event(client, tournament_id, **overrides):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "start_time": EVENT_DATE + "T08:00:00Z",
-        "end_time": EVENT_DATE + "T12:00:00Z",
     }
     payload.update(overrides)
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload)
@@ -95,32 +93,41 @@ def test_create_event_division_not_in_tournament_divisions(client, td_user, td_t
     assert response.status_code == 422
 
 
-def test_create_event_end_before_start_rejected(client, td_user, td_tournament):
+def test_create_event_has_no_times_of_its_own(client, td_user, td_tournament):
+    """An event's schedule is the union of its shifts. It has no start_time or
+    end_time to be out of bounds, so there is no bounds check here at all —
+    each shift is bounded by its own track's range instead (test_shifts.py).
+
+    That also closes a hole the old check couldn't: an event on a gap day
+    between two tracks passed the tournament-wide span. No shift can exist on
+    a gap day, so it is now unreachable rather than merely discouraged."""
     login(client, "td@test.com", "tdpass")
-    response = _make_event(
-        client, td_tournament.id,
-        start_time=EVENT_DATE + "T12:00:00Z", end_time=EVENT_DATE + "T08:00:00Z",
-    )
-    assert response.status_code == 422
+    body = _make_event(client, td_tournament.id).json()
+    assert body["days"] == []
+    assert "start_time" not in body and "end_time" not in body
 
 
-def test_create_event_start_before_tournament_start_rejected(client, td_user, td_tournament):
+def test_create_event_rejects_the_old_time_fields(client, td_user, td_tournament):
+    """A caller still sending times gets a 422 rather than a silent drop."""
     login(client, "td@test.com", "tdpass")
-    response = _make_event(client, td_tournament.id, start_time=BEFORE_TOURNAMENT + "T08:00:00Z")
-    assert response.status_code == 409
+    assert _make_event(
+        client, td_tournament.id, start_time=EVENT_DATE + "T08:00:00Z",
+    ).status_code == 422
 
 
-def test_create_event_end_after_tournament_end_rejected(client, td_user, td_tournament):
+def test_create_event_with_tracks(client, td_user, td_tournament):
+    """The Test Writing case: an event on a track that has no shifts at all."""
     login(client, "td@test.com", "tdpass")
-    response = _make_event(client, td_tournament.id, end_time=AFTER_TOURNAMENT + "T12:00:00Z")
-    assert response.status_code == 409
+    track = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()
+    body = _make_event(client, td_tournament.id, track_ids=[track["id"]]).json()
+    assert body["track_ids"] == [track["id"]]
 
 
-def test_create_event_without_times_skips_bounds_check(client, td_user, td_tournament):
-    """start_time/end_time are nullable — bounds only apply once set."""
+def test_create_event_with_unknown_track_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
-    response = _make_event(client, td_tournament.id, start_time=None, end_time=None)
-    assert response.status_code == 201
+    assert _make_event(client, td_tournament.id, track_ids=[9999]).status_code == 422
 
 
 def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
@@ -129,8 +136,6 @@ def test_create_event_tournament_id_mismatch(client, td_user, td_tournament):
         "tournament_id": 9999,
         "name": "Boomilever",
         "division": "C",
-        "start_time": EVENT_DATE + "T08:00:00Z",
-        "end_time": EVENT_DATE + "T12:00:00Z",
     })
     assert response.status_code == 400
 
@@ -301,24 +306,33 @@ def test_update_event_division_not_in_tournament_divisions(client, td_user, td_t
     assert response.status_code == 422
 
 
-def test_update_event_end_before_start_rejected(client, td_user, td_tournament):
+def test_update_event_rejects_the_old_time_fields(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     created = _make_event(client, td_tournament.id).json()
     response = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
-        json={"start_time": EVENT_DATE + "T12:00:00Z", "end_time": EVENT_DATE + "T08:00:00Z"},
+        json={"start_time": EVENT_DATE + "T12:00:00Z"},
     )
     assert response.status_code == 422
 
 
-def test_update_event_outside_tournament_bounds_rejected(client, td_user, td_tournament):
+def test_update_event_replaces_the_whole_track_set(client, td_user, td_tournament):
+    """track_ids is whole-set, not additive — a PATCH says what the event's
+    tracks *are*."""
     login(client, "td@test.com", "tdpass")
-    created = _make_event(client, td_tournament.id).json()
-    response = client.patch(
+    first = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()
+    second = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Review"},
+    ).json()
+    created = _make_event(client, td_tournament.id, track_ids=[first["id"]]).json()
+
+    body = client.patch(
         f"/tournaments/{td_tournament.id}/events/{created['id']}/",
-        json={"start_time": BEFORE_TOURNAMENT + "T08:00:00Z"},
-    )
-    assert response.status_code == 409
+        json={"track_ids": [second["id"]]},
+    ).json()
+    assert body["track_ids"] == [second["id"]]
 
 
 def test_update_event_volunteer_cannot_patch(

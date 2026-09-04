@@ -272,7 +272,7 @@ def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td
 def test_get_display_config_catalog_includes_event_preferences(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
     event = client.post(f"/tournaments/{td_tournament.id}/events/", json={
-        "tournament_id": td_tournament.id, "name": "Boomilever", "division": "C", "blocks": [1],
+        "tournament_id": td_tournament.id, "name": "Boomilever", "division": "C",
     }).json()
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)

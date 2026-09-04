@@ -45,7 +45,6 @@ def _make_event(client, tournament_id):
         "tournament_id": tournament_id,
         "name": "Boomilever",
         "division": "C",
-        "blocks": [1, 2, 3, 4, 5, 6],
     }).json()
 
 

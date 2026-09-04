@@ -31,7 +31,9 @@ from sqlalchemy.orm import Session
 
 from app.core.form import track_referenced_by_form_field
 from app.core.tournament.audit import TRACK_PURGED, log_action
-from app.models.models import TournamentMembershipTrackStatus, TournamentShift, TournamentTrack
+from app.models.models import (
+    TournamentEventTrack, TournamentMembershipTrackStatus, TournamentShift, TournamentTrack,
+)
 
 
 def track_blocking_references(db: Session, tournament_id: int, track_id: int) -> list[str]:
@@ -54,9 +56,29 @@ def track_blocking_references(db: Session, tournament_id: int, track_id: int) ->
     )
     if shift_count:
         blockers.append(f"{shift_count} shift(s)")
+    event_count = (
+        db.query(TournamentEventTrack)
+        .filter(TournamentEventTrack.track_id == track_id)
+        .count()
+    )
+    if event_count:
+        blockers.append(f"{event_count} event(s)")
     if track_referenced_by_form_field(db, tournament_id, track_id):
         blockers.append("a form field")
     return blockers
+
+
+def track_event_ids(db: Session, track_id: int) -> set[int]:
+    """Every event that runs on this track.
+
+    Reads the explicit bridge, not the track's shifts: a cosmetic track has
+    no shifts at all, and Test Writing still has events. This is what an
+    event_preference question on a track is allowed to offer."""
+    return {
+        event_id
+        for (event_id,) in db.query(TournamentEventTrack.tournament_event_id)
+        .filter(TournamentEventTrack.track_id == track_id)
+    }
 
 
 def track_member_data_count(db: Session, track_id: int) -> int:

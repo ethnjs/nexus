@@ -99,7 +99,6 @@ app.include_router(season_event.admin_router,     prefix="", dependencies=[api_k
 app.include_router(tournament_core.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_events.router,             prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_shifts.router,               prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_shifts.event_shifts_router,  prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_memberships.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency])

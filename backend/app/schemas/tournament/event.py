@@ -1,6 +1,6 @@
 from __future__ import annotations
-from datetime import datetime
-from pydantic import BaseModel, field_validator, model_validator
+from datetime import date, datetime
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
@@ -10,6 +10,11 @@ VALID_EVENT_TYPES = {"standard", "trial"}
 
 
 class EventBase(BaseModel):
+    # extra="forbid" so a caller still sending the old start_time/end_time is
+    # rejected outright rather than quietly creating an event whose schedule
+    # silently didn't save.
+    model_config = ConfigDict(extra="forbid")
+
     # Custom (event_id-less) events only — catalog-linked events display
     # the joined Event.name instead. See the model_validator below.
     name: str | None = None
@@ -20,10 +25,13 @@ class EventBase(BaseModel):
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int | None = None
-    # Nullable — a tournament's event schedule isn't known at planning
-    # time. Frontend is expected to warn on unset times, not block on them.
-    start_time: datetime | None = None
-    end_time: datetime | None = None
+    # An event's schedule *is* its shifts, and the tracks it runs on are
+    # stated outright. Both are whole-set: a PATCH sending shift_ids replaces
+    # the event's shifts, it doesn't add to them. Omit either to leave it
+    # alone. Setting shift_ids also adds those shifts' tracks to track_ids —
+    # see the route.
+    shift_ids: list[int] | None = None
+    track_ids: list[int] | None = None
 
     @field_validator("division")
     @classmethod
@@ -47,12 +55,6 @@ class EventBase(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_times(self) -> "EventBase":
-        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
-            raise ValueError("end_time must be after start_time")
-        return self
-
-    @model_validator(mode="after")
     def validate_name_or_event_id(self) -> "EventBase":
         if self.name is None and self.event_id is None:
             raise ValueError("at least one of name or event_id must be set")
@@ -67,6 +69,9 @@ class EventUpdate(BaseModel):
     """Partial update — all fields optional. Only the fields actually sent
     are validated against each other (mirrors current + incoming values is
     the route's job, not this schema's)."""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     division: str | None = None
     event_type: str | None = None
@@ -75,8 +80,9 @@ class EventUpdate(BaseModel):
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int | None = None
-    start_time: datetime | None = None
-    end_time: datetime | None = None
+    # Whole-set, like on create. None means "not sent"; [] means "clear".
+    shift_ids: list[int] | None = None
+    track_ids: list[int] | None = None
 
     @field_validator("division")
     @classmethod
@@ -99,12 +105,6 @@ class EventUpdate(BaseModel):
             raise ValueError("volunteers_needed must be at least 1")
         return v
 
-    @model_validator(mode="after")
-    def validate_times(self) -> "EventUpdate":
-        if self.start_time is not None and self.end_time is not None and self.end_time <= self.start_time:
-            raise ValueError("end_time must be after start_time")
-        return self
-
 
 class EventRead(BaseModel):
     id: int
@@ -120,9 +120,12 @@ class EventRead(BaseModel):
     room: str | None = None
     floor: str | None = None
     volunteers_needed: int | None = None
-    start_time: datetime | None = None
-    end_time: datetime | None = None
     shifts: list[TournamentShiftRead] = []
+    # Every day this event runs, derived from its shifts. A list, not a
+    # range — and empty for an event on a cosmetic track, which has no
+    # schedule at all.
+    days: list[date] = []
+    track_ids: list[int] = []
     created_at: datetime
     updated_at: datetime
 
@@ -135,9 +138,9 @@ class EventMemberRead(BaseModel):
     Deliberately only what names an event: `building`/`room`/`floor` are the
     physical assignment, which stays staff-side until the day, and
     `volunteers_needed` is a staffing target rather than anything a member
-    acts on. `start_time`/`end_time` are out too — they're nullable through
-    planning, so publishing them would imply a schedule the TD hasn't
-    committed to.
+    acts on. The event's days are out too — they're a by-product of whichever
+    shifts happen to be attached yet, so publishing them would imply a
+    schedule the TD hasn't committed to.
 
     Matches the {id, name, division} shape resolve_field_options already
     gives an event_preference option, so one renderer serves both.
