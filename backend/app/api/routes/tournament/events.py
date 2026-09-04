@@ -33,14 +33,22 @@ def _validate_division(division: str | None, tournament) -> None:
 def _validate_tournament_bounds(event: TournamentEvent, tournament) -> None:
     """start_time/end_time are nullable (planning starts before per-event
     times are known), so only bound whichever ones are set. Compared in the
-    tournament's own timezone — start_date/end_date are naive local dates,
-    not UTC ones."""
-    if event.start_time is not None and tournament_local_date(tournament, event.start_time) < tournament.start_date:
+    tournament's own timezone — first_day/last_day are naive local dates,
+    not UTC ones. Both are derived from the primary tracks; with no dated
+    track there is no range to bound against, so nothing is rejected.
+
+    Still the loose first-to-last span, so an event can currently land on a
+    gap day between two tracks. That is settled by removing an event's own
+    times entirely and deriving them from its shifts — see the plan's B3 —
+    rather than by tightening this check now."""
+    if tournament.first_day is None or tournament.last_day is None:
+        return
+    if event.start_time is not None and tournament_local_date(tournament, event.start_time) < tournament.first_day:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Event start_time falls before the tournament's start_date",
         )
-    if event.end_time is not None and tournament_local_date(tournament, event.end_time) > tournament.end_date:
+    if event.end_time is not None and tournament_local_date(tournament, event.end_time) > tournament.last_day:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Event end_time falls after the tournament's end_date",

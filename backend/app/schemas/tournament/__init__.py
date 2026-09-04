@@ -1,9 +1,10 @@
 from __future__ import annotations
 from datetime import date, datetime
 from zoneinfo import available_timezones
-from pydantic import BaseModel, computed_field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
 
 from app.schemas.tournament.role import RoleRead
+from app.schemas.tournament.track import TournamentTrackCreate, TournamentTrackRead
 from app.schemas.university import UniversityResponse
 
 VALID_LEVELS = {"regionals", "state", "nationals", "invitational"}
@@ -40,15 +41,6 @@ def _validate_level(v: str) -> str:
     return v
 
 
-def _validate_division(v: list[str]) -> list[str]:
-    if not v:
-        raise ValueError("division must have at least one entry")
-    invalid = set(v) - VALID_DIVISIONS
-    if invalid:
-        raise ValueError(f"division must be a subset of: {sorted(VALID_DIVISIONS)}")
-    return sorted(set(v))
-
-
 def _validate_timezone(v: str) -> str:
     if v not in available_timezones():
         raise ValueError("timezone must be a valid IANA timezone name")
@@ -78,23 +70,25 @@ class TournamentFieldValidators:
     def validate_level(cls, v: str | None) -> str | None:
         return _validate_level(v) if v is not None else v
 
-    @field_validator("division")
-    @classmethod
-    def validate_division(cls, v: list[str] | None) -> list[str] | None:
-        return _validate_division(v) if v is not None else v
-
 
 class TournamentCreate(TournamentFieldValidators, BaseModel):
+    """No dates, venue or divisions here — those belong to tracks, and a
+    tournament is created with at least one primary track carrying them. The
+    simple single-site case sends exactly one track; a multi-site regional
+    sends one per venue/day.
+
+    extra="forbid" so a caller still sending the old flat start_date/location/
+    division is rejected outright rather than quietly creating a tournament
+    with no schedule at all."""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str
     short_name: str | None = None
-    start_date: date
-    end_date: date
-    university_id: int | None = None
-    location: str | None = None
     state: str
     level: str
-    division: list[str]
     is_public: bool = False
+    tracks: list[TournamentTrackCreate]
     # Set once from the creator's browser timezone — no update path exists,
     # this field is intentionally absent from TournamentUpdate.
     timezone: str
@@ -105,48 +99,35 @@ class TournamentCreate(TournamentFieldValidators, BaseModel):
         return _validate_timezone(v)
 
     @model_validator(mode="after")
-    def validate_dates(self) -> TournamentCreate:
-        if self.end_date < self.start_date:
-            raise ValueError("end_date must be after start_date")
-        if self.start_date < date.today():
+    def validate_tracks(self) -> TournamentCreate:
+        primary = [t for t in self.tracks if t.is_primary]
+        if not primary:
+            raise ValueError("a tournament needs at least one primary track")
+        names = [t.name for t in self.tracks]
+        if len(set(names)) != len(names):
+            raise ValueError("track names must be unique within a tournament")
+        # Checked here rather than on the track itself: a *new* tournament
+        # can't be in the past, but an existing track legitimately can be
+        # (editing a venue on a tournament already underway).
+        if any(t.start_date < date.today() for t in primary):
             raise ValueError("start_date cannot be in the past")
-        return self
-
-    @model_validator(mode="after")
-    def validate_source(self) -> TournamentCreate:
-        if bool(self.university_id) == bool(self.location):
-            raise ValueError("Tournament must have exactly one of university_id or location, not both.")
         return self
 
 
 class TournamentUpdate(TournamentFieldValidators, BaseModel):
-    """Partial update — all fields optional."""
+    """Partial update — all fields optional. Dates, venue and divisions are
+    absent by design; they're edited per track through /tracks/, and
+    extra="forbid" turns sending one into a 422 rather than a silent no-op."""
+
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     short_name: str | None = None
-    start_date: date | None = None
-    end_date: date | None = None
-    university_id: int | None = None
-    location: str | None = None
     state: str | None = None
     level: str | None = None
-    division: list[str] | None = None
     is_public: bool | None = None
     collect_is_over_18: bool | None = None
     collect_is_over_21: bool | None = None
-
-    @model_validator(mode="after")
-    def validate_dates(self) -> TournamentUpdate:
-        if self.start_date is not None and self.end_date is not None and self.end_date < self.start_date:
-            raise ValueError("end_date must be after start_date")
-        if self.start_date is not None and self.start_date < date.today():
-            raise ValueError("start_date cannot be in the past")
-        return self
-
-    @model_validator(mode="after")
-    def validate_source(self) -> TournamentUpdate:
-        if self.university_id is not None and self.location is not None:
-            raise ValueError("Tournament must have exactly one of university_id or location, not both.")
-        return self
 
 
 class TransferOwnershipRequest(BaseModel):
@@ -154,16 +135,28 @@ class TransferOwnershipRequest(BaseModel):
 
 
 class TournamentRead(BaseModel):
+    # dates/university/location/division are derived from the tournament's
+    # primary tracks, not stored — see Tournament's properties.
+    # location/university resolve only when there's exactly one primary track;
+    # with more than one, a caller renders `tracks` per row instead.
     id: int
     name: str
     short_name: str | None = None
-    start_date: date
-    end_date: date
+    # Every day the tournament runs, not a first/last pair. A tournament with
+    # Day 1 on Feb 13 and Day 2 on Feb 20 runs on two days; a range would
+    # claim it also runs on the six days between them.
+    dates: list[date] = []
     university: UniversityResponse | None = None
     location: str | None = None
     state: str
     level: str
-    division: list[str]
+    division: list[str] = []
+    # Aliased to the model's `live_tracks` property so pending-delete tracks
+    # never reach a non-settings audience; the raw `tracks` relationship is
+    # accepted too, for the settings listing that deliberately includes them.
+    tracks: list[TournamentTrackRead] = Field(
+        default=[], validation_alias=AliasChoices("live_tracks", "tracks")
+    )
     timezone: str
     is_public: bool
     is_verified: bool
@@ -182,7 +175,7 @@ class TournamentRead(BaseModel):
     @computed_field
     @property
     def is_multi_day(self) -> bool:
-        return self.end_date > self.start_date
+        return len(self.dates) > 1
 
 
 class TournamentPublic(BaseModel):
@@ -194,13 +187,18 @@ class TournamentPublic(BaseModel):
     callers use different names for it."""
     name: str
     short_name: str | None = None
-    start_date: date
-    end_date: date
+    # See TournamentRead.dates — a list of days, never a range.
+    dates: list[date] = []
     university: UniversityResponse | None = None
     location: str | None = None
     state: str
     level: str
-    division: list[str]
+    division: list[str] = []
+    # Carried so a card with several primary tracks can list them; a
+    # single-track tournament renders the scalars above exactly as before.
+    tracks: list[TournamentTrackRead] = Field(
+        default=[], validation_alias=AliasChoices("live_tracks", "tracks")
+    )
     is_verified: bool
     # Surfaced here (not just on TournamentRead) so an unauthenticated join
     # preview can tell whether to show the age-disclosure consent step

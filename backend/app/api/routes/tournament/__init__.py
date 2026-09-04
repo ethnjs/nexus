@@ -18,7 +18,7 @@ from app.core.tournament.permissions import (
     require_permission,
 )
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, User
+from app.models.models import Tournament, TournamentMembership, TournamentTrack, User
 from app.schemas.tournament import (
     TournamentCreate, TournamentRead, TournamentSummary, TournamentUpdate, TransferOwnershipRequest,
 )
@@ -31,13 +31,18 @@ def _serialize(tournament: Tournament) -> dict:
         "id": tournament.id,
         "name": tournament.name,
         "short_name": tournament.short_name,
-        "start_date": tournament.start_date,
-        "end_date": tournament.end_date,
+        # dates through division are derived from the primary tracks, not
+        # stored — see Tournament's properties. `dates` is a list of the days
+        # the tournament actually runs, never a first/last pair: a two-weekend
+        # tournament does not run on the weekdays in between. `live_tracks`
+        # rather than `tracks` so a pending-delete track never reaches a member.
+        "dates": tournament.dates,
         "university": tournament.university,
         "location": tournament.location,
         "state": tournament.state,
         "level": tournament.level,
         "division": tournament.division,
+        "live_tracks": tournament.live_tracks,
         "timezone": tournament.timezone,
         "is_public": tournament.is_public,
         "is_verified": tournament.is_verified,
@@ -94,11 +99,19 @@ def create_tournament(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    tournament = Tournament(**payload.model_dump(exclude_none=True), owner_id=current_user.id)
+    data = payload.model_dump(exclude_none=True)
+    tracks = data.pop("tracks")
+    tournament = Tournament(**data, owner_id=current_user.id)
     db.add(tournament)
 
     try:
-        db.flush()  # get tournament.id before creating membership
+        db.flush()  # get tournament.id before creating tracks and membership
+        # Tracks are created with the tournament, not after it: a tournament
+        # with no primary track has no dates, venue or divisions at all, so
+        # there is no valid moment between the two writes.
+        for track in tracks:
+            db.add(TournamentTrack(tournament_id=tournament.id, **track))
+        db.flush()
     except ValueError as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -144,9 +157,8 @@ def update_tournament(
     tournament = fetch_tournament(tournament_id, db)
     require_not_archived(tournament)
 
-    # exclude_unset (not exclude_none) — a client swapping location<->university
-    # must be able to explicitly send the cleared field as null; exclude_none
-    # would silently drop it before it ever reaches setattr.
+    # exclude_unset (not exclude_none) — an explicit null must reach setattr
+    # rather than being silently dropped as "not sent".
     update_data = payload.model_dump(exclude_unset=True)
 
     for field, value in update_data.items():
@@ -242,7 +254,7 @@ def unarchive_tournament(
     if not has_any_membership(current_user, tournament_id, db):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    has_ended = tournament.end_date is not None and tournament.end_date < date.today()
+    has_ended = tournament.last_day is not None and tournament.last_day < date.today()
 
     if current_user.role != "admin":
         if has_ended:

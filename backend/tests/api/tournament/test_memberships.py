@@ -516,7 +516,8 @@ class TestRosterFilters:
 
         login(client, "td@test.com", "tdpass")
         body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
-        assert [t["label"] for t in body["tracks"]] == ["Writing"]
+        # "Main" is the fixture's primary track — every tournament has one.
+        assert [t["label"] for t in body["tracks"]] == ["Main", "Writing"]
         # Lunch comes back grouped by category: the modal adds the category
         # as a chip and narrows it from that chip's pill. Answered/not
         # answered aren't options — they're the pill's own toggle.
@@ -1147,7 +1148,9 @@ def test_get_membership_surface_hides_track_status(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
-    assert response.json()["track_statuses"] == []
+    # Only the hidden track drops; the tournament's own primary track still
+    # pads in as pending.
+    assert [t["name"] for t in response.json()["track_statuses"]] == ["Main"]
 
 
 def test_get_membership_surface_hides_lunch_category(client, td_user, td_tournament, db):
@@ -1238,7 +1241,8 @@ def test_get_membership_no_surface_is_unfiltered(client, td_user, td_tournament,
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
-    assert len(response.json()["track_statuses"]) == 1
+    # Both the answered track and the fixture's pending "Main".
+    assert len(response.json()["track_statuses"]) == 2
 
 
 def test_get_membership_surface_hiding_never_affects_age_flags(client, td_user, td_tournament, db):
@@ -1998,7 +2002,7 @@ def test_membership_age_flags_null_without_date_of_birth(client, td_user, td_tou
 
 
 def test_membership_age_flags_adult_over_21(client, td_user, td_tournament, other_user, db):
-    start = td_tournament.start_date
+    start = td_tournament.first_day
     dob = date(start.year - 30, start.month, start.day)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is True
@@ -2006,7 +2010,7 @@ def test_membership_age_flags_adult_over_21(client, td_user, td_tournament, othe
 
 
 def test_membership_age_flags_minor(client, td_user, td_tournament, other_user, db):
-    start = td_tournament.start_date
+    start = td_tournament.first_day
     dob = date(start.year - 15, start.month, start.day)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is False
@@ -2015,7 +2019,7 @@ def test_membership_age_flags_minor(client, td_user, td_tournament, other_user, 
 
 def test_membership_age_flags_between_18_and_21(client, td_user, td_tournament, other_user, db):
     """The two gates are independent — a 19-year-old clears one, not the other."""
-    start = td_tournament.start_date
+    start = td_tournament.first_day
     dob = date(start.year - 19, start.month, start.day)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is True
@@ -2027,7 +2031,7 @@ def test_membership_age_flags_computed_against_start_date_not_today(
 ):
     """Turning 18 the day after the tournament starts means not-18 for that
     tournament, even though they're 18 by the time anyone reads the roster."""
-    start = td_tournament.start_date
+    start = td_tournament.first_day
     dob = date(start.year - 18, start.month, start.day) + timedelta(days=1)
     data = _age_flags(client, db, td_tournament, other_user, dob)
     assert data["is_over_18"] is False

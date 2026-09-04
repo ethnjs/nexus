@@ -19,12 +19,16 @@ def _make_tournament(start_date=None):
     """
     _parse_day_string no longer matches against Tournament.blocks (removed in
     the roles/permissions cutover) — it only falls back to reconstructing
-    month/day against start_date's year. Default year (2026) matches what
-    NATS_BLOCKS used to encode, so existing "Thursday 5/21" etc. assertions
-    still resolve to the same dates.
+    month/day against the tournament's first day's year. Default year (2026)
+    matches what NATS_BLOCKS used to encode, so existing "Thursday 5/21" etc.
+    assertions still resolve to the same dates.
+
+    `first_day`, not `start_date`: a tournament's dates are derived from its
+    primary tracks now and exposed as a list of days, with first_day the
+    internal-only scalar this fallback wants.
     """
     t = MagicMock()
-    t.start_date = start_date or datetime(2026, 5, 21)
+    t.first_day = start_date or datetime(2026, 5, 21)
     return t
 
 

@@ -402,17 +402,19 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
     doesn't exist" look identical to a panel, so a coordinator can't tell who
     still owes an answer. Padding the list makes the gap explicit.
 
-    Archived tracks are padded out of, not into, the list: a retired track the
-    member never engaged with isn't pending anything. One they *do* have a row
-    for still appears, since that history stays readable (see
-    MembershipTrackStatusRead).
+    A pending-delete track (is_archived) drops out entirely — rows and all.
+    It used to mean "retired, but the history stays readable"; it now means
+    the TD has asked for the track to go and it is waiting on a shift or form
+    field to be repointed. Showing a member a status on a track that is on its
+    way out invites them to act on it, and the row is about to be cascaded
+    away regardless. Tournament settings is the one surface that still sees
+    these, so the TD can restore one deleted by mistake.
 
     Display config filtering runs after this and keys off track_id, so a
     hidden track drops out whether or not it had a row."""
     from app.models.models import TournamentTrack
     from app.schemas.tournament.track import MembershipTrackStatusRead
 
-    existing = {row.track_id: row for row in membership.track_statuses}
     live_tracks = (
         db.query(TournamentTrack)
         .filter(
@@ -421,9 +423,13 @@ def build_track_statuses(db: Session, membership: TournamentMembership) -> list[
         )
         .all()
     )
+    live_ids = {track.id for track in live_tracks}
+    existing = {
+        row.track_id: row for row in membership.track_statuses if row.track_id in live_ids
+    }
 
     entries = [
-        MembershipTrackStatusRead.from_row(row) for row in membership.track_statuses
+        MembershipTrackStatusRead.from_row(row) for row in existing.values()
     ] + [
         MembershipTrackStatusRead(
             track_id=track.id,

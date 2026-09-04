@@ -114,13 +114,14 @@ def _make_empty_tournament(client, name="Empty Tournament") -> int:
     empty-state path apply-template is meant to be called against."""
     response = client.post("/tournaments/", json={
         "name": name,
-        "location": "Test Location",
-        "start_date": future_date(5, 21),
-        "end_date": future_date(5, 23),
         "state": "Southern California",
         "level": "invitational",
-        "division": ["B", "C"],
         "timezone": "America/Los_Angeles",
+        "tracks": [{
+            "name": "Main", "is_primary": True,
+            "start_date": future_date(5, 21), "end_date": future_date(5, 23),
+            "location": "Test Location", "division": ["B", "C"],
+        }],
     })
     assert response.status_code == 201
     return response.json()["id"]

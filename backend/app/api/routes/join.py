@@ -13,6 +13,7 @@ from app.models.models import ChapterMembership, JoinCode, Tournament, Tournamen
 from app.schemas.join_code import (
     JoinPreviewChapter, JoinPreviewResponse, JoinPreviewTournament, JoinRedeemRequest, JoinRedeemResponse,
 )
+from app.schemas.tournament.track import TournamentTrackRead
 from app.schemas.university import UniversityResponse
 
 router = APIRouter(tags=["join"])
@@ -55,13 +56,15 @@ def _preview_tournament_code(join_code: JoinCode, db: Session) -> JoinPreviewTou
         target_id=tournament.id,
         name=tournament.name,
         short_name=tournament.short_name,
-        start_date=tournament.start_date,
-        end_date=tournament.end_date,
+        dates=tournament.dates,
         university=UniversityResponse.model_validate(tournament.university) if tournament.university else None,
         location=tournament.location,
         state=tournament.state,
         level=tournament.level,
         division=tournament.division,
+        # An invite preview shows the venues it's inviting you to, so a
+        # two-site tournament reads as two sites rather than as blank.
+        tracks=[TournamentTrackRead.model_validate(t) for t in tournament.live_tracks],
         is_verified=tournament.is_verified,
         collect_is_over_18=tournament.collect_is_over_18,
         collect_is_over_21=tournament.collect_is_over_21,

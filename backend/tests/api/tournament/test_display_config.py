@@ -208,28 +208,32 @@ def _make_membership(db, tournament_id, user_id):
     return membership
 
 
-def test_get_display_config_catalog_empty_tournament(client, td_user, td_tournament):
+def test_get_display_config_catalog_bare_tournament(client, td_user, td_tournament):
+    """The barest a tournament gets: no availability, lunch, event prefs or
+    custom fields. Tracks are the exception - there is always at least one,
+    since that is where a tournament's dates, venue and divisions live."""
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
     body = response.json()
-    assert body["tracks"] == []
+    main = next(t for t in td_tournament.tracks if t.name == "Main")
+    assert [t["label"] for t in body["tracks"]] == ["Main"]
     assert body["availability"] == []
     assert body["lunch_categories"] == []
     assert body["event_preferences"] == []
     assert body["custom_fields"] == []
-    # Fixed columns and built-in sections exist regardless of tournament data.
+    # Fixed columns exist regardless of tournament data; each track adds one.
     assert [c["key"] for c in body["columns"]] == [
         "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
+        f"track:{main.id}",
     ]
     # Custom Responses is no longer built in — it's seeded as a deletable
     # custom section instead, so it doesn't appear in the catalog.
     assert [s["id"] for s in body["sections"]][:2] == ["membership", "availability"]
     assert "custom_responses" not in [s["id"] for s in body["sections"]]
-    # An empty tournament has no tracks, so membership offers only its static
-    # fields — a tournament with tracks also gets one entry per track.
+    # Membership offers its static fields plus one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
-        "joined", "join_method", "roles", "age",
+        "joined", "join_method", "roles", "age", f"track:{main.id}",
     ]
 
 
@@ -362,7 +366,10 @@ def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournamen
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/")
     assert response.status_code == 200
     by_name = {t["name"]: t["status"] for t in response.json()["track_statuses"]}
-    assert by_name == {"Answered Track": "confirmed", "Unanswered Track": "pending"}
+    assert by_name == {
+        "Answered Track": "confirmed", "Unanswered Track": "pending",
+        "Main": "pending",  # the fixture's primary track, also unanswered
+    }
     # An archived track nobody answered isn't pending anything.
     assert "Retired Track" not in by_name
 
@@ -388,7 +395,7 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
         f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
     )
     assert response.status_code == 200
-    assert [t["name"] for t in response.json()["track_statuses"]] == ["Shown Track"]
+    assert [t["name"] for t in response.json()["track_statuses"]] == ["Main", "Shown Track"]
 
 
 def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td_tournament, db):
@@ -532,8 +539,9 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
         f"/tournaments/{td_tournament.id}/display-config/catalog/"
     ).json()["sections"]}
 
+    main = next(t for t in td_tournament.tracks if t.name == "Main")
     assert [f["key"] for f in sections["membership"]["fields"]] == [
-        "joined", "join_method", "roles", "age", f"track:{track.id}",
+        "joined", "join_method", "roles", "age", f"track:{main.id}", f"track:{track.id}",
     ]
     assert [f["key"] for f in sections["lunch"]["fields"]] == [
         "dietary_restriction", "lunch_category:entree",

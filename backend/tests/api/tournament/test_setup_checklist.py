@@ -3,9 +3,9 @@
 other tables, not stored — see app/core/tournament/setup_checklist.py."""
 from tests.conftest import TOURNAMENT_REQUIRED_FIELDS, grant_role, login
 
-# start_date/end_date/state/level/division are all required on TournamentCreate
-# now, so the checklist no longer tracks "dates"/"location" — they're
-# unconditionally set on every tournament from creation onward.
+# A tournament is created with at least one primary track carrying its dates,
+# venue and divisions, so the checklist no longer tracks "dates"/"location" —
+# they're unconditionally set on every tournament from creation onward.
 REQUIRED_FIELDS = TOURNAMENT_REQUIRED_FIELDS
 
 
@@ -16,7 +16,7 @@ def _checklist_by_key(response_json):
 def test_checklist_fresh_tournament_only_roles_and_invite_pending(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Fresh", "location": "Test Location", **REQUIRED_FIELDS}
+        "/tournaments/", json={"name": "Fresh", **REQUIRED_FIELDS}
     ).json()["id"]
 
     response = client.get(f"/tournaments/{tournament_id}/setup-checklist/")
@@ -38,7 +38,7 @@ def test_checklist_fresh_tournament_only_roles_and_invite_pending(client, td_use
 def test_checklist_roles_complete_after_apply_template(client, td_user):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Rolled", "location": "Test Location", **REQUIRED_FIELDS}
+        "/tournaments/", json={"name": "Rolled", **REQUIRED_FIELDS}
     ).json()["id"]
     client.post(f"/tournaments/{tournament_id}/roles/apply-template/")
 
@@ -51,7 +51,7 @@ def test_checklist_roles_complete_after_apply_template(client, td_user):
 def test_checklist_invite_staff_complete_after_invite(client, td_user, mock_send_email):
     login(client, "td@test.com", "tdpass")
     tournament_id = client.post(
-        "/tournaments/", json={"name": "Invited", "location": "Test Location", **REQUIRED_FIELDS}
+        "/tournaments/", json={"name": "Invited", **REQUIRED_FIELDS}
     ).json()["id"]
     join_code = client.post(f"/tournaments/{tournament_id}/join-codes/", json={}).json()
     client.post(

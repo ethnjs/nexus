@@ -41,12 +41,12 @@ def list_shifts(
 def _validate_tournament_bounds(shift: TournamentShift, tournament) -> None:
     """Compared in the tournament's own timezone — start_date/end_date are
     naive local dates, not UTC ones."""
-    if tournament_local_date(tournament, shift.start) < tournament.start_date:
+    if tournament_local_date(tournament, shift.start) < tournament.first_day:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Shift start falls before the tournament's start_date",
         )
-    if tournament_local_date(tournament, shift.end) > tournament.end_date:
+    if tournament_local_date(tournament, shift.end) > tournament.last_day:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Shift end falls after the tournament's end_date",

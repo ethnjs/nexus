@@ -5,7 +5,7 @@ NOTE: Using classic Column style (not Mapped[] annotations) for compatibility
 with SQLAlchemy 2.0.36 + Python 3.13.
 """
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
@@ -93,8 +93,9 @@ class University(Base):
     abbreviation = Column(String(32), nullable=True)    # e.g. "USC", "UCLA", "UCI"
     location = Column(String(255), nullable=True)       # e.g. "Los Angeles, CA"
 
-    # Relationships
-    tournaments = relationship("Tournament", back_populates="university")
+    # Relationships — a university hosts *tracks*, not tournaments: a
+    # multi-site tournament has one track per venue (see TournamentTrack).
+    tracks = relationship("TournamentTrack", back_populates="university")
     users = relationship("User", back_populates="university")
     alumni_chapter = relationship("AlumniChapter", back_populates="university", uselist=False)
 
@@ -304,14 +305,14 @@ class Tournament(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(255), nullable=False)                 # excludes year, e.g. "Science Olympiad Invitational"
     short_name = Column(String(64), nullable=True)              # includes abbreviation, e.g. "SoCal", "OC", "LA"
-    start_date = Column(Date, nullable=False)
-    end_date = Column(Date, nullable=False)
-    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
-    location = Column(String(255), nullable=True)
 
+    # When/where/what-division a tournament runs is *not* stored here — it
+    # lives on its primary tracks (see TournamentTrack.is_primary) and is
+    # derived back onto the tournament by the properties below. A regional
+    # can run Day 1 at UCI in division C and Day 2 at Northwood in division B;
+    # one location and one date range per tournament could never say that.
     state = Column(String(32), nullable=False)
     level = Column(String(32), nullable=False)                  # "regionals" | "state" | "nationals" | "invitational"
-    division = Column(JSON, nullable=False, default=list)       # "A" | "B" | "C"
 
     # IANA name (e.g. "America/Los_Angeles"). Set once at creation from the
     # creator's browser timezone — immutable after, no update path.
@@ -355,7 +356,6 @@ class Tournament(Base):
     memberships = relationship(
         "TournamentMembership", back_populates="tournament", cascade="all, delete-orphan"
     )
-    university = relationship("University", back_populates="tournaments")
     tournament_chapters = relationship("TournamentChapter", back_populates="tournament")
     roles = relationship("TournamentRole", back_populates="tournament", cascade="all, delete-orphan")
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
@@ -366,18 +366,92 @@ class Tournament(Base):
     tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
 
 
-# Exactly one of university_id/location (XOR). Checked at flush, not
-# per-attribute, so swapping one for the other doesn't hit a false-invalid
-# intermediate state.
-@event.listens_for(Tournament, "before_insert")
-@event.listens_for(Tournament, "before_update")
-def _validate_tournament_source(mapper, connection, target: Tournament):
-    univ = bool(target.university_id)
-    loc = bool(target.location)
-    if not univ and not loc:
-        raise ValueError("Tournament must have either a university_id or a location.")
-    if univ and loc:
-        raise ValueError("Tournament must have only one of university_id or location, not both.")
+    # -----------------------------------------------------------------------
+    # Schedule derived from primary tracks.
+    #
+    # `primary_tracks` is the source of truth for every property below. A
+    # tournament is required to have at least one live primary track (enforced
+    # by the tracks routes), so in practice none of these return None — the
+    # guards are for the flush window where a tournament exists and its first
+    # track doesn't yet.
+    #
+    # Note the split: dates and divisions *aggregate*, while location and
+    # university only resolve when there's exactly one primary track. Two
+    # venues have no single answer, and inventing one would be a lie —
+    # callers with more than one primary track render per-track instead.
+    # -----------------------------------------------------------------------
+    @property
+    def live_tracks(self) -> list["TournamentTrack"]:
+        """Every track except ones pending delete. `tracks` (the raw
+        relationship) is only for the settings listing, which has to show
+        pending-delete tracks so a TD can restore them."""
+        return [t for t in self.tracks if not t.is_archived]
+
+    @property
+    def primary_tracks(self) -> list["TournamentTrack"]:
+        return [t for t in self.live_tracks if t.is_primary]
+
+    @property
+    def dates(self) -> list[date]:
+        """Every day this tournament actually runs, as a sorted list.
+
+        A *list*, not a range, and this is the whole point: Day 1 on Feb 13
+        and Day 2 on Feb 20 means the tournament runs on those two days, not
+        for the eight days between them. A range would claim Feb 16 is a
+        tournament day, and everything downstream — schedules, shift bounds,
+        "when is this" on a card — would inherit the lie. Each track
+        contributes its own (usually one-day) range expanded out, so a track
+        spanning a weekend still contributes both of its days.
+        """
+        days: set[date] = set()
+        for track in self.primary_tracks:
+            if not track.start_date or not track.end_date:
+                continue
+            day = track.start_date
+            while day <= track.end_date:
+                days.add(day)
+                day += timedelta(days=1)
+        return sorted(days)
+
+    # first_day/last_day are bounds, not a schedule — they exist for age
+    # derivation ("how old were they when this started"), the auto-archive
+    # job ("has the last day passed") and sorting. They are deliberately not
+    # serialized: a caller handed both would render them as a range, which is
+    # exactly what `dates` exists to prevent.
+    @property
+    def first_day(self) -> date | None:
+        days = self.dates
+        return days[0] if days else None
+
+    @property
+    def last_day(self) -> date | None:
+        days = self.dates
+        return days[-1] if days else None
+
+    @property
+    def division(self) -> list[str]:
+        return sorted({d for t in self.primary_tracks for d in (t.division or [])})
+
+    @property
+    def _sole_primary_track(self) -> "TournamentTrack | None":
+        tracks = self.primary_tracks
+        return tracks[0] if len(tracks) == 1 else None
+
+    @property
+    def location(self) -> str | None:
+        track = self._sole_primary_track
+        return track.location if track else None
+
+    @property
+    def university(self) -> "University | None":
+        track = self._sole_primary_track
+        return track.university if track else None
+
+    @property
+    def university_id(self) -> int | None:
+        track = self._sole_primary_track
+        return track.university_id if track else None
+
 
 # ---------------------------------------------------------------------------
 # TournamentMembership — links a User to a Tournament (their volunteer
@@ -448,21 +522,27 @@ class TournamentMembership(Base):
     track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
     event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
 
+    # Age is measured against the tournament's first day, which is derived
+    # from its primary tracks rather than stored. `first_day`, not the `dates`
+    # list: someone's age on the day the tournament opens is what a minimum-age
+    # rule means. None until a primary track has dates.
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
-        if self.user.date_of_birth is None:
+        if self.user.date_of_birth is None or self.tournament.first_day is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 18)
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 18)
 
     @hybrid_property
     def is_over_21(self) -> Optional[bool]:
-        if self.user.date_of_birth is None:
+        if self.user.date_of_birth is None or self.tournament.first_day is None:
             return None
 
-        return meets_age_requirement(self.user.date_of_birth, self.tournament.start_date, 21)
+        return meets_age_requirement(self.user.date_of_birth, self.tournament.first_day, 21)
 
-    # TODO: add .expression variants for server-side age filtering once needed.
+    # No .expression variants, so no server-side age filtering — and now
+    # doubly so: first_day is a Python-side aggregate over tracks, not a
+    # column SQL could compare against.
 
     __table_args__ = (
         UniqueConstraint("user_id", "tournament_id", name="uq_user_tournament"),
@@ -669,8 +749,22 @@ class TournamentShift(Base):
 
 # ---------------------------------------------------------------------------
 # TournamentTrack — a TD-managed volunteer track such as Test Writing or
-# Day 1. Form fields reference the track's stable database ID in their config,
-# so `name` can change without invalidating historical answers or statuses.
+# Day 1. Form fields reference the track's stable database ID in their key and
+# config, so `name` can change without invalidating historical answers or
+# statuses.
+#
+# A track is the scope key for everything schedule-shaped: shifts hang off it,
+# and every reserved form field (availability/lunch/event preference) names
+# one. Two kinds:
+#
+#   primary    an actual competition day at a venue. Must carry start_date,
+#              end_date, exactly one of university_id/location, and at least
+#              one division — the tournament derives its own when/where/what
+#              from these (see Tournament.primary_tracks). Only these may
+#              have shifts.
+#   cosmetic   an undated workstream like Test Writing or Review. No dates,
+#              no venue, no division, and therefore no shifts or availability
+#              — but it can still carry status, lunch and event preferences.
 # ---------------------------------------------------------------------------
 class TournamentTrack(Base):
     __tablename__ = "tournament_tracks"
@@ -678,6 +772,22 @@ class TournamentTrack(Base):
     id = Column(Integer, primary_key=True, index=True)
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
+
+    # See the class docstring. Required nullable at the DB level because a
+    # cosmetic track legitimately has none of the four; the primary-track
+    # invariant is enforced in the schema layer and the tracks routes.
+    is_primary = Column(Boolean, nullable=False, default=False)
+    start_date = Column(Date, nullable=True)
+    end_date = Column(Date, nullable=True)
+    university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
+    location = Column(String(255), nullable=True)
+    division = Column(JSON, nullable=True)                      # list of "A" | "B" | "C"
+
+    # Pending delete, not a TD-facing archive. Set only by DELETE /tracks/
+    # when TD-authored references (shifts, form fields) still point here; the
+    # track disappears from every member- and roster-facing response and is
+    # hard-deleted automatically once the last such reference is repointed.
+    # A TD can restore it from tournament settings until that happens.
     is_archived = Column(Boolean, nullable=False, default=False)
     # Whether a member may move themselves to "confirmed" on this track from
     # their own member page. Off by default: on most tracks `confirmed` means
@@ -689,6 +799,7 @@ class TournamentTrack(Base):
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="tracks")
+    university = relationship("University", back_populates="tracks")
     member_statuses = relationship(
         "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
     )
@@ -696,6 +807,23 @@ class TournamentTrack(Base):
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_track_name"),
     )
+
+
+# Exactly one of university_id/location (XOR), and only on a primary track —
+# a cosmetic track has neither. Checked at flush rather than per-attribute so
+# swapping one for the other doesn't trip on a false-invalid intermediate
+# state. Moved here from Tournament when venues became per-track.
+@event.listens_for(TournamentTrack, "before_insert")
+@event.listens_for(TournamentTrack, "before_update")
+def _validate_track_source(mapper, connection, target: "TournamentTrack"):
+    univ = bool(target.university_id)
+    loc = bool(target.location)
+    if univ and loc:
+        raise ValueError("A track must have only one of university_id or location, not both.")
+    if target.is_primary and not univ and not loc:
+        raise ValueError("A primary track must have either a university_id or a location.")
+    if not target.is_primary and (univ or loc):
+        raise ValueError("Only a primary track can have a university_id or location.")
 
 
 # ---------------------------------------------------------------------------
