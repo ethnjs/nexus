@@ -31,7 +31,6 @@ const SETTINGS_SUBITEMS = [
   { segment: "general",    label: "General" },
   { segment: "roles",      label: "Roles" },
   { segment: "invites",    label: "Invites" },
-  { segment: "tracks",     label: "Tracks" },
   { segment: "audit-log",  label: "Audit Log" },
 ];
 
