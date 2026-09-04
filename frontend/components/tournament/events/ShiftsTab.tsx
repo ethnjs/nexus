@@ -57,6 +57,16 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     setPanelDirty(false);
   }, [setPanelDirty]);
 
+  // Refetched after any write that could have been the last thing holding a
+  // pending track: the backend purges it the moment its final reference is
+  // repointed, so a cached catalog would keep offering a track that is gone
+  // and keep the warning banner up after the work is done.
+  const loadTracks = useCallback(() => {
+    tournamentTracksApi.list(tournamentId, { public: true })
+      .then((all) => setTracks(all.filter((t) => t.is_primary)))
+      .catch(() => setTracks([]));
+  }, [tournamentId]);
+
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId)
       .then(setShifts)
@@ -65,10 +75,8 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         setShifts([]);
       });
     tournamentEventsApi.list(tournamentId).then(setEvents).catch(() => setEvents([]));
-    tournamentTracksApi.list(tournamentId, { public: true })
-      .then((all) => setTracks(all.filter((t) => t.is_primary)))
-      .catch(() => setTracks([]));
-  }, [tournamentId]);
+    loadTracks();
+  }, [tournamentId, loadTracks]);
 
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),
@@ -96,11 +104,14 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
         ? list.map((s) => (s.id === saved.id ? saved : s))
         : [...list, saved];
     });
-  }, []);
+    // Moving a shift off a pending track can be what purges it.
+    loadTracks();
+  }, [loadTracks]);
 
   const handleDeleted = useCallback((id: number) => {
     setShifts((prev) => (prev ?? []).filter((s) => s.id !== id));
-  }, []);
+    loadTracks();
+  }, [loadTracks]);
 
   // An event's shift set changed from inside the panel. Both lists are kept
   // locally, so the shifts' own event_count has to be recomputed alongside —
@@ -118,7 +129,9 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
       }));
       return next;
     });
-  }, []);
+    // Detaching a shift from the last event on a pending track can purge it.
+    loadTracks();
+  }, [loadTracks]);
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 

@@ -28,16 +28,18 @@ export function PendingTrackBanner({ tracks, subject }: {
   const pending = pendingTracks(tracks);
   if (pending.length === 0) return null;
 
+  const one = pending.length === 1;
   const names = pending.map((track) => `“${track.name}”`).join(", ");
   return (
     <div style={{ marginBottom: "12px" }}>
       <Banner
         variant="warning"
         message={
-          `${names} ${pending.length === 1 ? "is" : "are"} pending deletion. ` +
-          `The highlighted ${subject} are what's holding ${pending.length === 1 ? "it" : "them"} here — ` +
-          `repoint them to another track and ${pending.length === 1 ? "it deletes itself" : "they delete themselves"}, ` +
-          "taking every member's data for the track with them. Restore in tournament settings to keep it."
+          `The ${names} ${one ? "track is" : "tracks are"} pending deletion. ` +
+          `The highlighted ${subject} are what's holding ${one ? "it" : "them"} here — ` +
+          `repoint them to another track and ${one ? "it deletes itself" : "they delete themselves"}, ` +
+          `taking every member's data for ${one ? "the track" : "those tracks"} with ${one ? "it" : "them"}. ` +
+          `Restore in tournament settings to keep ${one ? "it" : "them"}.`
         }
       />
     </div>
