@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
@@ -27,7 +27,7 @@ import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTour
 import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
-import { TracksSection } from "@/components/tournament/settings/TracksSection";
+import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
@@ -76,6 +76,9 @@ export default function GeneralSettingsPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [pendingAgeToggle, setPendingAgeToggle] = useState<"collect_is_over_18" | "collect_is_over_21" | null>(null);
   const [ageToggleError, setAgeToggleError] = useState<string | undefined>(undefined);
+  // Reserved as bottom padding so the fixed save bar never covers the last
+  // row — a track row scrolling itself into view has to land above it.
+  const [saveBarHeight, setSaveBarHeight] = useState(0);
 
   useEffect(() => {
     if (selectedTournament) {
@@ -95,10 +98,20 @@ export default function GeneralSettingsPage() {
   const hasEnded = !!lastDay && lastDay < new Date().toISOString().slice(0, 10);
   const unarchiveNeedsAdmin = !!selectedTournament?.is_archived && hasEnded && !isAdmin;
 
-  const isDirty = useMemo(() => {
+  // The tournament's own dates, location and division are derived from its
+  // tracks, so any track write changes the header — refetch it.
+  const refetch = useCallback(() => {
+    tournamentsApi.get(tournamentId).then(setSelectedTournament).catch(() => {});
+  }, [tournamentId, setSelectedTournament]);
+  const trackEditor = useTrackEditor(tournamentId, refetch);
+
+  const detailsDirty = useMemo(() => {
     if (!selectedTournament || !draft) return false;
     return JSON.stringify(draft) !== JSON.stringify(toDraft(selectedTournament));
   }, [draft, selectedTournament]);
+  // One bar for the page: the details fields and every track row are the
+  // same set of unsaved changes as far as the TD is concerned.
+  const isDirty = detailsDirty || trackEditor.isDirty;
 
   // Turning collection ON needs the type-to-confirm modal (real
   // consequences for existing members); turning it OFF applies immediately —
@@ -123,6 +136,7 @@ export default function GeneralSettingsPage() {
       setStateText(selectedTournament.state);
       setLevelText(LEVEL_OPTIONS.find((o) => o.value === selectedTournament.level)?.label ?? "");
     }
+    trackEditor.reset();
     setErrors({});
     setSaveError(undefined);
   }
@@ -146,14 +160,20 @@ export default function GeneralSettingsPage() {
     }
 
     try {
-      const updated = await tournamentsApi.update(tournamentId, {
-        name: draft.name.trim(),
-        short_name: draft.short_name.trim() || null,
-        state: draft.state,
-        level: draft.level,
-        is_public: draft.is_public,
-      });
-      setSelectedTournament(updated);
+      if (detailsDirty) {
+        setSelectedTournament(await tournamentsApi.update(tournamentId, {
+          name: draft.name.trim(),
+          short_name: draft.short_name.trim() || null,
+          state: draft.state,
+          level: draft.level,
+          is_public: draft.is_public,
+        }));
+      }
+      // Tracks are separate resources with their own writes — the bar is
+      // shared, the requests aren't. A track failure leaves the details
+      // saved, which is why the error names the tracks specifically.
+      const trackError = await trackEditor.save();
+      if (trackError) setSaveError(trackError);
     } catch (error: unknown) {
       setSaveError(error instanceof ApiError ? error.message : "Something went wrong. Try again.");
     } finally {
@@ -170,7 +190,7 @@ export default function GeneralSettingsPage() {
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: `${saveBarHeight}px` }}>
       <PageHeader heading="General" subheading="Tournament Settings" />
 
       {canEdit && (
@@ -221,15 +241,7 @@ export default function GeneralSettingsPage() {
         </SettingsSection>
       )}
 
-      {canEdit && (
-        <TracksSection
-          tournamentId={tournamentId}
-          locked={isArchived}
-          // The tournament's own dates, location and division are derived
-          // from these — a track edit changes the header, so refetch it.
-          onChanged={() => { tournamentsApi.get(tournamentId).then(setSelectedTournament).catch(() => {}); }}
-        />
-      )}
+      {canEdit && <TracksSection editor={trackEditor} locked={isArchived} />}
 
       {isOwnerOrAdmin && (
         <SettingsSection title="Invites">
@@ -368,7 +380,11 @@ export default function GeneralSettingsPage() {
       </SettingsSection>
 
       {canEdit && (
-        <FloatingSaveBar visible={isDirty} saving={saving} error={saveError} onSave={handleSave} onCancel={handleCancel} />
+        <FloatingSaveBar
+          visible={isDirty} saving={saving} error={saveError}
+          onSave={handleSave} onCancel={handleCancel}
+          onHeightChange={setSaveBarHeight}
+        />
       )}
 
       {showDeleteModal && selectedTournament && (
