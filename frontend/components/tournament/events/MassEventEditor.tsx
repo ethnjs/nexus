@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import {
-  tournamentEventsApi, tournamentShiftsApi, ApiError, TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift,
+  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, ApiError,
+  TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift, TournamentTrack,
 } from "@/lib/api";
-import { formatTime } from "@/lib/timeFormat";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
@@ -66,20 +67,53 @@ function ResultsCard({ results }: { results: EventResult[] }) {
   );
 }
 
-// A pending shift add/remove, shown git-diff style before Save is pressed —
+// A pending add/remove, shown git-diff style before Save is pressed —
 // undoing just drops it back out of the pending set, nothing hits the
-// backend until Save.
-function ShiftDiffRow({ shift, sign, onUndo }: { shift: TournamentShift; sign: "+" | "-"; onUndo: () => void }) {
-  const color = sign === "+" ? "var(--color-success)" : "var(--color-danger)";
+// backend until Save. Shared by shifts and tracks: both are whole-set
+// properties of an event, applied the same way.
+type DiffSign = "+" | "-";
+
+// The badge carries the sign and the colour, so a pending change reads as
+// one thing rather than a symbol sitting next to a neutral chip.
+function DiffBadge({ sign, children }: { sign: DiffSign; children: ReactNode }) {
+  return (
+    <Badge variant={sign === "+" ? "confirmed" : "declined"}>
+      {sign} {children}
+    </Badge>
+  );
+}
+
+function DiffRow({ label, onUndo }: { label: ReactNode; onUndo: () => void }) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color }}>
-        {sign} {shift.label} ({formatTime(shift.start)}–{formatTime(shift.end)})
+      <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+        {label}
       </span>
       <Button type="button" variant="ghost" size="xs" iconOnly title="Undo" onClick={onUndo}>
         <IconX size={11} />
       </Button>
     </div>
+  );
+}
+
+// A shift reads as its label plus the competition day it sits on. The time
+// range it used to show was the least distinguishing part — several shifts
+// share one, and the track is what a TD is actually choosing between.
+// `sign` marks this as a pending change rather than a row in a picker, and
+// folds the whole shift into one coloured badge — the shift is what's being
+// added or removed, not just its track.
+function shiftLabel(shift: TournamentShift, trackNames: Map<number, string>, sign?: DiffSign): ReactNode {
+  const track = trackNames.get(shift.track_id);
+  if (sign) {
+    return <DiffBadge sign={sign}>{track ? `${shift.label} (${track})` : shift.label}</DiffBadge>;
+  }
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+      <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {shift.label}
+      </span>
+      {track && <Badge>{track}</Badge>}
+    </span>
   );
 }
 
@@ -101,13 +135,19 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   const [draft, setDraft] = useState<MassEventDraft>({});
   const [shiftsToAdd, setShiftsToAdd] = useState<Set<number>>(new Set());
   const [shiftsToRemove, setShiftsToRemove] = useState<Set<number>>(new Set());
+  const [tracksToAdd, setTracksToAdd] = useState<Set<number>>(new Set());
+  const [tracksToRemove, setTracksToRemove] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<EventResult[] | null>(null);
 
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  // Every live track, cosmetic ones included — an event belonging to Test
+  // Writing is exactly what the event/track bridge exists for.
+  const [allTracks, setAllTracks] = useState<TournamentTrack[]>([]);
 
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
+    tournamentTracksApi.list(tournamentId, { public: true }).then(setAllTracks).catch(() => setAllTracks([]));
   }, [tournamentId]);
 
   // Every shift currently attached to at least one selected event — the
@@ -118,11 +158,20 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     return [...byId.values()];
   })();
 
+  const trackNames = useMemo(() => new Map(allTracks.map((t) => [t.id, t.name])), [allTracks]);
+
   const pendingAddShifts = (allShifts ?? []).filter((s) => shiftsToAdd.has(s.id));
   const pendingRemoveShifts = attachedShifts.filter((s) => shiftsToRemove.has(s.id));
 
+  // Every track at least one selected event is on — the only ones "Remove
+  // track" makes sense for.
+  const attachedTracks = allTracks.filter((t) => events.some((e) => e.track_ids.includes(t.id)));
+  const pendingAddTracks = allTracks.filter((t) => tracksToAdd.has(t.id));
+  const pendingRemoveTracks = attachedTracks.filter((t) => tracksToRemove.has(t.id));
+
   const isDirty = draft.division !== undefined || draft.event_type !== undefined
-    || shiftsToAdd.size > 0 || shiftsToRemove.size > 0;
+    || shiftsToAdd.size > 0 || shiftsToRemove.size > 0
+    || tracksToAdd.size > 0 || tracksToRemove.size > 0;
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
@@ -136,11 +185,23 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     setShiftsToAdd((prev) => (prev.has(shift.id) ? new Set([...prev].filter((id) => id !== shift.id)) : prev));
   }
 
+  function addTrack(track: TournamentTrack) {
+    setTracksToAdd((prev) => new Set(prev).add(track.id));
+    setTracksToRemove((prev) => (prev.has(track.id) ? new Set([...prev].filter((id) => id !== track.id)) : prev));
+  }
+
+  function removeTrack(track: TournamentTrack) {
+    setTracksToRemove((prev) => new Set(prev).add(track.id));
+    setTracksToAdd((prev) => (prev.has(track.id) ? new Set([...prev].filter((id) => id !== track.id)) : prev));
+  }
+
   // Discards the pending changes only — the panel stays open.
   function handleCancel() {
     setDraft({});
     setShiftsToAdd(new Set());
     setShiftsToRemove(new Set());
+    setTracksToAdd(new Set());
+    setTracksToRemove(new Set());
   }
 
   async function handleSave() {
@@ -160,6 +221,10 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
       if (shiftsToAdd.size > 0 || shiftsToRemove.size > 0) {
         const kept = current.shifts.map((s) => s.id).filter((id) => !shiftsToRemove.has(id));
         patch.shift_ids = [...new Set([...kept, ...shiftsToAdd])];
+      }
+      if (tracksToAdd.size > 0 || tracksToRemove.size > 0) {
+        const kept = current.track_ids.filter((id) => !tracksToRemove.has(id));
+        patch.track_ids = [...new Set([...kept, ...tracksToAdd])];
       }
 
       if (Object.keys(patch).length > 0) {
@@ -184,6 +249,8 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     setDraft({});
     setShiftsToAdd(new Set());
     setShiftsToRemove(new Set());
+    setTracksToAdd(new Set());
+    setTracksToRemove(new Set());
     setSaving(false);
   }
 
@@ -228,6 +295,54 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
           </SettingsRow>
         </SettingsSection>
 
+        <SettingsSection title="Tracks">
+          <div style={{ padding: "20px 0" }}>
+            <div style={{ display: "flex", gap: "8px" }}>
+              <Popover
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    <IconPlus size={12} /> Add track
+                  </Button>
+                }
+                items={allTracks}
+                getKey={(t) => t.id}
+                renderLabel={(t) => t.name}
+                emptyMessage="No tracks exist yet in this tournament."
+                onSelect={addTrack}
+                width={280}
+              />
+              <Popover
+                trigger={
+                  <Button type="button" variant="secondary" size="sm" fullWidth>
+                    <IconMinus size={12} /> Remove track
+                  </Button>
+                }
+                items={attachedTracks}
+                getKey={(t) => t.id}
+                renderLabel={(t) => t.name}
+                emptyMessage="None of the selected events are on a track."
+                onSelect={removeTrack}
+                width={280}
+              />
+            </div>
+
+            {(pendingAddTracks.length > 0 || pendingRemoveTracks.length > 0) && (
+              <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
+                {pendingAddTracks.map((t) => (
+                  <DiffRow key={t.id} label={<DiffBadge sign="+">{t.name}</DiffBadge>} onUndo={() => setTracksToAdd((prev) => new Set([...prev].filter((id) => id !== t.id)))} />
+                ))}
+                {pendingRemoveTracks.map((t) => (
+                  <DiffRow key={t.id} label={<DiffBadge sign="-">{t.name}</DiffBadge>} onUndo={() => setTracksToRemove((prev) => new Set([...prev].filter((id) => id !== t.id)))} />
+                ))}
+              </div>
+            )}
+
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
+              Removing a track leaves any shifts on it attached — detach those below if you meant to drop them too.
+            </p>
+          </div>
+        </SettingsSection>
+
         <SettingsSection title="Shifts">
           <div style={{ padding: "20px 0" }}>
             <div style={{ display: "flex", gap: "8px" }}>
@@ -239,7 +354,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
                 }
                 items={allShifts ?? []}
                 getKey={(s) => s.id}
-                renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
+                renderLabel={(s) => shiftLabel(s, trackNames)}
                 emptyMessage="No shifts exist yet in this tournament."
                 onSelect={addShift}
                 width={280}
@@ -252,7 +367,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
                 }
                 items={attachedShifts}
                 getKey={(s) => s.id}
-                renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
+                renderLabel={(s) => shiftLabel(s, trackNames)}
                 emptyMessage="None of the selected events have a shift attached."
                 onSelect={removeShift}
                 width={280}
@@ -262,16 +377,16 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
             {(pendingAddShifts.length > 0 || pendingRemoveShifts.length > 0) && (
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", marginTop: "10px" }}>
                 {pendingAddShifts.map((s) => (
-                  <ShiftDiffRow key={s.id} shift={s} sign="+" onUndo={() => setShiftsToAdd((prev) => new Set([...prev].filter((id) => id !== s.id)))} />
+                  <DiffRow key={s.id} label={shiftLabel(s, trackNames, "+")} onUndo={() => setShiftsToAdd((prev) => new Set([...prev].filter((id) => id !== s.id)))} />
                 ))}
                 {pendingRemoveShifts.map((s) => (
-                  <ShiftDiffRow key={s.id} shift={s} sign="-" onUndo={() => setShiftsToRemove((prev) => new Set([...prev].filter((id) => id !== s.id)))} />
+                  <DiffRow key={s.id} label={shiftLabel(s, trackNames, "-")} onUndo={() => setShiftsToRemove((prev) => new Set([...prev].filter((id) => id !== s.id)))} />
                 ))}
               </div>
             )}
 
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
-              Changes above apply when you press Save. Adding a shift also adds its track to the event; removing one never takes the track away.
+              Adding a shift also adds its track to the event; removing one never takes the track away.
             </p>
           </div>
         </SettingsSection>
