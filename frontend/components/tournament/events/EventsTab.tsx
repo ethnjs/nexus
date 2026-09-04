@@ -592,9 +592,16 @@ function EventRow({
           derivable from its shifts, but they are the same days its track
           already names — the track is the thing that isn't inferable. */}
       <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-        {event.track_ids.length > 0
-          ? event.track_ids.map((id) => <Badge key={id}>{trackNames.get(id) ?? "—"}</Badge>)
-          : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
+        {(() => {
+          // An id with no name is a track the catalog hasn't loaded yet (or
+          // one that has gone away). A badge reading "—" would claim the
+          // event is on a track called nothing, so those are dropped and the
+          // row falls back to the plain dash.
+          const named = event.track_ids.filter((id) => trackNames.has(id));
+          return named.length > 0
+            ? named.map((id) => <Badge key={id}>{trackNames.get(id)}</Badge>)
+            : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>;
+        })()}
       </span>
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
         {event.shifts.length}
