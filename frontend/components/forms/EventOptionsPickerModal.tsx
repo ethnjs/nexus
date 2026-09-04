@@ -20,14 +20,14 @@ type PickerFilterKey = (typeof PICKER_FILTER_KEYS)[number]
 const UNSET = '__unset__'
 const UNCATEGORIZED = '__uncategorized__'
 
-type SortField = 'name' | 'division' | 'start_time'
+type SortField = 'name' | 'division' | 'day'
 type SortDir = 'asc' | 'desc'
 type GroupMode = 'ungrouped' | 'name' | 'category'
 
 const SORT_FIELD_OPTIONS = [
   { value: 'name', label: 'Name' },
   { value: 'division', label: 'Division' },
-  { value: 'start_time', label: 'Start' },
+  { value: 'day', label: 'Day' },
 ]
 
 const GROUP_MODE_OPTIONS = [
@@ -49,7 +49,9 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
   switch (field) {
     case 'name': return eventName(e).toLowerCase()
     case 'division': return e.division ?? ''
-    case 'start_time': return e.start_time ? new Date(e.start_time).getTime() : 0
+    // An event has no time of its own — its schedule is its shifts, so
+    // the first day it runs is what there is to sort by.
+    case 'day': return e.days[0] ?? ''
   }
 }
 

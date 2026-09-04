@@ -4,21 +4,17 @@ import { useEffect, useState } from "react";
 import {
   tournamentEventsApi, tournamentShiftsApi, ApiError, TournamentEvent, TournamentEventInput, TournamentDivision, TournamentShift,
 } from "@/lib/api";
-import { toDateInput, fromDayAndTime, formatTime } from "@/lib/timeFormat";
+import { formatTime } from "@/lib/timeFormat";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
-import { Input } from "@/components/ui/Input";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
-import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
-import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
@@ -30,15 +26,11 @@ import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 // exactly the width the panel itself renders at.
 export const MASS_EVENT_EDITOR_WIDTH = 480;
 
+// No times here any more: an event's schedule *is* its shifts, so the way to
+// move several events is to change which shifts they hold.
 interface MassEventDraft {
   division?: TournamentDivision;
   event_type?: "standard" | "trial";
-  // Only meaningful once start or end is touched — combined with startTime/
-  // endTime to build each event's new start_time/end_time. Not itself a
-  // mass-editable field on TournamentEvent (there's no bare "day" column).
-  day?: string;
-  startTime?: string;
-  endTime?: string;
 }
 
 interface EventResult {
@@ -102,7 +94,7 @@ interface MassEventEditorProps {
 }
 
 export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirtyChange }: MassEventEditorProps) {
-  const { selectedTournament, days, isMultiDay } = useTournament();
+  const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
 
@@ -118,13 +110,6 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
     tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
   }, [tournamentId]);
 
-  // Same day-resolution rule as time-of-day edits: a newly created shift
-  // needs exactly one day, so a multi-day tournament with events on
-  // different days can't default to "each event's own" the way attaching
-  // an existing shift can (that's per-event bounds-checked on the backend
-  // instead, hence no day needed there).
-  const shiftDefaultDay = isMultiDay ? (days[0] ?? "") : (days[0] ?? toDateInput(events[0]?.start_time ?? events[0]?.end_time ?? null));
-
   // Every shift currently attached to at least one selected event — the
   // only ones "Remove shift" makes sense for.
   const attachedShifts = (() => {
@@ -137,12 +122,9 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   const pendingRemoveShifts = attachedShifts.filter((s) => shiftsToRemove.has(s.id));
 
   const isDirty = draft.division !== undefined || draft.event_type !== undefined
-    || draft.startTime !== undefined || draft.endTime !== undefined
     || shiftsToAdd.size > 0 || shiftsToRemove.size > 0;
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
-
-  const touchesTime = draft.startTime !== undefined || draft.endTime !== undefined;
 
   function addShift(shift: TournamentShift) {
     setShiftsToAdd((prev) => new Set(prev).add(shift.id));
@@ -152,19 +134,6 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
   function removeShift(shift: TournamentShift) {
     setShiftsToRemove((prev) => new Set(prev).add(shift.id));
     setShiftsToAdd((prev) => (prev.has(shift.id) ? new Set([...prev].filter((id) => id !== shift.id)) : prev));
-  }
-
-  // Explicit day pick wins (needed once any selected event has no date of
-  // its own yet); a single-day tournament has only one valid day so it
-  // never needs asking; otherwise each event keeps whatever day it already
-  // has — mass-editing time-of-day shouldn't silently move an event to a
-  // different day than the one it was already scheduled on.
-  function resolveDay(event: TournamentEvent): string | null {
-    if (draft.day) return draft.day;
-    if (!isMultiDay && days[0]) return days[0];
-    if (event.start_time) return toDateInput(event.start_time);
-    if (event.end_time) return toDateInput(event.end_time);
-    return null;
   }
 
   // Discards the pending changes only — the panel stays open.
@@ -184,25 +153,17 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
       const patch: Partial<TournamentEventInput> = {};
       if (draft.division !== undefined) patch.division = draft.division;
       if (draft.event_type !== undefined) patch.event_type = draft.event_type;
-      if (touchesTime) {
-        const day = resolveDay(event);
-        if (!day) throw new Error("No date set on this event — pick a Day above to apply a time change.");
-        if (draft.startTime !== undefined) patch.start_time = fromDayAndTime(day, draft.startTime);
-        if (draft.endTime !== undefined) patch.end_time = fromDayAndTime(day, draft.endTime);
-      }
-      if (Object.keys(patch).length > 0) {
-        current = await tournamentEventsApi.update(tournamentId, event.id, patch);
+
+      // Shifts are a property of the event and set whole-set, so the pending
+      // adds and removes fold into the same PATCH — one request per event
+      // instead of one per link, and the two can never half-apply.
+      if (shiftsToAdd.size > 0 || shiftsToRemove.size > 0) {
+        const kept = current.shifts.map((s) => s.id).filter((id) => !shiftsToRemove.has(id));
+        patch.shift_ids = [...new Set([...kept, ...shiftsToAdd])];
       }
 
-      for (const shift of pendingAddShifts) {
-        if (current.shifts.some((s) => s.id === shift.id)) continue;
-        await tournamentShiftsApi.attach(tournamentId, event.id, shift.id);
-        current = { ...current, shifts: [...current.shifts, shift] };
-      }
-      for (const shiftId of shiftsToRemove) {
-        if (!current.shifts.some((s) => s.id === shiftId)) continue;
-        await tournamentShiftsApi.detach(tournamentId, event.id, shiftId);
-        current = { ...current, shifts: current.shifts.filter((s) => s.id !== shiftId) };
+      if (Object.keys(patch).length > 0) {
+        current = await tournamentEventsApi.update(tournamentId, event.id, patch);
       }
 
       return current;
@@ -258,37 +219,11 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
             />
           </SettingsRow>
 
-          <SettingsRow label="Type">
+          <SettingsRow label="Type" last>
             <ButtonGroup
               options={[{ value: "standard", label: "Standard" }, { value: "trial", label: "Trial" }]}
               value={draft.event_type ?? ""}
               onChange={(v) => setDraft((d) => ({ ...d, event_type: v as "standard" | "trial" }))}
-            />
-          </SettingsRow>
-
-          {touchesTime && isMultiDay && (
-            <SettingsRow label="Day" helper="Needed to apply a time change — events keep their own day otherwise.">
-              <TournamentDayPicker
-                value={draft.day ?? ""}
-                onChange={(v) => setDraft((d) => ({ ...d, day: v || undefined }))}
-                days={days}
-              />
-            </SettingsRow>
-          )}
-
-          <SettingsRow label="Start">
-            <Input
-              type="time" fullWidth
-              value={draft.startTime ?? ""}
-              onChange={(e) => setDraft((d) => ({ ...d, startTime: e.target.value || undefined }))}
-            />
-          </SettingsRow>
-
-          <SettingsRow label="End" last>
-            <Input
-              type="time" fullWidth
-              value={draft.endTime ?? ""}
-              onChange={(e) => setDraft((d) => ({ ...d, endTime: e.target.value || undefined }))}
             />
           </SettingsRow>
         </SettingsSection>
@@ -322,28 +257,6 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
                 onSelect={removeShift}
                 width={280}
               />
-              <FormPopover
-                width={300}
-                trigger={
-                  <Button type="button" variant="secondary" size="sm" fullWidth>
-                    <IconPlus size={12} /> New shift
-                  </Button>
-                }
-              >
-                {(close) => (
-                  <CreateShiftForm
-                    tournamentId={tournamentId}
-                    day={shiftDefaultDay}
-                    days={isMultiDay ? days : undefined}
-                    onCreated={(shift) => {
-                      setAllShifts((prev) => [...(prev ?? []), shift]);
-                      addShift(shift);
-                      close();
-                    }}
-                    onCancel={close}
-                  />
-                )}
-              </FormPopover>
             </div>
 
             {(pendingAddShifts.length > 0 || pendingRemoveShifts.length > 0) && (
@@ -358,7 +271,7 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
             )}
 
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "8px" }}>
-              Changes above apply when you press Save — adding is bounds-checked per event on the backend, so one outside an event&rsquo;s time window just fails for that event.
+              Changes above apply when you press Save. Adding a shift also adds its track to the event; removing one never takes the track away.
             </p>
           </div>
         </SettingsSection>

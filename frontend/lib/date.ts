@@ -23,3 +23,18 @@ export function toLocalDateString(d: Date): string {
   const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
+
+// Every day in [start, end] inclusive, as YYYY-MM-DD strings. A tournament
+// has no such range — its `dates` are already the list of days it runs — but
+// a *track* does: a competition day carries a real contiguous start/end, and
+// its shifts have to land inside it.
+export function enumerateDays(start: string, end: string): string[] {
+  const days: string[] = [];
+  const cursor = parseLocalDate(start);
+  const last = parseLocalDate(end);
+  while (cursor <= last) {
+    days.push(toLocalDateString(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return days;
+}

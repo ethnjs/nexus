@@ -9,6 +9,9 @@ import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker
 
 interface CreateShiftFormProps {
   tournamentId: number;
+  /** The competition day the shift belongs to. Required — a shift with no
+   *  track has no date range to validate against. */
+  trackId: number;
   /** The day (YYYY-MM-DD) the new shift is created on — shifts don't cross midnight, so there's one to pick. Used as-is when days is omitted (a single event's own day is unambiguous); seeds the initial selection when days is given. */
   day: string;
   /** When set to the tournament's actual running days (multi-day tournaments, mass-edit context), renders a Day picker instead of silently using `day` — there's no single event to infer it from. */
@@ -18,7 +21,7 @@ interface CreateShiftFormProps {
   onCancel: () => void;
 }
 
-export function CreateShiftForm({ tournamentId, day: initialDay, days, onCreated, onCancel }: CreateShiftFormProps) {
+export function CreateShiftForm({ tournamentId, trackId, day: initialDay, days, onCreated, onCancel }: CreateShiftFormProps) {
   const [day, setDay] = useState(initialDay);
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
@@ -35,6 +38,7 @@ export function CreateShiftForm({ tournamentId, day: initialDay, days, onCreated
     setError(undefined);
     try {
       const shift = await tournamentShiftsApi.create(tournamentId, {
+        track_id: trackId,
         label: label.trim(),
         start: fromDayAndTime(day, startTime)!,
         end: fromDayAndTime(day, endTime)!,

@@ -1,4 +1,4 @@
-import { parseLocalDate } from "./date";
+import { enumerateDays, parseLocalDate } from "./date";
 import type { TournamentPublic, TournamentTrack } from "./api";
 
 // A tournament's `dates` is the list of days it actually runs, not a range —
@@ -53,16 +53,7 @@ export function formatDates(dates: string[], style: DateStyle = "short"): string
 /** An inclusive start/end pair, rendered the same way a day list is. */
 export function formatDayRange(start: string | null, end: string | null, style: DateStyle = "short"): string | null {
   if (!start || !end || end < start) return null;
-  const days: string[] = [];
-  const cursor = parseLocalDate(start);
-  const last = parseLocalDate(end);
-  while (cursor <= last) {
-    days.push(
-      `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, "0")}-${String(cursor.getDate()).padStart(2, "0")}`,
-    );
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return formatDates(days, style);
+  return formatDates(enumerateDays(start, end), style);
 }
 
 /** A track's own days, for the per-track rows a multi-site tournament shows. */

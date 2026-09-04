@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
-import { formatDateTime } from "@/lib/timeFormat";
+import { formatDates } from "@/lib/tournamentDisplay";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -29,7 +29,7 @@ import { eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
-const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 195px 195px 70px";
+const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 220px 80px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
@@ -44,7 +44,7 @@ const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisi
   C: "divisionC",
 };
 
-type SortField = "name" | "division" | "start_time";
+type SortField = "name" | "division" | "day";
 type SortDir = "asc" | "desc";
 
 // Sentinel for the null case of a nullable field (division/category) so it
@@ -59,7 +59,7 @@ const TYPE_OPTIONS = [
 const SORT_FIELD_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "division", label: "Division" },
-  { value: "start_time", label: "Start" },
+  { value: "day", label: "Day" },
 ];
 
 function categoryKey(e: TournamentEvent): string {
@@ -70,7 +70,9 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
   switch (field) {
     case "name": return eventName(e).toLowerCase();
     case "division": return e.division ?? "";
-    case "start_time": return e.start_time ? new Date(e.start_time).getTime() : 0;
+    // An event has no time of its own — its schedule is its shifts, so
+    // the first day it runs is what there is to sort by.
+    case "day": return e.days[0] ?? "";
   }
 }
 
@@ -98,7 +100,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // Committed filters only — the modal keeps its own draft until Apply.
   const [filters, applyFilters] = usePersistedFilter("events", user?.id, tournamentId, EVENTS_FILTER_KEYS);
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("start_time");
+  const [sortField, setSortField] = useState<SortField>("day");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // The two mutually-exclusive panel flows (single-focus vs. Select mode) and
@@ -424,8 +426,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               <span style={{ textAlign: "center" }}>Division</span>
               <span style={{ textAlign: "center" }}>Type</span>
               <span>Category</span>
-              <span style={{ textAlign: "center" }}>Start</span>
-              <span style={{ textAlign: "center" }}>End</span>
+              <span style={{ textAlign: "center" }}>Days</span>
+              <span style={{ textAlign: "center" }}>Shifts</span>
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
@@ -578,11 +580,13 @@ function EventRow({
       }}>
         {event.event?.category.name ?? ""}
       </span>
+      {/* Derived from the event's shifts — a list of days, and empty for an
+          event on a cosmetic track, which has no schedule at all. */}
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.start_time ? formatDateTime(event.start_time) : "—"}
+        {event.days.length > 0 ? formatDates(event.days) : "—"}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.end_time ? formatDateTime(event.end_time) : "—"}
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+        {event.shifts.length}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>

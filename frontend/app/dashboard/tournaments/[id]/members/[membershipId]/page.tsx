@@ -76,9 +76,10 @@ export default function MemberPage() {
         setError(new ApiError(403, "Not a member of this tournament."));
       })
       .catch((e) => setError(e instanceof ApiError ? e : new ApiError(0, "Failed to load member.")));
-    // The member-facing read: a self-viewer holds no manage_events, and all
-    // this sets is the availability timeline's window.
-    tournamentShiftsApi.list(tournamentId, { public: true }).then(setShifts).catch(() => setShifts([]));
+    // Reading the shift catalog only needs a membership now (the member edit
+    // page needs it too), and all this sets is the availability timeline's
+    // window — so there is no member-facing variant to ask for.
+    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => setShifts([]));
   }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf]);
 
   // The catalog is only the *pickable* roles — the ones a member already

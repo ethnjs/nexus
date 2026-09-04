@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import {
-  tournamentEventsApi, tournamentShiftsApi, canonicalEventsApi, ApiError,
-  TournamentEvent, TournamentEventInput, TournamentShift, CanonicalEvent, TournamentDivision,
+  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi, ApiError,
+  TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
-import { toDateInput, toTimeInput, fromDayAndTime, formatTime } from "@/lib/timeFormat";
+import { formatTime } from "@/lib/timeFormat";
+import { formatDates } from "@/lib/tournamentDisplay";
+import { enumerateDays } from "@/lib/date";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -18,7 +20,6 @@ import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
-import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import { CreateShiftForm } from "@/components/tournament/events/CreateShiftForm";
 import { IconPlus, IconTrash, IconCalendar, IconX } from "@/components/ui/Icons";
@@ -37,19 +38,13 @@ interface EventDraft {
   room: string;
   floor: string;
   volunteers_needed: string;
-  // Split day + time-of-day rather than one combined datetime-local value —
-  // events don't cross midnight, so there's exactly one day to pick, and
-  // splitting it out lets that day default to (or lock onto) the
-  // tournament's own day instead of requiring it to be repicked per event.
-  day: string;
-  startTime: string;
-  endTime: string;
+  // The tracks this event runs on. Not derived from its shifts: a cosmetic
+  // track (Test Writing) has none by construction, so an event that belongs
+  // to one can only say so outright.
+  trackIds: number[];
 }
 
 function draftFromEvent(event: TournamentEvent | null): EventDraft {
-  // Prefer start_time's day; fall back to end_time's for old data where
-  // only one end got set. Both should agree once actually saved.
-  const dayIso = event?.start_time ?? event?.end_time ?? null;
   return {
     eventText: event?.event?.name ?? event?.name ?? "",
     event_id: event?.event_id ?? null,
@@ -60,22 +55,8 @@ function draftFromEvent(event: TournamentEvent | null): EventDraft {
     room: event?.room ?? "",
     floor: event?.floor ?? "",
     volunteers_needed: event?.volunteers_needed != null ? String(event.volunteers_needed) : "",
-    day: toDateInput(dayIso),
-    startTime: toTimeInput(event?.start_time ?? null),
-    endTime: toTimeInput(event?.end_time ?? null),
+    trackIds: event?.track_ids ?? [],
   };
-}
-
-// A single-day tournament auto-fills Day rather than making it a real
-// choice — applied wherever a draft gets (re)built from an event so the
-// dirty-check baseline always agrees with the initial draft state. Without
-// this, a brand-new event's draft would carry the auto-filled day while its
-// "clean" baseline (draftFromEvent(null)) wouldn't, reading as dirty the
-// instant the panel opens.
-function draftWithDayDefault(event: TournamentEvent | null, isMultiDay: boolean, days: string[]): EventDraft {
-  const draft = draftFromEvent(event);
-  if (!draft.day && !isMultiDay && days[0]) draft.day = days[0];
-  return draft;
 }
 
 interface EventPanelProps {
@@ -98,7 +79,7 @@ interface EventPanelProps {
 export function EventPanel({
   tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange, onPrev, onNext, hasPrev, hasNext,
 }: EventPanelProps) {
-  const { selectedTournament, days, isMultiDay } = useTournament();
+  const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const { guard } = useUnsavedChanges();
 
@@ -108,13 +89,15 @@ export function EventPanel({
   const [current, setCurrent] = useState<TournamentEvent | null>(event);
   // A single-day tournament has only one valid day anyway — default to it
   // immediately instead of making every new event pick it.
-  const [draft, setDraft] = useState<EventDraft>(() => draftWithDayDefault(event, isMultiDay, days));
+  const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event));
   const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
   const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  // Every live track, competition day or not: an event can belong to an
+  // undated one (Test Writing), which is the whole point of the bridge.
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
-  const [timeErrors, setTimeErrors] = useState<{ startTime?: string; endTime?: string }>({});
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
 
@@ -124,6 +107,7 @@ export function EventPanel({
 
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
+    tournamentTracksApi.list(tournamentId, { public: true }).then(setTracks).catch(() => setTracks([]));
   }, [tournamentId]);
 
   const isNew = current === null;
@@ -131,22 +115,14 @@ export function EventPanel({
   // untouched "New event" panel reads as clean — closing it needs no
   // confirmation until the user actually types something.
   const isDirty = useMemo(
-    () => JSON.stringify(draft) !== JSON.stringify(draftWithDayDefault(current, isMultiDay, days)),
-    [draft, current, isMultiDay, days]
+    () => JSON.stringify(draft) !== JSON.stringify(draftFromEvent(current)),
+    [draft, current]
   );
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
 
   function patch(p: Partial<EventDraft>) {
     setDraft((d) => ({ ...d, ...p }));
-    if (p.startTime !== undefined || p.endTime !== undefined) {
-      setTimeErrors((cur) => {
-        const next = { ...cur };
-        if (p.startTime !== undefined) delete next.startTime;
-        if (p.endTime !== undefined) delete next.endTime;
-        return next;
-      });
-    }
   }
 
   function handleEventTextChange(text: string, matched: CanonicalEvent | null) {
@@ -163,15 +139,13 @@ export function EventPanel({
       room: draft.room.trim() || null,
       floor: draft.floor.trim() || null,
       volunteers_needed: draft.volunteers_needed.trim() ? Number(draft.volunteers_needed) : null,
-      start_time: fromDayAndTime(draft.day, draft.startTime),
-      end_time: fromDayAndTime(draft.day, draft.endTime),
+      track_ids: draft.trackIds,
     };
   }
 
   async function handleSave() {
     setSaving(true);
     setSaveError(undefined);
-    setTimeErrors({});
     try {
       const payload = buildPayload();
       const saved = isNew
@@ -181,16 +155,7 @@ export function EventPanel({
       setDraft(draftFromEvent(saved));
       onSaved(saved);
     } catch (err) {
-      // The bounds check comes back as a 409 naming which field it's about
-      // ("... start_time falls before ..." / "... end_time falls after ...")
-      // — route it to that Input instead of just the floating bar.
-      if (err instanceof ApiError && err.status === 409 && err.message.includes("start_time")) {
-        setTimeErrors({ startTime: err.message });
-      } else if (err instanceof ApiError && err.status === 409 && err.message.includes("end_time")) {
-        setTimeErrors({ endTime: err.message });
-      } else {
-        setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
-      }
+      setSaveError(err instanceof ApiError ? err.message : "Failed to save event.");
     } finally {
       setSaving(false);
     }
@@ -199,40 +164,45 @@ export function EventPanel({
   // Discards the draft only — the panel stays open, matching the table's own
   // "Cancel" bar (ShiftsTab) rather than treating Cancel as a second Close.
   function handleCancel() {
-    setDraft(draftWithDayDefault(current, isMultiDay, days));
+    setDraft(draftFromEvent(current));
     setSaveError(undefined);
-    setTimeErrors({});
   }
 
-  // Only offered once the event has its own saved start/end — attaching
-  // against unsaved draft bounds would let a shift through that the
-  // backend's own bounds check (against the persisted row) then rejects.
+  // Any shift the event doesn't already hold. There are no event bounds to
+  // check against any more — the event's schedule *is* its shifts — so the
+  // only rule left is the backend's: two shifts on one event can't overlap.
   const eligibleShifts = useMemo(() => {
-    if (!allShifts || !current?.start_time || !current?.end_time) return [];
+    if (!allShifts || !current) return [];
     const attachedIds = new Set(current.shifts.map((s) => s.id));
-    return allShifts.filter((s) =>
-      !attachedIds.has(s.id) && s.start >= current.start_time! && s.end <= current.end_time!
-    );
+    return allShifts.filter((s) => !attachedIds.has(s.id));
   }, [allShifts, current]);
 
-  async function handleAttachShift(shift: TournamentShift) {
+  // An event's shifts are a property of the event, set whole-set — there is
+  // no attach/detach route left to call, so both directions are one PATCH.
+  // Adding also pulls in the shift's track server-side; removing never
+  // takes a track away.
+  async function setShiftIds(shiftIds: number[]) {
     if (!current) return;
     setShiftError(undefined);
     try {
-      await tournamentShiftsApi.attach(tournamentId, current.id, shift.id);
-      const updated = { ...current, shifts: [...current.shifts, shift] };
+      const updated = await tournamentEventsApi.update(tournamentId, current.id, { shift_ids: shiftIds });
       setCurrent(updated);
+      setDraft(draftFromEvent(updated));
       onSaved(updated);
     } catch (err) {
-      setShiftError(err instanceof ApiError ? err.message : "Failed to add shift.");
+      setShiftError(err instanceof ApiError ? err.message : "Failed to update shifts.");
       throw err;
     }
   }
 
-  // The shift already exists on the backend by the time this runs —
-  // attaching failing here would orphan a created-but-unattached shift, but
-  // that's the same tradeoff the standalone Shifts tab accepts for any
-  // create, and it stays visible there / in the Add-shift list either way.
+  async function handleAttachShift(shift: TournamentShift) {
+    if (!current) return;
+    await setShiftIds([...current.shifts.map((s) => s.id), shift.id]);
+  }
+
+  // The shift already exists on the backend by the time this runs — the
+  // PATCH failing would orphan a created-but-unattached shift, but it stays
+  // visible on the Shifts tab and in the Add-shift list either way.
   async function handleCreateAndAttachShift(shift: TournamentShift) {
     setAllShifts((prev) => [...(prev ?? []), shift]);
     await handleAttachShift(shift);
@@ -240,16 +210,19 @@ export function EventPanel({
 
   async function handleDetachShift(shiftId: number) {
     if (!current) return;
-    setShiftError(undefined);
-    try {
-      await tournamentShiftsApi.detach(tournamentId, current.id, shiftId);
-      const updated = { ...current, shifts: current.shifts.filter((s) => s.id !== shiftId) };
-      setCurrent(updated);
-      onSaved(updated);
-    } catch (err) {
-      setShiftError(err instanceof ApiError ? err.message : "Failed to detach shift.");
-    }
+    await setShiftIds(current.shifts.filter((s) => s.id !== shiftId).map((s) => s.id)).catch(() => {});
   }
+
+  // Creating a shift from here needs one track and one of its days. With no
+  // track or several there is no answer, so the control simply isn't offered.
+  const newShiftTrack = useMemo(() => {
+    if (draft.trackIds.length !== 1) return null;
+    const track = tracks.find((t) => t.id === draft.trackIds[0]);
+    return track?.is_primary ? track : null;
+  }, [draft.trackIds, tracks]);
+  const newShiftDays = newShiftTrack?.start_date && newShiftTrack.end_date
+    ? enumerateDays(newShiftTrack.start_date, newShiftTrack.end_date)
+    : [];
 
   const categoryName = draft.event_id
     ? (canonicalEvents.find((e) => e.id === draft.event_id)?.category.name ?? current?.event?.category.name)
@@ -323,30 +296,31 @@ export function EventPanel({
             />
           </SettingsRow>
 
-          <SettingsRow label="Day">
-            <TournamentDayPicker
-              value={draft.day}
-              onChange={(v) => patch({ day: v })}
-              days={days}
-              placeholder="Select a day"
+          {/* An event's *when* is the union of its shifts, so there is
+              nothing to edit here — this is the read-out of that. Empty for
+              an event on a cosmetic track, which has no schedule at all. */}
+          <SettingsRow label="Days" helper="Taken from this event's shifts.">
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+              {current && current.days.length > 0 ? formatDates(current.days) : "—"}
+            </span>
+          </SettingsRow>
+
+          {/* Adding a shift adds its track automatically; this is how an
+              event reaches an undated track (Test Writing) that has no
+              shifts to infer it from. */}
+          <SettingsRow label="Tracks" helper="Which parts of the tournament this event belongs to.">
+            <ButtonGroup
+              options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
+              value={draft.trackIds.map(String)}
+              onChange={(v) => {
+                const id = Number(v);
+                patch({
+                  trackIds: draft.trackIds.includes(id)
+                    ? draft.trackIds.filter((x) => x !== id)
+                    : [...draft.trackIds, id],
+                });
+              }}
               locked={locked}
-              fullWidth
-            />
-          </SettingsRow>
-
-          <SettingsRow label="Start">
-            <Input
-              type="time" fullWidth locked={locked} value={draft.startTime}
-              onChange={(e) => patch({ startTime: e.target.value })}
-              error={timeErrors.startTime}
-            />
-          </SettingsRow>
-
-          <SettingsRow label="End">
-            <Input
-              type="time" fullWidth locked={locked} value={draft.endTime}
-              onChange={(e) => patch({ endTime: e.target.value })}
-              error={timeErrors.endTime}
             />
           </SettingsRow>
 
@@ -414,7 +388,6 @@ export function EventPanel({
               )}
 
               {!locked && (
-                current.start_time && current.end_time ? (
                   <div>
                     <div style={{ display: "flex", gap: "8px" }}>
                       {eligibleShifts.length > 0 && (
@@ -433,23 +406,30 @@ export function EventPanel({
                           width={280}
                         />
                       )}
-                      <FormPopover
-                        width={300}
-                        trigger={
-                          <Button type="button" variant="secondary" size="sm" fullWidth>
-                            <IconPlus size={12} /> New shift
-                          </Button>
-                        }
-                      >
-                        {(close) => (
-                          <CreateShiftForm
-                            tournamentId={tournamentId}
-                            day={toDateInput(current.start_time!)}
-                            onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
-                            onCancel={close}
-                          />
-                        )}
-                      </FormPopover>
+                      {/* A new shift needs a track and one of its days, so
+                          this only appears once the event is on exactly one
+                          track — with none or several there is no answer. */}
+                      {newShiftTrack && (
+                        <FormPopover
+                          width={300}
+                          trigger={
+                            <Button type="button" variant="secondary" size="sm" fullWidth>
+                              <IconPlus size={12} /> New shift
+                            </Button>
+                          }
+                        >
+                          {(close) => (
+                            <CreateShiftForm
+                              tournamentId={tournamentId}
+                              trackId={newShiftTrack.id}
+                              day={newShiftTrack.start_date ?? ""}
+                              days={newShiftDays.length > 1 ? newShiftDays : undefined}
+                              onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
+                              onCancel={close}
+                            />
+                          )}
+                        </FormPopover>
+                      )}
                     </div>
                     {/* No existing shift already fits this event's window —
                         point straight at creating one instead of a
@@ -459,23 +439,12 @@ export function EventPanel({
                         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
                         marginTop: "8px",
                       }}>
-                        No existing shifts fit this event&rsquo;s time window — create one above.
+                        {newShiftTrack
+                          ? "No shifts left to add — create one above."
+                          : "No shifts left to add. Put this event on a single competition day to create one here."}
                       </p>
                     )}
                   </div>
-                ) : (
-                  // Shown in place of the Add-shift control, not just left
-                  // blank — attaching is bounds-checked against the event's
-                  // own start/end, so there's nothing to offer until those
-                  // are set.
-                  <p style={{
-                    fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)",
-                    padding: "10px", textAlign: "center",
-                    border: "1px dashed var(--color-border)", borderRadius: "var(--radius-md)",
-                  }}>
-                    Set a start and end time above, then save, to add shifts.
-                  </p>
-                )
               )}
 
               {shiftError && (
