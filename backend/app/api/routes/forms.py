@@ -26,7 +26,9 @@ from app.core.form.validation import (
     LUNCH_FIELD_KEY_PATTERN,
     LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
-    availability_field_date,
+    availability_field_track_id,
+    event_preference_field_track_id,
+    validate_preset_track,
     collect_active_field_errors,
     option_shift_ids,
     option_track_assignments,
@@ -43,7 +45,7 @@ from app.core.form.write_through import (
     parse_availability_field_key,
     parse_event_preference_field_key,
     parse_lunch_field_key,
-    shift_ids_on_dates,
+    shift_ids_on_tracks,
     sync_availability,
     sync_event_preferences,
     sync_lunch,
@@ -716,7 +718,7 @@ def bulk_update_fields(
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(
-                    db, form.tournament_id, normalized, availability_field_date(field_key),
+                    db, form.tournament_id, normalized, availability_field_track_id(field_key),
                 )
             if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key):
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
@@ -1157,7 +1159,7 @@ def _write_through_reserved_fields(
         )
 
     availability_shift_ids: set[int] = set()
-    availability_dates: set[date] = set()
+    availability_track_ids: set[int] = set()
     # track_id -> {"status", "field_id"}. Later fields overwrite earlier ones,
     # so document order decides which question wins when two name the same
     # track — hence _active_fields' order_by. Whether that intent actually
@@ -1173,8 +1175,14 @@ def _write_through_reserved_fields(
         # into track statuses, so it feeds both this and the shift pool.
         in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
         if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
+            # An availability field's option carries a bare status; the track
+            # comes from its own key. A track_status_* field names no track,
+            # so its options carry the ids themselves and this is None.
+            own_track_id = availability_field_track_id(field.field_key)
             for option_id in selected:
-                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
+                for assignment in option_track_assignments(
+                    options_by_id.get(option_id) or {}, own_track_id,
+                ):
                     intended_track_statuses[assignment["id"]] = {
                         "status": assignment["status"], "field_id": field.id,
                     }
@@ -1189,14 +1197,14 @@ def _write_through_reserved_fields(
             # a `shift_ids` key.
             for option_id in selected:
                 availability_shift_ids.update(option_shift_ids(options_by_id.get(option_id) or {}))
-            # The day is what this question governs, independent of which
+            # The track is what this question governs, independent of which
             # shifts its options currently name — so regrouping an option
             # can't strand a shift the member should have lost.
-            availability_dates.add(parse_availability_field_key(field.field_key))
+            availability_track_ids.add(parse_availability_field_key(field.field_key))
             continue
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
-            lunch_date, category = parse_lunch_field_key(field.field_key)
+            lunch_track_id, category = parse_lunch_field_key(field.field_key)
             if field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES:
                 # No options to resolve — the answer itself is the selection.
                 # Blank clears the row rather than storing an empty one, so
@@ -1212,11 +1220,11 @@ def _write_through_reserved_fields(
                     for v in selected
                     if v in options_by_id
                 ]
-            sync_lunch(db, membership.id, lunch_date, category, values)
+            sync_lunch(db, membership.id, lunch_track_id, category, values)
             continue
 
         if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
-            suffix = parse_event_preference_field_key(field.field_key)
+            pref_track_id = parse_event_preference_field_key(field.field_key)
             items: list[dict] = []
             if field.question_type == "ranked_choice":
                 # `value` here is a rank -> option_id dict (see the raw
@@ -1243,18 +1251,18 @@ def _write_through_reserved_fields(
                         continue
                     for event_id in option.get("value") or []:
                         items.append({"tournament_event_id": event_id, "rank": rank})
-            # A suffix is one field's exclusive key (unlike availability's
-            # shared day pool), so this can sync straight from this field's
-            # answer with no cross-field union needed.
-            sync_event_preferences(db, membership.id, suffix, items)
+            # A track has exactly one preference question (unlike
+            # availability's shared per-track pool), so this can sync straight
+            # from this field's answer with no cross-field union needed.
+            sync_event_preferences(db, membership.id, pref_track_id, items)
             continue
 
-    if availability_dates:
+    if availability_track_ids:
         sync_availability(
             db,
             membership.id,
             availability_shift_ids,
-            shift_ids_on_dates(db, form.tournament_id, availability_dates),
+            shift_ids_on_tracks(db, form.tournament_id, availability_track_ids),
         )
 
     sync_track_statuses(db, membership.id, intended_track_statuses, response.id)
@@ -1294,8 +1302,8 @@ def invalidate_form_field(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form")
 
     if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
-        lunch_date, category = parse_lunch_field_key(field.field_key)
-        _clear_lunch_write_through(db, form, field, lunch_date, category)
+        lunch_track_id, category = parse_lunch_field_key(field.field_key)
+        _clear_lunch_write_through(db, form, field, lunch_track_id, category)
 
     if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
         _clear_event_preference_write_through(db, form, field)
@@ -1335,8 +1343,9 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
     presets:
       - availability shares one storage pool across every question covering a
         day (two fields can, via availability_{date}_{suffix}), and
-        sync_availability deletes anything in that day it wasn't handed — so a
-        per-field replay would erase the shifts a sibling question contributed.
+        sync_availability deletes anything on that track it wasn't handed — so
+        a per-field replay would erase the shifts a sibling question
+        contributed.
       - track_status upserts without deleting, but replaying a stale answer can
         still overwrite a status a newer form set (every transition except a
         demotion to "interested" is permitted).
@@ -1345,7 +1354,7 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
     Lunch is the one case where a field exclusively owns its rows *and* its
     options survive the key change (they're freeform text, not entity ids).
     """
-    lunch_date, category = parse_lunch_field_key(field.field_key)
+    lunch_track_id, category = parse_lunch_field_key(field.field_key)
     options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
     free_text = field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES
 
@@ -1375,12 +1384,12 @@ def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> 
                 for oid in option_ids
                 if oid in options_by_id
             ]
-        sync_lunch(db, membership_id, lunch_date, category, values)
+        sync_lunch(db, membership_id, lunch_track_id, category, values)
 
 
-def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_date, category) -> None:
+def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_track_id, category) -> None:
     """Drops the lunch rows this field produced, for every member who answered
-    it. Keyed by (membership, date, category), so no other question can be
+    it. Keyed by (membership, track, category), so no other question can be
     contributing the same rows."""
     user_ids = {
         user_id
@@ -1399,14 +1408,14 @@ def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_
         )
     }
     for membership_id in membership_ids:
-        sync_lunch(db, membership_id, lunch_date, category, [])
+        sync_lunch(db, membership_id, lunch_track_id, category, [])
 
 
 def _clear_event_preference_write_through(db: Session, form: Form, field: FormField) -> None:
     """Drops the event preference rows this field produced, for every member
-    who answered it. Keyed by (membership, suffix), and a suffix is one
-    field's exclusive key, so no other question can be contributing the same
-    rows — same reasoning as lunch's (membership, date, category)."""
+    who answered it. Keyed by (membership, track), and a track has exactly one
+    preference question, so no other question can be contributing the same
+    rows — same reasoning as lunch's (membership, track, category)."""
     user_ids = {
         user_id
         for (user_id,) in db.query(FormResponse.user_id)
@@ -1423,9 +1432,9 @@ def _clear_event_preference_write_through(db: Session, form: Form, field: FormFi
             TournamentMembership.user_id.in_(user_ids),
         )
     }
-    suffix = parse_event_preference_field_key(field.field_key)
+    pref_track_id = parse_event_preference_field_key(field.field_key)
     for membership_id in membership_ids:
-        sync_event_preferences(db, membership_id, suffix, [])
+        sync_event_preferences(db, membership_id, pref_track_id, [])
 
 
 # ---------------------------------------------------------------------------

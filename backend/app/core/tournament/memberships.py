@@ -240,14 +240,14 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
     if not rows:
         return []
 
-    keys = {row.key for row in rows}
+    track_ids = {row.track_id for row in rows}
     fields = (
         db.query(FormField)
         .join(Form, FormField.form_id == Form.id)
         .filter(
             Form.owner_type == "tournament",
             Form.tournament_id == membership.tournament_id,
-            FormField.field_key.in_({f"event_preference_{key}" for key in keys}),
+            FormField.field_key.in_({f"event_preference_{tid}" for tid in track_ids}),
         )
         # Live fields first so a live option wins the mapping over an archived
         # field that shares the key — an archived field doesn't reserve its
@@ -256,12 +256,12 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
         .all()
     )
 
-    # event id -> (key, option_id, label, order, is_archived)
-    option_by_event: dict[tuple[str, int], dict] = {}
+    # (track id, event id) -> option details
+    option_by_event: dict[tuple[int, int], dict] = {}
     for field in fields:
         if not EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
             continue
-        key = field.field_key[len("event_preference_"):]
+        key = int(field.field_key[len("event_preference_"):])
         for order, option in enumerate((field.config or {}).get("options", [])):
             value = option.get("value")
             if not isinstance(value, list):
@@ -274,10 +274,14 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
                     "is_archived": bool(option.get("is_archived") or field.is_archived),
                 })
 
+    track_names = {row.track_id: row.track.name for row in rows}
+
     groups: list[MembershipEventPreferenceRead] = []
-    for key in sorted(keys):
+    # Ordered by track name, not id: the reader is looking at "Day 1" and
+    # "Test Writing", and creation order means nothing to them.
+    for key in sorted(track_ids, key=lambda t: track_names.get(t, "")):
         key_rows = sorted(
-            (row for row in rows if row.key == key),
+            (row for row in rows if row.track_id == key),
             key=lambda r: (r.rank is None, r.rank or 0, r.tournament_event_id),
         )
 
@@ -308,7 +312,8 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
             }
 
         groups.append(MembershipEventPreferenceRead(
-            key=key,
+            track_id=key,
+            track_name=track_names[key],
             options=[
                 MembershipEventPreferenceOptionRead(**{k: v for k, v in bucket.items() if k != "order"})
                 for bucket in sorted(
@@ -322,7 +327,7 @@ def build_event_preferences(db: Session, membership: TournamentMembership) -> li
 
 def lunch_field_key(row) -> str:
     """The FormField key that produced one lunch row."""
-    return f"lunch_{row.date.strftime('%Y%m%d')}_{row.category}"
+    return f"lunch_{row.track_id}_{row.category}"
 
 
 def lunch_question_types(db: Session, tournament_id: int, field_keys: set[str]) -> dict[str, str]:
@@ -363,7 +368,8 @@ def build_lunch_rows(rows, type_by_key: dict[str, str]) -> list["MembershipLunch
 
     return [
         MembershipLunchRead(
-            date=row.date,
+            track_id=row.track_id,
+            track_name=row.track.name,
             category=row.category,
             value=row.value,
             question_type=type_by_key.get(lunch_field_key(row)),
@@ -378,7 +384,7 @@ def build_lunch(db: Session, membership: TournamentMembership) -> list["Membersh
 
     The row itself can't tell you: a typed short_text answer and a picked
     option both land in the same value/label columns. The type lives on the
-    FormField whose field_key is `lunch_{YYYYMMDD}_{category}`, so this maps
+    FormField whose field_key is `lunch_{track_id}_{category}`, so this maps
     rows back to fields by reconstructing that key. Archived fields count too
     — an answer given before the question was retired still has to render the
     way it was written."""

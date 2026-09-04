@@ -96,28 +96,34 @@ class MembershipEventPreferenceOptionRead(BaseModel):
 
 
 class MembershipEventPreferenceRead(BaseModel):
-    """One event_preference_{suffix} question's answer, grouped by key then by
-    the option picked. Each suffix is its own independent axis — see
-    form-question-types-reference.md — so this is a list, not a single
-    preference."""
-    key: str
+    """One event_preference_{track_id} question's answer, grouped by track then
+    by the option picked. Each track is its own independent axis — a member
+    ranks Day 1's events separately from Test Writing's — so this is a list,
+    not a single preference."""
+    track_id: int
+    track_name: str
     options: list[MembershipEventPreferenceOptionRead]
 
     model_config = {"from_attributes": True}
 
 
 class MembershipAvailabilityRead(BaseModel):
-    """One availability_{date} answer, resolved to its shift's label/start/end
+    """One availability_{track_id} answer, resolved to its shift's label/start/end
     — the row itself only carries the shift id, same reason
     MembershipTrackStatusRead.from_row exists for track rows.
 
-    `day` is the tournament-local calendar date the shift falls on. It is
-    resolved server-side, not derived from `start` in the browser: a shift's
-    start is an instant and the viewer's timezone need not match the
-    tournament's, so a client-side conversion drifts a day near midnight.
-    The members table keys its availability_day: columns off exactly this.
+    `track_id` is what the members table and the panel key their availability
+    columns off — availability is scoped to a track, not a day, so two sites
+    running the same Saturday stay separate.
+
+    `day` is the tournament-local calendar date the shift falls on, kept for
+    display grouping. It is resolved server-side, not derived from `start` in
+    the browser: a shift's start is an instant and the viewer's timezone need
+    not match the tournament's, so a client-side conversion drifts a day near
+    midnight.
     """
     shift_id: int
+    track_id: int
     label: str
     start: datetime
     end: datetime
@@ -133,6 +139,7 @@ class MembershipAvailabilityRead(BaseModel):
         shift = row.tournament_shift
         return cls(
             shift_id=row.tournament_shift_id,
+            track_id=shift.track_id,
             label=shift.label,
             start=shift.start,
             end=shift.end,
@@ -141,14 +148,17 @@ class MembershipAvailabilityRead(BaseModel):
 
 
 class MembershipLunchRead(BaseModel):
-    """One lunch_{date}_{category} answer. Fields already match the ORM row
-    1:1, so from_attributes handles this without a resolver classmethod.
+    """One lunch_{track_id}_{category} answer.
 
     `value` rather than `label`: the row carries both, and value is the short
     canonical form ("Sofritas") while label is the full option text the form
     showed ("Sofritas (Vegan)") — the panel renders these as badges, where
-    the short form is what fits."""
-    date: date
+    the short form is what fits.
+
+    `track_name` rides along so a renderer never needs a second catalog
+    request, the same treatment MembershipTrackStatusRead gives track rows."""
+    track_id: int
+    track_name: str
     category: str
     value: str
     # The source question's type — a picked option and a typed answer land in

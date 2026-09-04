@@ -56,8 +56,8 @@ def test_get_display_config_lenient_on_stale_data(client, td_user, td_tournament
 def test_put_display_config_saves_valid_config(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     payload = {
-        "members_panel": {"hidden": ["track:3", "lunch_category:entree"]},
-        "member_page": {"hidden": ["event_pref:morning"]},
+        "members_panel": {"hidden": ["track:3", "lunch:3:entree"]},
+        "member_page": {"hidden": ["event_pref:3"]},
     }
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200
@@ -257,8 +257,8 @@ def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td
     m1 = _make_membership(db, td_tournament.id, u1.id)
     m2 = _make_membership(db, td_tournament.id, u2.id)
     db.add_all([
-        TournamentMembershipLunch(membership_id=m1.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap"),
-        TournamentMembershipLunch(membership_id=m2.id, date=date(2026, 3, 1), category="entree", value="turkey", label="Turkey sandwich"),
+        TournamentMembershipLunch(membership_id=m1.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap"),
+        TournamentMembershipLunch(membership_id=m2.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="turkey", label="Turkey sandwich"),
     ])
     db.commit()
 
@@ -266,7 +266,10 @@ def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
     # Labelled by the category, not by either member's selection.
-    assert response.json()["lunch_categories"] == [{"key": "lunch_category:entree", "label": "Entree"}]
+    track_id = primary_track_id(db, td_tournament.id)
+    assert response.json()["lunch_categories"] == [
+        {"key": f"lunch:{track_id}:entree", "label": "Main \u2014 Entree"},
+    ]
 
 
 def test_get_display_config_catalog_includes_event_preferences(client, td_user, td_tournament, db):
@@ -276,12 +279,15 @@ def test_get_display_config_catalog_includes_event_preferences(client, td_user, 
     }).json()
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
-    db.add(TournamentMembershipEventPreference(membership_id=m.id, tournament_event_id=event["id"], key="rank", rank=1))
+    db.add(TournamentMembershipEventPreference(membership_id=m.id, tournament_event_id=event["id"], track_id=primary_track_id(db, td_tournament.id), rank=1))
     db.commit()
 
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
-    assert response.json()["event_preferences"] == [{"key": "event_pref:rank", "label": "Rank"}]
+    track_id = primary_track_id(db, td_tournament.id)
+    assert response.json()["event_preferences"] == [
+        {"key": f"event_pref:{track_id}", "label": "Main"},
+    ]
 
 
 def test_get_display_config_catalog_includes_custom_fields_excludes_reserved(client, td_user, td_tournament, db):
@@ -341,7 +347,10 @@ def test_get_display_config_catalog_includes_availability_days(client, td_user, 
     response = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/")
     assert response.status_code == 200
     keys = [item["key"] for item in response.json()["availability"]]
-    assert keys == ["availability_day:2026-03-01", "availability_day:2026-03-02"]
+    # One entry per *track* with shifts, not per day: two sites running the
+    # same Saturday are separate questions, and a day-keyed toggle would
+    # hide both at once.
+    assert keys == [f"availability_track:{primary_track_id(db, td_tournament.id)}"]
 
 
 def test_membership_panel_pads_tracks_with_pending(client, td_user, td_tournament, db):
@@ -402,14 +411,14 @@ def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
     ))
     db.commit()
 
     login(client, "td@test.com", "tdpass")
     assert client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"members_panel": {"hidden": ["lunch_category:entree"]}},
+        json={"members_panel": {"hidden": [f"lunch:{primary_track_id(db, td_tournament.id)}:entree"]}},
     ).status_code == 200
 
     body = client.get(
@@ -426,7 +435,7 @@ def test_hidden_sections_empty_when_filtering_removes_nothing(client, td_user, t
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
     ))
     db.commit()
 
@@ -527,7 +536,7 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u.id)
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
     ))
     db.commit()
 
@@ -541,5 +550,5 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
         "joined", "join_method", "roles", "age", f"track:{main.id}", f"track:{track.id}",
     ]
     assert [f["key"] for f in sections["lunch"]["fields"]] == [
-        "dietary_restriction", "lunch_category:entree",
+        "dietary_restriction", f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
     ]

@@ -21,31 +21,38 @@ from app.schemas.form import QUESTION_TYPE_CONFIG_SCHEMAS
 
 BRANCHING_QUESTION_TYPES = {"single_select_radio", "single_select_dropdown"}
 
-# availability_{date}[_{suffix}], e.g. "availability_20260315" or
-# "availability_20260315_judges" — every matching field on a tournament
-# writes into the same centralized TournamentMembershipAvailability pool
-# (see write_through.sync_availability and forms.py's
-# _write_through_reserved_fields), so neither the date nor the suffix scopes
-# storage. The date still pins which day's shifts a given field's
-# write-through may touch (see validate_availability_options). The suffix is
-# optional and purely for field_key uniqueness — it's what lets two different
-# forms each ask about the same date (e.g. a general form and a judges-only
-# form both covering March 15) without colliding on field_key, which must be
-# unique per tournament across every form.
-AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d{8})(?:_([a-z0-9_]+))?$")
+# The numeric slot in every reserved key below is a **TournamentTrack id**,
+# not a date. Track is the scope a question is actually asked about: a track
+# carries its own dates, venue and division, so "which day" and "which site"
+# stop being separate questions. An id rather than a name so a TD renaming
+# "Day 1" doesn't orphan every key and answer pointing at it.
+
+# availability_{track_id}[_{suffix}], e.g. "availability_7" or
+# "availability_7_judges" — every matching field on a tournament writes into
+# the same centralized TournamentMembershipAvailability pool (see
+# write_through.sync_availability and forms.py's
+# _write_through_reserved_fields), so the suffix doesn't scope storage; the
+# track does, pinning which shifts a given field's write-through may touch
+# (see validate_availability_options). The suffix is optional and purely for
+# field_key uniqueness — it's what lets two different forms each ask about
+# the same track (e.g. a general form and a judges-only form both covering
+# Day 1) without colliding on field_key, which must be unique per tournament
+# across every form.
+AVAILABILITY_FIELD_KEY_PATTERN = re.compile(r"^availability_(\d+)(?:_([a-z0-9_]+))?$")
 AVAILABILITY_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
-# event_preference_{suffix}, e.g. "event_preference_morning" — locked prefix,
-# TD-chosen suffix. No write-through yet: whether multiple suffixes merge
-# into one preference list or stay tracked separately is an open product
-# question (see form-question-types-reference.md).
-EVENT_PREFERENCE_FIELD_KEY_PATTERN = re.compile(r"^event_preference_([a-z0-9_]+)$")
+# event_preference_{track_id}, e.g. "event_preference_7" — no suffix, so
+# exactly one preference question per track. The track is the whole storage
+# scope (see TournamentMembershipEventPreference, which has no `key`): two
+# questions on one track would write into one pool and their ranks would
+# collide with no way to say whose rank-1 is whose.
+EVENT_PREFERENCE_FIELD_KEY_PATTERN = re.compile(r"^event_preference_(\d+)$")
 EVENT_PREFERENCE_QUESTION_TYPES = {"ranked_choice", "multi_select_checkbox", "single_select_dropdown"}
 
-# lunch_{date}_{category}, e.g. "lunch_20270213_protein" — date is baked
+# lunch_{track_id}_{category}, e.g. "lunch_7_protein" — the track is baked
 # into the key, so per-tournament field_key uniqueness already covers
-# per-(date, category) uniqueness with no separate check needed.
-LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
+# per-(track, category) uniqueness with no separate check needed.
+LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d+)_([a-z0-9_]+)$")
 # Free-text is allowed here but on no other reserved key: a lunch question
 # like "any special requests?" belongs in the panel's Lunch section, and
 # without the reserved key it would be filtered out of custom responses
@@ -53,9 +60,11 @@ LUNCH_FIELD_KEY_PATTERN = re.compile(r"^lunch_(\d{8})_([a-z0-9_]+)$")
 LUNCH_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox", "short_text", "long_text"}
 LUNCH_FREE_TEXT_QUESTION_TYPES = {"short_text", "long_text"}
 
-# track_status_{suffix}, e.g. "track_status_volunteer_interest". The suffix
-# makes the question's stable field key independent of a catalog track, so
-# one answer can affect several tracks.
+# track_status_{suffix}, e.g. "track_status_volunteer_interest". The only
+# reserved key whose slot is *not* a track id: the suffix keeps the question's
+# stable field key independent of any one catalog track, which is what lets a
+# single "which days can you work?" answer move several tracks at once. The
+# tracks it moves live in each option's value instead.
 TRACK_STATUS_FIELD_KEY_PATTERN = re.compile(r"^track_status_([a-z0-9_]+)$")
 TRACK_STATUS_QUESTION_TYPES = {"single_select_radio", "multi_select_checkbox"}
 
@@ -113,8 +122,8 @@ def validate_reserved_field_key(field_key: str, question_type: str) -> None:
     track_status_*) reuse
     an existing structural question_type rather than introducing their own —
     reject a reserved key paired with a question_type it doesn't allow. A
-    bare "availability"/"event_preference" (no date/suffix) is not a valid
-    reserved key — every such question must be disambiguated. Applies
+    bare "availability"/"event_preference" (no track id) is not a valid
+    reserved key — every such question must name the track it covers. Applies
     identically regardless of owner_type (tournament vs. chapter); only
     write-through, not validation, differs by ownership."""
     if LUNCH_FIELD_KEY_PATTERN.match(field_key):
@@ -156,17 +165,25 @@ def _is_assignment(item: object) -> bool:
     return isinstance(item, dict) and "id" in item and "status" in item
 
 
-def option_track_assignments(option: dict) -> list[dict]:
-    """The track assignments one option carries, whichever shape holds them —
-    `value` *is* the list on a track_status_* field, or `value.track_statuses`
-    on an opted-in availability field. The single place that knows how to dig
-    them out; callers that hand-roll it get the value shapes wrong (see
-    _is_assignment)."""
+def option_track_assignments(option: dict, field_track_id: int | None = None) -> list[dict]:
+    """The track assignments one option carries, normalized to the
+    track_status_* shape whichever way they were written.
+
+    Two shapes, because the two field kinds differ in what they can know:
+    a `track_status_*` field names no track, so `value` *is* a list of
+    {id, status} pairs; an `availability_{track_id}` field already names its
+    track, so its option carries a bare `track_status` string and the id comes
+    from the field key (`field_track_id`).
+
+    The single place that knows how to dig them out; callers that hand-roll it
+    get the value shapes wrong (see _is_assignment)."""
     value = option.get("value")
     if isinstance(value, list):
         return [item for item in value if _is_assignment(item)]
     if isinstance(value, dict):
-        return [item for item in (value.get("track_statuses") or []) if _is_assignment(item)]
+        status = value.get("track_status")
+        if status and field_track_id is not None:
+            return [{"id": field_track_id, "status": status}]
     return []
 
 
@@ -181,12 +198,12 @@ def option_shift_ids(option: dict) -> list[int]:
     return [item for item in (value or []) if isinstance(item, int)]
 
 
-def track_status_assignments(config: dict) -> list[dict]:
+def track_status_assignments(config: dict, field_track_id: int | None = None) -> list[dict]:
     """Every track assignment carried by a field's options."""
     return [
         assignment
         for option in config.get("options") or []
-        for assignment in option_track_assignments(option)
+        for assignment in option_track_assignments(option, field_track_id)
     ]
 
 
@@ -200,7 +217,7 @@ def validate_track_status_options(
     """Validate option-level track statuses for Track Status and opted-in
     Availability fields. Track mappings are tournament-only and catalog IDs
     remain valid after archival so historical fields can still be read."""
-    assignments = track_status_assignments(config)
+    assignments = track_status_assignments(config, availability_field_track_id(field_key))
     enabled = track_status_enabled(field_key, config)
 
     _require(
@@ -312,6 +329,7 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
         for check in (
             lambda: validate_reserved_field_key(field.field_key, field.question_type),
             lambda: validate_tournament_preset(field.field_key, form.tournament_id),
+            lambda: validate_preset_track(db, form.tournament_id, field.field_key),
             lambda: validate_track_status_options(
                 db, form.tournament_id, field.field_key, field.question_type, normalized_config
             ),
@@ -328,14 +346,17 @@ def collect_active_field_errors(db: Session, form: Form) -> list[str]:
             try:
                 validate_availability_options(
                     db, form.tournament_id, normalized_config,
-                    availability_field_date(field.field_key),
+                    availability_field_track_id(field.field_key),
                 )
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
         if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
             try:
-                validate_event_preference_options(db, form.tournament_id, field.question_type, normalized_config)
+                validate_event_preference_options(
+                    db, form.tournament_id, field.question_type, normalized_config,
+                    event_preference_field_track_id(field.field_key),
+                )
             except FormFieldValidationError as e:
                 errors.append(f"field '{field.field_key}': {e}")
 
@@ -359,15 +380,54 @@ def validate_form_for_publish(db: Session, form: Form) -> None:
     _require(not errors, "; ".join(errors))
 
 
-def availability_field_date(field_key: str):
-    """The day an `availability_{YYYYMMDD}` question covers, or None if the
+def availability_field_track_id(field_key: str) -> int | None:
+    """The track an `availability_{track_id}` question covers, or None if the
     key isn't one."""
     match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
-    return datetime.strptime(match.group(1), "%Y%m%d").date() if match else None
+    return int(match.group(1)) if match else None
+
+
+def event_preference_field_track_id(field_key: str) -> int | None:
+    """The track an `event_preference_{track_id}` question covers, or None if
+    the key isn't one."""
+    match = EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key)
+    return int(match.group(1)) if match else None
+
+
+def lunch_field_track_id(field_key: str) -> int | None:
+    """The track a `lunch_{track_id}_{category}` question covers, or None if
+    the key isn't one."""
+    match = LUNCH_FIELD_KEY_PATTERN.match(field_key)
+    return int(match.group(1)) if match else None
+
+
+def validate_preset_track(db: Session, tournament_id: int | None, field_key: str) -> None:
+    """The track id in a reserved key must name a live track on this
+    tournament. Without this the key is just a number: a typo'd or deleted
+    track silently produces a question whose answers write nowhere."""
+    if tournament_id is None:
+        return
+    track_id = (
+        availability_field_track_id(field_key)
+        or event_preference_field_track_id(field_key)
+        or lunch_field_track_id(field_key)
+    )
+    if track_id is None:
+        return
+    exists = (
+        db.query(TournamentTrack.id)
+        .filter(
+            TournamentTrack.id == track_id,
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.is_archived == False,
+        )
+        .first()
+    )
+    _require(exists is not None, f"field_key '{field_key}' names track {track_id}, which does not exist here")
 
 
 def validate_availability_options(
-    db: Session, tournament_id: int | None, config: dict, field_date=None
+    db: Session, tournament_id: int | None, config: dict, field_track_id: int | None = None
 ) -> None:
     """A field with field_key matching AVAILABILITY_FIELD_KEY_PATTERN
     (single_select_radio or multi_select_checkbox) must have every option's
@@ -377,9 +437,9 @@ def validate_availability_options(
     TD-labeled choice (e.g. "All Day" -> [1, 2, 3]). Validated strictly
     since a bad value directly corrupts MembershipAvailability write-through.
 
-    `field_date` additionally pins every referenced shift to the day in the
-    field_key; see the check itself for why a stray shift from another day is
-    not merely untidy.
+    `field_track_id` additionally pins every referenced shift to the track in
+    the field_key; see the check itself for why a stray shift from another
+    track is not merely untidy.
 
     Chapter-owned forms have no tournament shift catalog to validate
     against, so this is a no-op there (a chapter-owned availability field
@@ -397,7 +457,7 @@ def validate_availability_options(
         if config.get("track_status_enabled"):
             _require(
                 isinstance(value, dict) and isinstance(value.get("shift_ids"), list),
-                f"availability option value '{value}' must contain shift_ids and track_statuses when track status is enabled",
+                f"availability option value '{value}' must contain shift_ids and track_status when track status is enabled",
             )
             value = value["shift_ids"]
         _require(
@@ -407,7 +467,7 @@ def validate_availability_options(
         shift_ids.update(value)
 
     rows = (
-        db.query(TournamentShift.id, TournamentShift.start)
+        db.query(TournamentShift.id, TournamentShift.track_id)
         .filter(TournamentShift.tournament_id == tournament_id, TournamentShift.id.in_(shift_ids))
         .all()
     )
@@ -417,22 +477,23 @@ def validate_availability_options(
         f"availability option value(s) do not reference a real TournamentShift on this tournament: {sorted(missing)}",
     )
 
-    # An availability question owns its day: write-through may add or remove
-    # exactly the shifts falling on the date in its field_key, so a shift from
-    # another day listed here would be added by this question and then removed
-    # by that day's own question, or the reverse, depending on submission
-    # order. Reject it rather than let the two fight.
-    if field_date is not None:
-        wrong_day = sorted(shift_id for shift_id, start in rows if start.date() != field_date)
+    # An availability question owns its track: write-through may add or remove
+    # exactly the shifts belonging to the track in its field_key, so a shift
+    # from another track listed here would be added by this question and then
+    # removed by that track's own question, or the reverse, depending on
+    # submission order. Reject it rather than let the two fight.
+    if field_track_id is not None:
+        wrong_track = sorted(shift_id for shift_id, track_id in rows if track_id != field_track_id)
         _require(
-            not wrong_day,
-            f"availability option value(s) reference shifts outside this question's date "
-            f"({field_date.isoformat()}): {wrong_day}",
+            not wrong_track,
+            f"availability option value(s) reference shifts outside this question's track "
+            f"({field_track_id}): {wrong_track}",
         )
 
 
 def validate_event_preference_options(
-    db: Session, tournament_id: int | None, question_type: str, config: dict
+    db: Session, tournament_id: int | None, question_type: str, config: dict,
+    field_track_id: int | None = None,
 ) -> None:
     """A field with field_key matching EVENT_PREFERENCE_FIELD_KEY_PATTERN must
     have every option's `value` be a non-empty list[int] of real
@@ -496,3 +557,18 @@ def validate_event_preference_options(
         not missing,
         f"event_preference option value(s) do not reference a real TournamentEvent on this tournament: {sorted(missing)}",
     )
+
+    # A question on a track may only offer that track's events. Day 1 is
+    # division C, so its preference list is division C events — offering
+    # anything else invites a member to rank something they can never be
+    # assigned to. Membership comes from the explicit event<->track bridge,
+    # not from shifts: Test Writing has no shifts and still has events.
+    if field_track_id is not None:
+        from app.core.tournament.tracks import track_event_ids
+
+        off_track = sorted(event_ids - track_event_ids(db, field_track_id))
+        _require(
+            not off_track,
+            f"event_preference option value(s) reference events that do not run on this "
+            f"question's track ({field_track_id}): {off_track}",
+        )

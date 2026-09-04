@@ -126,19 +126,29 @@ CUSTOM_SECTION_PREFIX = "custom:"
 # added to a form next month from being invisible until someone assigns it.
 DEFAULT_CUSTOM_SECTION_ID = f"{CUSTOM_SECTION_PREFIX}all"
 
+# Every entity namespace below is keyed by track now, matching the storage:
+# availability, lunch and event preferences are all scoped to a track rather
+# than to a date or a free-text suffix. Lunch keeps its category alongside,
+# since one track asks about several (protein, drink, ...).
 TRACK_NAMESPACE = "track:"
-LUNCH_CATEGORY_NAMESPACE = "lunch_category:"
+LUNCH_NAMESPACE = "lunch:"
 EVENT_PREF_NAMESPACE = "event_pref:"
 FORM_FIELD_NAMESPACE = "form_field:"
-AVAILABILITY_DAY_NAMESPACE = "availability_day:"
+AVAILABILITY_TRACK_NAMESPACE = "availability_track:"
 
 KNOWN_NAMESPACES = (
     TRACK_NAMESPACE,
-    LUNCH_CATEGORY_NAMESPACE,
+    LUNCH_NAMESPACE,
     EVENT_PREF_NAMESPACE,
     FORM_FIELD_NAMESPACE,
-    AVAILABILITY_DAY_NAMESPACE,
+    AVAILABILITY_TRACK_NAMESPACE,
 )
+
+
+def lunch_key(track_id: int, category: str) -> str:
+    """One lunch pill: a track's category. Both parts are needed — Day 1's
+    protein and Day 2's protein are different questions."""
+    return f"{LUNCH_NAMESPACE}{track_id}:{category}"
 
 
 def is_known_namespace(item: str) -> bool:
@@ -159,7 +169,7 @@ def is_known_column(key: str) -> bool:
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
         return True
     return key.startswith((
-        TRACK_NAMESPACE, AVAILABILITY_DAY_NAMESPACE, LUNCH_CATEGORY_NAMESPACE, FORM_FIELD_NAMESPACE,
+        TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, FORM_FIELD_NAMESPACE,
     ))
 
 
@@ -207,28 +217,34 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         for t in tracks
     ]
 
-    # The toggle hides a whole category, so the category is what it must be
-    # labelled with — labelling it with one member's selection ("Sofritas
-    # (Vegan)") named the wrong thing entirely.
-    lunch_categories = (
-        db.query(distinct(TournamentMembershipLunch.category))
+    track_names = {t.id: t.name for t in tracks}
+
+    # The toggle hides a whole category on one track, so that pair is what it
+    # must be labelled with — labelling it with one member's selection
+    # ("Sofritas (Vegan)") named the wrong thing entirely.
+    lunch_pairs = (
+        db.query(distinct(TournamentMembershipLunch.track_id), TournamentMembershipLunch.category)
         .join(TournamentMembership, TournamentMembershipLunch.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
     lunch_items = [
-        {"key": f"{LUNCH_CATEGORY_NAMESPACE}{category}", "label": unslug(category)}
-        for (category,) in sorted(lunch_categories)
+        {
+            "key": lunch_key(track_id, category),
+            "label": f"{track_names.get(track_id, 'Unknown track')} \u2014 {unslug(category)}",
+        }
+        for track_id, category in sorted(lunch_pairs, key=lambda p: (track_names.get(p[0], ""), p[1]))
     ]
 
-    event_pref_keys = (
-        db.query(distinct(TournamentMembershipEventPreference.key))
+    event_pref_track_ids = (
+        db.query(distinct(TournamentMembershipEventPreference.track_id))
         .join(TournamentMembership, TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
         .filter(TournamentMembership.tournament_id == tournament_id)
         .all()
     )
     event_pref_items = [
-        {"key": f"{EVENT_PREF_NAMESPACE}{key}", "label": unslug(key)} for (key,) in sorted(event_pref_keys)
+        {"key": f"{EVENT_PREF_NAMESPACE}{track_id}", "label": track_names.get(track_id, "Unknown track")}
+        for (track_id,) in sorted(event_pref_track_ids, key=lambda p: track_names.get(p[0], ""))
     ]
 
     field_rows = (
@@ -250,21 +266,20 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         if not any(pattern.match(field.field_key) for pattern in TOURNAMENT_PRESET_FIELD_KEY_PATTERNS)
     ]
 
-    # One item per day the tournament runs shifts on, in the tournament's own
-    # timezone — a shift's start is an instant, so a bare .date() would bucket
-    # an early/late shift onto the neighbouring day for any non-UTC tournament.
-    tournament = db.query(Tournament).filter(Tournament.id == tournament_id).first()
-    shift_starts = (
-        db.query(TournamentShift.start)
+    # One item per track that has shifts. Was one per *day*, which is the
+    # wrong unit now: two sites running the same Saturday are two separate
+    # availability questions, and a day-keyed toggle would hide both at once.
+    availability_track_ids = (
+        db.query(distinct(TournamentShift.track_id))
         .filter(TournamentShift.tournament_id == tournament_id)
         .all()
     )
-    availability_days = sorted({tournament_local_date(tournament, start) for (start,) in shift_starts})
     availability_items = [
-        # Built by hand rather than one strftime: "%-d" (no zero padding) is
-        # a glibc extension that raises on Windows.
-        {"key": f"{AVAILABILITY_DAY_NAMESPACE}{day.isoformat()}", "label": f"{day.strftime('%a, %b')} {day.day}"}
-        for day in availability_days
+        {
+            "key": f"{AVAILABILITY_TRACK_NAMESPACE}{track_id}",
+            "label": track_names.get(track_id, "Unknown track"),
+        }
+        for (track_id,) in sorted(availability_track_ids, key=lambda p: track_names.get(p[0], ""))
     ]
 
     # Table columns: the fixed ones, then one per entity. Entity columns reuse
@@ -369,25 +384,26 @@ def apply_display_config(config: dict | None, surface: str | None, data: dict, t
         ]
     if "availability" in data:
         before_availability = data["availability"]
-        # `start` is a serialized instant; the item keys are tournament-local
-        # days, so it has to go back through the same conversion build_catalog
-        # used rather than a naive [:10] slice of the ISO string.
+        # Keyed by the shift's track, which the row carries outright — no
+        # timezone conversion needed any more, unlike the day-keyed version
+        # this replaced.
         data["availability"] = [
             row for row in data["availability"]
-            if f"{AVAILABILITY_DAY_NAMESPACE}"
-            f"{tournament_local_date(tournament, datetime.fromisoformat(row['start'])).isoformat()}" not in hidden
+            if f"{AVAILABILITY_TRACK_NAMESPACE}{row['track_id']}" not in hidden
         ]
         _note_if_emptied("availability", before_availability)
     if "lunch" in data:
         before_lunch = data["lunch"]
         data["lunch"] = [
-            row for row in before_lunch if f"{LUNCH_CATEGORY_NAMESPACE}{row['category']}" not in hidden
+            row for row in before_lunch
+            if lunch_key(row["track_id"], row["category"]) not in hidden
         ]
         _note_if_emptied("lunch", before_lunch)
     if "event_preferences" in data:
         before_prefs = data["event_preferences"]
         data["event_preferences"] = [
-            pref for pref in before_prefs if f"{EVENT_PREF_NAMESPACE}{pref['key']}" not in hidden
+            pref for pref in before_prefs
+            if f"{EVENT_PREF_NAMESPACE}{pref['track_id']}" not in hidden
         ]
         _note_if_emptied("event_preferences", before_prefs)
     if "custom_responses" in data:
@@ -426,10 +442,10 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
 
 _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
     (TRACK_NAMESPACE, "tracks"),
-    (LUNCH_CATEGORY_NAMESPACE, "lunch"),
+    (LUNCH_NAMESPACE, "lunch"),
     (EVENT_PREF_NAMESPACE, "event_prefs"),
     (FORM_FIELD_NAMESPACE, "custom"),
-    (AVAILABILITY_DAY_NAMESPACE, "availability"),
+    (AVAILABILITY_TRACK_NAMESPACE, "availability"),
 )
 
 # Panel/member-page sections and the groups each one renders. A section

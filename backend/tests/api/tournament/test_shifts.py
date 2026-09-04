@@ -288,7 +288,7 @@ def test_delete_shift_blocked_when_referenced_by_live_field_option(client, db, t
     db.add(form)
     db.flush()
     db.add(FormField(
-        form_id=form.id, order=1, label="Availability", field_key="availability_20260315",
+        form_id=form.id, order=1, label="Availability", field_key=f"availability_{primary_track_id(db, td_tournament.id)}",
         question_type="multi_select_checkbox",
         config={"options": [{"option_id": "opt_1", "value": [shift["id"]], "label": "All Day"}]},
         is_archived=False,

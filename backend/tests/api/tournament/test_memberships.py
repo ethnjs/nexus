@@ -322,7 +322,7 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     u = _make_user(db, "alice@example.com")
     m = _make_membership(db, td_tournament.id, u["id"])
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
     ))
     db.commit()
     login(client, "td@test.com", "tdpass")
@@ -331,7 +331,9 @@ def test_list_memberships_enriches_only_configured_columns(client, td_user, td_t
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert "lunch" not in row
 
-    set_display_config(db, td_tournament, td_user, {"members_table": {"columns": ["lunch_category:entree"]}})
+    set_display_config(db, td_tournament, td_user, {"members_table": {"columns": [
+        f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
+    ]}})
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert [entry["value"] for entry in row["lunch"]] == ["pizza"]
 
@@ -352,7 +354,9 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     db.flush()
     db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
     set_display_config(
-        db, td_tournament, td_user, {"members_table": {"columns": ["availability_day:2026-03-01"]}},
+        db, td_tournament, td_user, {"members_table": {"columns": [
+            f"availability_track:{primary_track_id(db, td_tournament.id)}",
+        ]}},
     )
 
     login(client, "td@test.com", "tdpass")
@@ -360,7 +364,8 @@ def test_availability_column_carries_shifts_with_their_local_day(client, td_user
     row = next(r for r in client.get(url).json() if r["id"] == m.id)
     assert row["availability"] == [
         {
-            "shift_id": shift.id, "label": "Morning", "day": "2026-03-01",
+            "shift_id": shift.id, "track_id": shift.track_id,
+            "label": "Morning", "day": "2026-03-01",
             "start": "2026-03-01T15:00:00Z", "end": "2026-03-01T19:00:00Z",
         },
     ]
@@ -451,7 +456,7 @@ class TestRosterFilters:
             TournamentMembershipTrackStatus(membership_id=alice.id, track_id=track.id, status="confirmed"),
             TournamentMembershipTrackStatus(membership_id=bob.id, track_id=track.id, status="confirmed"),
             TournamentMembershipLunch(
-                membership_id=alice.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+                membership_id=alice.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
             ),
         ])
         db.commit()
@@ -508,7 +513,7 @@ class TestRosterFilters:
         db.add(TournamentTrack(tournament_id=td_tournament.id, name="Writing"))
         m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
         db.add(TournamentMembershipLunch(
-            membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+            membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
         ))
         db.commit()
 
@@ -533,7 +538,7 @@ class TestRosterFilters:
         db.add(form)
         db.flush()
         db.add(FormField(
-            form_id=form.id, order=0, label="Protein", field_key="lunch_20260521_protein",
+            form_id=form.id, order=0, label="Protein", field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
             question_type="single_select_radio",
             config={"options": [
                 {"option_id": "opt_1", "value": "Sofritas", "label": "Sofritas"},
@@ -555,7 +560,7 @@ class TestRosterFilters:
         alice = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
         _make_membership(db, td_tournament.id, _db_user_for_filter(db, "bob@example.com").id)
         db.add(TournamentMembershipLunch(
-            membership_id=alice.id, date=date(2026, 5, 21), category="dietary", value="none", label="none",
+            membership_id=alice.id, track_id=primary_track_id(db, td_tournament.id), category="dietary", value="none", label="none",
         ))
         db.commit()
 
@@ -581,14 +586,14 @@ class TestRosterFilters:
         login(client, "td@test.com", "tdpass")
         assert self._roster(client, td_tournament.id, f"?track={track.id}:__any__") == {"alice@example.com"}
 
-    def test_shift_filter_takes_a_day_or_one_shift(self, client, db, td_user, td_tournament):
-        """A day-level value resolves to every shift on that day, read in the
-        tournament's timezone rather than UTC."""
+    def test_shift_filter_takes_a_track_or_one_shift(self, client, db, td_user, td_tournament):
+        """A track-level value resolves to every shift on that track. Was
+        day-level, which couldn't separate two sites running the same day."""
         from datetime import datetime, timezone as dt_timezone
-        from app.core.tournament import tournament_local_date
         from app.models.models import TournamentMembershipAvailability, TournamentShift
 
-        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Impound",
+        track_id = primary_track_id(db, td_tournament.id)
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=track_id, label="Impound",
             start=datetime(2026, 5, 21, 15, 0, tzinfo=dt_timezone.utc),
             end=datetime(2026, 5, 21, 17, 0, tzinfo=dt_timezone.utc),
         )
@@ -599,10 +604,9 @@ class TestRosterFilters:
         db.add(TournamentMembershipAvailability(membership_id=alice.id, tournament_shift_id=morning.id))
         db.commit()
 
-        day = tournament_local_date(td_tournament, morning.start).isoformat()
         login(client, "td@test.com", "tdpass")
-        assert self._roster(client, td_tournament.id, f"?shift={day}:{morning.id}") == {"alice@example.com"}
-        assert self._roster(client, td_tournament.id, f"?shift={day}:__any__") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, f"?shift={track_id}:{morning.id}") == {"alice@example.com"}
+        assert self._roster(client, td_tournament.id, f"?shift={track_id}:__any__") == {"alice@example.com"}
 
 
 def test_list_memberships_requires_manage_members(
@@ -1036,7 +1040,7 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
     db.flush()
     db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
     ))
     db.commit()
 
@@ -1051,9 +1055,11 @@ def test_get_membership_availability_and_lunch_populated(client, td_user, td_tou
 
     assert len(data["lunch"]) == 1
     # value ("pizza"), not label ("Pizza") — see MembershipLunchRead.
-    # question_type is None here: no form field defines lunch_20260521_entree.
+    # question_type is None here: no form field defines this track's entree
+    # question, so there is nothing to say whether it was a pick or free text.
     assert data["lunch"][0] == {
-        "date": "2026-05-21", "category": "entree", "value": "pizza", "question_type": None,
+        "track_id": primary_track_id(db, td_tournament.id), "track_name": "Main",
+        "category": "entree", "value": "pizza", "question_type": None,
     }
 
 
@@ -1155,10 +1161,12 @@ def test_get_membership_surface_hides_lunch_category(client, td_user, td_tournam
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"])
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 3, 1), category="entree", value="veggie", label="Veggie wrap",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="veggie", label="Veggie wrap",
     ))
     db.commit()
-    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["lunch_category:entree"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [
+        f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
+    ])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
@@ -1174,10 +1182,12 @@ def test_get_membership_surface_hides_event_preference(client, td_user, td_tourn
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id)
     db.add(TournamentMembershipEventPreference(
-        membership_id=m.id, tournament_event_id=event["id"], key="rank", rank=1,
+        membership_id=m.id, tournament_event_id=event["id"], track_id=primary_track_id(db, td_tournament.id), rank=1,
     ))
     db.commit()
-    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["event_pref:rank"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [
+        f"event_pref:{primary_track_id(db, td_tournament.id)}",
+    ])
 
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
     assert response.status_code == 200
@@ -1211,7 +1221,9 @@ def test_get_membership_surface_hides_availability_day(client, td_user, td_tourn
     db.add(TournamentMembershipAvailability(membership_id=m.id, tournament_shift_id=shift.id))
     db.commit()
     day = tournament_local_date(td_tournament, shift.start).isoformat()
-    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [f"availability_day:{day}"])
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [
+        f"availability_track:{primary_track_id(db, td_tournament.id)}",
+    ])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
@@ -1251,7 +1263,10 @@ def test_get_membership_surface_hiding_never_affects_age_flags(client, td_user, 
 
     u = _make_user(db)
     m = _make_membership(db, td_tournament.id, u["id"], age_disclosure=None)
-    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, ["track:1", "lunch_category:entree", "event_pref:rank"])
+    track_id = primary_track_id(db, td_tournament.id)
+    _set_display_config(db, td_tournament, td_user, MEMBERS_PANEL, [
+        "track:1", f"lunch:{track_id}:entree", f"event_pref:{track_id}",
+    ])
 
     login(client, "td@test.com", "tdpass")
     response = client.get(f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={MEMBERS_PANEL}")
@@ -1320,7 +1335,7 @@ def test_get_my_membership_includes_enrichment(client, td_tournament, db):
     db.flush()
     db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
     db.add(TournamentMembershipLunch(
-        membership_id=membership.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        membership_id=membership.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
     ))
     db.commit()
 
@@ -1379,15 +1394,15 @@ def test_build_lunch_prefers_the_live_field_over_an_archived_one(client, td_user
     m = _make_membership(db, td_tournament.id, u["id"])
     form = _make_form(db, td_user, td_tournament.id)
     _make_field(
-        db, form, order=1, field_key="lunch_20260521_entree",
+        db, form, order=1, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_entree",
         question_type="short_text", is_archived=True,
     )
     _make_field(
-        db, form, order=2, field_key="lunch_20260521_entree",
+        db, form, order=2, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_entree",
         question_type="single_select_radio",
     )
     db.add(TournamentMembershipLunch(
-        membership_id=m.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        membership_id=m.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
     ))
     db.commit()
 
@@ -1508,7 +1523,7 @@ def test_age_disclosure_decline_is_soft_and_keeps_data(client, td_tournament, ot
     db.flush()
     db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
     db.add(TournamentMembershipLunch(
-        membership_id=membership.id, date=date(2026, 5, 21), category="entree", value="pizza", label="Pizza",
+        membership_id=membership.id, track_id=primary_track_id(db, td_tournament.id), category="entree", value="pizza", label="Pizza",
     ))
     db.commit()
 

@@ -386,30 +386,42 @@ def _td_membership(db, td_user, td_tournament):
     )
 
 
-def _add_preference(db, membership_id, key, event_id, rank):
+def _add_preference(db, membership_id, track_id, event_id, rank):
     from app.models.models import TournamentMembershipEventPreference
     db.add(TournamentMembershipEventPreference(
-        membership_id=membership_id, key=key, tournament_event_id=event_id, rank=rank,
+        membership_id=membership_id, track_id=track_id, tournament_event_id=event_id, rank=rank,
     ))
     db.commit()
 
 
+def _pref_track(db, tournament, name):
+    """A track to scope preferences by. Cosmetic — these tests only need
+    somewhere for the rows to hang off, and Test Writing is the real case
+    for a track with no shifts of its own."""
+    from app.models.models import TournamentTrack
 
-def _add_event_preference_field(db, tournament_id, created_by, key, options, field_archived=False):
-    """A published tournament form carrying one event_preference_{key} field.
+    track = TournamentTrack(tournament_id=tournament.id, name=name)
+    db.add(track)
+    db.commit()
+    return track.id
+
+
+
+def _add_event_preference_field(db, tournament_id, created_by, track_id, options, field_archived=False):
+    """A published tournament form carrying one event_preference_{track} field.
     `options` is [(option_id, label, [event ids], is_archived)] — the grouping
     build_event_preferences reverses when reading answers back."""
     from app.models.models import Form, FormField
 
     form = Form(
-        name=f"form-{key}", title=f"Form {key}", owner_type="tournament",
+        name=f"form-{track_id}", title=f"Form {track_id}", owner_type="tournament",
         tournament_id=tournament_id, status="published", created_by=created_by,
     )
     db.add(form)
     db.flush()
     db.add(FormField(
-        form_id=form.id, order=0, label=f"Events {key}",
-        question_type="ranked_choice", field_key=f"event_preference_{key}",
+        form_id=form.id, order=0, label=f"Events {track_id}",
+        question_type="ranked_choice", field_key=f"event_preference_{track_id}",
         is_archived=field_archived,
         config={"options": [
             {"option_id": oid, "label": label, "value": ids, "is_archived": archived}
@@ -420,6 +432,7 @@ def _add_event_preference_field(db, tournament_id, created_by, key, options, fie
 
 
 def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     """One option grouping several events reads back as one entry, not one per
     event — the whole point of the option-grouped shape."""
     login(client, "td@test.com", "tdpass")
@@ -427,11 +440,11 @@ def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_
     e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     _add_event_preference_field(
-        db, td_tournament.id, td_user.id, "morning",
+        db, td_tournament.id, td_user.id, morning_track,
         [("opt_1", "Life & Space Science", [e1["id"], e2["id"]], False)],
     )
-    _add_preference(db, membership.id, "morning", e1["id"], 1)
-    _add_preference(db, membership.id, "morning", e2["id"], 1)
+    _add_preference(db, membership.id, morning_track, e1["id"], 1)
+    _add_preference(db, membership.id, morning_track, e2["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
@@ -443,15 +456,16 @@ def test_event_preferences_group_by_the_option_the_member_picked(client, db, td_
 
 
 def test_event_preferences_flag_answers_to_an_archived_option(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     """An answer given before the TD reworked the question still renders, but
     is flagged so the panel can warn it's out of date."""
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id, name="Anatomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     _add_event_preference_field(
-        db, td_tournament.id, td_user.id, "morning", [("opt_1", "Retired Group", [event["id"]], True)],
+        db, td_tournament.id, td_user.id, morning_track, [("opt_1", "Retired Group", [event["id"]], True)],
     )
-    _add_preference(db, membership.id, "morning", event["id"], 1)
+    _add_preference(db, membership.id, morning_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
@@ -461,20 +475,22 @@ def test_event_preferences_flag_answers_to_an_archived_option(client, db, td_use
 
 
 def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     login(client, "td@test.com", "tdpass")
     e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
     e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     # Ranked entries deliberately out of order to check the response sorts.
-    _add_preference(db, membership.id, "morning", e2["id"], 2)
-    _add_preference(db, membership.id, "morning", e1["id"], 1)
+    _add_preference(db, membership.id, morning_track, e2["id"], 2)
+    _add_preference(db, membership.id, morning_track, e1["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
     # No form field defines these options, so each event is its own group,
     # labelled by the event and flagged archived (see build_event_preferences).
     assert res.json()["event_preferences"] == [{
-        "key": "morning",
+        "track_id": morning_track,
+        "track_name": "Morning",
         "options": [
             {
                 "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
@@ -488,14 +504,15 @@ def test_member_reads_their_own_event_preferences_grouped(client, db, td_user, t
     }]
 
 def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_user, td_tournament):
+    afternoon_track = _pref_track(db, td_tournament, "Afternoon")
     login(client, "td@test.com", "tdpass")
     e1 = _make_event(client, td_tournament.id, name="Anatomy").json()
     e2 = _make_event(client, td_tournament.id, name="Astronomy").json()
     membership = _td_membership(db, td_user, td_tournament)
     # Inserted in reverse id order — checkbox rows carry no rank, so they
     # must fall back to ordering by event id.
-    _add_preference(db, membership.id, "afternoon", e2["id"], None)
-    _add_preference(db, membership.id, "afternoon", e1["id"], None)
+    _add_preference(db, membership.id, afternoon_track, e2["id"], None)
+    _add_preference(db, membership.id, afternoon_track, e1["id"], None)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
@@ -503,26 +520,30 @@ def test_member_event_preferences_unranked_ordered_by_event_id(client, db, td_us
     assert ids == sorted([e1["id"], e2["id"]])
 
 def test_member_event_preferences_grouped_by_key_sorted(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
+    afternoon_track = _pref_track(db, td_tournament, "Afternoon")
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     membership = _td_membership(db, td_user, td_tournament)
-    _add_preference(db, membership.id, "morning", event["id"], 1)
-    _add_preference(db, membership.id, "afternoon", event["id"], 1)
+    _add_preference(db, membership.id, morning_track, event["id"], 1)
+    _add_preference(db, membership.id, afternoon_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/me/")
     assert res.status_code == 200
-    assert [g["key"] for g in res.json()["event_preferences"]] == ["afternoon", "morning"]
+    assert [g["track_name"] for g in res.json()["event_preferences"]] == ["Afternoon", "Morning"]
 
 def test_member_detail_carries_event_preferences(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id, name="Anatomy").json()
     membership = _td_membership(db, td_user, td_tournament)
-    _add_preference(db, membership.id, "morning", event["id"], 1)
+    _add_preference(db, membership.id, morning_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/{membership.id}/")
     assert res.status_code == 200
     assert res.json()["event_preferences"] == [{
-        "key": "morning",
+        "track_id": morning_track,
+        "track_name": "Morning",
         "options": [{
             "option_id": None, "label": "Anatomy", "rank": 1, "is_archived": True,
             "events": [{"id": event["id"], "name": "Anatomy", "division": "C", "rank": 1}],
@@ -530,6 +551,7 @@ def test_member_detail_carries_event_preferences(client, db, td_user, td_tournam
     }]
 
 def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     """The roster used to be a narrower schema that simply had no such field.
     It is the same schema as the detail view now, so what keeps a whole
     tournament's event preferences off a roster is the caller not asking:
@@ -538,7 +560,7 @@ def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     membership = _td_membership(db, td_user, td_tournament)
-    _add_preference(db, membership.id, "morning", event["id"], 1)
+    _add_preference(db, membership.id, morning_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/?surface=members_table")
     assert res.status_code == 200
@@ -546,6 +568,7 @@ def test_roster_omits_event_preferences_unless_asked_for(client, db, td_user, td
 
 
 def test_roster_returns_event_preferences_when_asked_for(client, db, td_user, td_tournament):
+    morning_track = _pref_track(db, td_tournament, "Morning")
     """The other half: one response shape, narrowed by the caller, so the
     roster can serve them too rather than needing the detail route.
 
@@ -558,9 +581,9 @@ def test_roster_returns_event_preferences_when_asked_for(client, db, td_user, td
     login(client, "td@test.com", "tdpass")
     event = _make_event(client, td_tournament.id).json()
     membership = _td_membership(db, td_user, td_tournament)
-    _add_preference(db, membership.id, "morning", event["id"], 1)
+    _add_preference(db, membership.id, morning_track, event["id"], 1)
 
     res = client.get(f"/tournaments/{td_tournament.id}/members/?fields=event_prefs")
     row = next(r for r in res.json() if r["id"] == membership.id)
-    assert [group["key"] for group in row["event_preferences"]] == ["morning"]
+    assert [group["track_name"] for group in row["event_preferences"]] == ["Morning"]
 

@@ -84,17 +84,20 @@ def _lunch_clause(category: str, value: str):
     return exists().where(in_category & (TournamentMembershipLunch.value == value))
 
 
-def _shift_ids_on_days(db, tournament, days: set[str]) -> set[int]:
-    """Every shift of `tournament` starting on one of the given ISO days,
-    read in the tournament's own timezone (see tournament_local_date)."""
-    from app.core.tournament import tournament_local_date
+def _shift_ids_on_tracks(db, tournament, track_ids: set[int]) -> set[int]:
+    """Every shift of `tournament` belonging to one of the given tracks.
+
+    Was day-scoped, which needed a timezone conversion per shift; a shift now
+    carries its track outright. Track is also the better unit: two sites
+    running the same Saturday are separate questions."""
     from app.models.models import TournamentShift
 
     return {
         shift_id
-        for shift_id, start in db.query(TournamentShift.id, TournamentShift.start)
-        .filter(TournamentShift.tournament_id == tournament.id)
-        if tournament_local_date(tournament, start).isoformat() in days
+        for (shift_id,) in db.query(TournamentShift.id).filter(
+            TournamentShift.tournament_id == tournament.id,
+            TournamentShift.track_id.in_(track_ids),
+        )
     }
 
 
@@ -113,7 +116,7 @@ def apply_member_filters(
 ) -> Query:
     """Narrows a TournamentMembership query by the roster's filter params.
 
-    `tournament` is only needed to resolve a day-level availability filter
+    `tournament` is only needed to resolve a track-level availability filter
     ("every shift on Feb 13") into shift ids — a shift's day depends on the
     tournament's timezone, not on UTC."""
     if roles:
@@ -156,17 +159,17 @@ def apply_member_filters(
             query = query.filter(or_(*clauses))
 
     if event_preferences:
-        # "suffix:tournamentEventId" — an event ranked under one question says
-        # nothing about another, so the suffix has to travel with the event.
+        # "trackId:tournamentEventId" — an event ranked for one track says
+        # nothing about another, so the track has to travel with the event.
         clauses = [
             exists().where(
                 (TournamentMembershipEventPreference.membership_id == TournamentMembership.id)
-                & (TournamentMembershipEventPreference.key == suffix)
+                & (TournamentMembershipEventPreference.track_id == int(track_id))
                 & (true() if event_id == ANY
                    else TournamentMembershipEventPreference.tournament_event_id == int(event_id))
             )
-            for suffix, event_id in _split_pairs(event_preferences)
-            if event_id == ANY or event_id.isdigit()
+            for track_id, event_id in _split_pairs(event_preferences)
+            if track_id.isdigit() and (event_id == ANY or event_id.isdigit())
         ]
         if clauses:
             query = query.filter(or_(*clauses))
@@ -192,18 +195,18 @@ def apply_member_filters(
         pass
 
     if shifts:
-        # "YYYY-MM-DD:shiftId", or ":__any__" for "free at some point that
-        # day". The day travels with the shift so the modal can rebuild its
-        # day chips from the URL without a second lookup.
+        # "trackId:shiftId", or "trackId:__any__" for "free at some point on
+        # that track". The track travels with the shift so the modal can
+        # rebuild its track chips from the URL without a second lookup.
         shift_ids: set[int] = set()
-        any_days: set[str] = set()
-        for day, value in _split_pairs(shifts):
-            if value == ANY:
-                any_days.add(day)
+        any_tracks: set[int] = set()
+        for track_id, value in _split_pairs(shifts):
+            if value == ANY and track_id.isdigit():
+                any_tracks.add(int(track_id))
             elif value.isdigit():
                 shift_ids.add(int(value))
-        if any_days and tournament is not None:
-            shift_ids |= _shift_ids_on_days(query.session, tournament, any_days)
+        if any_tracks and tournament is not None:
+            shift_ids |= _shift_ids_on_tracks(query.session, tournament, any_tracks)
         if shift_ids:
             query = query.filter(exists().where(
                 (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
@@ -295,20 +298,22 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentTrack.name)
     ]
 
-    # Grouped by day: a day is the unit a TD thinks in ("who's around
-    # Saturday?"), and shift names repeat across the days of a multi-day
-    # tournament, so a flat list offers "Impound" twice with nothing to tell
-    # the two apart.
+    # Grouped by track: a track is the unit a TD thinks in ("who's around for
+    # Day 1?"), and shift names repeat across tracks ("Impound" on both days),
+    # so a flat list offers the same label twice with nothing to tell them
+    # apart. Was grouped by day, which couldn't separate two sites running the
+    # same Saturday.
+    track_names = {t["value"]: t["label"] for t in tracks}
     shift_days: dict[str, dict] = {}
     for shift in (
         db.query(TournamentShift)
         .filter(TournamentShift.tournament_id == tournament.id)
         .order_by(TournamentShift.start)
     ):
-        day = tournament_local_date(tournament, shift.start)
+        key = str(shift.track_id)
         group = shift_days.setdefault(
-            day.isoformat(),
-            {"value": day.isoformat(), "label": f"{day:%a, %b} {day.day}", "options": []},
+            key,
+            {"value": key, "label": track_names.get(key, "Unknown track"), "options": []},
         )
         group["options"].append({
             "value": str(shift.id),
@@ -336,20 +341,24 @@ def build_filter_options(db, tournament) -> dict:
         .filter(TournamentEvent.tournament_id == tournament.id)
         .order_by(func.coalesce(TournamentEvent.name, Event.name))
     ]
-    suffixes = {
+    pref_track_ids = {
         match.group(1)
         for match in (EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) for field in fields)
         if match
     }
     # A question can be deleted after members answered it; the answers stay
-    # filterable, so the stored keys are unioned in rather than lost.
-    suffixes |= {
-        key for (key,) in scoped(TournamentMembershipEventPreference)
-        .with_entities(TournamentMembershipEventPreference.key).distinct()
+    # filterable, so the stored tracks are unioned in rather than lost.
+    pref_track_ids |= {
+        str(track_id) for (track_id,) in scoped(TournamentMembershipEventPreference)
+        .with_entities(TournamentMembershipEventPreference.track_id).distinct()
     }
     event_preferences = [
-        {"value": suffix, "label": unslug(suffix), "options": event_options}
-        for suffix in sorted(suffixes)
+        {
+            "value": track_id,
+            "label": track_names.get(track_id, "Unknown track"),
+            "options": event_options,
+        }
+        for track_id in sorted(pref_track_ids, key=lambda t: track_names.get(t, ""))
     ]
 
     member_user_ids = (

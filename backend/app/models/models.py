@@ -1197,23 +1197,38 @@ class TournamentMembershipLunch(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
-    date = Column(Date, nullable=False)
+    # Scoped by track, not by date. A track can span more than one day, so a
+    # date was never the unit a lunch question is actually asked about — and
+    # a two-site tournament feeds its sites separately even when they run on
+    # the same day.
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
     category = Column(String(64), nullable=False)
-    # Text, not String: a lunch_{date}_{category} field can be short_text/
+    # Text, not String: a lunch_{track}_{category} field can be short_text/
     # long_text, whose whole answer lands here as value/label.
     value = Column(Text, nullable=False)
     label = Column(Text, nullable=False)
 
     membership = relationship("TournamentMembership", back_populates="lunch_selections")
+    track = relationship("TournamentTrack", lazy="joined")
+
+    @property
+    def track_name(self) -> str:
+        """Flattened for MembershipLunchRead, which is validated straight off
+        these rows in some callers. `track` is lazy="joined", so this costs
+        nothing extra."""
+        return self.track.name
 
     __table_args__ = (
-        UniqueConstraint("membership_id", "date", "category", "value", name="uq_membership_lunch_selection"),
+        UniqueConstraint("membership_id", "track_id", "category", "value", name="uq_membership_lunch_selection"),
     )
 
 
 # ---------------------------------------------------------------------------
 # TournamentMembershipTrackStatus — write-through target for a form's
-# "track_status_{suffix}" answers, and for "availability_{date}" answers on a
+# "track_status_{suffix}" answers, and for "availability_{track}" answers on a
 # field that opted in via config.track_status_enabled.
 #
 # One row per (membership, track): a track's status is a single current fact,
@@ -1277,8 +1292,13 @@ class TournamentMembershipEventPreference(Base):
     id = Column(Integer, primary_key=True, index=True)
     membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
     tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False)
-
-    key = Column(String(64), nullable=False)  # the event_preference_{suffix} suffix
+    # The track is the whole scope — exactly one event_preference question per
+    # track, so there is no suffix and no `key` column. A member ranking events
+    # for Day 1 and for Test Writing has two independent sets.
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
 
     # ranked_choice: the submitted rank; single_select: 1; checkbox: null.
     rank = Column(Integer, nullable=True)
@@ -1289,7 +1309,14 @@ class TournamentMembershipEventPreference(Base):
     # lazy="joined": every read of a preference row wants the event's name/
     # division to render it, same reasoning as TrackStatus.track.
     tournament_event = relationship("TournamentEvent", lazy="joined")
+    track = relationship("TournamentTrack", lazy="joined")
+
+    @property
+    def track_name(self) -> str:
+        return self.track.name
 
     __table_args__ = (
-        UniqueConstraint("membership_id", "key", "tournament_event_id", name="uq_membership_event_preference"),
+        UniqueConstraint(
+            "membership_id", "track_id", "tournament_event_id", name="uq_membership_event_preference",
+        ),
     )

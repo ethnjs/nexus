@@ -22,9 +22,11 @@ Every `FormField` shares the same outer shape:
 
 One consequence is unresolved: a reused key means historical dashboard references can now overlap, with the same key naming two different questions at different points in time. Answers are unambiguous — each is bound to a `field_id` and records the `field_key` it was given under — but any TD-facing view that groups or filters by key alone will merge them. How that surfaces is deliberately left for later.
 
-**Line between `question_type` and `field_key`:** `question_type` is purely structural — how the question is rendered and answered. `field_key` is semantic — when it's a reserved key (`availability_{date}`, `event_preference_{suffix}`, `lunch_{custom}`, `track_status_{suffix}`), it changes how a *structurally normal* field's options/answers get parsed and, for tournament forms, written through to a structural table. Reserved keys don't get their own `question_type` — they reuse the existing structural types and layer extra validation on top. When a TD picks a reserved-key preset/template, `field_key` should be locked to the reserved value rather than freely typed — otherwise a stray typo (`availibility`) silently breaks write-through with no error. Flagging this as the intended behavior, not yet confirmed.
+**Line between `question_type` and `field_key`:** `question_type` is purely structural — how the question is rendered and answered. `field_key` is semantic — when it's a reserved key (`availability_{track}`, `event_preference_{track}`, `lunch_{track}_{category}`, `track_status_{suffix}`), it changes how a *structurally normal* field's options/answers get parsed and, for tournament forms, written through to a structural table. Reserved keys don't get their own `question_type` — they reuse the existing structural types and layer extra validation on top. When a TD picks a reserved-key preset/template, `field_key` should be locked to the reserved value rather than freely typed — otherwise a stray typo (`availibility`) silently breaks write-through with no error. Flagging this as the intended behavior, not yet confirmed.
 
-A tournament may have **multiple** fields under the same reserved prefix — `availability_20260315`, `availability_20260316` for two dates, `event_preference_morning`, `event_preference_afternoon` for two independently-ranked axes. `availability_*` fields are the one case where multiple questions share a single pool of storage (see below) — every other reserved key, including `event_preference_*`, keeps each suffix's answers separate simply because each field has its own `field_id`/`FormAnswer` row; there's no merging step needed for that.
+**The numeric slot in a reserved key is a `TournamentTrack` id, not a date.** A track carries its own dates, venue and division, so "which day" and "which site" stop being separate questions — and an id rather than a name means renaming "Day 1" doesn't orphan every key and answer pointing at it. `track_status_*` is the exception: it names no track at all, which is what lets one answer move several tracks at once.
+
+A tournament may have **multiple** fields under the same reserved prefix — `availability_7`, `availability_8` for two tracks, or `availability_7` and `availability_7_judges` for two questions covering one. `availability_*` fields are the one case where multiple questions share a single pool of storage (see below); `event_preference_*` allows exactly one field per track, so it owns its rows outright.
 
 **Options-storage rule:** wherever a type has an `options` array, each option is `{ "option_id": ..., "value": ..., "label": ..., "is_archived": false }`:
 - `option_id` — system-generated, opaque, required, and the **sole stable identifier**: what a submitted answer actually references, what branching matches against, and what the edit lifecycle diffs/archives by (see "Reserved `field_key`s" and `form-edit-lifecycle.md`). Never client-authored; a create/update request may omit it (new option) or echo back one from a prior `GET` (existing option, kept stable).
@@ -144,9 +146,9 @@ Only `single_select_radio` and `single_select_dropdown` options may carry branch
 
 | `field_key` | Allowed `question_type`(s) | Write-through |
 |---|---|---|
-| `availability_{date}[_{suffix}]` — e.g. `availability_20260315` or `availability_20260315_judges` (`^availability_\d{8}(_[a-z0-9_]+)?$`); a bare `availability` (no date) is **not** a valid reserved key. The suffix is optional and TD-chosen — it exists solely so two fields (typically on different forms) can both cover the same date without colliding on `field_key`, which must be unique per tournament across every form | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipAvailability` (tournament-owned forms only); selected option_id(s) across **every** active `availability_*` field on the response are expanded into their grouped `TournamentShift` ids, unioned, and diffed as one set — every date's question (suffixed or not) feeds the same centralized "shifts this member is available for" pool, not a per-date table. With `track_status_enabled: true` the option's shift ids move under a `shift_ids` key and the field additionally writes track statuses — read them through `option_shift_ids` / `option_track_assignments` rather than off `value`, whose shape is only interpretable alongside `field_key`. |
-| `lunch_{date}_{category}` — e.g. `lunch_20270213_protein` (`^lunch_\d{8}_[a-z0-9_]+$`), one per (date, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); selected option_id(s) resolve to their stored `value`/`label`, no catalog table — stores whatever option was selected, keyed by category string |
-| `event_preference_{suffix}` — e.g. `event_preference_morning` (`^event_preference_[a-z0-9_]+$`), one per independently-ranked axis; a bare `event_preference` (no suffix) is **not** a valid reserved key | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | `TournamentMembershipEventPreference` (tournament-owned forms only), one row per (membership, key, event) — the suffix is one field's exclusive key, so unlike `availability` there's no cross-field union: each field's answer diff-replaces only its own key's rows (`sync_event_preferences`). Selected option(s) expand into `{tournament_event_id, rank}` rows: `ranked_choice` writes each option's rank; `single_select_dropdown` writes rank `1`; `multi_select_checkbox` writes rank `null`. Options are validated mutually exclusive by event and `allow_duplicates` is required `false` on `ranked_choice` (see above), so `(membership_id, key, tournament_event_id)` is a plain unique constraint — no rank in the key. `TournamentMembership` once carried manual-entry `event_preference` / `role_preference` / `availability` / `lunch_order` / `extra_data` columns; those are gone, as is `status` — per-track participation now lives in `TournamentMembershipTrackStatus`. |
+| `availability_{track_id}[_{suffix}]` — e.g. `availability_7` or `availability_7_judges` (`^availability_\d+(_[a-z0-9_]+)?$`); a bare `availability` (no track id) is **not** a valid reserved key. The suffix is optional and TD-chosen — it exists solely so two fields (typically on different forms) can both cover the same track without colliding on `field_key`, which must be unique per tournament across every form | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipAvailability` (tournament-owned forms only); selected option_id(s) across **every** active `availability_*` field on the response are expanded into their grouped `TournamentShift` ids, unioned, and diffed as one set — every track's question (suffixed or not) feeds the same centralized "shifts this member is available for" pool, not a per-track table. Each option's shifts must belong to the field's own track. With `track_status_enabled: true` the option's shift ids move under a `shift_ids` key and it gains a bare `track_status` string that applies to the field's own track — read them through `option_shift_ids` / `option_track_assignments` rather than off `value`, whose shape is only interpretable alongside `field_key`. |
+| `lunch_{track_id}_{category}` — e.g. `lunch_7_protein` (`^lunch_\d+_[a-z0-9_]+$`), one per (track, category) pair | `single_select_radio` or `multi_select_checkbox` | `TournamentMembershipLunch` (tournament-owned forms only); selected option_id(s) resolve to their stored `value`/`label`, no catalog table — stores whatever option was selected, keyed by (track, category) |
+| `event_preference_{track_id}` — e.g. `event_preference_7` (`^event_preference_\d+$`), **exactly one per track**; there is no suffix, and a bare `event_preference` is **not** a valid reserved key. Two questions on one track would write into one pool with no way to say whose rank-1 is whose | `ranked_choice`, `multi_select_checkbox`, or `single_select_dropdown` | `TournamentMembershipEventPreference` (tournament-owned forms only), one row per (membership, track, event) — a track has exactly one preference question, so unlike `availability` there's no cross-field union: each field's answer diff-replaces only its own track's rows (`sync_event_preferences`). Options may only offer events linked to that track (see `tournament_event_tracks`), so a Day 1 question can't offer a Test Writing event. Selected option(s) expand into `{tournament_event_id, rank}` rows: `ranked_choice` writes each option's rank; `single_select_dropdown` writes rank `1`; `multi_select_checkbox` writes rank `null`. Options are validated mutually exclusive by event and `allow_duplicates` is required `false` on `ranked_choice` (see above), so `(membership_id, track_id, tournament_event_id)` is a plain unique constraint — no rank in the key. `TournamentMembership` once carried manual-entry `event_preference` / `role_preference` / `availability` / `lunch_order` / `extra_data` columns; those are gone, as is `status` — per-track participation now lives in `TournamentMembershipTrackStatus`. |
 | `track_status_{suffix}` — e.g. `track_status_volunteer_interest` (`^track_status_[a-z0-9_]+$`), one per independently named status question | `single_select_radio` or `multi_select_checkbox`, and `required` **must** be `true` | `TournamentMembershipTrackStatus` (tournament-owned forms only), one row per (membership, track); each option's `value` is the list of track assignments it applies (shape below). An `availability_*` field may carry assignments too, but only with `track_status_enabled: true` — that field then writes to **both** targets, its shifts and its statuses. **Upsert-only, never deleted**, and guarded by a transition rule (a track never falls back to `interested`); where two fields name one track, later document order wins. Checkbox options may repeat a track only when they assign it the same status. See `form-edit-lifecycle.md`'s "Track status ordering". |
 | any TD-typed slug | any type | none — generic `FormAnswer` |
 
@@ -160,7 +162,7 @@ shapes, because `availability_*` has two depending on the track opt-in. All
 option schemas are `extra="forbid"` (`app/schemas/form.py`): a key that isn't
 in the shape below is rejected outright, not ignored.
 
-**1. `availability_{date}` — plain.** `value` is the `TournamentShift` ids this
+**1. `availability_{track}` — plain.** `value` is the `TournamentShift` ids this
 option groups.
 
 ```json
@@ -169,22 +171,27 @@ option groups.
 ] }
 ```
 
-**2. `availability_{date}` — with track statuses.** Set by the builder's "Also
+**2. `availability_{track}` — with track statuses.** Set by the builder's "Also
 update track status" toggle. `config.track_status_enabled: true` is what
-*permits* assignments here; the flag is availability-only and rejected on any
+*permits* a status here; the flag is availability-only and rejected on any
 other reserved key. `value` becomes an object — `shift_ids` is required and
 non-empty.
+
+`track_status` is a bare string, not a list of `{id, status}` pairs: the field
+key already names the one track this question covers, so an id list could only
+ever repeat it or contradict it. (A `track_status_{suffix}` field, which names
+no track, keeps the list shape — that is the whole reason it exists.)
 
 ```json
 { "required": true, "track_status_enabled": true, "options": [
   { "option_id": "a1b2c3d4e5", "label": "All Day", "value": {
     "shift_ids": [3, 2, 5],
-    "track_statuses": [{ "id": 7, "status": "confirmed" }]
+    "track_status": "confirmed"
   } }
 ] }
 ```
 
-**3. `event_preference_{suffix}`.** `value` is the `TournamentEvent` ids
+**3. `event_preference_{track}`.** `value` is the `TournamentEvent` ids
 grouped under one label, strictly validated: every id must be real and belong
 to the field's own tournament, and no event may appear in more than one
 option. On `ranked_choice`, `allow_duplicates` must be `false`.
@@ -195,7 +202,7 @@ option. On `ranked_choice`, `allow_duplicates` must be `false`.
 ] }
 ```
 
-**4. `lunch_{date}_{category}`.** Looks like a preset but its options are
+**4. `lunch_{track}_{category}`.** Looks like a preset but its options are
 ordinary TD-typed text — `value` is a plain string, same as any custom
 question. The reserved key only drives write-through.
 

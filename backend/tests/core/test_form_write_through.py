@@ -6,6 +6,8 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from tests.conftest import primary_track_id
+
 from app.core.form.write_through import (
     can_set_track_status,
     parse_lunch_field_key,
@@ -27,7 +29,6 @@ from app.models.models import (
     TournamentShift,
     TournamentTrack,
 )
-from tests.conftest import primary_track_id
 
 
 def _make_shift(db, tournament, label="Shift"):
@@ -59,12 +60,12 @@ def _availability_shift_ids(db, membership_id):
     }
 
 
-def _lunch_rows(db, membership_id, lunch_date, category):
+def _lunch_rows(db, membership_id, track_id, category):
     return (
         db.query(TournamentMembershipLunch)
         .filter(
             TournamentMembershipLunch.membership_id == membership_id,
-            TournamentMembershipLunch.date == lunch_date,
+            TournamentMembershipLunch.track_id == track_id,
             TournamentMembershipLunch.category == category,
         )
         .all()
@@ -78,15 +79,25 @@ def _make_event(db, tournament, name="Anatomy", division="B"):
     return event
 
 
-def _event_preference_rows(db, membership_id, key):
+def _event_preference_rows(db, membership_id, track_id):
     return (
         db.query(TournamentMembershipEventPreference)
         .filter(
             TournamentMembershipEventPreference.membership_id == membership_id,
-            TournamentMembershipEventPreference.key == key,
+            TournamentMembershipEventPreference.track_id == track_id,
         )
         .all()
     )
+
+
+def _make_track(db, tournament, name):
+    """A cosmetic track — these tests only need an id to scope rows by."""
+    from app.models.models import TournamentTrack
+
+    track = TournamentTrack(tournament_id=tournament.id, name=name)
+    db.add(track)
+    db.flush()
+    return track
 
 
 # ---------------------------------------------------------------------------
@@ -163,71 +174,74 @@ class TestSyncAvailability:
 # ---------------------------------------------------------------------------
 
 class TestSyncLunch:
-    LUNCH_DATE = date(2027, 2, 13)
+    @pytest.fixture
+    def track_id(self, db, td_tournament):
+        return primary_track_id(db, td_tournament.id)
 
-    def test_insert_only(self, db, membership):
+    def test_insert_only(self, db, membership, track_id):
         sync_lunch(
-            db, membership.id, self.LUNCH_DATE, "protein",
+            db, membership.id, track_id, "protein",
             [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
         )
         db.commit()
 
-        rows = _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein")
+        rows = _lunch_rows(db, membership.id, track_id, "protein")
         assert {row.value for row in rows} == {"chicken", "tofu"}
 
-    def test_delete_only(self, db, membership):
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [{"value": "chicken", "label": "Chicken"}])
+    def test_delete_only(self, db, membership, track_id):
+        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
         db.commit()
 
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [])
+        sync_lunch(db, membership.id, track_id, "protein", [])
         db.commit()
 
-        assert _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein") == []
+        assert _lunch_rows(db, membership.id, track_id, "protein") == []
 
-    def test_mixed_diff(self, db, membership):
+    def test_mixed_diff(self, db, membership, track_id):
         sync_lunch(
-            db, membership.id, self.LUNCH_DATE, "protein",
+            db, membership.id, track_id, "protein",
             [{"value": "chicken", "label": "Chicken"}, {"value": "tofu", "label": "Tofu"}],
         )
         db.commit()
 
         # Drop chicken, keep tofu, add beef.
         sync_lunch(
-            db, membership.id, self.LUNCH_DATE, "protein",
+            db, membership.id, track_id, "protein",
             [{"value": "tofu", "label": "Tofu"}, {"value": "beef", "label": "Beef"}],
         )
         db.commit()
 
-        rows = _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein")
+        rows = _lunch_rows(db, membership.id, track_id, "protein")
         assert {row.value for row in rows} == {"tofu", "beef"}
 
-    def test_category_isolation(self, db, membership):
+    def test_category_isolation(self, db, membership, track_id):
         """Syncing one category never touches another category's rows for
         the same membership/date."""
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [{"value": "chicken", "label": "Chicken"}])
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "drink", [{"value": "water", "label": "Water"}])
+        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
+        sync_lunch(db, membership.id, track_id, "drink", [{"value": "water", "label": "Water"}])
         db.commit()
 
         # Resync protein down to empty — drink must survive untouched.
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [])
+        sync_lunch(db, membership.id, track_id, "protein", [])
         db.commit()
 
-        assert _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein") == []
-        drink_rows = _lunch_rows(db, membership.id, self.LUNCH_DATE, "drink")
+        assert _lunch_rows(db, membership.id, track_id, "protein") == []
+        drink_rows = _lunch_rows(db, membership.id, track_id, "drink")
         assert {row.value for row in drink_rows} == {"water"}
 
-    def test_date_isolation(self, db, membership):
-        """Same category, different date — also isolated."""
-        other_date = date(2027, 2, 14)
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [{"value": "chicken", "label": "Chicken"}])
-        sync_lunch(db, membership.id, other_date, "protein", [{"value": "tofu", "label": "Tofu"}])
+    def test_track_isolation(self, db, membership, td_tournament, track_id):
+        """Same category, different track — also isolated. Two sites can ask
+        the same question and get different answers, even on the same day."""
+        other = _make_track(db, td_tournament, "Day 2")
+        sync_lunch(db, membership.id, track_id, "protein", [{"value": "chicken", "label": "Chicken"}])
+        sync_lunch(db, membership.id, other.id, "protein", [{"value": "tofu", "label": "Tofu"}])
         db.commit()
 
-        sync_lunch(db, membership.id, self.LUNCH_DATE, "protein", [])
+        sync_lunch(db, membership.id, track_id, "protein", [])
         db.commit()
 
-        assert _lunch_rows(db, membership.id, self.LUNCH_DATE, "protein") == []
-        other_rows = _lunch_rows(db, membership.id, other_date, "protein")
+        assert _lunch_rows(db, membership.id, track_id, "protein") == []
+        other_rows = _lunch_rows(db, membership.id, other.id, "protein")
         assert {row.value for row in other_rows} == {"tofu"}
 
 
@@ -236,87 +250,92 @@ class TestSyncLunch:
 # ---------------------------------------------------------------------------
 
 class TestSyncEventPreferences:
-    def test_insert_only(self, db, membership, td_tournament):
+    @pytest.fixture
+    def track_id(self, db, td_tournament):
+        return primary_track_id(db, td_tournament.id)
+
+    def test_insert_only(self, db, membership, td_tournament, track_id):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, "morning",
+            db, membership.id, track_id,
             [{"tournament_event_id": e1.id, "rank": 1}, {"tournament_event_id": e2.id, "rank": 2}],
         )
         db.commit()
 
-        rows = {row.tournament_event_id: row.rank for row in _event_preference_rows(db, membership.id, "morning")}
+        rows = {row.tournament_event_id: row.rank for row in _event_preference_rows(db, membership.id, track_id)}
         assert rows == {e1.id: 1, e2.id: 2}
 
-    def test_delete_only(self, db, membership, td_tournament):
+    def test_delete_only(self, db, membership, td_tournament, track_id):
         event = _make_event(db, td_tournament)
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": None}])
+        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": None}])
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [])
+        sync_event_preferences(db, membership.id, track_id, [])
         db.commit()
 
-        assert _event_preference_rows(db, membership.id, "morning") == []
+        assert _event_preference_rows(db, membership.id, track_id) == []
 
-    def test_mixed_diff(self, db, membership, td_tournament):
+    def test_mixed_diff(self, db, membership, td_tournament, track_id):
         e1 = _make_event(db, td_tournament, "Anatomy")
         e2 = _make_event(db, td_tournament, "Astronomy")
         e3 = _make_event(db, td_tournament, "Chemistry")
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, "morning",
+            db, membership.id, track_id,
             [{"tournament_event_id": e1.id, "rank": None}, {"tournament_event_id": e2.id, "rank": None}],
         )
         db.commit()
 
         # Drop e1, keep e2, add e3.
         sync_event_preferences(
-            db, membership.id, "morning",
+            db, membership.id, track_id,
             [{"tournament_event_id": e2.id, "rank": None}, {"tournament_event_id": e3.id, "rank": None}],
         )
         db.commit()
 
-        rows = {row.tournament_event_id for row in _event_preference_rows(db, membership.id, "morning")}
+        rows = {row.tournament_event_id for row in _event_preference_rows(db, membership.id, track_id)}
         assert rows == {e2.id, e3.id}
 
-    def test_rank_change_on_unchanged_event_updates_in_place(self, db, membership, td_tournament):
+    def test_rank_change_on_unchanged_event_updates_in_place(self, db, membership, td_tournament, track_id):
         event = _make_event(db, td_tournament)
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": 1}])
+        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 1}])
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": event.id, "rank": 2}])
+        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": event.id, "rank": 2}])
         db.commit()
 
-        rows = _event_preference_rows(db, membership.id, "morning")
+        rows = _event_preference_rows(db, membership.id, track_id)
         assert len(rows) == 1
         assert rows[0].rank == 2
 
-    def test_key_isolation(self, db, membership, td_tournament):
-        """Syncing one suffix never touches another suffix's rows for the
-        same membership."""
-        morning_event = _make_event(db, td_tournament, "Anatomy")
-        afternoon_event = _make_event(db, td_tournament, "Astronomy")
+    def test_track_isolation(self, db, membership, td_tournament, track_id):
+        """Syncing one track never touches another track's rows for the same
+        membership — a member ranks Day 1 and Test Writing independently."""
+        day_event = _make_event(db, td_tournament, "Anatomy")
+        writing_event = _make_event(db, td_tournament, "Astronomy")
+        writing = _make_track(db, td_tournament, "Test Writing")
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [{"tournament_event_id": morning_event.id, "rank": None}])
-        sync_event_preferences(db, membership.id, "afternoon", [{"tournament_event_id": afternoon_event.id, "rank": None}])
+        sync_event_preferences(db, membership.id, track_id, [{"tournament_event_id": day_event.id, "rank": None}])
+        sync_event_preferences(db, membership.id, writing.id, [{"tournament_event_id": writing_event.id, "rank": None}])
         db.commit()
 
-        sync_event_preferences(db, membership.id, "morning", [])
+        sync_event_preferences(db, membership.id, track_id, [])
         db.commit()
 
-        assert _event_preference_rows(db, membership.id, "morning") == []
-        afternoon_rows = _event_preference_rows(db, membership.id, "afternoon")
-        assert {row.tournament_event_id for row in afternoon_rows} == {afternoon_event.id}
+        assert _event_preference_rows(db, membership.id, track_id) == []
+        writing_rows = _event_preference_rows(db, membership.id, writing.id)
+        assert {row.tournament_event_id for row in writing_rows} == {writing_event.id}
 
-    def test_repeated_ranked_selection_across_ranks_allowed(self, db, membership, td_tournament):
+    def test_repeated_ranked_selection_across_ranks_allowed(self, db, membership, td_tournament, track_id):
         """sync_event_preferences itself doesn't enforce the no-repeat-rank
         rule — that's validate_event_preference_options'/
         duplicate_ranked_choice_field_keys' job, upstream of write-through.
@@ -328,12 +347,12 @@ class TestSyncEventPreferences:
         db.commit()
 
         sync_event_preferences(
-            db, membership.id, "morning",
+            db, membership.id, track_id,
             [{"tournament_event_id": event.id, "rank": 1}, {"tournament_event_id": event.id, "rank": 2}],
         )
         db.commit()
 
-        rows = _event_preference_rows(db, membership.id, "morning")
+        rows = _event_preference_rows(db, membership.id, track_id)
         assert len(rows) == 1
 
 
@@ -543,12 +562,12 @@ class TestSyncTrackStatuses:
 # ---------------------------------------------------------------------------
 
 class TestParseLunchFieldKey:
-    def test_splits_date_and_category(self):
-        lunch_date, category = parse_lunch_field_key("lunch_20270213_protein")
-        assert lunch_date == date(2027, 2, 13)
+    def test_splits_track_and_category(self):
+        track_id, category = parse_lunch_field_key("lunch_7_protein")
+        assert track_id == 7
         assert category == "protein"
 
     def test_multi_word_category(self):
-        lunch_date, category = parse_lunch_field_key("lunch_20270213_main_course")
-        assert lunch_date == date(2027, 2, 13)
+        track_id, category = parse_lunch_field_key("lunch_7_main_course")
+        assert track_id == 7
         assert category == "main_course"

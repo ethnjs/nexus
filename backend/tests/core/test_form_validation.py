@@ -251,22 +251,27 @@ class TestValidateFieldConfig:
 class TestValidateReservedFieldKey:
     def test_availability_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_reserved_field_key("availability_20260315", "single_select_dropdown")
+            validate_reserved_field_key("availability_7", "single_select_dropdown")
 
     @pytest.mark.parametrize("question_type", ["single_select_radio", "multi_select_checkbox"])
     def test_availability_allowed_types_pass(self, question_type):
-        validate_reserved_field_key("availability_20260315", question_type)  # no raise
+        validate_reserved_field_key("availability_7", question_type)  # no raise
 
     @pytest.mark.parametrize("question_type", ["ranked_choice", "multi_select_checkbox", "single_select_dropdown"])
     def test_event_preference_allowed_types_pass(self, question_type):
-        validate_reserved_field_key("event_preference_morning", question_type)  # no raise
+        validate_reserved_field_key("event_preference_7", question_type)  # no raise
 
     def test_event_preference_disallowed_type_rejected(self):
         with pytest.raises(FormFieldValidationError):
-            validate_reserved_field_key("event_preference_morning", "short_text")
+            validate_reserved_field_key("event_preference_7", "short_text")
+
+    def test_event_preference_with_a_suffix_is_not_reserved(self):
+        """The key names one track and nothing else — exactly one preference
+        question per track, so there is no suffix to disambiguate with."""
+        validate_reserved_field_key("event_preference_morning", "short_text")  # no raise
 
     def test_bare_availability_key_no_longer_reserved(self):
-        # No date suffix -> not a reserved key at all, so any question_type
+        # No track id -> not a reserved key at all, so any question_type
         # is allowed (same as any other non-reserved field_key).
         validate_reserved_field_key("availability", "short_text")  # no raise
 
@@ -287,9 +292,9 @@ class TestValidateReservedFieldKey:
 
 class TestValidateTournamentPreset:
     @pytest.mark.parametrize("field_key", [
-        "availability_20260315",
-        "event_preference_morning",
-        "lunch_20260315_protein",
+        "availability_7",
+        "event_preference_7",
+        "lunch_7_protein",
         "track_status_interest",
     ])
     def test_presets_reject_chapter_owned_forms(self, field_key):
@@ -374,21 +379,21 @@ class TestValidateAvailabilityOptions:
         with pytest.raises(FormFieldValidationError):
             validate_availability_options(db, td_tournament.id, config)
 
-    def test_shift_from_another_day_rejected(self, db, td_user, td_tournament):
-        """Availability write-through owns a whole day: a stray shift from a
-        different date would be added by this question and removed by that
-        day's own question, or the reverse, depending on submission order."""
-        wrong_day = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=timezone.utc))
+    def test_shift_from_another_track_rejected(self, db, td_user, td_tournament):
+        """Availability write-through owns a whole track: a stray shift from a
+        different track would be added by this question and removed by that
+        track's own question, or the reverse, depending on submission order."""
+        shift = _make_shift(db, td_tournament, "Sunday", day=datetime(2026, 3, 16, tzinfo=timezone.utc))
         db.commit()
-        config = {"options": [{"value": [wrong_day.id], "label": "Sunday"}]}
-        with pytest.raises(FormFieldValidationError, match="outside this question's date"):
-            validate_availability_options(db, td_tournament.id, config, date(2026, 3, 15))
+        config = {"options": [{"value": [shift.id], "label": "Sunday"}]}
+        with pytest.raises(FormFieldValidationError, match="outside this question's track"):
+            validate_availability_options(db, td_tournament.id, config, shift.track_id + 999)
 
-    def test_shift_on_the_field_date_passes(self, db, td_user, td_tournament):
+    def test_shift_on_the_field_track_passes(self, db, td_user, td_tournament):
         shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 15, 8, tzinfo=timezone.utc))
         db.commit()
         config = {"options": [{"value": [shift.id], "label": "Morning"}]}
-        validate_availability_options(db, td_tournament.id, config, date(2026, 3, 15))  # no raise
+        validate_availability_options(db, td_tournament.id, config, shift.track_id)  # no raise
 
     def test_date_check_skipped_when_no_field_date_given(self, db, td_user, td_tournament):
         shift = _make_shift(db, td_tournament, day=datetime(2026, 3, 16, tzinfo=timezone.utc))
@@ -491,9 +496,17 @@ class TestOptionValueReaders:
         option = {"value": [{"id": 7, "status": "confirmed"}]}
         assert option_track_assignments(option) == [{"id": 7, "status": "confirmed"}]
 
-    def test_assignments_nested_under_availability_value(self):
-        option = {"value": {"shift_ids": [1, 2], "track_statuses": [{"id": 7, "status": "declined"}]}}
-        assert option_track_assignments(option) == [{"id": 7, "status": "declined"}]
+    def test_status_on_an_availability_value_takes_the_field_track(self):
+        """An availability option carries a bare status; the track it applies
+        to comes from the field's own key, since the key already names it."""
+        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
+        assert option_track_assignments(option, 7) == [{"id": 7, "status": "declined"}]
+
+    def test_availability_status_without_a_field_track_is_ignored(self):
+        """Nothing to attach the status to — a track_status_* field passes no
+        track id, and its options carry their ids inline instead."""
+        option = {"value": {"shift_ids": [1, 2], "track_status": "declined"}}
+        assert option_track_assignments(option) == []
 
     def test_grouped_entity_ids_are_not_assignments(self):
         assert option_track_assignments({"value": [5, 9]}) == []
@@ -541,7 +554,9 @@ class TestValidateTrackStatusOptions:
             "required": True,
             "options": [{
                 "option_id": "yes", "label": "Yes",
-                "value": {"shift_ids": [1], "track_statuses": [{"id": track_id, "status": "interested"}]},
+                # One status, no id: an availability field names its track
+                # in its own key, so the option can't contradict it.
+                "value": {"shift_ids": [1], "track_status": "interested"},
             }],
         }
         config.update(overrides)
@@ -583,13 +598,12 @@ class TestValidateTrackStatusOptions:
     def test_availability_requires_opt_in_for_track_outcomes(self, db, td_user, td_tournament):
         track = self._track(db, td_tournament)
         config = self._availability_config(track.id)
+        key = f"availability_{track.id}"
         with pytest.raises(FormFieldValidationError, match="only allowed"):
-            validate_track_status_options(
-                db, td_tournament.id, "availability_20260315", "single_select_radio", config
-            )
+            validate_track_status_options(db, td_tournament.id, key, "single_select_radio", config)
 
         config["track_status_enabled"] = True
-        validate_track_status_options(db, td_tournament.id, "availability_20260315", "single_select_radio", config)
+        validate_track_status_options(db, td_tournament.id, key, "single_select_radio", config)
 
     def test_entity_ids_are_not_mistaken_for_track_assignments(self, db, td_user, td_tournament):
         """A list-valued option on a non-track field holds entity ids, not
@@ -602,7 +616,7 @@ class TestValidateTrackStatusOptions:
             db, td_tournament.id, "event_preference_labs", "multi_select_checkbox", config
         )
         validate_track_status_options(
-            db, td_tournament.id, "availability_20260315", "multi_select_checkbox", config
+            db, td_tournament.id, "availability_7", "multi_select_checkbox", config
         )
 
     def test_checkbox_rejects_conflicting_track_statuses(self, db, td_user, td_tournament):

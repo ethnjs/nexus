@@ -40,6 +40,9 @@ def _unique_option_fields(options: list) -> list:
     return options
 
 
+VALID_TRACK_STATUSES = {"interested", "confirmed", "declined"}
+
+
 class TrackStatusAssignment(BaseModel):
     """One track status attached to a selectable option."""
     model_config = ConfigDict(extra="forbid")
@@ -56,16 +59,24 @@ def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[Tra
 
 
 class AvailabilityTrackStatusValue(BaseModel):
-    """Raw builder value for an availability option that updates tracks."""
+    """Raw builder value for an availability option that updates a track.
+
+    One status, not a list. An availability_{track_id} field names exactly one
+    track, so the only track this option could ever move is that one — a list
+    would let an option contradict its own field key, and every entry but one
+    would be dead weight. (A track_status_{suffix} field, which names no track
+    at all, keeps the list shape; that's what it exists for.)"""
     model_config = ConfigDict(extra="forbid")
 
     shift_ids: list[int] = Field(min_length=1)
-    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
+    track_status: str | None = None
 
-    @field_validator("track_statuses")
+    @field_validator("track_status")
     @classmethod
-    def _unique_tracks(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
-        return _unique_track_statuses(assignments)
+    def _valid_status(cls, status: str | None) -> str | None:
+        if status is not None and status not in VALID_TRACK_STATUSES:
+            raise ValueError(f"track_status must be one of: {sorted(VALID_TRACK_STATUSES)}")
+        return status
 
 
 class PlainOption(BaseModel):
