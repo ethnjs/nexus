@@ -15,6 +15,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
+import { Checkbox } from '@/components/ui/Checkbox'
 import { IconChevronDown, IconChevronRight, IconPlus, IconTrash } from '@/components/ui/Icons'
 
 interface NewTournamentModalProps {
@@ -43,6 +44,9 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   const [levelText, setLevelText] = useState('')
   const [matchedLevel, setMatchedLevel] = useState<LevelOption | null>(null)
   const [division, setDivision]   = useState<TournamentDivision[]>([])
+  // Most tournaments run one day, so the end date only appears when the TD
+  // says it spans more — same treatment a track's dates get in TrackFields.
+  const [spansDays, setSpansDays]  = useState(false)
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
@@ -95,6 +99,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
       setMatchedUniversity(universities.find((u) => u.id === primary.university_id) ?? null)
       setStartDate(primary.start_date)
       setEndDate(primary.end_date)
+      setSpansDays(!!primary.end_date && primary.end_date !== primary.start_date)
       setDivision(primary.division)
     }
     setTrackRows([])
@@ -232,27 +237,51 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
               error={errors.location}
               placeholder="e.g. USC, Los Angeles CA"
             />
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              <Input
-                label="Start Date"
-                required
-                type="date"
-                value={startDate}
-                onChange={(e) => { setStartDate(e.target.value); setErrors(({ startDate, ...rest }) => rest) }}
-                error={errors.startDate}
-                min={todayLocalDateString()}
-                fullWidth
-              />
-              <Input
-                label="End Date"
-                required
-                type="date"
-                value={endDate}
-                onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
-                error={errors.endDate}
-                min={startDate || todayLocalDateString()}
-                fullWidth
-              />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: spansDays ? '1fr 1fr' : '1fr', gap: '12px' }}>
+                <Input
+                  label={spansDays ? 'Start Date' : 'Date'}
+                  required
+                  type="date"
+                  value={startDate}
+                  // A single-day tournament keeps its end date in step: the
+                  // track it creates needs both, and the TD has said it
+                  // doesn't span days.
+                  onChange={(e) => {
+                    setStartDate(e.target.value)
+                    if (!spansDays) setEndDate(e.target.value)
+                    setErrors(({ startDate, endDate, ...rest }) => rest)
+                  }}
+                  error={errors.startDate}
+                  min={todayLocalDateString()}
+                  fullWidth
+                />
+                {spansDays && (
+                  <Input
+                    label="End Date"
+                    required
+                    type="date"
+                    value={endDate}
+                    onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
+                    error={errors.endDate}
+                    min={startDate || todayLocalDateString()}
+                    fullWidth
+                  />
+                )}
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+                <Checkbox
+                  checked={spansDays}
+                  onChange={(checked) => {
+                    setSpansDays(checked)
+                    if (!checked) setEndDate(startDate)
+                    setErrors(({ endDate, ...rest }) => rest)
+                  }}
+                />
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                  Runs more than one day
+                </span>
+              </label>
             </div>
           </>
         )}
@@ -391,6 +420,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                       <div style={{ padding: '4px 12px 16px 34px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                         <Input
                           label="Name"
+                          required
                           font="sans"
                           fullWidth
                           placeholder="e.g. Day 1 or Test Writing"

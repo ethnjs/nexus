@@ -43,7 +43,7 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
           <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
             <div style={{ display: "flex", gap: "10px" }}>
               <Input
-                label={multiDay ? "Start" : "Date"} type="date" fullWidth locked={locked}
+                label={multiDay ? "Start" : "Date"} required type="date" fullWidth locked={locked}
                 min={today}
                 value={draft.start_date}
                 // Single-day tracks keep end_date in step with start_date —
@@ -58,7 +58,7 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
               />
               {multiDay && (
                 <Input
-                  label="End" type="date" fullWidth locked={locked}
+                  label="End" required type="date" fullWidth locked={locked}
                   min={draft.start_date || today}
                   value={draft.end_date}
                   onChange={(e) => onChange({ end_date: e.target.value })}
@@ -82,6 +82,7 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
           </div>
           <Combobox
             label="Location"
+            required
             options={universities}
             getId={(u) => u.id}
             getLabel={(u) => u.name}
@@ -98,7 +99,7 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
               textTransform: "uppercase", letterSpacing: "0.07em",
               color: "var(--color-text-tertiary)", marginBottom: "6px",
             }}>
-              Division
+              Division<span style={{ color: "var(--color-danger)" }}> *</span>
             </div>
             <ButtonGroup
               options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}

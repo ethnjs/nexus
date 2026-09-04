@@ -379,7 +379,7 @@ function TrackRow({
       {expanded && (
         <div style={{ padding: "4px 12px 16px 34px", display: "flex", flexDirection: "column", gap: "14px" }}>
           <Input
-            label="Name" font="sans" fullWidth locked={readOnly}
+            label="Name" required font="sans" fullWidth locked={readOnly}
             placeholder="e.g. Day 1 or Test Writing"
             value={draft.name}
             onChange={(e) => onDraftChange({ name: e.target.value })}
