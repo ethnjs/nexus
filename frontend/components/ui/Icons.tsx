@@ -440,6 +440,16 @@ export function IconArchive({ size = 16, ...props }: IconProps) {
   );
 }
 
+// Counter-clockwise arrow — undoing/bringing something back, paired with
+// IconArchive wherever an archive can be reversed.
+export function IconRestore({ size = 16, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M136 128C136 114.7 125.3 104 112 104C98.7 104 88 114.7 88 128L88 256C88 269.3 98.7 280 112 280L240 280C253.3 280 264 269.3 264 256C264 242.7 253.3 232 240 232L166.6 232C201.5 176.6 263.4 140 334 140C443.4 140 532 228.6 532 338C532 447.4 443.4 536 334 536C280.6 536 232.3 514.9 196.8 480.6C187.3 471.4 172.1 471.7 162.9 481.2C153.7 490.7 154 505.9 163.5 515.1C207.6 557.7 267.8 584 334 584C469.9 584 580 473.9 580 338C580 202.1 469.9 92 334 92C252.9 92 181 131.2 136 191.6L136 128z" />
+    </svg>
+  );
+}
+
 export function IconInvite({ size = 16, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>

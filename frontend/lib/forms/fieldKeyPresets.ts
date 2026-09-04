@@ -9,7 +9,7 @@ import { FormQuestionType } from "@/lib/api";
 // per date+category for lunch). See backend/form-question-types-reference.md
 // ("Reserved field_keys") for the full contract, including why availability
 // merges into one centralized pool while event_preference/lunch don't.
-export type PresetKind = "availability" | "event_preference" | "lunch";
+export type PresetKind = "availability" | "event_preference" | "lunch" | "track_status";
 
 // availability/event_preference draw their options from real tournament
 // entities (shifts/events) via EntityOptionsEditor — their option.value is
@@ -43,18 +43,24 @@ export const PRESETS: Record<PresetKind, PresetMeta> = {
     allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
     defaultQuestionType: "single_select_radio",
   },
+  track_status: {
+    kind: "track_status", label: "Track Status",
+    allowedQuestionTypes: ["single_select_radio", "multi_select_checkbox"],
+    defaultQuestionType: "single_select_radio",
+  },
 };
 
 const AVAILABILITY_FIELD_KEY_PATTERN = /^availability_(\d{4})(\d{2})(\d{2})$/;
 const EVENT_PREFERENCE_FIELD_KEY_PATTERN = /^event_preference_([a-z0-9_]+)$/;
 const LUNCH_FIELD_KEY_PATTERN = /^lunch_(\d{4})(\d{2})(\d{2})_([a-z0-9_]+)$/;
+const TRACK_STATUS_FIELD_KEY_PATTERN = /^track_status_([a-z0-9_]+)$/;
 
 // The preset currently active on a field_key, if any — prefix-based, not
 // the strict fully-parameterized pattern: PresetPopover sets a bare
 // "availability_"/"event_preference_"/"lunch_" sentinel the instant a
 // preset is picked, before its date/suffix/category is filled in, and that
 // in-progress state must still read as "this preset is active" (matching
-// the ButtonGroup selection, the QuestionEditBody body it renders, etc.) —
+// the preset dropdown selection, the QuestionEditBody body it renders, etc.) —
 // otherwise picking a preset would appear to silently do nothing until
 // every parameter was filled in. Save-time validation is what actually
 // enforces the fully-parameterized shape (matches
@@ -63,6 +69,7 @@ export function activePresetKind(fieldKey: string): PresetKind | null {
   if (fieldKey.startsWith("availability_")) return "availability";
   if (fieldKey.startsWith("event_preference_")) return "event_preference";
   if (fieldKey.startsWith("lunch_")) return "lunch";
+  if (fieldKey.startsWith("track_status_")) return "track_status";
   return null;
 }
 
@@ -106,6 +113,16 @@ export function buildLunchFieldKey(date: string, category: string): string {
   return `lunch_${date.replaceAll("-", "")}_${slug}`;
 }
 
+export function parseTrackStatusFieldKey(fieldKey: string): { suffix: string } {
+  const match = TRACK_STATUS_FIELD_KEY_PATTERN.exec(fieldKey);
+  return { suffix: match ? match[1] : "" };
+}
+
+export function buildTrackStatusFieldKey(suffix: string): string {
+  const slug = slugifyFieldKeyPart(suffix);
+  return slug ? `track_status_${slug}` : "track_status_";
+}
+
 // Whether a useFormValidation issue message is about field_key specifically
 // (vs. label/options/etc.) — matches both "Field key is required." and
 // "This field key is already used by another question...". Shared so
@@ -126,6 +143,7 @@ const PRESET_INCOMPLETE_REQUIREMENT: Record<PresetKind, string> = {
   availability: "pick a date",
   event_preference: "enter a suffix",
   lunch: "pick a date and category",
+  track_status: "enter a suffix",
 };
 
 export function presetIncompleteMessage(kind: PresetKind): string {

@@ -143,7 +143,7 @@ function KeyInfoHint() {
           fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-primary)",
           pointerEvents: "none",
         }}>
-          How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Follows the question text until you edit it here. Must be unique across every form this tournament owns.
+          How this question shows up when scanning or filtering responses on the dashboard — not shown to respondents. Must be unique across every form this tournament owns.
         </span>
       )}
     </span>

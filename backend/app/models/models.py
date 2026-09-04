@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index,
+    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index, text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
@@ -196,8 +196,8 @@ class User(Base):
     shirt_size = Column(String(16), nullable=True)
     dietary_restriction = Column(String(255), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     memberships = relationship(
         "TournamentMembership", back_populates="user", cascade="all, delete-orphan"
@@ -334,8 +334,8 @@ class Tournament(Base):
     # won't re-archive it. Cleared on re-archive.
     archive_override_at = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     owner = relationship("User", back_populates="tournaments", foreign_keys=[owner_id])
     sheet_configs = relationship(
@@ -353,7 +353,9 @@ class Tournament(Base):
     join_codes = relationship("JoinCode", back_populates="tournament", cascade="all, delete-orphan")
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
+    tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
     forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
+    tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
 
 
 # Exactly one of university_id/location (XOR). Checked at flush, not
@@ -392,13 +394,19 @@ class TournamentMembership(Base):
         Integer, ForeignKey("join_codes.id", ondelete="SET NULL"), nullable=True
     )
 
-    # "interested" | "confirmed"
-    status = Column(String(32), nullable=False, default="interested")
+    # Set once this member has answered every currently-onboarding-flagged,
+    # published TournamentForm for this tournament. Permanent once set —
+    # later removing/archiving an onboarding form never unsets it (a
+    # shrinking requirement can only help stragglers finish, never un-onboard
+    # someone already done). Adding a *new* onboarding form is the one
+    # requirement change allowed to null this back out — see the
+    # onboarding-forms POST route, which clears it tournament-wide.
+    onboarded_at = Column(DateTime(timezone=True), nullable=True)
 
     notes = Column(Text, nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     # Relationships
     user = relationship("User", back_populates="memberships")
@@ -407,6 +415,8 @@ class TournamentMembership(Base):
     join_code = relationship("JoinCode")
     availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
     lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
+    track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
+    event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
 
     @hybrid_property
     def is_over_18(self) -> Optional[bool]:
@@ -560,8 +570,8 @@ class TournamentEvent(Base):
     start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
 
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     tournament = relationship("Tournament", back_populates="events")
     event = relationship("Event")
@@ -620,6 +630,31 @@ class TournamentShift(Base):
 
 
 # ---------------------------------------------------------------------------
+# TournamentTrack — a TD-managed volunteer track such as Test Writing or
+# Day 1. Form fields reference the track's stable database ID in their config,
+# so `name` can change without invalidating historical answers or statuses.
+# ---------------------------------------------------------------------------
+class TournamentTrack(Base):
+    __tablename__ = "tournament_tracks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    name = Column(String(255), nullable=False)
+    is_archived = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    tournament = relationship("Tournament", back_populates="tracks")
+    member_statuses = relationship(
+        "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_track_name"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # TournamentEventShift — bridge table: TournamentEvent <-> TournamentShift.
 # ---------------------------------------------------------------------------
 class TournamentEventShift(Base):
@@ -660,8 +695,8 @@ class SheetConfig(Base):
     column_mappings = Column(JSON, nullable=False, default=dict)
     is_active = Column(Boolean, default=True)
     last_synced_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), default=utcnow)
-    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     tournament = relationship("Tournament", back_populates="sheet_configs")
 
@@ -674,7 +709,10 @@ class SheetConfig(Base):
 class Form(Base):
     __tablename__ = "forms"
 
-    id = Column(String(12), primary_key=True, default=generate_public_id)
+    # index=True is redundant beside the primary key, but 7db31ae17e3c created
+    # ix_forms_id and prod has it — declared here so the model matches the
+    # migrations rather than silently drifting from them.
+    id = Column(String(12), primary_key=True, default=generate_public_id, index=True)
     owner_type = Column(String(16), nullable=False)   # "tournament" | "chapter"
     tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=True)
     chapter_id = Column(Integer, ForeignKey("alumni_chapters.id", ondelete="CASCADE"), nullable=True)
@@ -697,6 +735,7 @@ class Form(Base):
     creator = relationship("User", back_populates="created_forms")
     fields = relationship("FormField", back_populates="form", cascade="all, delete-orphan", order_by="FormField.order")
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
+    tournament_form = relationship("TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan")
 
     __table_args__ = (
         CheckConstraint(
@@ -712,6 +751,52 @@ class Form(Base):
     @property
     def response_count(self) -> int:
         return len(self.responses)
+
+    @property
+    def prerequisites(self) -> dict | None:
+        """TournamentForm configuration exposed on generic form responses."""
+        return self.tournament_form.prerequisites if self.tournament_form else None
+
+
+# ---------------------------------------------------------------------------
+# TournamentForm — 1:1 companion row every tournament-scoped Form gets at
+# creation time (see create_tournament_form in api/routes/forms.py). Never
+# deleted while the Form exists; is_onboarding just toggles what the row
+# means rather than the row itself coming and going.
+#
+# is_onboarding + order together define the onboarding step sequence for the
+# tournament (order is only meaningful — and set — for is_onboarding=True
+# rows). Standard, non-onboarding tournament forms leave order null; the
+# eventual prerequisite/visibility mechanism for those is a later phase, not
+# built yet.
+#
+# A form linked here with is_onboarding=True cannot be archived or deleted —
+# see the guard in api/routes/forms.py's update_form/archive_form/
+# delete_form — it must be removed from onboarding (is_onboarding flipped
+# back to False) first.
+#
+# form_id is this row's own primary key, not a separate surrogate id — the
+# relationship is strictly 1:1, so there's no "which TournamentForm" beyond
+# "which Form." Deleting a Form (already blocked while responses exist, see
+# Form's own delete route) cascades away its TournamentForm row for free;
+# there's no independent "delete a TournamentForm" action.
+# ---------------------------------------------------------------------------
+class TournamentForm(Base):
+    __tablename__ = "tournament_forms"
+
+    form_id = Column(String(12), ForeignKey("forms.id", ondelete="CASCADE"), primary_key=True)
+    tournament_id = Column(Integer, ForeignKey("tournaments.id", ondelete="CASCADE"), nullable=False)
+    is_onboarding = Column(Boolean, nullable=False, default=False)
+    order = Column(Integer, nullable=True)
+    # Optional member-visibility requirements for standard tournament forms.
+    # Shape and referenced-id validation live with the manager API; evaluation
+    # lives in core/tournament/form_prerequisites.py so every future caller
+    # (member form list, rendering, and submission) shares one rule.
+    prerequisites = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+
+    tournament = relationship("Tournament", back_populates="tournament_forms")
+    form = relationship("Form", back_populates="tournament_form")
 
 
 # ---------------------------------------------------------------------------
@@ -754,7 +839,15 @@ class FormField(Base):
     answer = relationship("FormAnswer", back_populates="field")
 
     __table_args__ = (
-        UniqueConstraint("form_id", "field_key", name="uq_form_field_key"),
+        # Live fields only. An archived field doesn't reserve its key — see
+        # field_key_taken_in_tournament — so an archived question and the one
+        # replacing it can share a name. A plain UniqueConstraint here would
+        # block that at the DB even though the application allows it.
+        Index(
+            "uq_form_field_key", "form_id", "field_key",
+            unique=True,
+            postgresql_where=text("is_archived = false"),
+        ),
     )
 
     @validates("field_key")
@@ -799,6 +892,14 @@ class FormAnswer(Base):
     response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
     field_id = Column(String(12), ForeignKey("form_fields.id"), nullable=False)
     value = Column(JSON, nullable=False)
+    # The semantics this answer was given under. `value`'s shape is a function
+    # of (question_type, field_key) — a preset key stores entity ids where a
+    # standard key stores text — so recording both here keeps a stored answer
+    # readable after the field is edited, instead of reinterpreting history
+    # through whatever the field looks like today. Nullable only for rows
+    # predating this column; always written on new answers.
+    question_type = Column(String(32), nullable=True)
+    field_key = Column(String(64), nullable=True)
 
     response = relationship("FormResponse", back_populates="answers")
     field = relationship("FormField", back_populates="answer")
@@ -809,27 +910,35 @@ class FormAnswer(Base):
 
 
 # ---------------------------------------------------------------------------
-# FormResponsePendingUpdate — flags that a response answered a field/option
-# which a republish later archived out from under it, so a TD/respondent
-# can be shown "this answer needs another look". One row per
-# (response, field_key); reason only ever escalates option_archived ->
-# field_replaced (never the reverse) on upsert, and the row is deleted once
-# that response next submits an answer for whichever field currently holds
-# that field_key — see _apply_published_field_changes in api/routes/forms.py.
+# FormResponsePendingUpdate — flags that a response's answer to a field needs
+# another look, because the TD changed the question in a way that may have
+# invalidated it. One row per (response, field_id).
+#
+# Keyed on field_id, never field_key: a key is a TD-editable display name, so
+# keying history on it strands the flag the moment the question is renamed.
+# The field a flag points at is therefore stable across every edit.
+#
+# `reasons` is a set, not a single value: one save can legitimately trigger
+# several on the same field (an option added *and* the wording changed), so
+# they union rather than override. A row is cleared when the respondent
+# patches that field, and is deleted outright if the field is archived or
+# invalidated — a flag on a question that can no longer be answered is
+# unclearable by construction. See backend/form-edit-lifecycle.md.
 # ---------------------------------------------------------------------------
 class FormResponsePendingUpdate(Base):
     __tablename__ = "form_response_pending_updates"
 
     id = Column(Integer, primary_key=True, index=True)
     response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="CASCADE"), nullable=False)
-    field_key = Column(String(64), nullable=False)
-    reason = Column(String(32), nullable=False)  # "field_replaced" | "option_archived"
+    field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="CASCADE"), nullable=False)
+    # See app/core/form/changes.py for the values and what raises each.
+    reasons = Column(JSON, nullable=False, default=list)
     created_at = Column(DateTime(timezone=True), default=utcnow)
 
     response = relationship("FormResponse", back_populates="pending_updates")
 
     __table_args__ = (
-        UniqueConstraint("response_id", "field_key", name="uq_pending_update_per_response_field"),
+        UniqueConstraint("response_id", "field_id", name="uq_pending_update_per_response_field"),
     )
 
 
@@ -872,4 +981,88 @@ class TournamentMembershipLunch(Base):
 
     __table_args__ = (
         UniqueConstraint("membership_id", "date", "category", "value", name="uq_membership_lunch_selection"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipTrackStatus — write-through target for a form's
+# "track_status_{suffix}" answers, and for "availability_{date}" answers on a
+# field that opted in via config.track_status_enabled.
+#
+# One row per (membership, track): a track's status is a single current fact,
+# not a history. Several questions across several forms feed the same row, so
+# no field owns it and none can withdraw its contribution — write-through only
+# ever upserts here, never deletes (see backend/form-edit-lifecycle.md).
+#
+# Writes are guarded by a transition rule rather than by submission ordering:
+# a track never falls back to `interested` once it's moved past it, so a stale
+# answer replayed out of order can never demote a track someone already
+# confirmed. See can_set_track_status in app/core/form/write_through.py.
+# ---------------------------------------------------------------------------
+class TournamentMembershipTrackStatus(Base):
+    __tablename__ = "tournament_membership_track_statuses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    # CASCADE, unlike a form field's reference to a track: a TD who hard-deletes
+    # a track is removing it for good, and delete_track already refuses while
+    # any form field still references it.
+    track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), nullable=False)
+
+    # "interested" | "confirmed" | "declined"
+    status = Column(String(32), nullable=False)
+
+    # Where this status came from, recorded for debugging and TD-facing
+    # provenance only — the transition rule, not this, is what keeps writes
+    # ordered. Both SET NULL: invalidating the question that set a status must
+    # not take the status with it. NULL also means "not set by a form", which
+    # is what a future member self-edit path will write.
+    source_response_id = Column(String(12), ForeignKey("form_responses.id", ondelete="SET NULL"), nullable=True)
+    source_field_id = Column(String(12), ForeignKey("form_fields.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    membership = relationship("TournamentMembership", back_populates="track_statuses")
+    # lazy="joined": every read of a status row wants the track's name to
+    # render it, so the hop is worth folding into the same query rather than
+    # N+1-ing per row through the shared get_scoped_or_404 path.
+    track = relationship("TournamentTrack", back_populates="member_statuses", lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "track_id", name="uq_membership_track_status"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentMembershipEventPreference — write-through target for a form's
+# "event_preference_{suffix}" answers. One row per (membership, key, event):
+# an event may only appear in one option per field (see
+# validate_event_preference_options), and a ranked_choice event_preference
+# field is required to have allow_duplicates=false, so an event can never
+# legitimately need two rows under the same key — rank is stored per row but
+# isn't part of the uniqueness, unlike a naive (membership, key, event, rank)
+# scheme would need.
+# ---------------------------------------------------------------------------
+class TournamentMembershipEventPreference(Base):
+    __tablename__ = "tournament_membership_event_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"), nullable=False)
+    tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), nullable=False)
+
+    key = Column(String(64), nullable=False)  # the event_preference_{suffix} suffix
+
+    # ranked_choice: the submitted rank; single_select: 1; checkbox: null.
+    rank = Column(Integer, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="event_preferences")
+    # lazy="joined": every read of a preference row wants the event's name/
+    # division to render it, same reasoning as TrackStatus.track.
+    tournament_event = relationship("TournamentEvent", lazy="joined")
+
+    __table_args__ = (
+        UniqueConstraint("membership_id", "key", "tournament_event_id", name="uq_membership_event_preference"),
     )

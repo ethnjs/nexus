@@ -79,7 +79,7 @@ export function newField(order: number): EditableField {
 // short_text -> ranked_choice -> short_text leaves it stripped by
 // sanitizeConfigForType on the way in, since ranked_choice's config schema
 // doesn't carry it either.
-export function toFieldInput(field: EditableField): FormFieldInput {
+export function toFieldInput(field: EditableField, notifyResponders?: boolean): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
   if (config.options) {
     config.options = (config.options as EditableOption[]).map((option) => {
@@ -108,5 +108,9 @@ export function toFieldInput(field: EditableField): FormFieldInput {
     description: field.showDescription ? field.description : null,
     question_type: field.question_type,
     config,
+    // Omitted unless the confirmation modal actually asked — the server falls
+    // back to each change's own default, which is what an unprompted save
+    // (draft form, or nothing consequential changed) should get.
+    ...(notifyResponders === undefined ? {} : { notify_responders: notifyResponders }),
   };
 }

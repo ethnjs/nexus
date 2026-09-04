@@ -117,6 +117,7 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
   field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, errors,
+  allowArchive = false,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -142,6 +143,8 @@ export function FieldCard({
   shifts: TournamentShift[] | null;
   allFields: EditableField[];
   errors: string[];
+  /** Passed through to the options editor — see QuestionRenderer. */
+  allowArchive?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const presetKind = activePresetKind(field.field_key);
@@ -316,6 +319,7 @@ export function FieldCard({
               branchingEnabled={field.branchingEnabled}
               customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
+              allowArchive={allowArchive}
             />
 
             <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />
@@ -327,6 +331,7 @@ export function FieldCard({
                 <Toggle
                   checked={!!field.config?.required}
                   onChange={(checked) => onFieldChange({ config: { ...field.config, required: checked } })}
+                  locked={presetKind === "track_status"}
                 />
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>

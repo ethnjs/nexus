@@ -430,7 +430,6 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your student status?"
-                onSkip={() => setState(STATE.STUDENT_STATUS + 3)}
                 isActive={state === STATE.STUDENT_STATUS}
               >
                 <StudentStatusField
@@ -482,10 +481,6 @@ function OnboardingContent() {
                   </ProfileQuestion>
                   <ProfileQuestion
                     question="What is your projected graduation year?"
-                    onSkip={() => {
-                      setProfileData((d) => ({ ...d, university_id: undefined, university_name: undefined, major: undefined, year_level: undefined, graduation_year: undefined }));
-                      setState(STATE.UNIVERSITY + 2);
-                    }}
                     onNext={() => {
                       const ers: typeof errors = {};
 
@@ -514,7 +509,6 @@ function OnboardingContent() {
               {state >= STATE.EMPLOYER && profileData.student_status === "Non-Student" && (
                 <ProfileQuestion
                   question="Who is your employer?"
-                  onSkip={() => setState(STATE.COMPETED_BEFORE)}
                   onNext={() => {
                     !profileData.employer ? setErrors((er) => ({ ...er, employer: "Cannot be empty." })) : setState(STATE.COMPETED_BEFORE);
                   }}
@@ -537,7 +531,6 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
-                onSkip={competitionLocked ? undefined : () => setState(STATE.COMPETED_BEFORE + 2)}
                 onNext={competitionLocked ? () => setState(STATE.VOLUNTEERED_BEFORE) : undefined}
                 isActive={state === STATE.COMPETED_BEFORE}
               >
@@ -563,7 +556,7 @@ function OnboardingContent() {
                 <ProfileQuestion
                   question="Add your competition experience."
                   onSkip={() => {
-                    setProfileData((d) => ({ ...d, has_competition_experience: undefined }));
+                    setProfileData((d) => ({ ...d, has_competition_experience: false }));
                     setCompetitionRows([]);
                     setState(STATE.VOLUNTEERED_BEFORE);
                   }}
@@ -591,7 +584,6 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
-                onSkip={volunteerLocked ? undefined : () => setState(STATE.SHIRT_SIZE)}
                 onNext={volunteerLocked ? () => setState(STATE.SHIRT_SIZE) : undefined}
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
               >
@@ -617,7 +609,7 @@ function OnboardingContent() {
                 <ProfileQuestion
                   question="Add your volunteer experience."
                   onSkip={() => {
-                    setProfileData((d) => ({ ...d, has_volunteer_experience: undefined }));
+                    setProfileData((d) => ({ ...d, has_volunteer_experience: false }));
                     setVolunteerRows([]);
                     setState(STATE.SHIRT_SIZE);
                   }}
@@ -645,10 +637,6 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your shirt size?"
-                onSkip={() => {
-                  setProfileData((d) => ({ ...d, shirt_size: undefined }));
-                  setState(STATE.DIETARY_RESTRICTIONS);
-                }}
                 isActive={state === STATE.SHIRT_SIZE}
               >
                 <ShirtSizeField
@@ -663,7 +651,6 @@ function OnboardingContent() {
               {state >= STATE.DIETARY_RESTRICTIONS && (
                 <ProfileQuestion
                   question="Do you have any dietary restrictions?"
-                  onSkip={() => setState(STATE.COMPLETE)}
                   isActive={state === STATE.DIETARY_RESTRICTIONS}
                 >
                   <YesNoField
@@ -681,10 +668,6 @@ function OnboardingContent() {
               {state >= STATE.DIETARY_TEXT && hasDietary && (
                 <ProfileQuestion
                   question="List your dietary restrictions."
-                  onSkip={() => {
-                    setHasDietary(null);
-                    setState(STATE.COMPLETE);
-                  }}
                   onNext={() => {
                     !profileData.dietary_restriction ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
                       : setState(STATE.COMPLETE);
@@ -709,7 +692,7 @@ function OnboardingContent() {
               type="submit"
               variant="primary"
               size="lg"
-              disabled={state < STATE.DATE_OF_BIRTH}
+              disabled={state < STATE.COMPLETE}
               loading={loading}
               fullWidth
             >

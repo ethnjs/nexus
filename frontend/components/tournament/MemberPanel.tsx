@@ -6,7 +6,6 @@ import {
   canonicalEventsApi, membershipsApi,
 } from "@/lib/api";
 import { formatDate } from "@/lib/timeFormat";
-import { STATUS_VARIANT } from "@/lib/membershipDisplay";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Badge } from "@/components/ui/Badge";
 import { Spinner } from "@/components/ui/Spinner";
@@ -100,16 +99,6 @@ export function MemberPanel({
                     textTransform: "uppercase", letterSpacing: "0.06em",
                     color: "var(--color-text-tertiary)", marginBottom: "5px",
                   }}>
-                    Status
-                  </div>
-                  <Badge variant={STATUS_VARIANT[full.status] ?? "default"}>{full.status}</Badge>
-                </div>
-                <div>
-                  <div style={{
-                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                    textTransform: "uppercase", letterSpacing: "0.06em",
-                    color: "var(--color-text-tertiary)", marginBottom: "5px",
-                  }}>
                     Joined
                   </div>
                   <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
@@ -128,22 +117,56 @@ export function MemberPanel({
                 </div>
               </div>
 
-              <div>
-                <div style={{
-                  fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-                  textTransform: "uppercase", letterSpacing: "0.06em",
-                  color: "var(--color-text-tertiary)", marginBottom: "5px",
-                }}>
-                  Roles
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+                {full.track_statuses.length > 0 && (
+                  <div>
+                    <div style={{
+                      fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                      textTransform: "uppercase", letterSpacing: "0.06em",
+                      color: "var(--color-text-tertiary)", marginBottom: "5px",
+                    }}>
+                      Tracks
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+                      {full.track_statuses.map((ts) => (
+                        // An archived track's statuses stay readable — the
+                        // catalog entry is retired, the commitment still
+                        // happened — so it's dimmed rather than hidden.
+                        <div
+                          key={ts.track_id}
+                          style={{
+                            display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                            opacity: ts.is_archived ? 0.55 : undefined,
+                          }}
+                          title={ts.is_archived ? "Archived track" : undefined}
+                        >
+                          <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500, color: "var(--color-text-primary)" }}>
+                            {ts.name}
+                          </span>
+                          <Badge variant={ts.status}>{ts.status}</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div>
+                  <div style={{
+                    fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+                    textTransform: "uppercase", letterSpacing: "0.06em",
+                    color: "var(--color-text-tertiary)", marginBottom: "5px",
+                  }}>
+                    Roles
+                  </div>
+                  <RolesCell
+                    tournamentId={tournamentId}
+                    membership={full}
+                    allRoles={allRoles}
+                    canTouchRole={canTouchRole}
+                    locked={!canEditMember(full)}
+                    onUpdated={handleRolesUpdated}
+                  />
                 </div>
-                <RolesCell
-                  tournamentId={tournamentId}
-                  membership={full}
-                  allRoles={allRoles}
-                  canTouchRole={canTouchRole}
-                  locked={!canEditMember(full)}
-                  onUpdated={handleRolesUpdated}
-                />
               </div>
             </ProfileCard>
 

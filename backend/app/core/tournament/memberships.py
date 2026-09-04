@@ -63,20 +63,3 @@ def has_any_membership(user: "User", tournament_id: int, db: Session) -> bool:
     if user.role == "admin":
         return True
     return get_membership_by_user(db, tournament_id, user.id) is not None
-
-
-def mark_confirmed(db: Session, membership_id: int) -> TournamentMembership:
-    """
-    Mark a TournamentMembership as confirmed. Meant to be called by the
-    eventual confirmation-form submission handler (forms system, not yet
-    built) — status doesn't gate role/event assignment, this just records
-    that the member confirmed their participation.
-    """
-    membership = db.query(TournamentMembership).filter(TournamentMembership.id == membership_id).first()
-    if membership is None:
-        raise ValueError(f"TournamentMembership {membership_id} not found")
-
-    membership.status = "confirmed"
-    db.commit()
-    db.refresh(membership)
-    return membership

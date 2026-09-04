@@ -20,9 +20,12 @@ settings = get_settings()
 # Alembic Config object — provides access to alembic.ini values
 config = context.config
 
-# Wire up Python logging from alembic.ini
+# Wire up Python logging from alembic.ini.
+# disable_existing_loggers must be False: init_db() runs this inside the app's
+# startup lifespan, and the default (True) would disable every logger not named
+# in alembic.ini — including uvicorn.access, silencing the request log.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Override sqlalchemy.url with value from .env
 config.set_main_option("sqlalchemy.url", settings.database_url)

@@ -610,7 +610,16 @@ export const seasonEventsApi = {
 // -------------------------------------------------------------------------
 // Memberships
 // -------------------------------------------------------------------------
-export type MembershipStatus = 'interested' | 'confirmed'
+// One member's status on one track — matches MembershipTrackStatusRead.
+// Carries the track's name so a renderer needs no separate catalog fetch, and
+// is_archived so a retired track's history can be shown as such.
+export interface MembershipTrackStatus {
+  track_id:    number
+  name:        string
+  is_archived: boolean
+  status:      TrackStatus
+  updated_at:  string
+}
 
 // How a membership was created. "manual" covers staff-add, owner-on-create,
 // and sync import — collapsed into one value until manual add-by-staff is
@@ -655,7 +664,6 @@ export interface MembershipJoinCodeInfo {
 export interface MembershipSlim {
   id:         number
   source:     MembershipSource
-  status:     MembershipStatus
   join_code:  MembershipJoinCodeInfo | null
   // When they joined THIS tournament — distinct from user.created_at
   // (their NEXUS account age).
@@ -669,7 +677,6 @@ export interface MembershipSlim {
 export interface MembershipFull {
   id:                number
   tournament_id:     number
-  status:            MembershipStatus
   role_preference:   string[] | null
   event_preference:  string[] | null
   availability:      AvailabilitySlot[] | null
@@ -682,6 +689,7 @@ export interface MembershipFull {
   is_over_21:        boolean | null
   created_at:        string
   updated_at:        string
+  track_statuses:    MembershipTrackStatus[]
   roles:             Role[]
   user:              UserFull
 }
@@ -703,9 +711,9 @@ export interface MembershipCoordinatorUpdate {
 export interface MembershipMe {
   membership_id: number | null
   is_owner:       boolean
-  status:         MembershipStatus | null
   roles:          Role[]
   permissions:    Permission[]
+  track_statuses: MembershipTrackStatus[]
 }
 
 export const membershipsApi = {
@@ -1164,12 +1172,21 @@ export type FormOwnerType = 'tournament' | 'chapter'
 // backend/app/core/form/__init__.py.
 export interface FormFieldOption {
   option_id:      string
-  value:          string | number[] | ResolvedShiftOption[] | ResolvedEventOption[]
+  value:          string | number[] | TrackStatusAssignment[] | AvailabilityTrackStatusValue | ResolvedTrackStatusAssignment[] | ResolvedShiftOption[] | ResolvedEventOption[]
   label:          string
   is_archived?:   boolean
   // single_select_radio/dropdown only — mutually exclusive with each other.
   next_field_id?: string | null
   action?:        'submit_form' | null
+}
+
+export type TrackStatus = "interested" | "confirmed" | "declined"
+export interface TrackStatusAssignment { id: number; status: TrackStatus }
+export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment { name: string }
+export interface AvailabilityTrackStatusValue {
+  shift_ids?: number[]
+  shifts?: ResolvedShiftOption[]
+  track_statuses: TrackStatusAssignment[] | ResolvedTrackStatusAssignment[]
 }
 
 // value shape after GET-time resolution for availability/event_preference —
@@ -1199,6 +1216,7 @@ export interface FormFieldConfig {
   // plain radio/checkbox list. single_select_dropdown has no equivalent
   // (always a closed Dropdown control, not a style choice).
   display_style?:    "buttons" | "list"
+  track_status_enabled?: boolean
 }
 
 export interface FormField {
@@ -1215,10 +1233,11 @@ export interface FormField {
   updated_at:    string
 }
 
-// One entry in a PUT .../fields/ bulk-update payload. `id` omitted = create;
-// `id` present must match a currently-live field. `field_key` only matters
-// on create — the server ignores/derives it otherwise (see BulkFieldEntry
-// in backend/app/schemas/form.py).
+// One entry in a PUT .../fields/ bulk-update payload — the full target state
+// for one question. `id` omitted = create. `id` present names an existing
+// field, archived ones included: naming an archived field unarchives it.
+// Omitting `field_key` on an update leaves the key alone; sending one renames.
+// See BulkFieldEntry in backend/app/schemas/form.py.
 export interface FormFieldInput {
   id?:            string
   field_key?:     string
@@ -1226,6 +1245,50 @@ export interface FormFieldInput {
   description?:   string | null
   question_type:  FormQuestionType
   config?:        FormFieldConfig | null
+  /** The TD's answer, for this question, to "ask previous responders to
+      review this?" — collected by the save-time confirmation modal.
+      Governs only the judgment-call changes (wording, and moving between a
+      preset and a standard key); changes that actually invalidate an answer
+      prompt regardless. Omit to accept each change's own default. */
+  notify_responders?: boolean | null
+}
+
+export type PrerequisiteMatch = "any" | "all"
+
+export interface IdPrerequisite {
+  ids: number[]
+  match: PrerequisiteMatch
+}
+
+export interface AvailabilityPrerequisite {
+  shift_ids: number[]
+  match: PrerequisiteMatch
+}
+
+export interface TournamentFormPrerequisites {
+  onboarding_complete: boolean
+  roles?: IdPrerequisite | null
+  availability?: AvailabilityPrerequisite | null
+}
+
+export interface TournamentTrack {
+  id: number
+  tournament_id: number
+  name: string
+  is_archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface MemberForm {
+  id:            string
+  name:          string
+  title:         string | null
+  description:   string | null
+  status:        FormStatus
+  is_onboarding: boolean
+  completed:     boolean
+  eligible:      boolean
 }
 
 export interface Form {
@@ -1241,6 +1304,7 @@ export interface Form {
   created_at:      string
   updated_at:      string
   response_count:  number
+  prerequisites:   TournamentFormPrerequisites | null
   fields:          FormField[]
 }
 
@@ -1268,6 +1332,7 @@ export interface FormListItem {
   created_at:      string
   updated_at:      string
   response_count:  number
+  prerequisites:   TournamentFormPrerequisites | null
 }
 
 export interface FormCreateInput {
@@ -1297,18 +1362,65 @@ export interface FormAnswerInput {
   value:    unknown
 }
 
+/** Why a question was flagged for another look. Several can apply at once —
+    one save can add an option *and* reword the question. */
+export type PendingUpdateReason =
+  | "question_type_changed"
+  | "option_added"
+  | "option_invalidated"
+  | "option_regrouped"
+  | "now_required"
+  | "key_changed"
+  | "text_changed"
+
+/** One question a proposed save would ask previous responders to review —
+    the server's verdict, from classifyFieldChanges. */
+export interface FieldChange {
+  field_id:       string
+  label:          string
+  reasons:        PendingUpdateReason[]
+  /** At least one reason is mandatory: the TD sees it but can't switch it
+      off, because the change invalidated the stored answer. */
+  locked:         boolean
+  /** What notify_responders should default to if the TD doesn't touch it. */
+  notify_default: boolean
+}
+
+/** A question this response is being asked to revisit. `field_id` is the only
+    thing `patchResponse` will accept — everything else on the response is
+    locked. */
+export interface FormPendingUpdate {
+  field_id:   string
+  reasons:    PendingUpdateReason[]
+  created_at: string
+}
+
 export interface FormResponse {
-  id:           string
-  form_id:      string
-  user_id:      number
-  submitted_at: string
-  updated_at:   string
-  answers:      FormAnswer[]
+  id:              string
+  form_id:         string
+  user_id:         number
+  submitted_at:    string
+  updated_at:      string
+  answers:         FormAnswer[]
+  pending_updates: FormPendingUpdate[]
+}
+
+// Matches OnboardingFormRead — a tournament form selected into the ordered
+// member onboarding sequence.
+export interface OnboardingForm extends FormListItem {
+  order: number | null
+}
+
+export interface TournamentOnboardingProgress {
+  next_form_id: string | null
+  onboarded_at: string | null
 }
 
 export const formsApi = {
   listForTournament: (tournamentId: number) =>
     api.get<FormListItem[]>(`/tournaments/${tournamentId}/forms/`),
+  listMineForTournament: (tournamentId: number) =>
+    api.get<MemberForm[]>(`/tournaments/${tournamentId}/forms/me/`),
   listForChapter: (chapterId: number) =>
     api.get<FormListItem[]>(`/chapters/${chapterId}/forms/`),
   // Every field_key already in use across this tournament's forms (archived
@@ -1316,6 +1428,8 @@ export const formsApi = {
   // field_key Combobox shows these as disabled options.
   listFieldKeysForTournament: (tournamentId: number) =>
     api.get<string[]>(`/tournaments/${tournamentId}/forms/field-keys/`),
+  updatePrerequisites: (tournamentId: number, formId: string, prerequisites: TournamentFormPrerequisites) =>
+    api.patch<Form>(`/tournaments/${tournamentId}/forms/${formId}/prerequisites/`, prerequisites),
   createForTournament: (tournamentId: number, body: { name: string; title?: string | null; description?: string | null }) =>
     api.post<Form>(`/tournaments/${tournamentId}/forms/`, { ...body, owner_type: 'tournament', tournament_id: tournamentId }),
   createForChapter: (chapterId: number, body: { name: string; title?: string | null; description?: string | null }) =>
@@ -1330,17 +1444,72 @@ export const formsApi = {
   // moment an untouched entity-backed option got saved again.
   getForEdit: (formId: string) => api.get<Form>(`/forms/${formId}/?raw=true`),
   update: (formId: string, body: FormUpdateInput) => api.patch<Form>(`/forms/${formId}/`, body),
-  archive: (formId: string) => api.post<Form>(`/forms/${formId}/archive/`, {}),
   // 409s if the form has any responses — check response_count client-side first.
   delete: (formId: string) => api.delete<void>(`/forms/${formId}/`),
-  // Full ordered target field list — see FormFieldInput and the Edit
-  // Lifecycle section of form-question-types-reference.md. On a published
-  // form, an existing option missing from the submitted config must still
-  // be echoed back (via its option_id) or the server archives it.
+  // Full ordered target field list — see FormFieldInput and
+  // backend/form-edit-lifecycle.md.
+  //
+  // The submitted config is authoritative, options included. An existing
+  // option must be echoed back by its option_id — send it with
+  // `is_archived: true` to archive it (stops being offered, past answers stay
+  // valid); leave it out entirely and it's *invalidated*, removed from storage
+  // with whoever picked it asked to answer again. Dropping archived options
+  // before saving therefore destroys them.
+  //
+  // A live field omitted from the list is archived; naming an archived field
+  // brings it back.
   putFields: (formId: string, fields: FormFieldInput[]) =>
     api.put<FormField[]>(`/forms/${formId}/fields/`, { fields }),
+  // Dry run for the save confirmation: given the same payload putFields
+  // takes, which questions would be sent back to previous responders and
+  // why. Writes nothing, and returns [] on a form nobody has answered.
+  classifyFieldChanges: (formId: string, fields: FormFieldInput[]) =>
+    api.post<FieldChange[]>(`/forms/${formId}/fields/classify/`, { fields }),
+  // Questions taken out of use. Config comes back raw, so an entry can go
+  // straight back into putFields — which is how a question is unarchived.
+  listArchivedFields: (formId: string) =>
+    api.get<FormField[]>(`/forms/${formId}/fields/archived/`),
+  // Destroys the question and every answer to it, permanently. Archiving —
+  // omitting the field from putFields — is the undoable alternative. 409s
+  // while another question's option still branches to this one.
+  deleteField: (formId: string, fieldId: string) =>
+    api.delete<void>(`/forms/${formId}/fields/${fieldId}/`),
+  // First submission only; 409s once a response exists. Later edits go
+  // through patchResponse.
   submitResponse: (formId: string, answers: FormAnswerInput[]) =>
     api.post<FormResponse>(`/forms/${formId}/responses/`, { answers }),
+  // Edits a submitted response, limited to questions carrying a pending
+  // update — anything else 403s. Send only the questions being changed; the
+  // rest of the response is left alone, not overwritten.
+  patchResponse: (formId: string, answers: FormAnswerInput[]) =>
+    api.patch<FormResponse>(`/forms/${formId}/responses/me/`, { answers }),
   listResponses: (formId: string) => api.get<FormResponse[]>(`/forms/${formId}/responses/`),
   getMyResponse: (formId: string) => api.get<FormResponse>(`/forms/${formId}/responses/me/`),
+}
+
+export const tournamentOnboardingApi = {
+  listForms: (tournamentId: number) =>
+    api.get<OnboardingForm[]>(`/tournaments/${tournamentId}/onboarding-forms/`),
+  addForm: (tournamentId: number, formId: string) =>
+    api.post<OnboardingForm>(`/tournaments/${tournamentId}/onboarding-forms/`, { form_id: formId }),
+  reorderForms: (tournamentId: number, formIds: string[]) =>
+    api.patch<OnboardingForm[]>(
+      `/tournaments/${tournamentId}/onboarding-forms/reorder/`,
+      { forms: formIds.map((form_id, index) => ({ form_id, order: index + 1 })) },
+    ),
+  removeForm: (tournamentId: number, formId: string) =>
+    api.delete<void>(`/tournaments/${tournamentId}/onboarding-forms/${formId}/`),
+  progress: (tournamentId: number) =>
+    api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
+}
+
+export const tournamentTracksApi = {
+  list: (tournamentId: number) =>
+    api.get<TournamentTrack[]>(`/tournaments/${tournamentId}/tracks/`),
+  create: (tournamentId: number, name: string) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, { name }),
+  update: (tournamentId: number, trackId: number, body: { name?: string; is_archived?: boolean }) =>
+    api.patch<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/`, body),
+  delete: (tournamentId: number, trackId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
 }

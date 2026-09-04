@@ -78,6 +78,11 @@ interface QuestionRendererProps {
       their value is always the picked entity ids). Toggle lives in
       FieldToolbar, same as branchingEnabled. */
   customValuesEnabled?: boolean
+  /** edit mode only — whether archiving an option is a meaningful choice,
+      i.e. the form already has responses. On a form nobody has answered
+      there's nothing to preserve, so removing an option just removes it and
+      the extra control would be noise. */
+  allowArchive?: boolean
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -98,6 +103,7 @@ interface QuestionRendererProps {
 export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
+  allowArchive = false,
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -129,6 +135,7 @@ export function QuestionRenderer({
           branchingEnabled={branchingEnabled}
           customValuesEnabled={customValuesEnabled}
           errors={errors}
+          allowArchive={allowArchive}
         />
       ) : (
         <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
@@ -190,6 +197,12 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
   shifts?: TournamentShift[] | null
 }) {
   const config = field.config ?? {}
+  // An archived option stays in `config.options` forever so old answers
+  // referencing its option_id keep resolving (see apply_option_archiving on
+  // the backend) — it is storage, never a choice to present. Respondents
+  // whose answer pointed at one are asked to re-answer via the
+  // "option_archived" pending-update flow instead.
+  const liveOptions: FormFieldOption[] = (config.options ?? []).filter((opt) => !opt.is_archived)
 
   switch (field.question_type) {
     case 'short_text':
@@ -231,7 +244,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       )
 
     case 'single_select_radio': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? (value as string | undefined) ?? '' : ''
 
@@ -261,7 +274,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'single_select_dropdown': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       return (
         <Dropdown
           value={interactive ? (value as string | undefined) ?? '' : ''}
@@ -275,7 +288,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'multi_select_checkbox': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const displayOptions = options.map((opt) => ({ value: opt.option_id, label: optionDisplayLabel(opt, shifts) }))
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
@@ -310,7 +323,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
     }
 
     case 'ranked_choice': {
-      const options: FormFieldOption[] = config.options ?? []
+      const options = liveOptions
       const ranks = config.ranks ?? options.length
       return (
         <RankedList
@@ -347,7 +360,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [] }: {
+function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournament: Tournament | null
@@ -355,10 +368,12 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   branchingEnabled?: boolean
   customValuesEnabled?: boolean
   errors?: string[]
+  allowArchive?: boolean
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
   const isEntityBackedKind = isEntityBackedPreset(presetKind)
+  const hasTracks = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
   // tournament null means the entity-backed editor has no scope to fetch
   // shifts/events from — falls through to the read-only preview at the
   // bottom instead (see the tournament prop doc on QuestionRenderer), never
@@ -375,24 +390,39 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
     return <AcknowledgmentBody field={field} onFieldChange={onFieldChange} error={confirmError} />
   }
 
-  if (isEntity || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
+  const usesTrackEditor = hasTracks && !!tournament
+
+  // Archived options reach the editor now that there's something to do with
+  // them — OptionsEditor lists them separately with a restore action. They're
+  // still never shown to a respondent; that filtering lives in QuestionBody.
+  // The submitted list is authoritative, so an archived option dropped here
+  // would be deleted outright rather than merely hidden.
+  const allOptions = (field.config?.options as EditableOption[] | undefined) ?? []
+  const liveOptions = allOptions.filter((option) => !option.is_archived)
+  const setOptions = (options: EditableOption[]) =>
+    onFieldChange({ config: { ...field.config, options } })
+
+  if (isEntity || usesTrackEditor || (!isEntityBackedKind && OPTION_BEARING_TYPES.includes(field.question_type))) {
     return (
       <>
-        {isEntity ? (
+        {isEntity || usesTrackEditor ? (
           <EntityOptionsEditor
-            fieldKey={presetKind as 'availability' | 'event_preference'}
+            fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
             tournament={tournament!}
             questionType={field.question_type}
-            options={(field.config?.options as EditableOption[] | undefined) ?? []}
-            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            options={allOptions}
+            onChange={setOptions}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
             errors={errors}
+            trackStatusEnabled={hasTracks}
+            allowArchive={allowArchive}
           />
         ) : (
           <OptionsEditor
-            options={(field.config?.options as EditableOption[] | undefined) ?? []}
-            onChange={(options) => onFieldChange({ config: { ...field.config, options } })}
+            options={allOptions}
+            onChange={setOptions}
+            allowArchive={allowArchive}
             questionType={field.question_type}
             displayStyle={field.config?.display_style}
             branchTargets={supportsBranching && branchingEnabled ? branchTargets : undefined}
@@ -400,12 +430,16 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             errors={errors}
           />
         )}
-        {/* Ranks/duplicates apply to ranked_choice regardless of whether its
-            options are entity-backed (event_preference) or freeform — the
-            rank mechanics are a property of the question type, not of where
-            the option rows come from. */}
+        {/* Ranks applies to ranked_choice regardless of whether its options
+            are entity-backed (event_preference) or freeform — the rank
+            mechanics are a property of the question type, not of where the
+            option rows come from. Duplicate ranks are different: an
+            event_preference field can never allow them (ranking the same
+            event twice is meaningless, and the backend rejects the config
+            outright — see validate_event_preference_options), so the toggle
+            is hidden rather than shown disabled. */}
         {field.question_type === 'ranked_choice' && (() => {
-          const options = (field.config?.options as EditableOption[] | undefined) ?? []
+          const options = liveOptions
           const ranks = field.config?.ranks ?? 1
           // Same live-data gate as confirmError above — re-check against the
           // current option count rather than trusting the errors snapshot is
@@ -426,15 +460,17 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
                 fullWidth
               />
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '9px' }}>
-              <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
-                Allow duplicate ranks
-              </span>
-              <Toggle
-                checked={!!field.config?.allow_duplicates}
-                onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
-              />
-            </div>
+            {presetKind !== 'event_preference' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', paddingBottom: '9px' }}>
+                <span style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-text-secondary)' }}>
+                  Allow duplicate ranks
+                </span>
+                <Toggle
+                  checked={!!field.config?.allow_duplicates}
+                  onChange={(checked) => onFieldChange({ config: { ...field.config, allow_duplicates: checked } })}
+                />
+              </div>
+            )}
           </div>
           )
         })()}

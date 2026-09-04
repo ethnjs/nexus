@@ -91,7 +91,7 @@ interface FormFillFlowProps {
   /** Called once, after Submit's validation passes — a real viewer wires
       this to formsApi.submitResponse; omitted (the default), nothing is
       persisted, which is what makes this safe to use for a TD's preview. */
-  onComplete?: (answers: Record<string, unknown>) => void;
+  onComplete?: (answers: Record<string, unknown>) => void | Promise<void>;
 }
 
 // One question revealed at a time (Continue advances; Submit only appears
@@ -118,11 +118,18 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   // last error by itself never flips this true; Submit has to actually be
   // clicked again once things are fixed.
   const [submitSucceeded, setSubmitSucceeded] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | undefined>(undefined);
   // Field to scroll to once its Card is actually in the DOM — set alongside
   // the state change that reveals/flags it (revealCount, attemptedIds), so
   // the effect below only ever fires after that same render has committed,
   // never against a stale layout.
   const [pendingScrollId, setPendingScrollId] = useState<string | null>(null);
+  // On the final Continue, the current card loses its button while the
+  // submit bar appears. Keep this separately from the ordinary next-card
+  // scroll: the bar's measured footprint and the card's new height both need
+  // to settle before we can tell whether the card is covered.
+  const [pendingBarClearanceId, setPendingBarClearanceId] = useState<string | null>(null);
   // Reported live by FloatingSubmitBar (its own measured height, which
   // grows when the error summary line wraps) — applied as bottom padding so
   // the bar never covers the last question(s), same pattern as FieldList's
@@ -176,12 +183,61 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     window.scrollTo({ top: window.scrollY + rect.top - safeTop - 8, behavior: "smooth" });
   }, [pendingScrollId]);
 
+  useEffect(() => {
+    if (!pendingBarClearanceId || submitBarHeight === 0) return;
+    const card = document.querySelector<HTMLElement>(`[data-form-field="${pendingBarClearanceId}"]`);
+    if (!card) {
+      setPendingBarClearanceId(null);
+      return;
+    }
+
+    // FloatingBar measures itself before it slides in, while the just-finished
+    // card is simultaneously dropping its Continue button. Wait through both
+    // the next paint and the card-height animation window before measuring.
+    let frame = 0;
+    // Plain number, and window.clearTimeout to match: @types/node merges its
+    // own setTimeout into globalThis, so both the bare global and
+    // window.setTimeout type as returning NodeJS.Timeout here — while the
+    // browser hands back a numeric handle.
+    let timer: number | undefined;
+    const apply = () => {
+      const safeTop = TOPBAR_HEIGHT + 12;
+      const safeBottom = window.innerHeight - submitBarHeight;
+      const rect = card.getBoundingClientRect();
+      const visibleBand = safeBottom - safeTop;
+      let delta = 0;
+
+      if (rect.height <= visibleBand) {
+        if (rect.top < safeTop) delta = rect.top - safeTop - 8;
+        else if (rect.bottom > safeBottom) delta = rect.bottom - safeBottom + 8;
+      } else if (rect.top < safeTop || rect.top >= safeBottom) {
+        // An oversized question cannot entirely fit above the bar; put its
+        // beginning in the readable band instead of leaving it obscured.
+        delta = rect.top - safeTop - 8;
+      }
+
+      if (delta !== 0) window.scrollTo({ top: window.scrollY + delta, behavior: "smooth" });
+      setPendingBarClearanceId(null);
+    };
+    frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        timer = window.setTimeout(apply, 250);
+      });
+    });
+
+    return () => {
+      cancelAnimationFrame(frame);
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [pendingBarClearanceId, submitBarHeight]);
+
   function setAnswer(fieldId: string, value: unknown) {
     setAnswers((prev) => ({ ...prev, [fieldId]: value }));
     // Whatever Submit last validated is now stale — require clicking it
     // again rather than letting showSuccess flip true the instant the last
     // error happens to clear.
     setSubmitSucceeded(false);
+    setSubmitError(undefined);
   }
 
   function handleContinue(field: FormField) {
@@ -190,9 +246,10 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
     setRevealCount((c) => c + 1);
     const nextField = walk[revealCount];
     if (nextField) setPendingScrollId(nextField.id);
+    else setPendingBarClearanceId(field.id);
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setAttemptedIds((prev) => new Set([...prev, ...walk.map((f) => f.id)]));
     const firstInvalid = walk.find((f) => fieldErrorMessage(f, answers[f.id]) !== undefined);
     if (firstInvalid) {
@@ -200,8 +257,17 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
       setPendingScrollId(firstInvalid.id);
       return;
     }
-    setSubmitSucceeded(true);
-    onComplete?.(answers);
+    setSubmitting(true);
+    setSubmitError(undefined);
+    try {
+      await onComplete?.(answers);
+      setSubmitSucceeded(true);
+    } catch (error: unknown) {
+      setSubmitSucceeded(false);
+      setSubmitError(error instanceof Error ? error.message : "Failed to submit your response. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
@@ -274,6 +340,8 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
         visible={allContinued && !showSuccess}
         invalidCount={invalidCount}
         onSubmit={handleSubmit}
+        loading={submitting}
+        error={submitError}
         onHeightChange={setSubmitBarHeight}
       />
     </div>

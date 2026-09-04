@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ApiError, FormFieldConfig, FormQuestionType } from "@/lib/api";
+import { ApiError, FormFieldConfig, FormQuestionType, TrackStatusAssignment } from "@/lib/api";
 import { Banner } from "@/components/ui/Banner";
 import { activePresetKind, effectiveFieldKey, presetIncompleteMessage } from "@/lib/forms/fieldKeyPresets";
 
@@ -70,6 +70,19 @@ export function issuesFor(field: ValidatableField): string[] {
       if (options.some((o) => !o.label.trim())) issues.push("Every option needs a label.");
       const labels = options.map((o) => o.label.trim().toLowerCase());
       if (new Set(labels).size !== labels.length) issues.push("Option labels must be unique.");
+    }
+    const hasTrackOutcomes = presetKind === "track_status" || (presetKind === "availability" && !!config.track_status_enabled);
+    const trackAssignmentsFor = (option: typeof options[number]): TrackStatusAssignment[] => {
+      const onlyAssignments = (items: unknown[]): TrackStatusAssignment[] => items.filter(
+        (item): item is TrackStatusAssignment => typeof item === "object" && item !== null && "id" in item && "status" in item,
+      );
+      if (presetKind === "availability" && typeof option.value === "object" && !Array.isArray(option.value)) {
+        return onlyAssignments(option.value.track_statuses ?? []);
+      }
+      return presetKind === "track_status" && Array.isArray(option.value) ? onlyAssignments(option.value) : [];
+    };
+    if (hasTrackOutcomes && options.some((option) => trackAssignmentsFor(option).some((assignment) => !assignment.status))) {
+      issues.push("Choose a status for every track.");
     }
     if (field.question_type === "ranked_choice" && (config.ranks ?? 1) > options.length) {
       issues.push("Ranks can't exceed the number of options.");

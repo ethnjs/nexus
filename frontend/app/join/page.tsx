@@ -124,7 +124,7 @@ function JoinPageContent() {
     setJoinError(undefined);
     try {
       const result = await joinApi.redeem(code);
-      router.push(`/dashboard/tournaments/${result.target_id}/overview`);
+      router.replace(`/tournaments/${result.target_id}/onboarding`);
     } catch (err: unknown) {
       setJoinError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
       setJoining(false);
@@ -185,8 +185,8 @@ function JoinPageContent() {
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", textAlign: "center" }}>
             You&rsquo;re already a member of this tournament.
           </p>
-          <Button fullWidth onClick={() => router.push(`/dashboard/tournaments/${preview.target_id}/overview`)}>
-            Go to tournament
+          <Button fullWidth onClick={() => router.push(`/tournaments/${preview.target_id}/onboarding`)}>
+            Continue onboarding
           </Button>
         </div>
       ) : (

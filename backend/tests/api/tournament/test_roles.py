@@ -139,7 +139,7 @@ def test_apply_template_non_owner_without_manage_roles_forbidden(client, td_user
     tournament_id = _make_empty_tournament(client, name="Empty For Other")
 
     membership = TournamentMembership(
-        user_id=td_user.id, tournament_id=tournament_id, status="confirmed", source="manual",
+        user_id=td_user.id, tournament_id=tournament_id, source="manual",
     )
     db.add(membership)
     db.commit()

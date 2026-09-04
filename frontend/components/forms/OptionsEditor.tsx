@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownOption } from '@/components/ui/Dropdown'
 import { RadioCircle } from '@/components/ui/RadioCircle'
 import { Checkbox } from '@/components/ui/Checkbox'
-import { IconGripVertical, IconX, IconPlus } from '@/components/ui/Icons'
+import { IconGripVertical, IconRestore, IconX, IconPlus } from '@/components/ui/Icons'
 
 // Same option shape the backend expects, plus a client-only stable id for
 // React/dnd-kit — option_id itself is blank ("") for a not-yet-saved option
@@ -165,6 +165,9 @@ interface OptionsEditorProps {
       `value` — entity-backed variants keep `value` as the selected id array,
       so editing the label shouldn't touch it. */
   syncValueWithLabel?: boolean
+  /** Whether archiving an option is offered alongside removing it. Only
+      meaningful once the form has responses — see QuestionRenderer. */
+  allowArchive?: boolean
   /** This field's validation messages (useFormValidation's per-field issues) —
       only consulted to gate the two option-shaped ones ("needs a label"/
       "must be unique") so a row's own Input.error stays blank until a Save
@@ -183,8 +186,13 @@ interface OptionsEditorProps {
 // handle is hidden while its card is expanded.
 export function OptionsEditor({
   options, onChange, questionType, displayStyle, branchTargets, renderExtra,
-  createOption = newOption, syncValueWithLabel = true, errors = [],
+  createOption = newOption, syncValueWithLabel = true, errors = [], allowArchive = false,
 }: OptionsEditorProps) {
+  // `options` carries archived entries too, but they're not part of the list
+  // a respondent sees — they're listed separately below so they don't join
+  // drag ordering or take up a bullet number.
+  const liveOptions = options.filter((o) => !o.is_archived)
+  const archivedOptions = options.filter((o) => o.is_archived)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
   const bulletType = bulletTypeFor(questionType)
 
@@ -197,7 +205,7 @@ export function OptionsEditor({
   const duplicateKeys = new Set<string>()
   if (flagDuplicateLabels) {
     const counts = new Map<string, number>()
-    for (const o of options) {
+    for (const o of liveOptions) {
       const key = o.label.trim().toLowerCase()
       if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
     }
@@ -216,10 +224,10 @@ export function OptionsEditor({
   function handleDragEnd(e: DragEndEvent) {
     const { active, over } = e
     if (!over || active.id === over.id) return
-    const oldIndex = options.findIndex((o) => o.clientKey === active.id)
-    const newIndex = options.findIndex((o) => o.clientKey === over.id)
+    const oldIndex = liveOptions.findIndex((o) => o.clientKey === active.id)
+    const newIndex = liveOptions.findIndex((o) => o.clientKey === over.id)
     if (oldIndex === -1 || newIndex === -1) return
-    onChange(arrayMove(options, oldIndex, newIndex))
+    onChange([...arrayMove(liveOptions, oldIndex, newIndex), ...archivedOptions])
   }
 
   function updateOption(clientKey: string, label: string) {
@@ -234,25 +242,33 @@ export function OptionsEditor({
     onChange(options.map((o) => (o.clientKey === clientKey ? applyBranchValue(o, value) : o)))
   }
 
-  // A question needs at least one option to mean anything, so the last row
-  // can't be deleted — only cleared out and edited in place.
+  // A question needs at least one *offerable* option to mean anything, so the
+  // last live row can't be removed — only cleared out and edited in place.
+  // Archived rows don't count toward that: none of them can be picked.
   function removeOption(clientKey: string) {
-    if (options.length <= 1) return
+    if (liveOptions.length <= 1) return
     onChange(options.filter((o) => o.clientKey !== clientKey))
   }
 
+  // Archiving keeps the option in storage so past answers still resolve, and
+  // asks nobody to re-answer — "we ran out", not "this was never valid".
+  // Removing it outright is the other verb, and does flag whoever picked it.
+  function setArchived(clientKey: string, is_archived: boolean) {
+    onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, is_archived } : o)))
+  }
+
   function addOption() {
-    onChange([...options, createOption()])
+    onChange([...liveOptions, createOption(), ...archivedOptions])
   }
 
   // Enter from inside a row inserts right after it, rather than appending at
   // the end — the row you're typing into isn't necessarily the last one.
   function addOptionAfter(clientKey: string) {
-    const insertIndex = options.findIndex((o) => o.clientKey === clientKey) + 1
+    const insertIndex = liveOptions.findIndex((o) => o.clientKey === clientKey) + 1
     const created = createOption()
-    const next = [...options]
+    const next = [...liveOptions]
     next.splice(insertIndex, 0, created)
-    onChange(next)
+    onChange([...next, ...archivedOptions])
     setFocusKey(created.clientKey)
   }
 
@@ -281,8 +297,8 @@ export function OptionsEditor({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        <SortableContext items={options.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
-          {options.map((option, index) => (
+        <SortableContext items={liveOptions.map((o) => o.clientKey)} strategy={verticalListSortingStrategy}>
+          {liveOptions.map((option, index) => (
             <OptionRow
               key={option.clientKey}
               option={option}
@@ -292,16 +308,69 @@ export function OptionsEditor({
               trailing={trailing?.(option)}
               extra={extraFor?.(option)}
               error={errorFor(option)}
-              canRemove={options.length > 1}
+              canRemove={liveOptions.length > 1}
+              allowArchive={allowArchive}
               autoFocus={option.clientKey === focusKey}
               onChange={(label) => updateOption(option.clientKey, label)}
-              onRemove={() => removeOption(option.clientKey)}
+              onRemove={() => (allowArchive
+                ? setArchived(option.clientKey, true)
+                : removeOption(option.clientKey))}
               onEnter={() => addOptionAfter(option.clientKey)}
             />
           ))}
         </SortableContext>
       </DndContext>
-      <AddOptionRow bulletType={bulletType} number={options.length + 1} displayStyle={displayStyle} onClick={addOption} />
+      <AddOptionRow bulletType={bulletType} number={liveOptions.length + 1} displayStyle={displayStyle} onClick={addOption} />
+      <ArchivedOptions
+        options={archivedOptions}
+        onUnarchive={(clientKey) => setArchived(clientKey, false)}
+        onRemove={(clientKey) => onChange(options.filter((o) => o.clientKey !== clientKey))}
+      />
+    </div>
+  )
+}
+
+// Archived options, kept so past answers still resolve. Listed apart from the
+// live rows rather than dimmed in place: they don't belong in the drag order
+// or the bullet numbering, and mixing them in makes it hard to see what the
+// question actually asks now.
+function ArchivedOptions({ options, onUnarchive, onRemove }: {
+  options: EditableOption[]
+  onUnarchive: (clientKey: string) => void
+  onRemove: (clientKey: string) => void
+}) {
+  if (options.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', marginTop: '10px' }}>
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+        textTransform: 'uppercase', letterSpacing: '0.07em',
+        color: 'var(--color-text-tertiary)', marginBottom: '2px',
+      }}>
+        Archived
+      </span>
+      {options.map((option) => (
+        <div key={option.clientKey} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '2px 0' }}>
+          <span style={{
+            flex: 1, minWidth: 0, fontFamily: 'var(--font-sans)', fontSize: '14px',
+            color: 'var(--color-text-tertiary)', textDecoration: 'line-through',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {option.label || 'Untitled option'}
+          </span>
+          <Button type="button" variant="ghost" size="xs" onClick={() => onUnarchive(option.clientKey)}>
+            <IconRestore size={11} /> Unarchive
+          </Button>
+          <Button
+            type="button" variant="ghost" size="xs" iconOnly
+            title="Remove permanently — anyone who picked it will be asked to answer again"
+            onClick={() => onRemove(option.clientKey)}
+            style={{ color: 'var(--color-danger)' }}
+          >
+            <IconX size={11} />
+          </Button>
+        </div>
+      ))}
     </div>
   )
 }
@@ -338,7 +407,7 @@ function AddOptionRow({ bulletType, number, displayStyle, onClick }: {
 // This is "the general look" every options list shares; EntityOptionsEditor
 // builds on it purely through OptionsEditor's renderExtra/
 // createOption/syncValueWithLabel props rather than rendering its own rows.
-function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, autoFocus, onChange, onRemove, onEnter }: {
+function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, error, canRemove, allowArchive, autoFocus, onChange, onRemove, onEnter }: {
   option: EditableOption
   bulletType: BulletType
   /** 1-based position — only rendered when bulletType is 'number' (dropdown). */
@@ -348,9 +417,14 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
   extra?: ReactNode
   error?: string
   canRemove: boolean
+  /** Whether archiving is on the table — only meaningful once the form has
+      responses worth preserving. */
+  allowArchive: boolean
   /** True for the row just inserted by pressing Enter in the row above it. */
   autoFocus: boolean
   onChange: (label: string) => void
+  /** Archives or deletes depending on allowArchive — the row only knows it's
+      the "take this out of the list" action. */
   onRemove: () => void
   onEnter: () => void
 }) {
@@ -422,12 +496,21 @@ function OptionRow({ option, bulletType, number, displayStyle, trailing, extra, 
           size="md"
           fullWidth
         />
+        {trailing}
+        {/* One control. Once the form has responses this archives rather than
+            deletes — removing an option for good is a second, deliberate step
+            from the archived group below, so it can't happen on a stray click
+            while tidying up the list. */}
         {canRemove && (
-          <Button type="button" variant="ghost" size="md" iconOnly title="Delete option" onClick={onRemove} style={{ flexShrink: 0 }}>
+          <Button
+            type="button" variant="ghost" size="md" iconOnly
+            title={allowArchive ? "Archive option — existing answers stay valid" : "Delete option"}
+            onClick={onRemove}
+            style={{ flexShrink: 0 }}
+          >
             <IconX size={12} />
           </Button>
         )}
-        {trailing}
       </div>
       {/* Indented to match the Input's left edge above, not the row's own —
           otherwise it lines up with the bullet instead (EntityOptionsEditor's

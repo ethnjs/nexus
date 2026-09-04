@@ -137,7 +137,7 @@ def get_me(
 
     response = UserMeSlimResponse.model_validate(current_user)
     response.is_profile_complete = is_profile_complete(current_user, db=db)
-    response.is_onboarding_complete = is_onboarding_complete(current_user)
+    response.is_onboarding_complete = is_onboarding_complete(current_user, db=db)
     return response
 
 

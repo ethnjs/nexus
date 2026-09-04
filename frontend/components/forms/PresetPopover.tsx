@@ -2,25 +2,58 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { FormPopover } from "@/components/ui/FormPopover";
 import { Input } from "@/components/ui/Input";
-import { IconPresets } from "@/components/ui/Icons";
+import { Toggle } from "@/components/ui/Toggle";
+import { IconPresets, IconX } from "@/components/ui/Icons";
 import { TournamentDayPicker } from "@/components/tournament/TournamentDayPicker";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { FormQuestionType } from "@/lib/api";
 import { EditableField } from "@/lib/forms/editableField";
 import {
   PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError,
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
   parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
   parseLunchFieldKey, buildLunchFieldKey,
+  parseTrackStatusFieldKey, buildTrackStatusFieldKey,
 } from "@/lib/forms/fieldKeyPresets";
 import { OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
+
+type EditableOption = NonNullable<NonNullable<EditableField["config"]>["options"]>[number];
+
+function isAssignmentList(value: unknown): boolean {
+  return Array.isArray(value) && value.every((item) => typeof item === "object" && item !== null && "id" in item && "status" in item);
+}
+
+// The option rows a field keeps when its preset changes — including changing
+// to "no preset". Rows, labels and branch targets are the TD's work and
+// always survive; only each `value` is rewritten, since the three shapes
+// (freeform string, entity ids, track assignments) aren't interchangeable. A
+// value that can't carry into the new shape falls back to the row's own
+// label (freeform) or an empty selection (entity/track), never to a dropped
+// row. Returns a single starter row only when there was nothing to keep.
+function carryOptions(field: EditableField, kind: PresetKind | null, questionType: FormQuestionType): EditableOption[] {
+  if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
+  const supportsBranching = questionType === "single_select_radio" || questionType === "single_select_dropdown";
+  const existing = field.config?.options ?? [];
+  if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
+  return existing.map((option) => ({
+    ...option,
+    ...(supportsBranching ? {} : { next_field_id: null, action: null }),
+    value: isEntityBackedPreset(kind)
+      ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
+      : kind === "track_status"
+        ? (isAssignmentList(option.value) ? option.value : [])
+        : typeof option.value === "string" ? option.value : option.label,
+  }));
+}
 
 const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
   { value: "availability", label: "Availability" },
   { value: "event_preference", label: "Event" },
   { value: "lunch", label: "Lunch" },
+  { value: "track_status", label: "Track" },
 ];
 
 // Reserved-key presets (availability_{date}, event_preference_{suffix},
@@ -28,10 +61,8 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 // FieldKeyPopover's plain free-text key, since a preset now needs its own
 // parameter input(s) (a date, a suffix, a date+category pair) rather than
 // being a single fixed field_key a TD picks off a list. Choosing/changing a
-// preset here always resets `options` — an entity-backed picker's
-// `value: number[]` and a freeform row's `value: string` aren't
-// interchangeable, so switching kinds (including back to "no preset")
-// can't safely keep whatever was there before.
+// preset here keeps the TD's option rows and their branch targets — only each
+// value's *shape* is rewritten to fit the new kind (see reshapeOptions).
 export function PresetPopover({
   field, onFieldChange, tournamentDates, onOpen, errors, saveAttempt, open, onOpenChange,
 }: {
@@ -66,10 +97,19 @@ export function PresetPopover({
 
   function applyPresetKind(kind: PresetKind | null) {
     if (kind === null) {
-      const options = OPTION_BEARING_TYPES.includes(field.question_type) ? [newOption()] : [];
+      // Clearing is just another kind change: keep the rows, drop back to
+      // freeform values, and only seed a starter row if there was nothing
+      // to keep. track_status_enabled goes with the preset — it's an
+      // availability-only opt-in, and the backend rejects the flag on any
+      // other key.
+      const options = carryOptions(field, null, field.question_type);
       onFieldChange({
         field_key: slugifyFieldKey(field.label),
-        config: { ...sanitizeConfigForType(field.config, field.question_type), options },
+        config: {
+          ...sanitizeConfigForType(field.config, field.question_type),
+          track_status_enabled: undefined,
+          options,
+        },
       });
       return;
     }
@@ -82,17 +122,26 @@ export function PresetPopover({
     const fieldKey =
       kind === "availability" ? buildAvailabilityFieldKey(soleDay ?? "")
       : kind === "lunch" ? buildLunchFieldKey(soleDay ?? "", "")
+      : kind === "track_status" ? "track_status_"
       : "event_preference_";
     // Every preset's allowedQuestionTypes is option-bearing, so there's
     // always exactly one starter row to seed here — entity-shaped (an empty
     // id array to fill in via the picker) for availability/event_preference,
     // plain freeform for lunch — rather than leaving the TD looking at an
     // empty list with nothing to click but "Add option."
-    const starterOption = isEntityBackedPreset(kind) ? newEntityOption() : newOption();
+    const options = carryOptions(field, kind, questionType);
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
-      config: { ...sanitizeConfigForType(field.config, questionType), options: [starterOption] },
+      config: {
+        ...sanitizeConfigForType(field.config, questionType),
+        required: kind === "track_status" ? true : field.config?.required ?? false,
+        // Only availability opts into track statuses via this flag; every
+        // other kind (track_status included — its key alone enables them)
+        // must not carry it over.
+        track_status_enabled: kind === "availability" ? field.config?.track_status_enabled : undefined,
+        options,
+      },
     });
   }
 
@@ -105,7 +154,7 @@ export function PresetPopover({
           <IconPresets size={14} />
         </Button>
       }
-      width={320}
+      width={250}
       side="right"
       open={open}
       onOpenChange={(next) => { onOpenChange(next); if (next) onOpen?.(); }}
@@ -121,16 +170,55 @@ export function PresetPopover({
             }}>
               Preset
             </span>
-            <ButtonGroup
-              options={KIND_OPTIONS}
-              value={presetKind ?? ""}
-              onChange={(v) => applyPresetKind(v === presetKind ? null : (v as PresetKind))}
-              size="sm"
-              fullWidth
-            />
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <Dropdown
+                options={KIND_OPTIONS}
+                value={presetKind ?? ""}
+                onChange={(value) => applyPresetKind(value as PresetKind)}
+                placeholder="No preset"
+                size="sm"
+                fullWidth
+              />
+              {presetKind && (
+                <Button
+                  type="button" variant="ghost" size="sm" iconOnly
+                  title="Clear preset"
+                  onClick={() => applyPresetKind(null)}
+                  style={{ width: "28px", height: "28px", padding: 0, flexShrink: 0 }}
+                >
+                  <IconX size={14} />
+                </Button>
+              )}
+            </div>
           </div>
           {presetKind === "availability" && (
-            <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+            <>
+              <AvailabilityParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+                <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>Also update track status</span>
+                <Toggle
+                  checked={!!field.config?.track_status_enabled}
+                  onChange={(checked) => onFieldChange({
+                    config: {
+                      ...field.config,
+                      track_status_enabled: checked,
+                      options: field.config?.options?.map((option) => {
+                        if (checked && Array.isArray(option.value)) {
+                          const shiftIds = option.value.every((value) => typeof value === "number")
+                            ? option.value as number[]
+                            : [];
+                          return { ...option, value: { shift_ids: shiftIds, track_statuses: [] } };
+                        }
+                        if (!checked && typeof option.value === "object" && !Array.isArray(option.value)) {
+                          return { ...option, value: option.value.shift_ids ?? [] };
+                        }
+                        return option;
+                      }),
+                    },
+                  })}
+                />
+              </div>
+            </>
           )}
           {presetKind === "event_preference" && (
             <EventPreferenceParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
@@ -138,10 +226,25 @@ export function PresetPopover({
           {presetKind === "lunch" && (
             <LunchParams field={field} onFieldChange={onFieldChange} tournamentDates={tournamentDates} showErrors={!!presetError} />
           )}
+          {presetKind === "track_status" && (
+            <TrackStatusParams field={field} onFieldChange={onFieldChange} showErrors={!!presetError} />
+          )}
         </div>
       )}
     </FormPopover>
   );
+}
+
+function TrackStatusParams({ field, onFieldChange, showErrors }: {
+  field: EditableField; onFieldChange: (updates: Partial<EditableField>) => void; showErrors: boolean;
+}) {
+  const { suffix: parsedSuffix } = parseTrackStatusFieldKey(field.field_key);
+  const [suffix, setSuffix] = useState(parsedSuffix);
+  function handleChange(value: string) {
+    setSuffix(value);
+    onFieldChange({ field_key: buildTrackStatusFieldKey(value) });
+  }
+  return <Input label="Suffix" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Suffix is required." : undefined} />;
 }
 
 function DayPicker({ label, date, tournamentDates, onChange, error }: {

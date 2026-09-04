@@ -5,7 +5,6 @@ import { useParams, useRouter } from "next/navigation";
 import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -69,7 +68,7 @@ function FormRow({ form, isLast }: {
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Edit"
-          onClick={(e) => { e.stopPropagation(); router.push(`/forms/${form.id}/edit`); }}
+          onClick={(e) => { e.stopPropagation(); window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer"); }}
         >
           <IconEdit size={14} />
         </Button>
@@ -111,7 +110,6 @@ function FormTable({ forms }: { forms: FormListItem[] }) {
 
 export default function FormsPage() {
   const params = useParams();
-  const router = useRouter();
   const tournamentId = Number(params.id);
 
   const { user: currentUser } = useAuth();
@@ -139,26 +137,20 @@ export default function FormsPage() {
 
   if (!canManageForms) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <Card radius="lg" style={{ padding: "8px" }}>
-          <EmptyState
-            icon={<IconLock size={28} />}
-            title="No access"
-            description="You need the manage forms permission to view this page."
-          />
-        </Card>
-      </div>
+      <Card radius="lg" style={{ padding: "8px" }}>
+        <EmptyState
+          icon={<IconLock size={28} />}
+          title="No access"
+          description="You need the manage forms permission to view this page."
+        />
+      </Card>
     );
   }
 
   if (forms === null) {
     return (
-      <div>
-        <PageHeader heading="Forms" />
-        <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
-          <Spinner size="lg" />
-        </div>
+      <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
+        <Spinner size="lg" />
       </div>
     );
   }
@@ -166,19 +158,16 @@ export default function FormsPage() {
   // Submit -> POST -> redirect straight into the builder. title/description
   // are set later, inside the builder — not part of this modal.
   function handleCreated(form: Form) {
-    router.push(`/forms/${form.id}/edit`);
+    window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer");
   }
 
   return (
     <div>
-      <PageHeader
-        heading="Forms"
-        action={
-          <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
-            <IconPlus size={14} /> New Form
-          </Button>
-        }
-      />
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+        <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+          <IconPlus size={14} /> New Form
+        </Button>
+      </div>
 
       {loadError && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>

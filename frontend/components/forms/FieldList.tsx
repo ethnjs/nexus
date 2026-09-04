@@ -8,7 +8,7 @@ import {
 import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
-import { formsApi, tournamentsApi, tournamentShiftsApi, Form, Tournament, TournamentShift } from "@/lib/api";
+import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, FieldChange, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
 import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
@@ -19,11 +19,14 @@ import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
 import { FieldToolbar } from "@/components/forms/FieldToolbar";
+import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
+import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import {
   EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
+
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
@@ -67,6 +70,22 @@ export function FieldList({ form }: { form: Form }) {
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
   // too, but only while a field is actually expanded/being edited.
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
+  // Questions taken out of use. Not part of `fields` — they must not join the
+  // ordered list or read as branch targets — so they're fetched separately and
+  // move between the two lists only when the TD restores one.
+  const [archivedFields, setArchivedFields] = useState<FormField[]>([]);
+  // Set when a save on a form with responses turns out to change something
+  // consequential — the save waits here until the TD decides who gets asked
+  // to re-answer. null means no save is pending confirmation.
+  const [pendingChanges, setPendingChanges] = useState<FieldChange[] | null>(null);
+  const [notifyByKey, setNotifyByKey] = useState<Record<string, boolean>>({});
+  // field_id -> the TD's decision. Only these questions carry one; everything
+  // else in the payload omits notify_responders and takes the server's
+  // defaults.
+  const notifyRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
+  }, [form.id]);
   useEffect(() => {
     if (form.tournament_id == null) return;
     tournamentShiftsApi.list(form.tournament_id).then(setShifts).catch(() => {});
@@ -289,6 +308,24 @@ export function FieldList({ form }: { form: Form }) {
   // Cleared field_key on the copy — a reserved key (availability, ...) can
   // only exist once per tournament, and a freeform key the TD chose
   // deliberately shouldn't silently duplicate either.
+  // Unarchiving is staged, not a request: the field joins the target list and
+  // the next Save unarchives it. Keeping it in the same batch means it goes
+  // through the same key-availability check as everything else — an archived
+  // field doesn't reserve its key, so another question may have taken it.
+  function unarchiveField(field: FormField) {
+    setArchivedFields((prev) => prev.filter((f) => f.id !== field.id));
+    const restored: EditableField = {
+      ...withOptionClientKeys(field),
+      clientKey: String(field.id),
+      showDescription: !!field.description,
+      branchingEnabled: deriveBranchingEnabled(field),
+      customValuesEnabled: deriveCustomValuesEnabled(field),
+    };
+    setFields((prev) => [...prev, restored]);
+    setExpandedKey(restored.clientKey);
+    setPendingScrollKey(restored.clientKey);
+  }
+
   function duplicateField(clientKey: string) {
     const source = fields.find((f) => f.clientKey === clientKey);
     if (!source) return;
@@ -311,18 +348,39 @@ export function FieldList({ form }: { form: Form }) {
     setPendingScrollKey(copy.clientKey);
   }
 
-  // Deleting the expanded card would otherwise drop the open count to zero —
+  // Archiving the expanded card would otherwise drop the open count to zero —
   // fall back to whatever's now at its old index (its old neighbor below),
   // or the one above if it was last.
-  function deleteField(clientKey: string) {
+  function archiveField(clientKey: string) {
     const deletedIndex = fields.findIndex((f) => f.clientKey === clientKey);
+    const target = fields[deletedIndex];
     const next = fields.filter((f) => f.clientKey !== clientKey);
     setFields(next);
     if (expandedKey === clientKey) {
       const fallback = next[deletedIndex] ?? next[deletedIndex - 1];
       setExpandedKey(fallback ? fallback.clientKey : null);
     }
+    // Move it into the archived section right away rather than letting it
+    // vanish until the next Save. A field that was never saved has no
+    // archived state to go to — it just goes. The staged version is kept, not
+    // the server's, so edits made before archiving survive an unarchive.
+    if (target?.id) {
+      const { clientKey: _c, showDescription: _s, branchingEnabled: _b, customValuesEnabled: _v, ...stored } = target;
+      setArchivedFields((prev) => [{ ...stored, id: target.id as string, is_archived: true }, ...prev]);
+    }
   }
+
+  // The server names the offending ids in its 400 detail; parsing them back
+  // out is ugly but it's the only signal that distinguishes "your draft
+  // references a dead row" from an ordinary validation failure.
+  function unknownFieldIds(err: unknown): string[] {
+    if (!(err instanceof ApiError) || !err.message.includes("field id(s) not found")) return [];
+    return [...err.message.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  }
+
+  // A form nobody has answered can't strand anyone, so edits apply silently;
+  // once responses exist, every consequential edit is the TD's call.
+  const hasResponses = form.status === "published" || form.response_count > 0;
 
   async function handleSave() {
     const issues = validation.validate(fields);
@@ -336,13 +394,47 @@ export function FieldList({ form }: { form: Form }) {
       setSaveAttempt((n) => n + 1);
       return;
     }
+
+    if (hasResponses && pendingChanges === null) {
+      // The server owns the rules — see backend/app/core/form/changes.py. The
+      // round trip is affordable because this only happens on a deliberate
+      // save of a form that already has responses.
+      setSaving(true);
+      validation.setSaveError("");
+      try {
+        const changes = await formsApi.classifyFieldChanges(form.id, fields.map((f) => toFieldInput(f)));
+        if (changes.length > 0) {
+          setNotifyByKey(Object.fromEntries(changes.map((c) => [c.field_id, c.notify_default])));
+          setPendingChanges(changes);
+          return;
+        }
+      } catch {
+        // Stop rather than save anyway. The PUT would apply each change's
+        // default, which is exactly the decision this step exists to give the
+        // TD — saving past a failed check would quietly take it away. Nothing
+        // has been written, so pressing Save again just retries.
+        validation.setSaveError("Couldn't check which questions changed, so nothing was saved. Try saving again.");
+        return;
+      } finally {
+        setSaving(false);
+      }
+    }
+    await commitSave();
+  }
+
+  async function commitSave() {
+    setPendingChanges(null);
     setSaving(true);
     try {
       // A not-yet-saved field's clientKey is a client UUID that the server
       // response replaces with String(new id) — track position instead of
       // identity so the same card stays open across that swap.
       const expandedIndex = fields.findIndex((f) => f.clientKey === expandedKey);
-      const updated = await formsApi.putFields(form.id, fields.map(toFieldInput));
+      const decided = notifyRef.current;
+      const updated = await formsApi.putFields(
+        form.id,
+        fields.map((f) => toFieldInput(f, f.id ? decided[f.id] : undefined)),
+      );
       const next = updated
         .filter((f) => !f.is_archived)
         .sort((a, b) => a.order - b.order)
@@ -354,9 +446,27 @@ export function FieldList({ form }: { form: Form }) {
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
       baselineRef.current = JSON.stringify(next);
       validation.clearAll();
+      // The response only carries live fields, so anything this save archived
+      // (or unarchived) has to be re-read rather than derived from it.
+      formsApi.listArchivedFields(form.id).then(setArchivedFields).catch(() => {});
     } catch (err) {
-      validation.handle422(err);
+      // A staged field the server has never heard of can't be fixed by
+      // retrying — it was hard-deleted (here, in another tab, or as a draft
+      // removal), and every save will fail on it until it's out of the list.
+      // Drop it and say which question went, instead of leaving the TD
+      // wedged on a raw id with no action available but a page reload.
+      const orphanIds = unknownFieldIds(err);
+      if (orphanIds.length > 0) {
+        const lost = fields.filter((f) => f.id && orphanIds.includes(f.id));
+        setFields((prev) => prev.filter((f) => !(f.id && orphanIds.includes(f.id))));
+        validation.setSaveError(
+          `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`
+        );
+      } else {
+        validation.handle422(err);
+      }
     } finally {
+      notifyRef.current = {};
       setSaving(false);
     }
   }
@@ -471,11 +581,12 @@ export function FieldList({ form }: { form: Form }) {
                 focusNonce={focusRequest?.key === field.clientKey ? focusRequest.nonce : 0}
                 onFieldChange={(updates) => updateField(field.clientKey, updates)}
                 onDuplicate={() => duplicateField(field.clientKey)}
-                onDelete={() => deleteField(field.clientKey)}
+                onDelete={() => archiveField(field.clientKey)}
                 tournament={tournament}
                 shifts={shifts}
                 allFields={fields}
                 errors={validation.errorsFor(field.clientKey)}
+                allowArchive={hasResponses}
               />
             ))}
           </SortableContext>
@@ -487,6 +598,28 @@ export function FieldList({ form }: { form: Form }) {
           </DragOverlay>
         </DndContext>
       )}
+      {pendingChanges && (
+        <NotifyRespondersModal
+          changes={pendingChanges}
+          notify={notifyByKey}
+          onToggle={(fieldId, value) => setNotifyByKey((prev) => ({ ...prev, [fieldId]: value }))}
+          onCancel={() => setPendingChanges(null)}
+          onConfirm={() => { notifyRef.current = notifyByKey; commitSave(); }}
+          saving={saving}
+        />
+      )}
+      <ArchivedFieldsSection
+        formId={form.id}
+        fields={archivedFields}
+        onUnarchive={unarchiveField}
+        onDeleted={(fieldId) => {
+          setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
+          // Also drop it from the staged list. A restored-then-deleted field
+          // can sit in both, and a staged id the server no longer has makes
+          // every subsequent save fail on an id the TD can't act on.
+          setFields((prev) => prev.filter((f) => f.id !== fieldId));
+        }}
+      />
       <FloatingSaveBar
         visible={isDirty}
         saving={saving}
@@ -512,6 +645,7 @@ export function FieldList({ form }: { form: Form }) {
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
           tournamentDates={tournamentDates}
+          presetsEnabled={form.tournament_id != null}
           onOpenPresets={loadTournament}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}

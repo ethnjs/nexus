@@ -42,9 +42,9 @@ const CONFIG_KEYS_BY_TYPE: Record<FormQuestionType, (keyof FormFieldConfig)[]> =
   short_text: ["required", "max_length"],
   long_text: ["required", "max_length"],
   acknowledgment: ["required", "confirm_label"],
-  single_select_radio: ["required", "display_style", "options"],
+  single_select_radio: ["required", "display_style", "track_status_enabled", "options"],
   single_select_dropdown: ["required", "options"],
-  multi_select_checkbox: ["required", "display_style", "options"],
+  multi_select_checkbox: ["required", "display_style", "track_status_enabled", "options"],
   ranked_choice: ["required", "ranks", "allow_duplicates", "options"],
 };
 

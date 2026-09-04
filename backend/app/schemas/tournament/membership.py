@@ -4,6 +4,7 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 
 from app.schemas.tournament.role import RoleRead
+from app.schemas.tournament.track import MembershipTrackStatusRead
 from app.schemas.user import UserFullResponse, UserSlimResponse
 
 
@@ -43,6 +44,52 @@ class MembershipJoinCodeInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MembershipEventPreferenceEventRead(BaseModel):
+    """One event within a preference group — same {id, name, division} shape
+    resolve_field_options gives an event_preference option's events, so a
+    renderer can reuse the same event-display component either way."""
+    id: int
+    name: str | None = None
+    division: str | None = None
+    rank: int | None = None
+
+
+class MembershipEventPreferenceRead(BaseModel):
+    """One event_preference_{suffix} question's answer, grouped by key with
+    its events resolved. Each suffix is its own independent axis — see
+    form-question-types-reference.md — so this is a list, not a single
+    preference."""
+    key: str
+    events: list[MembershipEventPreferenceEventRead]
+
+    @classmethod
+    def group_rows(cls, rows) -> list["MembershipEventPreferenceRead"]:
+        """Groups flat TournamentMembershipEventPreference rows (one per
+        event) into one entry per key, ordered by key then by rank (nulls
+        last) then event id within each key."""
+        by_key: dict[str, list] = {}
+        for row in rows:
+            by_key.setdefault(row.key, []).append(row)
+        return [
+            cls(
+                key=key,
+                events=[
+                    MembershipEventPreferenceEventRead(
+                        id=row.tournament_event_id,
+                        name=row.tournament_event.name,
+                        division=row.tournament_event.division,
+                        rank=row.rank,
+                    )
+                    for row in sorted(
+                        by_key[key],
+                        key=lambda r: (r.rank is None, r.rank or 0, r.tournament_event_id),
+                    )
+                ],
+            )
+            for key in sorted(by_key)
+        ]
+
+
 class _MembershipRolesMixin(BaseModel):
     """Shared roles handling for response schemas.
 
@@ -66,7 +113,6 @@ class MembershipSlimResponse(_MembershipRolesMixin):
     """List view — members page roster. No onboarding/logistics fields."""
     id: int
     source: str
-    status: str
     # Resolved server-side — see MembershipJoinCodeInfo. None when source
     # isn't "join_code". Supersedes the bare join_code_id FK.
     join_code: MembershipJoinCodeInfo | None = None
@@ -82,15 +128,17 @@ class MembershipMeResponse(_MembershipRolesMixin):
     """GET .../memberships/me/ — current user's membership + effective permissions."""
     membership_id: int | None
     is_owner: bool
-    status: str | None = None
     permissions: list[str] = []
+    # Their own per-track statuses — readable without manage_members, unlike
+    # the tournament-wide roster.
+    track_statuses: list[MembershipTrackStatusRead] = []
+    event_preferences: list[MembershipEventPreferenceRead] = []
 
 
 class MembershipFullResponse(_MembershipRolesMixin):
     """Detail view — the expanded side panel for a single member."""
     id: int
     tournament_id: int
-    status: str
     notes: Optional[str] = None
     source: str
     join_code: MembershipJoinCodeInfo | None = None
@@ -101,4 +149,27 @@ class MembershipFullResponse(_MembershipRolesMixin):
     created_at: datetime
     updated_at: datetime
 
+    track_statuses: list[MembershipTrackStatusRead] = []
+    event_preferences: list[MembershipEventPreferenceRead] = []
+
     user: UserFullResponse
+
+    # Same shape problem as _unwrap_roles: the ORM rows don't carry the track
+    # name, it's a relationship hop away. Routes that build this from a
+    # TournamentMembership get the flattening for free; anything passing
+    # already-built schema objects passes straight through.
+    @field_validator("track_statuses", mode="before")
+    @classmethod
+    def _flatten_track_statuses(cls, v):
+        if v and hasattr(v[0], "track"):
+            return [MembershipTrackStatusRead.from_row(row) for row in v]
+        return v
+
+    # Same treatment for event preferences — the flat per-event rows need
+    # grouping by key before they match this schema's shape.
+    @field_validator("event_preferences", mode="before")
+    @classmethod
+    def _group_event_preferences(cls, v):
+        if v and hasattr(v[0], "tournament_event_id"):
+            return MembershipEventPreferenceRead.group_rows(v)
+        return v

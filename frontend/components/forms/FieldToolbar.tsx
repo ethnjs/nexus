@@ -21,7 +21,7 @@ type ActivePopover = "key" | "preset" | null;
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates, onOpenPresets,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates, onOpenPresets, presetsEnabled,
   showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
@@ -36,6 +36,7 @@ export function FieldToolbar({
   tournamentDates: string[];
   /** Fires when the presets panel opens — see PresetPopover's onOpen. */
   onOpenPresets?: () => void;
+  presetsEnabled: boolean;
   showDescription: boolean;
   onAddFieldBelow: () => void;
   onToggleDescription: () => void;
@@ -104,7 +105,7 @@ export function FieldToolbar({
           open={activePopover === "key"}
           onOpenChange={(open) => setActivePopover(open ? "key" : null)}
         />
-        <PresetPopover
+        {presetsEnabled && <PresetPopover
           field={field}
           onFieldChange={onFieldChange}
           tournamentDates={tournamentDates}
@@ -113,7 +114,7 @@ export function FieldToolbar({
           saveAttempt={saveAttempt}
           open={activePopover === "preset"}
           onOpenChange={(open) => setActivePopover(open ? "preset" : null)}
-        />
+        />}
         {displayStyle && (
           <Button
             type="button" variant={displayStyle === "buttons" ? "primary" : "secondary"} size="sm" iconOnly

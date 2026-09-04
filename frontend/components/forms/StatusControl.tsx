@@ -7,8 +7,8 @@ import { IconArchive, IconTrash } from "@/components/ui/Icons";
 
 const PRIMARY_LABEL: Record<FormStatus, string> = {
   draft: "Publish",
-  published: "Published",
-  archived: "Archived",
+  published: "Unpublish",
+  archived: "Restore to draft",
 };
 
 export function StatusControl({ form, onUpdated, onDeleted }: {
@@ -31,11 +31,35 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
   }
 
   async function archive() {
-    setError(undefined);
+    setBusy(true); setError(undefined);
     try {
-      onUpdated(await formsApi.archive(form.id));
+      onUpdated(await formsApi.update(form.id, { status: "archived" }));
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "Failed to archive form.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unpublish() {
+    setBusy(true); setError(undefined);
+    try {
+      onUpdated(await formsApi.update(form.id, { status: "draft" }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to unpublish form.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restore() {
+    setBusy(true); setError(undefined);
+    try {
+      onUpdated(await formsApi.update(form.id, { status: "draft" }));
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Failed to restore form.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -71,8 +95,8 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
         variant="primary"
         size="md"
         loading={busy}
-        primaryDisabled={form.status !== "draft"}
-        onClick={publish}
+        primaryDisabled={false}
+        onClick={form.status === "draft" ? publish : form.status === "published" ? unpublish : restore}
         options={options}
       />
       {error && (

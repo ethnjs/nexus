@@ -17,24 +17,57 @@ from app.schemas.chapter.membership import ChapterMemberResponse
 # ---------------------------------------------------------------------------
 
 def _unique_option_fields(options: list) -> list:
-    """option_id and value each need to be unique within a field's option
-    list — option_id is the durable identity (edit-lifecycle archiving,
-    write-through, branching match), value is the TD-facing stored/matched
-    payload. A collision on either would make selection ambiguous. value is
-    normally a string, but an entity-backed reserved field_key (e.g.
-    availability grouping several TournamentShifts, event_preference
-    grouping several TournamentEvents under one option) may set it to a
-    list[int] instead — hashed as a tuple here since lists aren't hashable."""
+    """option_id must be unique within a field's option list — it's the
+    durable identity behind edit-lifecycle archiving, write-through and
+    branching match, so a collision there really would make selection
+    ambiguous.
+
+    `value` is only checked when it's a plain string. On a freeform question
+    that string *is* the stored answer, so two options sharing it can't be
+    told apart. On an entity-backed reserved field_key it isn't: the answer
+    records option_id, and value is the set of shifts/events the option
+    groups. Two options grouping the same entities are redundant, not
+    ambiguous — and requiring them to differ would reject the ordinary
+    in-progress state where several options have nothing picked yet and are
+    all still empty."""
     seen_ids, seen_values = set(), set()
     for option in options:
         if option.option_id in seen_ids:
             raise ValueError(f"duplicate option_id '{option.option_id}'")
         seen_ids.add(option.option_id)
-        value_key = tuple(option.value) if isinstance(option.value, list) else option.value
-        if value_key in seen_values:
-            raise ValueError(f"duplicate option value '{option.value}'")
-        seen_values.add(value_key)
+        if isinstance(option.value, str):
+            if option.value in seen_values:
+                raise ValueError(f"duplicate option value '{option.value}'")
+            seen_values.add(option.value)
     return options
+
+
+class TrackStatusAssignment(BaseModel):
+    """One track status attached to a selectable option."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(gt=0)
+    status: Literal["interested", "confirmed", "declined"]
+
+
+def _unique_track_statuses(assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+    track_ids = [assignment.id for assignment in assignments]
+    if len(track_ids) != len(set(track_ids)):
+        raise ValueError("duplicate track_id in track_statuses")
+    return assignments
+
+
+class AvailabilityTrackStatusValue(BaseModel):
+    """Raw builder value for an availability option that updates tracks."""
+    model_config = ConfigDict(extra="forbid")
+
+    shift_ids: list[int] = Field(min_length=1)
+    track_statuses: list[TrackStatusAssignment] = Field(default_factory=list)
+
+    @field_validator("track_statuses")
+    @classmethod
+    def _unique_tracks(cls, assignments: list[TrackStatusAssignment]) -> list[TrackStatusAssignment]:
+        return _unique_track_statuses(assignments)
 
 
 class PlainOption(BaseModel):
@@ -47,7 +80,7 @@ class PlainOption(BaseModel):
     expect based on the field's field_key."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
 
@@ -57,11 +90,12 @@ class BranchingOption(BaseModel):
     See PlainOption for value's dual str/list[int] shape."""
     model_config = ConfigDict(extra="forbid")
     option_id: str = Field(min_length=1)
-    value: str | list[int] = Field(min_length=1)
+    value: str | list[int] | list[TrackStatusAssignment] | AvailabilityTrackStatusValue
     label: str = Field(min_length=1)
     is_archived: bool = False
     next_field_id: str | None = None
     action: Literal["submit_form"] | None = None
+
 
     @model_validator(mode="after")
     def _mutually_exclusive(self):
@@ -84,6 +118,7 @@ class SingleSelectRadioConfig(BaseModel):
     # Dropdown has no equivalent (it's always a closed Dropdown control, not
     # a style choice), so this doesn't exist on that config.
     display_style: Literal["buttons", "list"] = "list"
+    track_status_enabled: bool = False
     options: list[BranchingOption]
 
     @field_validator("options")
@@ -107,6 +142,7 @@ class MultiSelectCheckboxConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     required: bool
     display_style: Literal["buttons", "list"] = "list"
+    track_status_enabled: bool = False
     options: list[PlainOption]
 
     @field_validator("options")
@@ -174,19 +210,86 @@ class FormFieldRead(BaseModel):
 class BulkFieldEntry(BaseModel):
     """One entry in a PUT /forms/{form_id}/fields/ payload. `id` absent
     means "create"; `id` present must match a currently-live field on this
-    form. `field_key` is only meaningful (and required) on create — on an
-    update it's server-controlled (immutable, or carried over onto a
-    question_type-change replacement) and any value sent here is ignored."""
+    form. `field_key` is required on create; on an update, omitting it leaves
+    the existing key alone while sending one renames the field."""
     id: str | None = None
     field_key: str | None = None
     label: str
     description: str | None = None
     question_type: str
     config: dict[str, Any] | None = None
+    # The TD's answer, for this field, to "ask previous responders to review
+    # this?" — it only governs the judgment-call changes (wording, and moving
+    # between a preset and a standard key). Changes that actually invalidate
+    # an answer prompt regardless. None means the caller didn't decide, so
+    # each such change falls back to its own default; see
+    # app/core/form/changes.py.
+    notify_responders: bool | None = None
+
+
+class FieldChangeRead(BaseModel):
+    """One question a proposed save would ask previous responders to review.
+    Returned by the classify dry-run so the builder's confirmation can show
+    the server's own verdict instead of re-deriving the rules client-side."""
+    field_id: str
+    label: str
+    reasons: list[str]
+    # True when at least one reason is mandatory — the TD can see it but not
+    # switch it off, because the change invalidated the stored answer.
+    locked: bool
+    # What notify_responders should default to for this field if the TD
+    # doesn't touch it.
+    notify_default: bool
 
 
 class BulkFieldsUpdate(BaseModel):
     fields: list[BulkFieldEntry]
+
+
+# ---------------------------------------------------------------------------
+# Tournament form prerequisites
+# ---------------------------------------------------------------------------
+
+class PrerequisiteIdMatch(BaseModel):
+    """A required set of IDs and whether the member needs any or all of it."""
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[int]
+    match: Literal["any", "all"] = "any"
+
+    @field_validator("ids")
+    @classmethod
+    def _positive_unique_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError("ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("ids must not contain duplicates")
+        return values
+
+
+class AvailabilityPrerequisite(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    shift_ids: list[int]
+    match: Literal["any", "all"] = "any"
+
+    @field_validator("shift_ids")
+    @classmethod
+    def _positive_unique_shift_ids(cls, values: list[int]) -> list[int]:
+        if any(value <= 0 for value in values):
+            raise ValueError("shift_ids must contain positive integers")
+        if len(values) != len(set(values)):
+            raise ValueError("shift_ids must not contain duplicates")
+        return values
+
+
+class TournamentFormPrerequisites(BaseModel):
+    """Optional conditions a member must all satisfy to access a standard form."""
+    model_config = ConfigDict(extra="forbid")
+
+    onboarding_complete: bool = False
+    roles: PrerequisiteIdMatch | None = None
+    availability: AvailabilityPrerequisite | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -206,6 +309,7 @@ class FormRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
+    prerequisites: TournamentFormPrerequisites | None = None
     fields: list[FormFieldRead] = []
 
     model_config = ConfigDict(from_attributes=True)
@@ -232,6 +336,21 @@ class FormListRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     response_count: int = 0
+    prerequisites: TournamentFormPrerequisites | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MemberFormRead(BaseModel):
+    """A member's completed or currently available tournament form."""
+    id: str
+    name: str
+    title: str | None = None
+    description: str | None = None
+    status: Literal["draft", "published", "archived"]
+    is_onboarding: bool
+    completed: bool
+    eligible: bool
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -262,6 +381,10 @@ class FormUpdate(BaseModel):
     status: Literal["draft", "published", "archived"] | None = None
 
 
+class TournamentFormPrerequisitesUpdate(TournamentFormPrerequisites):
+    """Replacement payload for a standard tournament form's prerequisites."""
+
+
 # ---------------------------------------------------------------------------
 # Form Response / Answer Schemas
 # ---------------------------------------------------------------------------
@@ -283,6 +406,17 @@ class FormResponseCreate(BaseModel):
     answers: list[FormAnswerCreate]
 
 
+class FormPendingUpdateRead(BaseModel):
+    """A question this response is being asked to look at again. `field_id` is
+    the only field PATCH .../responses/me/ will accept — see
+    backend/form-edit-lifecycle.md."""
+    field_id: str
+    reasons: list[str] = []
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class FormResponseRead(BaseModel):
     id: str
     form_id: str
@@ -290,5 +424,6 @@ class FormResponseRead(BaseModel):
     submitted_at: datetime
     updated_at: datetime
     answers: list[FormAnswerRead] = []
+    pending_updates: list[FormPendingUpdateRead] = []
 
     model_config = ConfigDict(from_attributes=True)
