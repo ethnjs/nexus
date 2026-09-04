@@ -6,10 +6,16 @@ import {
   TournamentLevel, TournamentState, TournamentDivision,
   TOURNAMENT_LEVELS, TOURNAMENT_STATES, TOURNAMENT_DIVISIONS,
 } from '@/lib/api'
+import {
+  EMPTY_TRACK_DRAFT, TrackDraft, trackDraftPayload, validateTrackDraft,
+} from '@/lib/trackDraft'
+import { todayLocalDateString } from '@/lib/date'
+import { TrackFields } from '@/components/tournament/TrackFields'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
+import { IconPlus, IconTrash } from '@/components/ui/Icons'
 
 interface NewTournamentModalProps {
   onClose: () => void
@@ -19,6 +25,10 @@ interface NewTournamentModalProps {
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }))
 const STATE_OPTIONS: TournamentState[] = [...TOURNAMENT_STATES]
+
+// One track being drafted in advanced mode. Keyed rather than indexed so a
+// removal doesn't shuffle React's identity for the rows below it.
+interface TrackRow { key: number; draft: TrackDraft }
 
 export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalProps) {
   const [name, setName]           = useState('')
@@ -36,6 +46,13 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
   const [loading, setLoading]     = useState(false)
   const [errors, setErrors]       = useState<Record<string, string>>({})
 
+  // Advanced mode swaps the single venue/dates/divisions for a repeatable
+  // track editor. Simple mode is not a lesser thing — it creates exactly the
+  // same shape, one primary track named after the tournament.
+  const [advanced, setAdvanced] = useState(false)
+  const [trackRows, setTrackRows] = useState<TrackRow[]>([])
+  const [trackErrors, setTrackErrors] = useState<Record<number, Record<string, string>>>({})
+
   useEffect(() => {
     universitiesApi.list().then(setUniversities).catch(() => {})
   }, [])
@@ -44,45 +61,99 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     setDivision((prev) => prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d])
   }
 
+  // Carries whatever has been typed into the first track, so switching modes
+  // isn't a re-entry. The name defaults to the tournament's, which is exactly
+  // what simple mode would have created.
+  function enableAdvanced() {
+    setTrackRows([{
+      key: Date.now(),
+      draft: {
+        ...EMPTY_TRACK_DRAFT,
+        name: name.trim() || 'Day 1',
+        is_primary: true,
+        start_date: startDate,
+        end_date: endDate,
+        location: locationText,
+        university_id: matchedUniversity?.id ?? null,
+        division,
+      },
+    }])
+    setErrors({})
+    setAdvanced(true)
+  }
+
+  function addTrackRow() {
+    setTrackRows((rows) => [...rows, { key: Date.now(), draft: EMPTY_TRACK_DRAFT }])
+  }
+
+  function updateTrackRow(key: number, updates: Partial<TrackDraft>) {
+    setTrackRows((rows) => rows.map((row) => row.key === key ? { ...row, draft: { ...row.draft, ...updates } } : row))
+  }
+
+  /** The tracks to send, or null when something doesn't validate. */
+  function collectTracks(): TrackDraft[] | null {
+    if (!advanced) {
+      const fieldErrors: Record<string, string> = {}
+      if (!matchedUniversity && !locationText.trim()) fieldErrors.location = 'Location is required'
+      if (!startDate) fieldErrors.startDate = 'Start date is required'
+      // YYYY-MM-DD strings compare lexicographically in chronological order
+      else if (startDate < todayLocalDateString()) fieldErrors.startDate = 'Start date cannot be in the past'
+      if (!endDate) fieldErrors.endDate = 'End date is required'
+      else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
+      if (division.length === 0) fieldErrors.division = 'Select at least one division'
+
+      if (Object.keys(fieldErrors).length > 0) { setErrors((prev) => ({ ...prev, ...fieldErrors })); return null }
+
+      // The tournament's whole schedule, as the one competition day it is.
+      return [{
+        ...EMPTY_TRACK_DRAFT,
+        name: name.trim(),
+        is_primary: true,
+        start_date: startDate,
+        end_date: endDate,
+        location: locationText,
+        university_id: matchedUniversity?.id ?? null,
+        division,
+      }]
+    }
+
+    const found: Record<number, Record<string, string>> = {}
+    for (const row of trackRows) {
+      const others = trackRows.filter((other) => other.key !== row.key).map((other) => other.draft.name)
+      const rowErrors = validateTrackDraft(row.draft, others)
+      if (Object.keys(rowErrors).length > 0) found[row.key] = rowErrors
+    }
+    setTrackErrors(found)
+    if (Object.keys(found).length > 0) return null
+    if (!trackRows.some((row) => row.draft.is_primary)) {
+      setErrors((prev) => ({ ...prev, tracks: 'At least one track has to be a competition day.' }))
+      return null
+    }
+    return trackRows.map((row) => row.draft)
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const fieldErrors: Record<string, string> = {}
 
     if (!name.trim()) fieldErrors.name = 'Name is required'
     else if (/\d/.test(name)) fieldErrors.name = 'Name must not contain numbers — the year is added automatically'
-
-    if (!matchedUniversity && !locationText.trim()) fieldErrors.location = 'Location is required'
-
-    if (!startDate) fieldErrors.startDate = 'Start date is required'
-    else {
-      // YYYY-MM-DD strings compare lexicographically in chronological order
-      const today = new Date().toISOString().slice(0, 10)
-      if (startDate < today) fieldErrors.startDate = 'Start date cannot be in the past'
-    }
-    if (!endDate) fieldErrors.endDate = 'End date is required'
-    else if (startDate && endDate < startDate) fieldErrors.endDate = 'End date cannot be before start date'
-
     if (!matchedState) fieldErrors.state = 'State is required — pick one from the list'
     if (!matchedLevel) fieldErrors.level = 'Level is required — pick one from the list'
-    if (division.length === 0) fieldErrors.division = 'Select at least one division'
 
-    if (Object.keys(fieldErrors).length > 0) { setErrors(fieldErrors); return }
+    setErrors(fieldErrors)
+    const tracks = collectTracks()
+    if (Object.keys(fieldErrors).length > 0 || !tracks || !matchedState || !matchedLevel) return
 
-    setLoading(true); setErrors({})
+    setLoading(true)
     try {
-      const source = matchedUniversity
-        ? { university_id: matchedUniversity.id }
-        : { location: locationText.trim() }
       const t = await tournamentsApi.create({
         name: name.trim(),
         short_name: shortName.trim() || null,
-        start_date: startDate,
-        end_date: endDate,
-        state: matchedState!,
-        level: matchedLevel!.value,
-        division,
+        state: matchedState,
+        level: matchedLevel.value,
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        ...source,
+        tracks: tracks.map(trackDraftPayload),
       })
       onCreated(t)
     } catch {
@@ -114,39 +185,46 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           placeholder="e.g. SoCal, OC, LA"
           fullWidth
         />
-        <Combobox
-          label="Location"
-          required
-          options={universities}
-          getId={(u) => u.id}
-          getLabel={(u) => u.name}
-          getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
-          value={locationText}
-          onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
-          error={errors.location}
-          placeholder="e.g. USC, Los Angeles CA"
-        />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <Input
-            label="Start Date"
-            required
-            type="date"
-            value={startDate}
-            onChange={(e) => { setStartDate(e.target.value); setErrors(({ startDate, ...rest }) => rest) }}
-            error={errors.startDate}
-            min={new Date().toISOString().slice(0, 10)}
-            fullWidth
-          />
-          <Input
-            label="End Date"
-            required
-            type="date"
-            value={endDate}
-            onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
-            error={errors.endDate}
-            fullWidth
-          />
-        </div>
+
+        {!advanced && (
+          <>
+            <Combobox
+              label="Location"
+              required
+              options={universities}
+              getId={(u) => u.id}
+              getLabel={(u) => u.name}
+              getSearchText={(u) => `${u.name} ${u.abbreviation ?? ''}`}
+              value={locationText}
+              onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
+              error={errors.location}
+              placeholder="e.g. USC, Los Angeles CA"
+            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Input
+                label="Start Date"
+                required
+                type="date"
+                value={startDate}
+                onChange={(e) => { setStartDate(e.target.value); setErrors(({ startDate, ...rest }) => rest) }}
+                error={errors.startDate}
+                min={todayLocalDateString()}
+                fullWidth
+              />
+              <Input
+                label="End Date"
+                required
+                type="date"
+                value={endDate}
+                onChange={(e) => { setEndDate(e.target.value); setErrors(({ endDate, ...rest }) => rest) }}
+                error={errors.endDate}
+                min={startDate || todayLocalDateString()}
+                fullWidth
+              />
+            </div>
+          </>
+        )}
+
         <Combobox
           label="State"
           required
@@ -171,32 +249,108 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           error={errors.level}
           placeholder="e.g. Invitational"
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <label style={{
-            fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
-            textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
-          }}>
-            Division<span style={{ color: 'var(--color-danger)' }}> *</span>
-          </label>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            {TOURNAMENT_DIVISIONS.map((d) => (
-              <Button
-                key={d}
-                type="button"
-                variant={division.includes(d) ? 'primary' : 'secondary'}
-                size="sm"
-                onClick={() => { toggleDivision(d); setErrors(({ division, ...rest }) => rest) }}
-              >
-                {d}
-              </Button>
-            ))}
+
+        {!advanced && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <label style={{
+              fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+              textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
+            }}>
+              Division<span style={{ color: 'var(--color-danger)' }}> *</span>
+            </label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              {TOURNAMENT_DIVISIONS.map((d) => (
+                <Button
+                  key={d}
+                  type="button"
+                  variant={division.includes(d) ? 'primary' : 'secondary'}
+                  size="sm"
+                  onClick={() => { toggleDivision(d); setErrors(({ division, ...rest }) => rest) }}
+                >
+                  {d}
+                </Button>
+              ))}
+            </div>
+            {errors.division && (
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)' }}>
+                {errors.division}
+              </p>
+            )}
           </div>
-          {errors.division && (
-            <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)' }}>
-              {errors.division}
-            </p>
-          )}
-        </div>
+        )}
+
+        {advanced ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div>
+              <div style={{
+                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+                textTransform: 'uppercase', letterSpacing: '0.07em', color: 'var(--color-text-tertiary)',
+              }}>
+                Tracks<span style={{ color: 'var(--color-danger)' }}> *</span>
+              </div>
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                One per competition day, plus anything undated — test writing, review — that members sign
+                up for separately. The tournament&rsquo;s dates, venue and divisions come from these.
+              </p>
+            </div>
+
+            {trackRows.map((row) => (
+              <div key={row.key} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
+                  <Input
+                    label="Track name"
+                    font="sans"
+                    fullWidth
+                    placeholder="e.g. Day 1 or Test Writing"
+                    value={row.draft.name}
+                    onChange={(e) => updateTrackRow(row.key, { name: e.target.value })}
+                    error={trackErrors[row.key]?.name}
+                  />
+                  {trackRows.length > 1 && (
+                    <Button
+                      type="button" variant="secondary" size="md" iconOnly
+                      title="Remove track"
+                      aria-label={`Remove ${row.draft.name.trim() || 'track'}`}
+                      onClick={() => setTrackRows((rows) => rows.filter((other) => other.key !== row.key))}
+                      style={{ width: '36px', padding: 0, color: 'var(--color-danger)', flexShrink: 0 }}
+                    >
+                      <IconTrash size={14} />
+                    </Button>
+                  )}
+                </div>
+                <TrackFields
+                  draft={row.draft}
+                  errors={trackErrors[row.key] ?? {}}
+                  universities={universities}
+                  locked={false}
+                  onChange={(updates) => updateTrackRow(row.key, updates)}
+                />
+              </div>
+            ))}
+
+            {errors.tracks && (
+              <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-danger)', margin: 0 }}>
+                {errors.tracks}
+              </p>
+            )}
+            <Button type="button" variant="secondary" size="sm" onClick={addTrackRow} style={{ alignSelf: 'flex-start' }}>
+              <IconPlus size={14} /> Add track
+            </Button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={enableAdvanced}
+            style={{
+              alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+              fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)',
+              textDecoration: 'underline', textUnderlineOffset: '2px',
+            }}
+          >
+            Runs at more than one site, or has undated tracks?
+          </button>
+        )}
+
         {errors.form && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>
             {errors.form}

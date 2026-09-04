@@ -1,110 +1,24 @@
 "use client";
 
-import { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ApiError, TournamentDivision, TournamentTrack, TournamentTrackCreate,
-  TournamentTrackDeleteResult, University, tournamentTracksApi, universitiesApi,
-  TOURNAMENT_DIVISIONS,
+  ApiError, TournamentTrack, TournamentTrackDeleteResult, University,
+  tournamentTracksApi, universitiesApi,
 } from "@/lib/api";
 import { formatTrackDates, placeOf } from "@/lib/tournamentDisplay";
-import { todayLocalDateString } from "@/lib/date";
+import {
+  EMPTY_TRACK_DRAFT, TrackDraft, trackDraftPayload, trackToDraft, validateTrackDraft,
+} from "@/lib/trackDraft";
+import { TrackFields } from "@/components/tournament/TrackFields";
 import { SettingsSection } from "@/components/settings/SettingsRow";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { Combobox } from "@/components/ui/Combobox";
 import { Input } from "@/components/ui/Input";
 import { Modal } from "@/components/ui/Modal";
 import { Spinner } from "@/components/ui/Spinner";
-import { Toggle } from "@/components/ui/Toggle";
 import {
   IconCalendar, IconChevronDown, IconChevronRight, IconLocation, IconPlus, IconRestore, IconTrash,
 } from "@/components/ui/Icons";
-
-// The editable shape of one track. `location` is display text — free-text or
-// the matched university's name — and `university_id` is non-null only when
-// it matched, exactly as the tournament's own location field works.
-interface TrackDraft {
-  name:          string;
-  is_primary:    boolean;
-  start_date:    string;
-  end_date:      string;
-  location:      string;
-  university_id: number | null;
-  division:      TournamentDivision[];
-  allow_confirm: boolean;
-}
-
-const EMPTY_DRAFT: TrackDraft = {
-  name: "", is_primary: false, start_date: "", end_date: "",
-  location: "", university_id: null, division: [], allow_confirm: false,
-};
-
-function toDraft(track: TournamentTrack): TrackDraft {
-  return {
-    name:          track.name,
-    is_primary:    track.is_primary,
-    start_date:    track.start_date ?? "",
-    end_date:      track.end_date ?? "",
-    location:      track.location ?? track.university?.name ?? "",
-    university_id: track.university?.id ?? null,
-    division:      track.division ?? [],
-    allow_confirm: track.allow_confirm,
-  };
-}
-
-/**
- * The when/where/what a draft actually sends.
- *
- * A cosmetic track must carry *none* of the primary fields — the backend
- * rejects a partial combination outright — so switching a track to cosmetic
- * explicitly nulls them rather than leaving stale dates behind.
- */
-function toPayload(draft: TrackDraft): TournamentTrackCreate {
-  const base = {
-    name:          draft.name.trim(),
-    is_primary:    draft.is_primary,
-    allow_confirm: draft.allow_confirm,
-  };
-  if (!draft.is_primary) {
-    return { ...base, start_date: null, end_date: null, location: null, university_id: null, division: null };
-  }
-  return {
-    ...base,
-    start_date: draft.start_date,
-    end_date:   draft.end_date,
-    division:   draft.division,
-    // Exactly one of the two, the other explicitly nulled — the same
-    // atomic swap the tournament's own location field does.
-    ...(draft.university_id
-      ? { university_id: draft.university_id, location: null }
-      : { location: draft.location.trim(), university_id: null }),
-  };
-}
-
-/**
- * Mirrors require_primary_fields on the backend. Cosmetic tracks need no
- * checks here because the editor doesn't render those fields at all — the
- * payload nulls them, so the "only a primary track can have..." error is
- * unreachable from this UI.
- */
-function validate(draft: TrackDraft, otherNames: string[]): Record<string, string> {
-  const errors: Record<string, string> = {};
-  const name = draft.name.trim();
-  if (!name) errors.name = "Cannot be empty.";
-  else if (otherNames.some((other) => other.trim().toLowerCase() === name.toLowerCase())) {
-    errors.name = "A track with this name already exists.";
-  }
-  if (draft.is_primary) {
-    if (!draft.start_date) errors.start_date = "Required on a competition day.";
-    if (!draft.end_date) errors.end_date = "Required on a competition day.";
-    else if (draft.start_date && draft.end_date < draft.start_date) errors.end_date = "Cannot be before start date.";
-    if (!draft.university_id && !draft.location.trim()) errors.location = "Required on a competition day.";
-    if (draft.division.length === 0) errors.division = "Select at least one division.";
-  }
-  return errors;
-}
 
 // A row the TD added but hasn't saved. Keyed by a negative id so it shares
 // one keyspace with real track ids in `drafts`/`errors` without colliding.
@@ -152,7 +66,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
     tournamentTracksApi.list(tournamentId)
       .then((loaded) => {
         setTracks(loaded);
-        setDrafts(Object.fromEntries(loaded.map((track) => [track.id, toDraft(track)])));
+        setDrafts(Object.fromEntries(loaded.map((track) => [track.id, trackToDraft(track)])));
       })
       .catch((err: unknown) => {
         setLoadError(err instanceof ApiError ? err.message : "Failed to load tracks.");
@@ -164,7 +78,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
 
   const isDirty = useMemo(
     () => newRows.length > 0
-      || (tracks ?? []).some((track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(toDraft(track))),
+      || (tracks ?? []).some((track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(trackToDraft(track))),
     [tracks, newRows, drafts],
   );
 
@@ -176,7 +90,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
     // Negative and decreasing — never collides with a real track id.
     const key = -Date.now();
     setNewRows((current) => [...current, { key }]);
-    setDrafts((current) => ({ ...current, [key]: EMPTY_DRAFT }));
+    setDrafts((current) => ({ ...current, [key]: EMPTY_TRACK_DRAFT }));
     return key;
   }, []);
 
@@ -188,13 +102,13 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
 
   const reset = useCallback(() => {
     setNewRows([]);
-    setDrafts(Object.fromEntries((tracks ?? []).map((track) => [track.id, toDraft(track)])));
+    setDrafts(Object.fromEntries((tracks ?? []).map((track) => [track.id, trackToDraft(track)])));
     setErrors({});
   }, [tracks]);
 
   const save = useCallback(async (): Promise<string | null> => {
     const live = tracks ?? [];
-    const edited = live.filter((track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(toDraft(track)));
+    const edited = live.filter((track) => JSON.stringify(drafts[track.id]) !== JSON.stringify(trackToDraft(track)));
     if (edited.length === 0 && newRows.length === 0) return null;
 
     // Names are checked against the other *drafts*, not the saved rows: two
@@ -203,7 +117,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
     const allKeys = [...live.map((t) => t.id), ...newRows.map((r) => r.key)];
     const fieldErrors: Record<number, Record<string, string>> = {};
     for (const key of [...edited.map((t) => t.id), ...newRows.map((r) => r.key)]) {
-      const found = validate(drafts[key], allKeys.filter((k) => k !== key).map((k) => drafts[k]?.name ?? ""));
+      const found = validateTrackDraft(drafts[key], allKeys.filter((k) => k !== key).map((k) => drafts[k]?.name ?? ""));
       if (Object.keys(found).length > 0) fieldErrors[key] = found;
     }
     if (Object.keys(fieldErrors).length > 0) {
@@ -218,18 +132,18 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
       // firing them together makes which one sees which state a race.
       const saved = new Map<number, TournamentTrack>();
       for (const track of edited) {
-        saved.set(track.id, await tournamentTracksApi.update(tournamentId, track.id, toPayload(drafts[track.id])));
+        saved.set(track.id, await tournamentTracksApi.update(tournamentId, track.id, trackDraftPayload(drafts[track.id])));
       }
       const created: TournamentTrack[] = [];
       for (const row of newRows) {
-        created.push(await tournamentTracksApi.create(tournamentId, toPayload(drafts[row.key])));
+        created.push(await tournamentTracksApi.create(tournamentId, trackDraftPayload(drafts[row.key])));
       }
 
       setTracks((current) => [...(current ?? []).map((track) => saved.get(track.id) ?? track), ...created]);
       setDrafts((current) => {
         const next = { ...current };
         for (const row of newRows) delete next[row.key];
-        for (const track of [...saved.values(), ...created]) next[track.id] = toDraft(track);
+        for (const track of [...saved.values(), ...created]) next[track.id] = trackToDraft(track);
         return next;
       });
       setNewRows([]);
@@ -242,7 +156,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
 
   const onReplaced = useCallback((track: TournamentTrack) => {
     setTracks((current) => current?.map((t) => (t.id === track.id ? track : t)) ?? current);
-    setDrafts((current) => ({ ...current, [track.id]: toDraft(track) }));
+    setDrafts((current) => ({ ...current, [track.id]: trackToDraft(track) }));
     onChanged();
   }, [onChanged]);
 
@@ -319,7 +233,7 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
             <TrackRow
               key={row.key}
               track={row.track}
-              draft={drafts[row.key] ?? EMPTY_DRAFT}
+              draft={drafts[row.key] ?? EMPTY_TRACK_DRAFT}
               errors={errors[row.key] ?? {}}
               universities={universities}
               locked={locked}
@@ -349,141 +263,6 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
   );
 }
 
-/**
- * The primary/cosmetic fields, shared by every row. The when/where/what only
- * renders for a competition day — that is what keeps the "only a primary
- * track can have..." 422 unreachable from this UI.
- */
-function TrackFields({ draft, errors, universities, locked, onChange }: {
-  draft: TrackDraft;
-  errors: Record<string, string>;
-  universities: University[];
-  locked: boolean;
-  onChange: (updates: Partial<TrackDraft>) => void;
-}) {
-  // An existing multi-day track shows both inputs on its own; the checkbox
-  // only has to remember the case where the TD is on their way to entering
-  // an end date that doesn't differ from the start yet.
-  const [spansDays, setSpansDays] = useState(false);
-  const multiDay = spansDays || (!!draft.end_date && draft.end_date !== draft.start_date);
-  const today = todayLocalDateString();
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <FieldRow label="Competition day" helper="Carries dates, a venue and divisions. Only these hold shifts.">
-        <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
-      </FieldRow>
-
-      {draft.is_primary && (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ display: "flex", gap: "10px" }}>
-              <Input
-                label={multiDay ? "Start" : "Date"} type="date" fullWidth locked={locked}
-                min={today}
-                value={draft.start_date}
-                // Single-day tracks keep end_date in step with start_date —
-                // the backend requires both on a competition day, and the TD
-                // has said this one doesn't span days.
-                onChange={(e) => onChange(
-                  multiDay
-                    ? { start_date: e.target.value }
-                    : { start_date: e.target.value, end_date: e.target.value },
-                )}
-                error={errors.start_date}
-              />
-              {multiDay && (
-                <Input
-                  label="End" type="date" fullWidth locked={locked}
-                  min={draft.start_date || today}
-                  value={draft.end_date}
-                  onChange={(e) => onChange({ end_date: e.target.value })}
-                  error={errors.end_date}
-                />
-              )}
-            </div>
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: locked ? "default" : "pointer" }}>
-              <Checkbox
-                checked={multiDay}
-                locked={locked}
-                onChange={(checked) => {
-                  setSpansDays(checked);
-                  if (!checked) onChange({ end_date: draft.start_date });
-                }}
-              />
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                Runs more than one day
-              </span>
-            </label>
-          </div>
-          <Combobox
-            label="Location"
-            options={universities}
-            getId={(u) => u.id}
-            getLabel={(u) => u.name}
-            getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
-            value={draft.location}
-            onChange={(text, matched) => onChange({ location: text, university_id: matched?.id ?? null })}
-            placeholder="e.g. UCI"
-            locked={locked}
-            error={errors.location}
-          />
-          <div>
-            <div style={{
-              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-              textTransform: "uppercase", letterSpacing: "0.07em",
-              color: "var(--color-text-tertiary)", marginBottom: "6px",
-            }}>
-              Division
-            </div>
-            <ButtonGroup
-              options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
-              value={draft.division}
-              onChange={(v) => onChange({
-                division: draft.division.includes(v as TournamentDivision)
-                  ? draft.division.filter((x) => x !== v)
-                  : [...draft.division, v as TournamentDivision],
-              })}
-              locked={locked}
-            />
-            {errors.division && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)", margin: "6px 0 0" }}>
-                {errors.division}
-              </p>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Not "members confirm themselves vs the TD confirming for them" — a
-          TD never confirms on a member's behalf. This is the gate on
-          confirmation being open at all, usually flipped when the
-          confirmation form goes out about a week ahead. */}
-      <FieldRow
-        label="Members can confirm"
-        helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
-      >
-        <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
-      </FieldRow>
-    </div>
-  );
-}
-
-function FieldRow({ label, helper, children }: { label: string; helper?: string; children: ReactNode }) {
-  return (
-    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "16px" }}>
-      <div>
-        <div style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>{label}</div>
-        {helper && (
-          <div style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", marginTop: "2px" }}>
-            {helper}
-          </div>
-        )}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 /**
  * One row, saved or not. `track` is null for a row the TD just added: it has
