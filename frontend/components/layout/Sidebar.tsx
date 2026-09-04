@@ -24,7 +24,7 @@ export const EXPANDED_W  = 192;
 const NAV_ITEMS = [
   { segment: "overview", icon: <IconHome />,  label: "Overview" },
   { segment: "events",   icon: <IconEvents />, label: "Events" },
-  { segment: "shifts",   icon: <IconCalendar />, label: "Shifts" },
+  { segment: "shifts",   icon: <IconCalendar size={17} />, label: "Shifts" },
   { segment: "forms",    icon: <IconForms />,  label: "Forms" },
   { segment: "members",  icon: <IconMembers />, label: "Members" },
 ];
