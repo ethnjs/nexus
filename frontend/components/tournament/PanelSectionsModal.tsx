@@ -35,9 +35,9 @@ interface PanelSectionsModalProps {
 // says a field is namespaced, not what kind of thing it is.
 const ENTITY_GROUP_LABELS: Record<string, string> = {
   membership: "Tracks",
-  availability: "Days",
+  availability: "Tracks",
   lunch: "Categories",
-  event_preferences: "Questions",
+  event_preferences: "Tracks",
 };
 
 // Shared by both kinds of row so a built-in and a custom section read as the
@@ -155,7 +155,7 @@ export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSect
     update(arrayMove(sections, from, to));
   }
 
-  // A namespaced key ("track:3", "lunch_category:protein") names a real
+  // A namespaced key ("track:3", "lunch:3:protein") names a real
   // entity, and the surface's `hidden` list already drops those server-side —
   // so it goes there rather than into the section's own hidden_fields, which
   // are the section's static pieces and have no server-side filter.

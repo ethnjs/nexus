@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { MembershipEventPreference, MembershipEventPreferenceOption } from "@/lib/api";
 import { Badge } from "@/components/ui/Badge";
-import { unslug } from "@/lib/textFormat";
 import { Banner } from "@/components/ui/Banner";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
@@ -92,13 +91,13 @@ function OptionRow({ option, open, onToggle }: {
   );
 }
 
-// Open state lives here rather than per row so a key can only have one
+// Open state lives here rather than per row so a track can only have one
 // option expanded at a time.
-function PreferenceKey({ pref }: { pref: MembershipEventPreference }) {
+function PreferenceTrack({ pref }: { pref: MembershipEventPreference }) {
   const [openId, setOpenId] = useState<string | null>(null);
 
   return (
-    <PanelField label={unslug(pref.key)}>
+    <PanelField label={pref.track_name}>
       <FieldList>
         {pref.options.map((option, i) => {
           const id = option.option_id ?? `orphan-${i}`;
@@ -133,7 +132,7 @@ export function EventPreferencesSection({ eventPreferences }: EventPreferencesSe
             />
           )}
           {eventPreferences.length === 0 && <FieldValue muted>No info yet</FieldValue>}
-          {eventPreferences.map((pref) => <PreferenceKey key={pref.key} pref={pref} />)}
+          {eventPreferences.map((pref) => <PreferenceTrack key={pref.track_id} pref={pref} />)}
         </div>
       </SectionHeading>
     </ProfileCard>

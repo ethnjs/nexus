@@ -1,7 +1,6 @@
 "use client";
 
 import { MembershipLunch } from "@/lib/api";
-import { formatDayLabel } from "@/lib/timeFormat";
 import { unslug } from "@/lib/textFormat";
 import { Badge } from "@/components/ui/Badge";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -28,21 +27,16 @@ interface LunchSectionProps {
   dietaryRestriction?: string | null;
 }
 
-// Groups by the bare "YYYY-MM-DD" string, then by category within each day.
-// The date deliberately never becomes a Date here — a lunch date has no time
-// or timezone, so parsing it as an instant shifts it a day back for anyone
-// west of UTC (formatDayLabel is the one exception: it pins to local
-// midnight, which round-trips the same calendar day).
-function groupByDate(lunch: MembershipLunch[]): [string, [string, MembershipLunch[]][]][] {
-  const byDate = new Map<string, Map<string, MembershipLunch[]>>();
+function groupByTrack(lunch: MembershipLunch[]): [string, [string, MembershipLunch[]][]][] {
+  const byTrack = new Map<string, Map<string, MembershipLunch[]>>();
   for (const sel of lunch) {
-    const categories = byDate.get(sel.date) ?? new Map<string, MembershipLunch[]>();
+    const categories = byTrack.get(sel.track_name) ?? new Map<string, MembershipLunch[]>();
     categories.set(sel.category, [...(categories.get(sel.category) ?? []), sel]);
-    byDate.set(sel.date, categories);
+    byTrack.set(sel.track_name, categories);
   }
-  return Array.from(byDate.entries())
+  return Array.from(byTrack.entries())
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, categories]) => [date, Array.from(categories.entries())]);
+    .map(([track, categories]) => [track, Array.from(categories.entries())]);
 }
 
 export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
@@ -51,8 +45,8 @@ export function LunchSection({ lunch, dietaryRestriction }: LunchSectionProps) {
       <SectionHeading title="Lunch">
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           {lunch.length === 0 && <FieldValue muted>No info yet</FieldValue>}
-          {groupByDate(lunch).map(([date, categories]) => (
-            <PanelField key={date} label={formatDayLabel(date)}>
+          {groupByTrack(lunch).map(([track, categories]) => (
+            <PanelField key={track} label={track}>
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {categories.map(([category, selections]) => (
                   <div key={category} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: "6px" }}>

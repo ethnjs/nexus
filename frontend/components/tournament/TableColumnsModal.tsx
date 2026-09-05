@@ -1,6 +1,9 @@
 "use client";
 
 import { Modal } from "@/components/ui/Modal";
+import {
+  AVAILABILITY_TRACK_PREFIX, FORM_FIELD_PREFIX, LUNCH_PREFIX, TRACK_PREFIX,
+} from "@/components/tournament/memberColumns";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
 import { Spinner } from "@/components/ui/Spinner";
@@ -43,10 +46,10 @@ export function TableColumnsModal({ tournamentId, onClose, onSaved }: TableColum
 
   const groups: { title: string; items: DisplayConfigCatalogItem[] }[] = [
     { title: "Member", items: (catalog?.columns ?? []).filter((c) => !c.key.includes(":")) },
-    { title: "Tracks", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith("track:")) },
-    { title: "Availability", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith("availability_day:")) },
-    { title: "Lunch", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith("lunch_category:")) },
-    { title: "Custom fields", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith("form_field:")) },
+    { title: "Tracks", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith(TRACK_PREFIX)) },
+    { title: "Availability", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith(AVAILABILITY_TRACK_PREFIX)) },
+    { title: "Lunch", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith(LUNCH_PREFIX)) },
+    { title: "Custom fields", items: (catalog?.columns ?? []).filter((c) => c.key.startsWith(FORM_FIELD_PREFIX)) },
   ];
 
   return (

@@ -214,7 +214,7 @@ function ChipFilter({ title, options, selected, onToggle, onClear, searchable }:
   );
 }
 
-// A two-step filter: add the group first (a track, a day, a lunch category,
+// A two-step filter: add the group first (a track, a lunch category,
 // an event-preference question), then narrow it from the chip's own pill.
 // The pairing is the point — filtering by track and by status separately
 // would match a member confirmed on one track and declined on another, which
@@ -287,7 +287,8 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
       return;
     }
     // Emptying a chip falls back to the sentinel rather than deleting it —
-    // unticking the last shift means "any shift that day", not "never mind".
+    // unticking the last shift means "any shift on that track", not
+    // "never mind".
     onChange(withGroup(selected, group.value, next.length > 0 ? next : [ANY]));
   }
 
@@ -436,7 +437,7 @@ export function MembersFilterModal({
           <PairedChipFilter
             title="Availability" groups={options.shift_days} selected={draft.shift}
             onChange={(next) => set("shift", next)}
-            anyLabel="Any shift" addLabel="Filter by day"
+            anyLabel="Any shift" addLabel="Filter by track"
             emptyMessage="No shifts on this tournament yet."
           />
           <PairedChipFilter

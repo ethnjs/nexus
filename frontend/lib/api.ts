@@ -947,6 +947,9 @@ export interface MembershipMe extends MembershipBase {
 // `value` is exactly what the matching query param takes.
 export interface MemberFilterOptions {
   tracks:             FilterOptionItem[]
+  // Shifts grouped by their track — the param value is "{trackId}:{shiftId}"
+  // (or ":__any__"). Named for the group, not the day, since two sites can
+  // run the same Saturday.
   shift_days:         FilterOptionGroup[]
   lunch_categories:   FilterOptionGroup[]
   event_preferences:  FilterOptionGroup[]

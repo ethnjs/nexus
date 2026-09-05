@@ -13,8 +13,8 @@ import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges"
 // Namespaces shared with the backend's display_config — a column key means
 // the same thing here as it does on the panel.
 export const TRACK_PREFIX = "track:";
-export const AVAILABILITY_DAY_PREFIX = "availability_day:";
-export const LUNCH_CATEGORY_PREFIX = "lunch_category:";
+export const AVAILABILITY_TRACK_PREFIX = "availability_track:";
+export const LUNCH_PREFIX = "lunch:";
 export const FORM_FIELD_PREFIX = "form_field:";
 
 // Grid track per kind of data, not per individual column. Width is a property
@@ -169,6 +169,16 @@ function formatAnswer(value: unknown): string {
 // One column per entity — a track, an availability day, a lunch category, a
 // custom field. The label comes from the display-config catalog, which named
 // the key in the first place, so the two can't disagree.
+// "lunch:{track_id}:{category}" — a category is a slug, so it can never
+// contain a colon of its own; splitting on the first separator is safe.
+function splitLunchKey(key: string): [number, string] {
+  const rest = key.slice(LUNCH_PREFIX.length);
+  const separator = rest.indexOf(":");
+  return separator === -1
+    ? [Number(rest), ""]
+    : [Number(rest.slice(0, separator)), rest.slice(separator + 1)];
+}
+
 function entityColumn(key: string, label: string): MemberColumn | null {
   if (key.startsWith(TRACK_PREFIX)) {
     const trackId = Number(key.slice(TRACK_PREFIX.length));
@@ -181,16 +191,15 @@ function entityColumn(key: string, label: string): MemberColumn | null {
       },
     };
   }
-  if (key.startsWith(AVAILABILITY_DAY_PREFIX)) {
-    const day = key.slice(AVAILABILITY_DAY_PREFIX.length);
+  if (key.startsWith(AVAILABILITY_TRACK_PREFIX)) {
+    const trackId = Number(key.slice(AVAILABILITY_TRACK_PREFIX.length));
     return {
       key, label, width: WIDTHS.availabilityDay,
       render: (m) => {
-        // Matched on the server-resolved `day`, never on the shift's start:
-        // that's an instant, and the viewer's timezone need not be the
-        // tournament's, so deriving the day here could put a shift in the
-        // wrong column.
-        const shifts = (m.availability ?? []).filter((shift) => shift.day === day);
+        // Keyed by track, not by day: two sites running the same Saturday are
+        // separate tracks, and pooling their shifts into one column would
+        // claim a member is free at both.
+        const shifts = (m.availability ?? []).filter((shift) => shift.track_id === trackId);
         if (shifts.length === 0) return <Dash />;
         return (
           <div style={{ display: "flex", flexWrap: "wrap", gap: "4px", minWidth: 0, justifyContent: "center" }}>
@@ -202,12 +211,14 @@ function entityColumn(key: string, label: string): MemberColumn | null {
       },
     };
   }
-  if (key.startsWith(LUNCH_CATEGORY_PREFIX)) {
-    const category = key.slice(LUNCH_CATEGORY_PREFIX.length);
+  if (key.startsWith(LUNCH_PREFIX)) {
+    const [trackId, category] = splitLunchKey(key);
     return {
       key, label, width: WIDTHS.lunchCategory,
       render: (m) => {
-        const picks = (m.lunch ?? []).filter((row) => row.category === category);
+        // Both halves: Day 1's protein and Day 2's protein are different
+        // questions, and the category alone would merge them.
+        const picks = (m.lunch ?? []).filter((row) => row.track_id === trackId && row.category === category);
         if (picks.length === 0) return <Dash />;
         const text = picks.map((p) => p.value).join(", ");
         return <span style={TEXT_CELL} title={text}>{text}</span>;
