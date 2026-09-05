@@ -104,6 +104,30 @@ function eventPreferenceAnswer(field: FormField, selections: MyTrackOptions["eve
   return field.question_type === "multi_select_checkbox" ? ids : ids[0] ?? "";
 }
 
+/**
+ * Narrows each track to the questions the member has actually been asked —
+ * i.e. those on a form they have completed.
+ *
+ * Editing is for changing an answer you already gave. A question from a form
+ * you haven't filled in yet is one you've never seen in context: it may sit
+ * behind branching, alongside others that give it meaning, or after a page of
+ * instructions. Answering it here first would skip all of that, and the form
+ * would still show as incomplete afterwards.
+ *
+ * A track with nothing left still appears — its status is always the member's
+ * to set, regardless of any form.
+ */
+export function editableTracks(tracks: MyTrackOptions[], completedFormIds: Set<string>): MyTrackOptions[] {
+  return tracks.map((track) => ({
+    ...track,
+    availability: track.availability.filter((field) => completedFormIds.has(field.form_id)),
+    lunch: track.lunch.filter((field) => completedFormIds.has(field.form_id)),
+    event_preferences: track.event_preferences && completedFormIds.has(track.event_preferences.form_id)
+      ? track.event_preferences
+      : null,
+  }));
+}
+
 export function toDraft(tracks: MyTrackOptions[]): MemberEditDraft {
   return Object.fromEntries(tracks.map((track) => [track.track_id, {
     status: track.status,

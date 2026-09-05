@@ -2,9 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ApiError, MyTrackOptions, membersApi } from "@/lib/api";
+import { ApiError, MyTrackOptions, formsApi, membersApi } from "@/lib/api";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { MemberEditDraft, TrackDraft, saveDraft, toDraft } from "@/lib/memberEdit";
+import { MemberEditDraft, TrackDraft, editableTracks, saveDraft, toDraft } from "@/lib/memberEdit";
 import { TrackEditSection } from "@/components/tournament/edit/TrackEditSection";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -43,10 +43,12 @@ export default function MemberEditPage() {
     // Waits for the provider: guessing before it lands would refuse a member
     // their own page for a frame, or fetch one they can't have.
     if (membershipLoading || !isSelf || !Number.isFinite(tournamentId)) return;
-    membersApi.getMyOptions(tournamentId)
-      .then((response) => {
-        setTracks(response.tracks);
-        const initial = toDraft(response.tracks);
+    Promise.all([membersApi.getMyOptions(tournamentId), formsApi.listMineForTournament(tournamentId)])
+      .then(([response, forms]) => {
+        const completed = new Set(forms.filter((form) => form.completed).map((form) => form.id));
+        const editable = editableTracks(response.tracks, completed);
+        setTracks(editable);
+        const initial = toDraft(editable);
         setBaseline(initial);
         setDraft(initial);
       })

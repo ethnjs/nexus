@@ -35,7 +35,7 @@ export function TrackEditSection({ track, draft, onChange }: {
     <Card radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
         <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "20px" }}>{track.track_name}</h2>
-        {!track.is_primary && <Badge>No schedule</Badge>}
+        {track.is_primary && <Badge>Competition day</Badge>}
       </div>
 
       {/* Driven by the route's own rule rather than by a track_status
@@ -60,13 +60,11 @@ export function TrackEditSection({ track, draft, onChange }: {
       </Field>
 
       {track.availability.map((field) => (
-        <Field key={field.id} label={field.label} helper={field.description ?? undefined}>
-          <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-            <div style={{ opacity: draft.notAvailable ? 0.45 : 1, transition: "opacity 120ms ease" }}>
+        <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+          <div style={{ opacity: draft.notAvailable ? 0.45 : 1, transition: "opacity 120ms ease" }}>
               <QuestionRenderer
                 field={field}
                 interactive
-                showHeader={false}
                 value={draft.notAvailable ? (field.question_type === "multi_select_checkbox" ? [] : "") : draft.availability[field.id]}
                 onChange={(value) => onChange({
                   availability: { ...draft.availability, [field.id]: value },
@@ -76,47 +74,38 @@ export function TrackEditSection({ track, draft, onChange }: {
                   status: draft.notAvailable ? optedInStatus(track.allow_confirm) : draft.status,
                 })}
               />
-            </div>
-            {/* Mutually exclusive with the groups above, and not one of the
-                TD's own options — a member declining is an answer the form
-                doesn't have to offer for them to be able to give it. */}
-            <ButtonGroup
-              options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
-              value={draft.notAvailable ? NOT_AVAILABLE : ""}
-              onChange={() => onChange({
-                notAvailable: !draft.notAvailable,
-                status: draft.notAvailable ? draft.status : "declined",
-              })}
-            />
           </div>
-        </Field>
+          {/* Mutually exclusive with the groups above, and not one of the
+              TD's own options — a member declining is an answer the form
+              doesn't have to offer for them to be able to give it. */}
+          <ButtonGroup
+            options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
+            value={draft.notAvailable ? NOT_AVAILABLE : ""}
+            onChange={() => onChange({
+              notAvailable: !draft.notAvailable,
+              status: draft.notAvailable ? draft.status : "declined",
+            })}
+          />
+        </div>
       ))}
 
       {track.lunch.map((field) => (
-        <Field key={field.id} label={field.label} helper={field.description ?? undefined}>
-          <QuestionRenderer
-            field={field}
-            interactive
-            showHeader={false}
-            value={draft.lunch[field.id]}
-            onChange={(value) => onChange({ lunch: { ...draft.lunch, [field.id]: value } })}
-          />
-        </Field>
+        <QuestionRenderer
+          key={field.id}
+          field={field}
+          interactive
+          value={draft.lunch[field.id]}
+          onChange={(value) => onChange({ lunch: { ...draft.lunch, [field.id]: value } })}
+        />
       ))}
 
       {track.event_preferences && (
-        <Field
-          label={track.event_preferences.label}
-          helper={track.event_preferences.description ?? undefined}
-        >
-          <QuestionRenderer
-            field={track.event_preferences}
-            interactive
-            showHeader={false}
-            value={draft.eventPreference}
-            onChange={(value) => onChange({ eventPreference: value })}
-          />
-        </Field>
+        <QuestionRenderer
+          field={track.event_preferences}
+          interactive
+          value={draft.eventPreference}
+          onChange={(value) => onChange({ eventPreference: value })}
+        />
       )}
 
       {!hasQuestions && (
