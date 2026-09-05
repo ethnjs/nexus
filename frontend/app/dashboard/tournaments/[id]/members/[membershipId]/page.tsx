@@ -15,7 +15,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { MemberSections } from "@/components/tournament/sections/MemberSections";
-import { IconArrowLeft, IconLock } from "@/components/ui/Icons";
+import { IconArrowLeft, IconEdit, IconLock } from "@/components/ui/Icons";
 
 /**
  * One member's whole record for this tournament.
@@ -126,16 +126,29 @@ export default function MemberPage() {
     // one person's record, top to bottom — and the section cards are built
     // for that measure, not for a full-width dashboard table.
     <div style={{ maxWidth: "900px", margin: "0 auto" }}>
-      {/* Only offered to someone who can actually open the roster — a member
-          reached their own page from somewhere else entirely. */}
-      {canManageMembers && (
-        <div style={{ marginBottom: "16px" }}>
-          <Button
-            type="button" variant="ghost" size="sm"
-            onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
-          >
-            <IconArrowLeft size={14} /> Members
-          </Button>
+      {(canManageMembers || isSelf) && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "16px" }}>
+          {/* Only offered to someone who can actually open the roster — a
+              member reached their own page from somewhere else entirely. */}
+          {canManageMembers ? (
+            <Button
+              type="button" variant="ghost" size="sm"
+              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
+            >
+              <IconArrowLeft size={14} /> Members
+            </Button>
+          ) : <span />}
+          {/* Self-only: every route the edit page writes to is a
+              /members/me/ one, and a coordinator's own update schema is
+              deliberately notes-only. */}
+          {isSelf && (
+            <Button
+              type="button" variant="secondary" size="sm"
+              onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members/${membershipId}/edit`)}
+            >
+              <IconEdit size={14} /> Edit my answers
+            </Button>
+          )}
         </div>
       )}
 
