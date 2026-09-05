@@ -278,7 +278,7 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
     setSuffix(value);
     onFieldChange({ field_key: buildTrackStatusFieldKey(value) });
   }
-  return <Input label="Key" placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
+  return <Input label="Key" required placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
 }
 
 // A track that isn't in the live catalog is one that has been purged since
@@ -304,6 +304,7 @@ function TrackPicker({ label, trackId, tracks, onChange, error }: {
   return (
     <Dropdown
       label={label}
+      required
       value={trackId !== null ? String(trackId) : ""}
       onChange={(value) => onChange(Number(value))}
       options={tracks.map((track) => ({ value: String(track.id), label: track.name }))}
@@ -412,6 +413,7 @@ function LunchParams({ field, onFieldChange, tracks, showErrors }: {
       />
       <Input
         label="Category"
+        required
         placeholder="e.g. Protein"
         value={category}
         onChange={(e) => setCategory(e.target.value)}
