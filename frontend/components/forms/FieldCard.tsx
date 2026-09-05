@@ -117,7 +117,7 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
   field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, usedFieldKeys, errors,
-  allowArchive = false,
+  allowArchive = false, onRequireTrack,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -146,6 +146,9 @@ export function FieldCard({
       duplicateKey below. */
   usedFieldKeys: string[];
   errors: string[];
+  /** Forwarded to the entity pickers — opens the toolbar's preset popover
+      when a picker is used before the question has a track. */
+  onRequireTrack?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
 }) {
@@ -336,6 +339,7 @@ export function FieldCard({
               customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
               allowArchive={allowArchive}
+              onRequireTrack={onRequireTrack}
             />
 
             <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />

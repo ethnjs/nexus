@@ -38,6 +38,10 @@ interface EntityOptionsEditorProps {
   /** Forwarded to OptionsEditor — whether archiving an option is offered
       alongside removing it. */
   allowArchive?: boolean
+  /** Called when a picker is used before the question has a track. Opens the
+      preset popover, which is where the missing track is both reported and
+      fixed — so the pickers don't restate the error in a second place. */
+  onRequireTrack?: () => void
 }
 
 const STATUS_OPTIONS: { value: TrackStatus; label: string }[] = [
@@ -100,7 +104,7 @@ function shiftIdsFor(option: EditableOption): number[] {
 // Shared options editor for entity-backed presets and Track Status. The only
 // difference is whether the row also has a shift/event picker; track chips
 // live here for both Track Status and opted-in Availability fields.
-export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, questionType, options, onChange, displayStyle, branchTargets, errors, trackStatusEnabled = false, allowArchive = false }: EntityOptionsEditorProps) {
+export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, questionType, options, onChange, displayStyle, branchTargets, errors, trackStatusEnabled = false, allowArchive = false, onRequireTrack }: EntityOptionsEditorProps) {
   const isEntity = fieldKey !== 'track_status'
   const hasTracks = fieldKey === 'track_status' || trackStatusEnabled
   const [entities, setEntities] = useState<Entity[] | null>(isEntity ? null : [])
@@ -124,13 +128,8 @@ export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, ques
 
   const trackName = trackId !== null ? tracks.find((track) => track.id === trackId)?.name : undefined
   // An entity-backed question draws its options from one track's catalog, so
-  // there is nothing to offer until the preset names one. The pickers say so
-  // rather than opening an empty list, which reads as "this tournament has no
-  // shifts" — a different and wrong diagnosis.
+  // there is nothing to pick from until the preset names one.
   const trackMissing = isEntity && trackId === null
-  const trackMissingMessage = fieldKey === 'availability'
-    ? "Pick a track in the preset settings first — a shift belongs to one competition day."
-    : "Pick a track in the preset settings first — only events on it can be offered."
 
   // An event that doesn't run on this question's track can't be offered:
   // the backend rejects the option outright. Greyed with the reason rather
@@ -198,7 +197,7 @@ export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, ques
               emptyMessage={emptyMessage}
               onToggle={(id) => toggleEntity(option.clientKey, id)}
               disabledReason={offTrackReason}
-              trackMissingMessage={trackMissing ? trackMissingMessage : undefined}
+              onRequireTrack={trackMissing ? onRequireTrack : undefined}
             />}
             {hasTracks && (fieldKey === 'availability' ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -222,28 +221,7 @@ export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, ques
           </>
         )}
       />
-      {fieldKey === 'event_preference' && loaded.length > 0 && (
-        trackMissing ? (
-          <Popover
-            trigger={
-              <Button type="button" variant="danger" size="sm" style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
-                <IconSearch size={12} /> Browse events
-              </Button>
-            }
-            items={[]}
-            getKey={() => 0}
-            renderLabel={() => null}
-            onSelect={() => {}}
-            emptyMessage={trackMissingMessage}
-            width={320}
-            align="left"
-          />
-        ) : (
-          <Button type="button" variant="secondary" size="sm" onClick={() => setShowPicker(true)} style={{ alignSelf: 'flex-start', marginTop: '6px' }}>
-            <IconSearch size={12} /> Browse events
-          </Button>
-        )
-      )}
+      {fieldKey === 'event_preference' && loaded.length > 0 && <Button type="button" variant="secondary" size="sm" onClick={() => (trackMissing ? onRequireTrack?.() : setShowPicker(true))} style={{ alignSelf: 'flex-start', marginTop: '6px' }}><IconSearch size={12} /> Browse events</Button>}
       {showPicker && <EventOptionsPickerModal
         events={(loaded as TournamentEvent[]).filter((event) => !offTrackReason(event))}
         existingEventIds={existingEventIds}
@@ -258,7 +236,7 @@ export function EntityOptionsEditor({ fieldKey, trackId = null, tournament, ques
   )
 }
 
-function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessage, onToggle, disabledReason, trackMissingMessage }: {
+function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessage, onToggle, disabledReason, onRequireTrack }: {
   selectedIds: number[]
   entities: Entity[]
   fieldKey: Exclude<EntityFieldKey, 'track_status'>
@@ -267,9 +245,9 @@ function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessag
   onToggle: (id: number) => void
   /** Why an entity can't be picked, or undefined when it can. */
   disabledReason?: (entity: Entity) => string | undefined
-  /** Set while the question has no track — the picker offers nothing and
-      says why, and its trigger reads as an error. */
-  trackMissingMessage?: string
+  /** Set while the question has no track: the add button sends the TD to the
+      preset popover instead of opening a list it can't validate against. */
+  onRequireTrack?: () => void
 }) {
   const selectedEntities = entities.filter((entity) => selectedIds.includes(entity.id))
   function handleChipsChange(chips: string[]) {
@@ -284,7 +262,11 @@ function EntityPicker({ selectedIds, entities, fieldKey, isMultiDay, emptyMessag
       const entity = selectedEntities.find((item) => entityLabel(fieldKey, item, isMultiDay) === chip)
       return entity ? entityTooltip(fieldKey, entity, isMultiDay) : undefined
     }}
-    addButton={<Popover trigger={<Button type="button" variant={trackMissingMessage ? 'danger' : 'secondary'} size="xs"><IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}</Button>} items={trackMissingMessage ? [] : entities} getKey={(entity) => entity.id} renderLabel={(entity) => entityPickerLabel(fieldKey, entity, isMultiDay)} onSelect={(entity) => onToggle(entity.id)} checklist isSelected={(entity) => selectedIds.includes(entity.id)} isDisabled={(entity) => !!disabledReason?.(entity)} disabledReason={disabledReason} emptyMessage={trackMissingMessage ?? emptyMessage} width={400} />}
+    addButton={onRequireTrack ? (
+      <Button type="button" variant="secondary" size="xs" onClick={onRequireTrack}>
+        <IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}
+      </Button>
+    ) : <Popover trigger={<Button type="button" variant="secondary" size="xs"><IconPlus size={11} /> {fieldKey === 'availability' ? 'Shifts' : 'Events'}</Button>} items={entities} getKey={(entity) => entity.id} renderLabel={(entity) => entityPickerLabel(fieldKey, entity, isMultiDay)} onSelect={(entity) => onToggle(entity.id)} checklist isSelected={(entity) => selectedIds.includes(entity.id)} isDisabled={(entity) => !!disabledReason?.(entity)} disabledReason={disabledReason} emptyMessage={emptyMessage} width={400} />}
   />
 }
 

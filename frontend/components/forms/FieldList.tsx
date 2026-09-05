@@ -17,7 +17,7 @@ import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
-import { FieldToolbar } from "@/components/forms/FieldToolbar";
+import { ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
 import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
 import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
 import { EditableOption } from "@/components/forms/OptionsEditor";
@@ -63,6 +63,13 @@ export function FieldList({ form }: { form: Form }) {
   // null until loaded (or permanently, on a chapter-owned form with no
   // tournament). `tracks` is what PresetPopover binds a preset to.
   const [tournament, setTournament] = useState<Tournament | null>(null);
+  // Which toolbar popover is open, and on which field. A card's entity
+  // picker can set this to "preset" — using one before the question has a
+  // track sends the TD to the Track field, which is where that error is
+  // reported and fixed.
+  const [popoverFor, setPopoverFor] = useState<
+    { key: string; popover: ActivePopover; demandComplete?: boolean } | null
+  >(null);
   const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
@@ -597,6 +604,7 @@ export function FieldList({ form }: { form: Form }) {
                 shifts={shifts}
                 allFields={fields}
                 usedFieldKeys={usedFieldKeys}
+                onRequireTrack={() => setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })}
                 errors={validation.errorsFor(field.clientKey)}
                 allowArchive={hasResponses}
               />
@@ -646,10 +654,9 @@ export function FieldList({ form }: { form: Form }) {
           floating beside it would just be in the way of the drop. */}
       {expandedField && !draggingKey && (
         <FieldToolbar
-          // Remounts (resetting FieldToolbar's own activePopover state, so
-          // a key/preset popover left open doesn't silently follow you to
-          // whatever field you switch to next) whenever the expanded field
-          // changes.
+          // Remounts whenever the expanded field changes. The open popover
+          // is keyed to its field (see popoverFor), so one left open doesn't
+          // silently follow you to whatever field you switch to next.
           key={expandedField.clientKey}
           boxRef={toolbarRef}
           field={expandedField}
@@ -659,6 +666,9 @@ export function FieldList({ form }: { form: Form }) {
           tracks={tracks}
           presetsEnabled={form.tournament_id != null}
           onOpenPresets={loadTournament}
+          activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
+          demandPresetComplete={popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete}
+          onActivePopoverChange={(popover) => setPopoverFor({ key: expandedField.clientKey, popover })}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}

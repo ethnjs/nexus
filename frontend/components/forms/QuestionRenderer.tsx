@@ -86,6 +86,9 @@ interface QuestionRendererProps {
       there's nothing to preserve, so removing an option just removes it and
       the extra control would be noise. */
   allowArchive?: boolean
+  /** Forwarded to EntityOptionsEditor — see its own prop. Absent outside the
+      form builder, where there is no preset popover to open. */
+  onRequireTrack?: () => void
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -125,6 +128,7 @@ export function QuestionRenderer({
   field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
   allowArchive = false,
+  onRequireTrack,
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -156,6 +160,7 @@ export function QuestionRenderer({
           customValuesEnabled={customValuesEnabled}
           errors={errors}
           allowArchive={allowArchive}
+          onRequireTrack={onRequireTrack}
         />
       ) : (
         <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
@@ -380,7 +385,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false }: {
+function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false, onRequireTrack }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournament: Tournament | null
@@ -389,6 +394,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   customValuesEnabled?: boolean
   errors?: string[]
   allowArchive?: boolean
+  onRequireTrack?: () => void
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
@@ -444,6 +450,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             errors={errors}
             trackStatusEnabled={hasTracks}
             allowArchive={allowArchive}
+            onRequireTrack={onRequireTrack}
           />
         ) : (
           <OptionsEditor

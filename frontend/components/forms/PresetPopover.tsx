@@ -12,6 +12,7 @@ import { FormQuestionType, TournamentTrack } from "@/lib/api";
 import { EditableField } from "@/lib/forms/editableField";
 import {
   PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError, isFieldKeyError,
+  presetIncompleteMessage,
   parseAvailabilityFieldKey, buildAvailabilityFieldKey,
   parseEventPreferenceFieldKey, buildEventPreferenceFieldKey,
   parseLunchFieldKey, buildLunchFieldKey,
@@ -63,7 +64,7 @@ const KIND_OPTIONS: { value: PresetKind; label: string }[] = [
 // preset here keeps the TD's option rows and their branch targets — only each
 // value's *shape* is rewritten to fit the new kind (see reshapeOptions).
 export function PresetPopover({
-  field, onFieldChange, tracks, onOpen, errors, saveAttempt, open, onOpenChange,
+  field, onFieldChange, tracks, onOpen, errors, saveAttempt, demandComplete, open, onOpenChange,
 }: {
   field: EditableField;
   onFieldChange: (updates: Partial<EditableField>) => void;
@@ -81,13 +82,20 @@ export function PresetPopover({
       FieldKeyPopover's identical prop for why this (not just `errors`) is
       what drives auto-opening. */
   saveAttempt: number;
+  /** Set when the card body sent the TD here because a picker needs the
+      preset finished — shows the incomplete-preset error without waiting for
+      a save attempt, since the thing they just clicked is already blocked. */
+  demandComplete?: boolean;
   /** Owned by FieldToolbar (shared with FieldKeyPopover) — only one of the
       two can be open at a time, so this can't be local state. */
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const presetKind = activePresetKind(field.field_key);
-  const incompleteError = errors.find(isPresetError);
+  const incompleteError = errors.find(isPresetError)
+    ?? (demandComplete && presetKind && field.field_key.endsWith("_")
+      ? presetIncompleteMessage(presetKind)
+      : undefined);
   // A field_key collision with another form's field is only ever caught at
   // Save (FieldKeyPopover's own client-side blur check can't see across
   // forms) — see useFormValidation's handle422. Once this field is
