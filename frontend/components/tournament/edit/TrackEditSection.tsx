@@ -30,6 +30,11 @@ export function TrackEditSection({ track, draft, onChange }: {
 }) {
   const statuses = allowedStatuses(track.allow_confirm);
   const hasQuestions = track.availability.length > 0 || track.lunch.length > 0 || !!track.event_preferences;
+  // Not taking part means nothing else on this track applies. The questions
+  // stay visible with the answers already given rather than disappearing —
+  // hiding them would lose the record of what was said, and make opting back
+  // in look like starting over.
+  const declined = draft.status === "declined";
 
   return (
     <Card radius="lg" style={{ padding: "20px 24px", display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -59,13 +64,20 @@ export function TrackEditSection({ track, draft, onChange }: {
         />
       </Field>
 
+      {declined && hasQuestions && (
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-tertiary)", margin: 0 }}>
+          You&rsquo;re not taking part in {track.track_name}, so the rest of these are locked.
+          Change &ldquo;Taking part&rdquo; above to edit them.
+        </p>
+      )}
+
       {track.availability.map((field) => (
         <div key={field.id} style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          <div style={{ opacity: draft.notAvailable ? 0.45 : 1, transition: "opacity 120ms ease" }}>
               <QuestionRenderer
                 field={field}
                 interactive
-                value={draft.notAvailable ? (field.question_type === "multi_select_checkbox" ? [] : "") : draft.availability[field.id]}
+                locked={declined}
+                value={draft.availability[field.id]}
                 onChange={(value) => onChange({
                   availability: { ...draft.availability, [field.id]: value },
                   // Picking a real group is opting back in, and the save
@@ -74,18 +86,21 @@ export function TrackEditSection({ track, draft, onChange }: {
                   status: draft.notAvailable ? optedInStatus(track.allow_confirm) : draft.status,
                 })}
               />
-          </div>
           {/* Mutually exclusive with the groups above, and not one of the
               TD's own options — a member declining is an answer the form
-              doesn't have to offer for them to be able to give it. */}
-          <ButtonGroup
-            options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
-            value={draft.notAvailable ? NOT_AVAILABLE : ""}
-            onChange={() => onChange({
-              notAvailable: !draft.notAvailable,
-              status: draft.notAvailable ? draft.status : "declined",
-            })}
-          />
+              doesn't have to offer for them to be able to give it. Hidden
+              once declined: the status control above already says so, and is
+              the way back. */}
+          {!declined && (
+            <ButtonGroup
+              options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
+              value={draft.notAvailable ? NOT_AVAILABLE : ""}
+              onChange={() => onChange({
+                notAvailable: !draft.notAvailable,
+                status: draft.notAvailable ? draft.status : "declined",
+              })}
+            />
+          )}
         </div>
       ))}
 
@@ -94,6 +109,7 @@ export function TrackEditSection({ track, draft, onChange }: {
           key={field.id}
           field={field}
           interactive
+          locked={declined}
           value={draft.lunch[field.id]}
           onChange={(value) => onChange({ lunch: { ...draft.lunch, [field.id]: value } })}
         />
@@ -103,6 +119,7 @@ export function TrackEditSection({ track, draft, onChange }: {
         <QuestionRenderer
           field={track.event_preferences}
           interactive
+          locked={declined}
           value={draft.eventPreference}
           onChange={(value) => onChange({ eventPreference: value })}
         />

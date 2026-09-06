@@ -43,6 +43,11 @@ interface QuestionRendererProps {
   /** view mode only. false = read-only preview (the builder's collapsed card
       state); true = a real respondent can answer. */
   interactive?: boolean
+  /** view mode, interactive only — the question still shows the answer given,
+      but every input is locked. Distinct from `interactive: false`, which is a
+      blank preview: this is an answer that exists and can't be changed right
+      now (e.g. a track the member has declined). */
+  locked?: boolean
   /** view mode only. Shape depends on question_type (string for text types,
       boolean for acknowledgment, ...). */
   value?: unknown
@@ -125,7 +130,7 @@ function QuestionLabel({ label, required }: { label: string; required: boolean }
 }
 
 export function QuestionRenderer({
-  field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
+  field, mode = 'view', interactive = false, locked = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
   allowArchive = false,
   onRequireTrack,
@@ -163,7 +168,7 @@ export function QuestionRenderer({
           onRequireTrack={onRequireTrack}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
+        <QuestionBody field={field} interactive={interactive} locked={locked} value={value} onChange={onChange} error={error} shifts={shifts} />
       )}
     </div>
   )
@@ -213,15 +218,20 @@ function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] 
   return option.label
 }
 
-function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
+function QuestionBody({ field, interactive, locked, value, onChange, error, shifts }: {
   field: QuestionFieldData
   interactive?: boolean
   value?: unknown
   onChange?: (value: unknown) => void
   error?: string
   shifts?: TournamentShift[] | null
+  locked?: boolean
 }) {
   const config = field.config ?? {}
+  // Locked keeps the answer on screen but refuses edits, so every input is
+  // locked and every handler is a no-op. `interactive` still decides whether
+  // there is an answer to show at all.
+  const editable = interactive && !locked
   // An archived option stays in `config.options` forever so old answers
   // referencing its option_id keep resolving (see apply_option_archiving on
   // the backend) — it is storage, never a choice to present. Respondents
@@ -234,9 +244,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Input
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : 'Short answer'}
-          locked={!interactive}
+          locked={!editable}
           fullWidth
         />
       )
@@ -245,9 +255,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Textarea
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : 'Long answer'}
-          disabled={!interactive}
+          disabled={!editable}
           rows={3}
           fullWidth
         />
@@ -255,11 +265,11 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 
     case 'acknowledgment':
       return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: interactive ? 'pointer' : 'default' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: editable ? 'pointer' : 'default' }}>
           <Checkbox
             checked={interactive ? Boolean(value) : false}
-            onChange={(checked) => onChange?.(checked)}
-            locked={!interactive}
+            onChange={(checked) => editable && onChange?.(checked)}
+            locked={!editable}
             size={18}
           />
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)' }}>
@@ -278,8 +288,8 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           <ButtonGroup
             options={displayOptions}
             value={selected}
-            onChange={(v) => interactive && onChange?.(v)}
-            locked={!interactive}
+            onChange={(v) => editable && onChange?.(v)}
+            locked={!editable}
             clickThrough={!interactive}
           />
         )
@@ -289,8 +299,8 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
         <RadioList
           options={displayOptions}
           value={selected}
-          onChange={(v) => interactive && onChange?.(v)}
-          locked={!interactive}
+          onChange={(v) => editable && onChange?.(v)}
+          locked={!editable}
           size={19}
           fontSize="16px"
           gap="8px"
@@ -303,10 +313,10 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Dropdown
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(v) => onChange?.(v)}
+          onChange={(v) => editable && onChange?.(v)}
           options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
           placeholder="Choose"
-          locked={!interactive}
+          locked={!editable}
           fullWidth
         />
       )
@@ -318,7 +328,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
       function toggle(optionId: string) {
-        if (!interactive) return
+        if (!editable) return
         onChange?.(selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId])
       }
 
@@ -328,7 +338,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
             options={displayOptions}
             value={selected}
             onChange={toggle}
-            locked={!interactive}
+            locked={!editable}
             clickThrough={!interactive}
           />
         )
@@ -339,7 +349,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           options={displayOptions}
           value={selected}
           onChange={toggle}
-          locked={!interactive}
+          locked={!editable}
           size={19}
           fontSize="16px"
           gap="8px"
@@ -355,9 +365,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
           ranks={ranks}
           value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
-          onChange={(next) => interactive && onChange?.(next)}
+          onChange={(next) => editable && onChange?.(next)}
           allowDuplicates={!!config.allow_duplicates}
-          locked={!interactive}
+          locked={!editable}
           error={error}
         />
       )
