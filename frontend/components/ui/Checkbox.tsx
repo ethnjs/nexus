@@ -33,6 +33,14 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         boxSizing: 'border-box',
         width: `${size}px`,
         height: `${size}px`,
+        // Same pinning as RadioCircle: a flex parent must not grow, shrink,
+        // or stretch the box into a rectangle.
+        minWidth: `${size}px`,
+        minHeight: `${size}px`,
+        maxWidth: `${size}px`,
+        maxHeight: `${size}px`,
+        aspectRatio: '1 / 1',
+        alignSelf: 'center',
         borderRadius: '4px',
         border: `2px solid ${color}`,
         backgroundColor: checked ? color : 'var(--color-surface)',
@@ -41,7 +49,7 @@ export function Checkbox({ checked, onChange, locked = false, size = 16 }: Check
         backgroundPosition: 'center',
         backgroundRepeat: 'no-repeat',
         cursor: locked ? 'not-allowed' : 'pointer',
-        flexShrink: 0,
+        flex: '0 0 auto',
         transition: 'background 120ms ease, border-color 120ms ease',
       }}
     />

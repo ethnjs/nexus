@@ -56,7 +56,9 @@ function RadioRow({ option, checked, locked, size, fontSize, onClick }: {
       data-option-value={option.value}
       style={{
         display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
-        height: ROW_HEIGHT,
+        // minHeight, not height: a label long enough to wrap would
+        // otherwise overflow a fixed-height row.
+        minHeight: ROW_HEIGHT,
         borderRadius: 'var(--radius-md)',
         background: 'var(--color-surface)',
         cursor: locked ? 'default' : 'pointer',

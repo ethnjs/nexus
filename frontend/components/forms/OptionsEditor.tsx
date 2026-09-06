@@ -131,7 +131,7 @@ function Bullet({ type, size, number, displayStyle }: { type: BulletType; size: 
     )
   }
   return (
-    <span style={{ pointerEvents: 'none', display: 'flex' }}>
+    <span style={{ pointerEvents: 'none', display: 'inline-flex' }}>
       {type === 'radio'
         ? <RadioCircle checked={false} disabled size={size} />
         : <Checkbox checked={false} onChange={() => {}} locked size={size} />}
