@@ -61,13 +61,13 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
       (segment !== "invites" || canManageInvites) &&
-      (segment !== "tracks" || canManageTournament) &&
       (segment !== "audit-log" || canManageTournament)
   );
   const navItems = NAV_ITEMS.filter(
     ({ segment }) =>
       (segment !== "members" || canManageMembers) &&
       (segment !== "events" || canManageEvents) &&
+      (segment !== "shifts" || canManageEvents) &&
       (segment !== "forms" || canManageForms)
   );
   // Locked open on settings routes — the sub-nav labels need to stay
