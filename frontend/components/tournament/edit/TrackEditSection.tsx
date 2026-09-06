@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/Card";
 const STATUS_LABEL: Record<TrackStatus, string> = {
   interested: "Interested",
   confirmed: "Confirmed",
-  declined: "Not taking part",
+  declined: "Declined",
 };
 
 const NOT_AVAILABLE = "__none__";
@@ -47,7 +47,7 @@ export function TrackEditSection({ track, draft, onChange }: {
           question's options — those can span several tracks, and this control
           answers for exactly one. See backend/track-status-rules.md. */}
       <Field
-        label="Taking part"
+        label="Track status"
         helper={track.allow_confirm
           ? "Confirmations are open — confirm to lock in your spot."
           : "Confirmations aren't open yet. Say you're interested, and you'll be asked to confirm later."}
