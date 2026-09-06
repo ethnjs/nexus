@@ -361,8 +361,7 @@ class TestSyncEventPreferences:
 # ---------------------------------------------------------------------------
 
 class TestCanSetTrackStatus:
-    """The whole rule: a track never falls back to `interested` once it's
-    moved past it."""
+    """The whole rule: `confirmed` never falls back to `interested`."""
 
     @pytest.mark.parametrize("incoming", ["interested", "confirmed", "declined"])
     def test_anything_may_be_set_from_unset(self, incoming):
@@ -376,17 +375,19 @@ class TestCanSetTrackStatus:
             ("interested", "declined"),
             ("confirmed", "confirmed"),
             ("confirmed", "declined"),
-            # Someone who declined and changed their mind can still commit.
+            # Someone who declined and changed their mind can still commit —
+            # or say they're only interested, e.g. by filling in a form after
+            # opting out on their own member page.
             ("declined", "confirmed"),
+            ("declined", "interested"),
             ("declined", "declined"),
         ],
     )
     def test_allowed_transitions(self, current, incoming):
         assert can_set_track_status(current, incoming) is True
 
-    @pytest.mark.parametrize("current", ["confirmed", "declined"])
-    def test_nothing_falls_back_to_interested(self, current):
-        assert can_set_track_status(current, "interested") is False
+    def test_confirmed_does_not_fall_back_to_interested(self):
+        assert can_set_track_status("confirmed", "interested") is False
 
 
 class TestSyncTrackStatuses:

@@ -18,10 +18,17 @@ Applies when a form response sets a status, via a `track_status_{suffix}`
 question or an `availability_{track}` question that opted in with
 `config.track_status_enabled`.
 
-**The whole rule: a track never falls back to `interested` once it has moved
-past it.** Everything else is permitted — `interested → confirmed`, either →
-`declined`, `declined → confirmed` for someone who changes their mind, and any
-status rewritten as itself.
+**The whole rule: `confirmed` never falls back to `interested`.** Everything
+else is permitted — `interested → confirmed`, either → `declined`,
+`declined → confirmed` *or* `→ interested` for someone who changes their mind,
+and any status rewritten as itself.
+
+`declined` is deliberately not a floor. A member who opts out on their own page
+and then fills in a form saying they're interested is giving newer information
+about the same question, and treating the opt-out as final made that form
+silently do nothing. Re-entry from `declined` was already allowed for
+`confirmed`; `interested` was the odd one out, and a declined track has no
+ordering left to protect.
 
 This is what keeps statuses ordered, in place of comparing submission times.
 Write-through runs forward, but a TD can raise a pending update on a track
@@ -66,8 +73,8 @@ The reasoning behind each:
   available directly and the middle state would be a step to nowhere, so it is
   rejected rather than silently allowed.
 
-**Coming back from `declined` is exactly what write-through refuses**, and
-that is the intended difference. That guard exists to stop a *stale form write*
+**Walking `confirmed` back down to `interested` is what write-through
+refuses**, and that is the intended difference. That guard exists to stop a *stale form write*
 from demoting a track a newer form already advanced. A member acting on their
 own page is neither stale nor out of order — and without this exception, a
 mistaken "Not available" click would be a one-way door.

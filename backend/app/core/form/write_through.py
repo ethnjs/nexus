@@ -262,21 +262,29 @@ TRACK_STATUSES = ("interested", "confirmed", "declined")
 def can_set_track_status(current: str | None, incoming: str) -> bool:
     """Whether a write may move a track from `current` to `incoming`.
 
-    The whole rule: **a track never falls back to `interested` once it's moved
-    past it.** Everything else is permitted — interested→confirmed, either→
-    declined, declined→confirmed for someone who changes their mind, and any
-    status re-written as itself.
+    The whole rule: **`confirmed` never falls back to `interested`.**
+    Everything else is permitted — interested→confirmed, either→declined,
+    declined→confirmed *or* →interested for someone who changes their mind,
+    and any status re-written as itself.
 
     This is what keeps track statuses ordered, in place of comparing submission
     times. Write-through is forward-only, but a TD can still raise a pending
     update on a track question in an *older* form, and that patch would
     otherwise demote a track a newer form already confirmed. Since the only
-    damage an out-of-order write can do is a demotion, refusing demotions
-    closes it without any notion of "which response is newer".
+    damage an out-of-order write can do is that demotion, refusing it closes
+    the hole without any notion of "which response is newer".
+
+    `declined` is deliberately not a floor. A member who opts out on their own
+    page and then fills in a form saying they're interested is giving newer
+    information about the same question, and treating the opt-out as final
+    made the form silently do nothing. Re-entry from `declined` was already
+    allowed for `confirmed`; there was never a reason for `interested` to be
+    the exception, and it isn't ordering that the guard protects — a declined
+    track has no progress to lose.
 
     The cost is that no form can walk a mistaken `confirmed` back down to
     `interested` — that needs a path that bypasses this guard."""
-    return incoming != "interested" or current in (None, "interested")
+    return incoming != "interested" or current != "confirmed"
 
 
 def sync_track_statuses(
