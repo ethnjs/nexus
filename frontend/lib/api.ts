@@ -724,8 +724,8 @@ export interface MembershipAvailability {
   // The tournament-local calendar date the shift falls on, resolved
   // server-side. Never derive this from `start` here: that's an instant and
   // the viewer's timezone need not match the tournament's, so a local
-  // conversion drifts a day near midnight. The members table's
-  // availability_day: columns key off exactly this.
+  // conversion drifts a day near midnight. Display grouping only — the
+  // members table's availability columns key off `track_id`.
   day:      string
 }
 
@@ -1890,7 +1890,7 @@ export const tournamentTracksApi = {
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
 }
 
-// Namespaced strings — "track:3", "lunch_category:entree", "event_pref:key",
+// Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
 // "form_field:{id}" — see backend/app/core/tournament/display_config.py.
 // One panel section, in the order the TD arranged them. Built-in sections
 // carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
