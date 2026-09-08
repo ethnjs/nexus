@@ -16,6 +16,7 @@ from app.models.models import (
     TournamentEvent, TournamentEventAssignment, TournamentEventShift,
     TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift,
 )
+from app.schemas.tournament.assignment import AssignmentRead, EventAssignmentRead
 
 
 def _make_event(db, tournament, name="Boomilever"):
@@ -175,6 +176,75 @@ class TestCascades:
         db.commit()
 
         assert db.query(TournamentEventAssignment).count() == 0
+
+
+class TestReadSchemas:
+    """from_row flattens four relationships — none of these names live on the
+    assignment row, so from_attributes alone can't build either schema."""
+
+    def test_assignment_read_flattens_event_member_role_and_shift(
+        self, db, td_tournament, other_user
+    ):
+        event = _make_event(db, td_tournament, name="Anatomy")
+        shift = _make_shift(db, td_tournament, label="Morning")
+        mr = _membership_role(db, td_tournament, other_user, "Test Writer")
+        row = _assign(db, event, mr, shift)
+        db.commit()
+
+        read = AssignmentRead.from_row(row)
+
+        assert read.event_name == "Anatomy"
+        assert (read.first_name, read.last_name) == (other_user.first_name, other_user.last_name)
+        assert read.role_label == "Test Writer"
+        assert read.membership_role_id == mr.id
+        assert read.shift is not None
+        assert read.shift.label == "Morning"
+        assert read.shift.track_id == primary_track_id(db, td_tournament.id)
+
+    def test_event_name_resolves_through_the_catalog_row(
+        self, db, td_tournament, other_user, event_factory, event_category
+    ):
+        """A catalog-linked event carries its name on the joined Event row and
+        reads back nameless off `.name` — from_row must use display_name."""
+        catalog = event_factory(event_category, name="Codebusters")
+        event = TournamentEvent(tournament_id=td_tournament.id, event_id=catalog.id, division="C")
+        db.add(event)
+        db.commit()
+
+        mr = _membership_role(db, td_tournament, other_user)
+        row = _assign(db, event, mr, None)
+        db.commit()
+
+        assert AssignmentRead.from_row(row).event_name == "Codebusters"
+
+    def test_shift_is_null_not_omitted_when_the_assignment_has_none(
+        self, db, td_tournament, other_user
+    ):
+        """Null means "no shift" — a real answer, distinct from a field the
+        caller didn't ask for, which `fields` expresses by absence instead."""
+        event = _make_event(db, td_tournament)
+        mr = _membership_role(db, td_tournament, other_user)
+        row = _assign(db, event, mr, None)
+        db.commit()
+
+        assert AssignmentRead.from_row(row).shift is None
+        assert "shift" in AssignmentRead.from_row(row).model_dump()
+
+    def test_event_assignment_read_drops_the_event_it_is_nested_under(
+        self, db, td_tournament, other_user
+    ):
+        """The chip face. The event row already says which event this is, so
+        repeating it on every nested assignment is noise."""
+        event = _make_event(db, td_tournament)
+        mr = _membership_role(db, td_tournament, other_user)
+        row = _assign(db, event, mr, None)
+        db.commit()
+
+        dumped = EventAssignmentRead.from_row(row).model_dump()
+
+        assert "tournament_event_id" not in dumped
+        assert "event_name" not in dumped
+        assert dumped["role_label"] == "Test Writer"
 
 
 class TestShiftAttachment:
