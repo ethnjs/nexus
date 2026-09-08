@@ -9,7 +9,8 @@ from datetime import date, datetime, timedelta, timezone
 from nanoid import generate as generate_nanoid
 from sqlalchemy import (
     Integer, String, Text, Boolean, Date, DateTime, JSON,
-    ForeignKey, UniqueConstraint, CheckConstraint, Column, event, Index, text,
+    ForeignKey, ForeignKeyConstraint, UniqueConstraint, CheckConstraint,
+    Column, event, Index, text,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
@@ -521,6 +522,10 @@ class TournamentMembership(Base):
     lunch_selections = relationship("TournamentMembershipLunch", back_populates="membership", cascade="all, delete-orphan")
     track_statuses = relationship("TournamentMembershipTrackStatus", back_populates="membership", cascade="all, delete-orphan")
     event_preferences = relationship("TournamentMembershipEventPreference", back_populates="membership", cascade="all, delete-orphan")
+    assignments = relationship(
+        "TournamentEventAssignment", back_populates="membership",
+        cascade="all, delete-orphan",
+    )
 
     # Age is measured against the tournament's first day, which is derived
     # from its primary tracks rather than stored. `first_day`, not the `dates`
@@ -591,9 +596,18 @@ class TournamentMembershipRole(Base):
 
     membership = relationship("TournamentMembership", back_populates="roles")
     role = relationship("TournamentRole", back_populates="memberships")
+    assignments = relationship(
+        "TournamentEventAssignment", back_populates="membership_role",
+        cascade="all, delete-orphan", overlaps="assignments,membership",
+    )
 
     __table_args__ = (
         UniqueConstraint("membership_id", "role_id", name="uq_membership_role"),
+        # Redundant on its own — `id` is already the primary key. It exists
+        # solely to be a valid target for TournamentEventAssignment's composite
+        # FK, which is what stops an assignment's membership_id from disagreeing
+        # with the membership behind its membership_role_id.
+        UniqueConstraint("id", "membership_id", name="uq_membership_role_id_membership"),
     )
 
 
@@ -698,6 +712,10 @@ class TournamentEvent(Base):
         "TournamentTrack", secondary="tournament_event_tracks", back_populates="events",
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
     )
+    assignments = relationship(
+        "TournamentEventAssignment", back_populates="tournament_event",
+        cascade="all, delete-orphan",
+    )
 
     @property
     def display_name(self) -> str | None:
@@ -749,6 +767,10 @@ class TournamentShift(Base):
     )
     membership_availabilities = relationship(
         "TournamentMembershipAvailability", back_populates="tournament_shift", cascade="all, delete-orphan"
+    )
+    assignments = relationship(
+        "TournamentEventAssignment", back_populates="tournament_shift",
+        cascade="all, delete-orphan",
     )
 
     # Read by TournamentShiftRead — how many events this shift is attached
@@ -874,6 +896,106 @@ class TournamentEventTrack(Base):
 
     tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
     track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventAssignment — one member staffing one event in one role,
+# optionally within one of that event's shifts.
+#
+# The role is reached through `tournament_membership_roles`, not through
+# `tournament_roles` directly: that join row already carries both the member
+# and the role, so "you can't be assigned in a role you don't hold" is a
+# property of the schema rather than a check something can forget to run.
+# Assigning a role a member lacks therefore grants it first (see
+# core/tournament/assignments.py), which is also how a TD expects it to behave.
+#
+# membership_id is kept alongside it — a member-scoped query shouldn't have to
+# join through the role row — and the composite FK below is what keeps the two
+# honest.
+#
+# Nothing here validates that the member is available, confirmed on the track,
+# or free at that time. Those are surfaced to the TD as warnings, never
+# enforced: TDs override reality constantly, and a hard block makes the tool
+# unusable (see issue #70).
+# ---------------------------------------------------------------------------
+class TournamentEventAssignment(Base):
+    __tablename__ = "tournament_event_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_event_id = Column(
+        Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # No inline ForeignKey — the composite constraint in __table_args__ is this
+    # column's FK. Declaring both would emit two overlapping constraints.
+    membership_role_id = Column(Integer, nullable=False, index=True)
+
+    # Nullable: some events (test writing) have no shifts at all, and an event
+    # that does have them can still hold an assignment that isn't pinned to one.
+    # SET NULL rather than CASCADE on detach is handled in the events route —
+    # losing a shift must not silently lose the staffing.
+    tournament_shift_id = Column(
+        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    tournament_event = relationship("TournamentEvent", back_populates="assignments")
+    # The composite FK means membership_id sits under two relationships at
+    # once; `overlaps` tells SQLAlchemy that's the design, not two mappings
+    # fighting over one column.
+    membership = relationship(
+        "TournamentMembership", back_populates="assignments", overlaps="assignments",
+    )
+    # lazy="joined" on both: every read of an assignment renders the role label
+    # and the shift window, so the hops belong in the same query rather than
+    # N+1-ing per row — same reasoning as TournamentMembershipTrackStatus.track.
+    membership_role = relationship(
+        "TournamentMembershipRole", back_populates="assignments", lazy="joined",
+        overlaps="assignments,membership",
+    )
+    tournament_shift = relationship("TournamentShift", back_populates="assignments", lazy="joined")
+
+    @property
+    def role(self) -> "TournamentRole":
+        """The role itself, one hop past the join row. Read by the assignment
+        schemas, which want a label rather than a join-row id."""
+        return self.membership_role.role
+
+    __table_args__ = (
+        # This is the column's only FK. Pairing membership_role_id with
+        # membership_id against uq_membership_role_id_membership means the
+        # database rejects an assignment whose two member references disagree,
+        # instead of trusting every write path to check.
+        ForeignKeyConstraint(
+            ["membership_role_id", "membership_id"],
+            ["tournament_membership_roles.id", "tournament_membership_roles.membership_id"],
+            ondelete="CASCADE",
+            name="fk_assignment_membership_role",
+        ),
+        # Two partial indexes, not one UniqueConstraint: Postgres treats NULLs
+        # as distinct, so a plain constraint over a nullable shift would let the
+        # same member be assigned to the same shiftless event any number of
+        # times. Same pattern as uq_tournament_event_catalog_division above.
+        Index(
+            "uq_event_assignment_with_shift",
+            "tournament_event_id", "membership_role_id", "tournament_shift_id",
+            unique=True,
+            postgresql_where=(tournament_shift_id.isnot(None)),
+        ),
+        Index(
+            "uq_event_assignment_no_shift",
+            "tournament_event_id", "membership_role_id",
+            unique=True,
+            postgresql_where=(tournament_shift_id.is_(None)),
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
