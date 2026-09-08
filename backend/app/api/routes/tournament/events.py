@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.assignments import detach_shifts_from_assignments
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, require_catalog_read, require_permission,
 )
@@ -73,6 +74,12 @@ def _apply_shifts_and_tracks(
                 detail=f"Unknown shift {sorted(missing)[0]}",
             )
         _validate_no_overlap(shifts)
+        # Assignments that named a shift being dropped are unpinned, not
+        # deleted — see detach_shifts_from_assignments. Done before the set is
+        # replaced, while the outgoing ids are still readable.
+        detach_shifts_from_assignments(
+            db, event.id, {s.id for s in event.shifts} - {s.id for s in shifts},
+        )
         event.shifts = shifts
 
     resolved: list[TournamentTrack] = list(event.tracks)

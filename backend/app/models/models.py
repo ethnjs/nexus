@@ -936,8 +936,10 @@ class TournamentEventAssignment(Base):
 
     # Nullable: some events (test writing) have no shifts at all, and an event
     # that does have them can still hold an assignment that isn't pinned to one.
-    # SET NULL rather than CASCADE on detach is handled in the events route —
-    # losing a shift must not silently lose the staffing.
+    # CASCADE covers the shift being *deleted*; a shift merely detached from
+    # the event leaves the row alone here, so the events route unpins it
+    # instead (detach_shifts_from_assignments) — losing a shift from the
+    # schedule must not silently lose the staffing.
     tournament_shift_id = Column(
         Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"),
         nullable=True, index=True,

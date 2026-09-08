@@ -258,30 +258,72 @@ class TestReadSchema:
         assert "shift" in read.model_dump()
 
 
-class TestShiftAttachment:
-    def test_an_assignment_survives_its_shift_being_detached_from_the_event(
-        self, db, td_tournament, other_user
-    ):
-        """Detaching is not deleting: the tournament_event_shifts row goes, the
-        shift itself stays, and so does the staffing that referenced it. The
-        route layer is what nulls the column; this only proves nothing at the
-        schema level cascades it away first."""
-        event = _make_event(db, td_tournament)
-        shift = _make_shift(db, td_tournament)
-        db.add(TournamentEventShift(tournament_event_id=event.id, tournament_shift_id=shift.id))
-        db.commit()
+class TestShiftDetach:
+    """Decision 4: a shift leaving an event unpins the assignments that named
+    it. Nothing at the schema level does this — the FK is to the shift, which
+    still exists — so without the route step those assignments keep naming a
+    time the event no longer runs, and read as real staffing."""
 
-        mr = _membership_role(db, td_tournament, other_user)
+    def _event_with_shift(self, client, db, tournament, user):
+        event = _make_event(db, tournament)
+        shift = _make_shift(db, tournament, label="Morning")
+        db.add(TournamentEventShift(
+            tournament_event_id=event.id, tournament_shift_id=shift.id,
+        ))
+        db.commit()
+        mr = _membership_role(db, tournament, user)
         assignment = _assign(db, event, mr, shift)
         db.commit()
+        return event, shift, assignment
 
-        db.query(TournamentEventShift).filter_by(
-            tournament_event_id=event.id, tournament_shift_id=shift.id,
-        ).delete()
-        db.commit()
+    def test_dropping_the_shift_from_the_event_unpins_the_assignment(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+        event, _, assignment = self._event_with_shift(client, db, td_tournament, other_user)
 
+        response = client.patch(
+            f"/tournaments/{td_tournament.id}/events/{event.id}/",
+            json={"shift_ids": []},
+        )
+
+        assert response.status_code == 200
         db.refresh(assignment)
-        assert assignment.tournament_shift_id == shift.id
+        assert assignment.tournament_shift_id is None
+
+    def test_the_assignment_itself_survives(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """A TD reshuffling a schedule is not saying the person is off the
+        event — losing staffing silently during a schedule edit is the kind of
+        thing nobody notices until the day."""
+        login(client, "td@test.com", "tdpass")
+        event, _, _ = self._event_with_shift(client, db, td_tournament, other_user)
+
+        client.patch(
+            f"/tournaments/{td_tournament.id}/events/{event.id}/",
+            json={"shift_ids": []},
+        )
+
+        assert db.query(TournamentEventAssignment).count() == 1
+
+    def test_a_shift_that_stays_is_left_alone(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """Only the outgoing shifts are unpinned — replacing the set must not
+        clear assignments on shifts that survived the edit."""
+        login(client, "td@test.com", "tdpass")
+        event, kept, assignment = self._event_with_shift(client, db, td_tournament, other_user)
+        added = _make_shift(db, td_tournament, label="Afternoon", hour=13)
+
+        response = client.patch(
+            f"/tournaments/{td_tournament.id}/events/{event.id}/",
+            json={"shift_ids": [kept.id, added.id]},
+        )
+
+        assert response.status_code == 200
+        db.refresh(assignment)
+        assert assignment.tournament_shift_id == kept.id
 
 
 # ---------------------------------------------------------------------------

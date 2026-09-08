@@ -1,8 +1,7 @@
 """Resolution and validation for tournament event assignments.
 
-Kept out of the route module because two of these are shared: the roles route
-needs assignments_under_role to warn before it removes a role, and the events
-route needs detach_shift_from_assignments when a shift leaves an event.
+Kept out of the route module because the events route needs
+detach_shifts_from_assignments when a shift leaves an event.
 
 The line this module holds is that **only structural errors raise**. An
 assignment that contradicts what a member said about their availability, their
@@ -88,39 +87,30 @@ def validate_shift_on_event(
         )
 
 
-def assignments_under_role(
-    db: Session, membership_id: int, role_id: int,
-) -> list[TournamentEventAssignment]:
-    """Every assignment that would disappear if this member lost this role.
+def detach_shifts_from_assignments(
+    db: Session, event_id: int, shift_ids: set[int],
+) -> int:
+    """Null the shift on this event's assignments that pointed at one of
+    `shift_ids`, returning how many were touched.
 
-    Read by the roles route before a removal: the assignment's FK cascades, so
-    dropping a role silently takes that member's staffing under it. The count
-    is what the confirm prompt is built from.
+    Called when shifts leave an event. Without it those assignments keep
+    naming a shift the event no longer runs — the row stays valid (the shift
+    itself still exists) and nothing complains, so it reads as real staffing
+    at a time that is no longer on the schedule.
+
+    Nulling rather than deleting: a TD reshuffling a schedule is not saying
+    the person is off the event. Losing staffing silently during a schedule
+    edit is exactly the kind of thing nobody notices until the day.
     """
-    return (
-        db.query(TournamentEventAssignment)
-        .join(TournamentMembershipRole,
-              TournamentEventAssignment.membership_role_id == TournamentMembershipRole.id)
-        .filter(
-            TournamentMembershipRole.membership_id == membership_id,
-            TournamentMembershipRole.role_id == role_id,
-        )
-        .all()
-    )
+    if not shift_ids:
+        return 0
 
-
-def detach_shift_from_assignments(db: Session, event_id: int, shift_id: int) -> int:
-    """Null the shift on this event's assignments that referenced it, returning
-    how many were touched.
-
-    Called when a shift is removed from an event. The assignment survives
-    shiftless rather than being deleted: a TD reshuffling a schedule is not
-    saying the person is off the event, and silently dropping staffing during
-    a schedule edit is the kind of loss nobody notices until the day.
-    """
     rows = (
         db.query(TournamentEventAssignment)
-        .filter_by(tournament_event_id=event_id, tournament_shift_id=shift_id)
+        .filter(
+            TournamentEventAssignment.tournament_event_id == event_id,
+            TournamentEventAssignment.tournament_shift_id.in_(shift_ids),
+        )
         .all()
     )
     for row in rows:
