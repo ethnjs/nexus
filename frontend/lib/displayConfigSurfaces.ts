@@ -5,4 +5,7 @@ export const MEMBERS_PANEL = "members_panel";
 // controls, and hiding a track from one shouldn't hide it from the other.
 export const MEMBERS_TABLE = "members_table";
 export const MEMBER_PAGE = "member_page";
+// The assignments board's member card. Unlike the three above it ignores saved
+// config — the card face is fixed (name, event prefs, experience), so passing
+// it as `surface` is purely a request for that field set.
 export const ASSIGNMENT_CARD = "assignment_card";

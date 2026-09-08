@@ -870,16 +870,24 @@ export interface PersonRole {
 }
 
 /**
- * How the backend credits an action: a join code's creator, an audit actor, a
- * form's author. Name and roles only — see PersonRefResponse for why it isn't
- * the whole membership.
+ * Who someone is, with no claim about what they do here. Used where the
+ * surrounding row already establishes their role — an assignment names its
+ * own, so the member's whole role list would be noise.
  */
-export interface PersonRef {
+export interface PersonNameRef {
   user_id: number
   /** null when they hold no membership in this tournament/chapter. */
   membership_id: number | null
   first_name: string | null
   last_name: string | null
+}
+
+/**
+ * How the backend credits an action: a join code's creator, an audit actor, a
+ * form's author. Name and roles only — see PersonRefResponse for why it isn't
+ * the whole membership.
+ */
+export interface PersonRef extends PersonNameRef {
   /** null = no membership here; [] = a member with no roles; absent = the viewer isn't entitled to them. */
   roles?: PersonRole[] | null
 }
@@ -947,6 +955,10 @@ export interface MembershipFull extends MembershipBase {
   // tell declined members apart from active ones.
   age_disclosure?:   'consented' | 'declined' | null
   notes?:            string | null
+  // What this member is staffing. On MembershipFull, not MembershipBase:
+  // members don't see their own assignments, and the base is what /members/me
+  // returns. Optional like every other group — absent unless asked for.
+  assignments?:      Assignment[]
   // Sections this surface's display config emptied out. A section renders
   // even with no data ("No info yet"), so an empty list no longer means
   // "hidden" — this is what says so. Reports display_config removals only:
@@ -1708,24 +1720,17 @@ export interface TournamentEventMember {
   shifts: TournamentShiftBase[]
 }
 
-/** Who someone is, with no claim about what they do here. The assignment
- *  shape below names its own role, so the member's role list would be noise. */
-export interface PersonNameRef {
-  user_id: number
-  membership_id: number | null
-  first_name: string | null
-  last_name: string | null
-}
-
 /** One member staffing one event in one role, optionally within one shift.
- *  The same shape whether it arrives from the assignments collection, from a
- *  write, or nested under an event via `fields=assignments`. */
+ *  The same shape from the assignments collection, from a write, and nested
+ *  on a membership under `fields=assignments`. */
 export interface Assignment {
   id: number
   event: TournamentEventMember
   member: PersonNameRef
-  role: { id: number | null; label: string }
-  // Null means genuinely unpinned — test writing has no shifts at all.
+  /** PersonRole, not the full role: permissions and rank are the tournament's
+   *  authorization model and have no business on a staffing chip. */
+  role: PersonRole
+  /** Null means genuinely unpinned — test writing has no shifts at all. */
   shift: TournamentShiftBase | null
   created_at: string
   updated_at: string
