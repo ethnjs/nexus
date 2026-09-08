@@ -624,15 +624,62 @@ export interface EventLoadDefaultsResponse {
   skipped: EventLoadDefaultsSkipped[]
 }
 
+/** Which field groups an event read returns. Omit for everything; pass [] for
+ *  identity only. There is no 'assignments' group — an event nesting its
+ *  assignments, each nesting that same event, is circular; fetch them from
+ *  assignmentsApi and join by event id. */
+export type EventField = 'shifts' | 'tracks' | 'location';
+
+export interface AssignmentInput {
+  tournament_event_id: number
+  membership_id: number
+  // The role to place them in. If they don't hold it, the server grants it
+  // first (rank-bound) rather than making the caller do it separately.
+  role_id: number
+  tournament_shift_id?: number | null
+}
+
+export const assignmentsApi = {
+  // Both filters optional and composable: no args reads the whole tournament
+  // (what the board wants), eventId reads one event's staffing, membershipId
+  // reads one person's.
+  list: (tournamentId: number, opts: { eventId?: number; membershipId?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.eventId !== undefined) params.set("event_id", String(opts.eventId));
+    if (opts.membershipId !== undefined) params.set("membership_id", String(opts.membershipId));
+    const query = params.toString();
+    return api.get<Assignment[]>(
+      `/tournaments/${tournamentId}/assignments/${query ? `?${query}` : ""}`,
+    );
+  },
+  create: (tournamentId: number, body: AssignmentInput) =>
+    api.post<Assignment>(`/tournaments/${tournamentId}/assignments/`, body),
+  // Omitting tournament_shift_id leaves the shift alone; sending an explicit
+  // null clears it. Those are different requests — don't collapse them.
+  update: (
+    tournamentId: number,
+    id: number,
+    body: { role_id?: number; tournament_shift_id?: number | null },
+  ) => api.patch<Assignment>(`/tournaments/${tournamentId}/assignments/${id}/`, body),
+  // Unassigning never revokes the role the assignment used — that grant is a
+  // fact about the member, not a detail of this placement.
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/assignments/${id}/`),
+};
+
 export const tournamentEventsApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
+  list: (tournamentId: number, fields?: EventField[]) => {
+    const query = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/${query}`);
+  },
   // The one catalog whose member shape differs — no room assignment, no
-  // staffing target, no times.
+  // staffing target.
   listPublic: (tournamentId: number) =>
     api.get<TournamentEventMember[]>(`/tournaments/${tournamentId}/events/?public=true`),
-  get:    (tournamentId: number, id: number) =>
-    api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
+  get:    (tournamentId: number, id: number, fields?: EventField[]) => {
+    const query = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/${query}`);
+  },
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
     api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentEventInput>) =>
@@ -849,7 +896,8 @@ export interface MembershipJoinCodeInfo {
 // these select membership *data*.
 export type MembershipField =
   | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
-  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age';
+  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age'
+  | 'assignments';
 
 // Matches MembershipBaseResponse — the membership data the member themselves
 // owns: what they answered, what they were assigned, what they're available
@@ -1006,8 +1054,12 @@ export const membersApi = {
     roleId?: number;
     excludeRoleId?: number;
     maxRank?: number;
+    // Tri-state, unlike `filters`: omit for no narrowing, false for the
+    // assignments board's unassigned belt, true for everyone already staffed.
+    assigned?: boolean;
   } = {}) => {
     const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
+    if (opts.assigned !== undefined) params.set("assigned", String(opts.assigned));
     if (opts.surface) params.set("surface", opts.surface);
     if (opts.fields) params.set("fields", opts.fields.join(","));
     if (opts.q) params.set("q", opts.q);

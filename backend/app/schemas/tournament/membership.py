@@ -3,6 +3,7 @@ from datetime import date, datetime
 from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
+from app.schemas.tournament.assignment import AssignmentRead
 from app.schemas.tournament.role import RoleRead
 from app.schemas.tournament.track import MembershipTrackStatusRead
 from app.schemas.person import PersonRefResponse
@@ -343,6 +344,11 @@ class MembershipFullResponse(MembershipBaseResponse):
     # members (?include_declined=true) tell them apart from active ones.
     age_disclosure: Optional[str] = None
     notes: Optional[str] = None
+    # What this member is staffing. On the manager view rather than the shared
+    # base on purpose: members do not see their own assignments yet, and the
+    # base is what /members/me returns.
+    assignments: list[AssignmentRead] = []
+
     # Sections the surface's display config emptied out — set by
     # apply_display_config, never by the ORM. The panel renders a section even
     # when a member has no data for it ("No info yet"), so it needs this to
@@ -350,6 +356,16 @@ class MembershipFullResponse(MembershipBaseResponse):
     # removals only: a group the client never asked for via `fields` is absent
     # from the response, which is not the same as hidden.
     hidden_sections: list[str] = []
+
+    @field_validator("assignments", mode="before")
+    @classmethod
+    def _build_assignments(cls, v):
+        """AssignmentRead is nested rather than from_attributes-flat, so
+        model_validate can't build it off the ORM rows — same reason
+        MembershipTrackStatusRead has a from_row."""
+        if not v:
+            return []
+        return [row if isinstance(row, AssignmentRead) else AssignmentRead.from_row(row) for row in v]
 
 
 class MembershipMeResponse(MembershipBaseResponse):

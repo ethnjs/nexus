@@ -691,6 +691,114 @@ class TestUpdateAndDeleteRoutes:
         assert db.query(TournamentEventAssignment).count() == 1
 
 
+class TestMembershipReads:
+    """What the board's belt and the member panel read: the `assigned` filter
+    and the `assignments` field group on the roster route."""
+
+    def _assign_other_user(self, client, db, tournament, user):
+        grant_role(db, tournament, user, "Test Writer")
+        event = _make_event(db, tournament, name="Anatomy")
+        return _post(
+            client, tournament, tournament_event_id=event.id,
+            membership_id=_membership_id(db, tournament, user),
+            role_id=_role_id(db, tournament, "Test Writer"),
+        )
+
+    def test_assigned_false_is_the_unassigned_belt(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+        url = f"/tournaments/{td_tournament.id}/members/"
+
+        unassigned = client.get(f"{url}?assigned=false").json()
+        assigned = client.get(f"{url}?assigned=true").json()
+
+        assert [m["user"]["id"] for m in assigned] == [other_user.id]
+        assert other_user.id not in [m["user"]["id"] for m in unassigned]
+        # The TD themselves is a member too, and has no assignments.
+        assert td_user.id in [m["user"]["id"] for m in unassigned]
+
+    def test_omitting_assigned_narrows_nothing(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """Tri-state: absent is not the same request as `assigned=false`, which
+        is exactly the trap a plain truth test would fall into."""
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+        url = f"/tournaments/{td_tournament.id}/members/"
+
+        assert len(client.get(url).json()) == 2
+        assert len(client.get(f"{url}?assigned=false").json()) == 1
+
+    def test_the_assignments_group_carries_them(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+
+        rows = client.get(
+            f"/tournaments/{td_tournament.id}/members/?fields=assignments&assigned=true"
+        ).json()
+
+        assert rows[0]["assignments"][0]["event"]["name"] == "Anatomy"
+        assert rows[0]["assignments"][0]["role"]["label"] == "Test Writer"
+
+    def test_an_unrequested_assignments_group_is_absent(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+
+        rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=roles").json()
+
+        assert "assignments" not in rows[0]
+
+    def test_the_member_does_not_see_their_own_assignments(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        """Scope for this run is TD-facing only — the group is declared on the
+        manager response, not the shared base that /members/me returns."""
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+        client.post("/auth/logout/")
+        login(client, "other@test.com", "otherpass")
+
+        me = client.get(f"/tournaments/{td_tournament.id}/members/me/").json()
+
+        assert "assignments" not in me
+
+
+class TestAssignmentCardSurface:
+    def test_it_narrows_to_the_card_face(self, client, db, td_user, td_tournament, other_user):
+        """Per #70 the card is name, event preferences and a compressed
+        experience summary. No email or phone — no room, and neither informs
+        an assignment decision."""
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        login(client, "td@test.com", "tdpass")
+
+        row = client.get(
+            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card"
+        ).json()[0]
+
+        assert "event_preferences" in row
+        assert "track_statuses" in row
+        assert "email" not in row["user"]
+        assert "phone" not in row["user"]
+
+    def test_identity_survives_the_narrowing(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+
+        row = client.get(
+            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card"
+        ).json()[0]
+
+        assert row["user"]["first_name"]
+        assert row["id"]
+
+
 class TestAudit:
     def test_the_auto_grant_is_recorded(self, client, db, td_user, td_tournament, other_user):
         """A permission change no role_updated entry would otherwise capture."""

@@ -464,6 +464,17 @@ _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
 }
 
 
+# The assignments board's member card. Fixed rather than TD-configurable:
+# a card is roughly a business card of screen space with ~45 of them on a
+# belt, and per issue #70 its face is name, event preferences with ranks, and
+# a compressed experience summary — nothing else. Email and phone are
+# deliberately out; there is no room, and neither informs an assignment.
+#
+# Identity (the name) is not a group, so it needs no entry here — see rule 3
+# in field_groups.py.
+_ASSIGNMENT_CARD_GROUPS = frozenset({"event_prefs", "tracks", "profile"})
+
+
 def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[str] | None:
     """The field groups `surface` needs, or None for "no opinion".
 
@@ -471,6 +482,11 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     Only the surfaces whose config actually enumerates what they show can
     narrow; anything else abstains rather than guessing.
     """
+    # Not driven by saved config, unlike the three below: the card's face is
+    # fixed by the issue, so there is nothing per-viewer to read.
+    if surface == ASSIGNMENT_CARD:
+        return _ASSIGNMENT_CARD_GROUPS
+
     if surface not in (MEMBERS_TABLE, MEMBERS_PANEL, MEMBER_PAGE):
         return None
 

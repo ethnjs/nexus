@@ -20,9 +20,10 @@ from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentMembership, TournamentMembershipAvailability, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentMembershipRole, TournamentMembershipTrackStatus,
-    TournamentRole, User, UserCompetitionExperience, UserVolunteerExperience,
+    TournamentEventAssignment, TournamentMembership, TournamentMembershipAvailability,
+    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentMembershipRole,
+    TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
+    UserVolunteerExperience,
 )
 
 # Sentinel accepted in the `role` filter for members holding no roles at all.
@@ -113,6 +114,7 @@ def apply_member_filters(
     volunteer_events: list[int] | None = None,
     age_flags: list[str] | None = None,
     shifts: list[str] | None = None,
+    assigned: bool | None = None,
 ) -> Query:
     """Narrows a TournamentMembership query by the roster's filter params.
 
@@ -212,6 +214,20 @@ def apply_member_filters(
                 (TournamentMembershipAvailability.membership_id == TournamentMembership.id)
                 & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
             ))
+
+    if assigned is not None:
+        # Tri-state, unlike the list filters above: absent means no narrowing
+        # at all, which is why this is `is not None` and not a truth test —
+        # `assigned=false` is a real request (the board's unassigned belt) and
+        # must not read as "no filter".
+        #
+        # Deliberately "holds no assignment anywhere in this tournament",
+        # not "on the event in focus". A member staffing one event is placed;
+        # the belt is who hasn't been placed at all.
+        staffed = exists().where(
+            TournamentEventAssignment.membership_id == TournamentMembership.id
+        )
+        query = query.filter(staffed if assigned else ~staffed)
 
     return query
 

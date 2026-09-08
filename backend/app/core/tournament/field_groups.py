@@ -97,6 +97,7 @@ EVENT_PREFS = "event_prefs"
 CUSTOM = "custom"
 NOTES = "notes"
 AGE = "age"
+ASSIGNMENTS = "assignments"
 
 GROUPS: dict[str, FieldGroup] = {
     CONTACT: FieldGroup(
@@ -173,6 +174,14 @@ GROUPS: dict[str, FieldGroup] = {
     AGE: FieldGroup(
         name=AGE,
         keys=frozenset({"is_over_18", "is_over_21"}),
+    ),
+    # What this member is staffing. Declared on MembershipFullResponse only —
+    # the Me response doesn't carry it, so asking for this group on /members/me
+    # narrows nothing rather than leaking assignments to the member.
+    ASSIGNMENTS: FieldGroup(
+        name=ASSIGNMENTS,
+        keys=frozenset({"assignments"}),
+        relationships=("assignments",),
     ),
 }
 
@@ -255,15 +264,24 @@ def loader_options(requested: frozenset[str] | None) -> list:
     varies with `fields`.
     """
     from app.models.models import (
-        TournamentMembership, TournamentMembershipAvailability,
-        TournamentMembershipRole, User,
+        TournamentEvent, TournamentEventAssignment, TournamentMembership,
+        TournamentMembershipAvailability, TournamentMembershipRole, User,
     )
 
-    # Relationships needing a further hop to be usable: the role behind a
-    # membership-role join row, the shift behind an availability row.
+    # Relationships needing further hops to be usable: the role behind a
+    # membership-role join row, the shift behind an availability row, and the
+    # four an AssignmentRead flattens. Tuples, since one relationship can need
+    # several.
     NESTED = {
-        "roles": joinedload(TournamentMembershipRole.role),
-        "availability_shifts": joinedload(TournamentMembershipAvailability.tournament_shift),
+        "roles": (joinedload(TournamentMembershipRole.role),),
+        "availability_shifts": (joinedload(TournamentMembershipAvailability.tournament_shift),),
+        "assignments": (
+            joinedload(TournamentEventAssignment.tournament_event).joinedload(TournamentEvent.event),
+            joinedload(TournamentEventAssignment.tournament_event).selectinload(TournamentEvent.shifts),
+            joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentEventAssignment.tournament_shift),
+            joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
+        ),
     }
 
     options = []
@@ -276,7 +294,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)
-            options.append(option.options(nested) if nested is not None else option)
+            options.append(option.options(*nested) if nested is not None else option)
 
         for rel in group.user_relationships:
             attr = getattr(User, rel)

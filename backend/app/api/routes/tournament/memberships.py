@@ -155,6 +155,9 @@ def list_memberships(
     volunteer_event: list[int] = Query(default=[]),
     age: list[str] = Query(default=[]),
     shift: list[str] = Query(default=[]),
+    # Tri-state, unlike the list filters above: absent means no narrowing,
+    # false is the board's unassigned belt. See apply_member_filters.
+    assigned: bool | None = Query(default=None),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -187,7 +190,7 @@ def list_memberships(
         tournament=tournament,
         roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
         competition_events=competition_event, volunteer_events=volunteer_event,
-        age_flags=age, shifts=shift,
+        age_flags=age, shifts=shift, assigned=assigned,
     )
     query = apply_member_search(
         query, db,
