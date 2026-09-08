@@ -1,6 +1,10 @@
 from __future__ import annotations
 from datetime import datetime
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+
+from app.schemas.person import PersonNameRef, PersonRoleRead
+from app.schemas.tournament.event import EventMemberRead
+from app.schemas.tournament.shift import TournamentShiftBase
 
 
 # ---------------------------------------------------------------------------
@@ -33,104 +37,51 @@ class AssignmentUpdate(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Read schemas
+# Read schema
+#
+# One shape, not one per position. This is returned by the writes, by the
+# assignments collection, and nested under an event via `fields=assignments`
+# — three callers, one audience (a TD; every path is gated identically). A
+# second, trimmer schema for the nested position would be a schema per caller,
+# which is what `fields` exists to avoid.
+#
+# Nested rather than flattened, and every nested type is one that already
+# exists. An assignment is a join, so it should read as the things it joins;
+# flattening them into event_name/first_name/role_label meant re-plumbing this
+# schema every time an event or a person grew a field.
 # ---------------------------------------------------------------------------
-class AssignmentShiftRead(BaseModel):
-    """The shift an assignment sits in, or null when it isn't pinned to one.
-
-    `start`/`end` ride along rather than being looked up per chip: the board
-    derives its double-booking warning from them client-side, and `track_id`
-    is what pairs an assignment with the member's status on that track. Both
-    warnings would otherwise need a second request per assignment.
-    """
-    id: int
-    track_id: int
-    label: str
-    start: datetime
-    end: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class AssignmentRead(BaseModel):
-    """One assignment, as the assignments collection returns it.
-
-    Carries the event, member and role *names* alongside their ids, the same
-    bargain MembershipTrackStatusRead strikes with track names — a renderer
-    should never need a second catalog request to draw a row it was just
-    handed.
-
-    `membership_role_id` is exposed even though no caller writes it: it is the
-    row's real identity, and surfacing it makes the "this assignment is why
-    that role can't be removed" link traceable from the client.
-    """
     id: int
-    tournament_event_id: int
-    event_name: str | None
-    membership_id: int
-    first_name: str
-    last_name: str
-    membership_role_id: int
-    role_id: int
-    role_label: str
-    shift: AssignmentShiftRead | None
+    # The member-facing event shape: enough to name and place an event, none
+    # of the room/staffing detail the board's chips don't show.
+    event: EventMemberRead
+    # Not PersonRefResponse — the assignment names its own role just below, so
+    # the member's full role list would be noise. See PersonNameRef.
+    member: PersonNameRef
+    # PersonRoleRead, not RoleRead: `permissions` and `rank` are the
+    # tournament's authorization model and have no business on a staffing chip.
+    role: PersonRoleRead
+    # Null means genuinely unpinned — a real answer, not "you didn't ask".
+    # start/end/track_id ride along because the board derives its
+    # double-booking and track-status warnings from them client-side.
+    shift: TournamentShiftBase | None
     created_at: datetime
     updated_at: datetime
 
     @classmethod
     def from_row(cls, row) -> "AssignmentRead":
-        """Flattens four relationships — none of these names live on the
-        assignment row itself, so from_attributes alone can't build this."""
-        user = row.membership.user
         return cls(
             id=row.id,
-            tournament_event_id=row.tournament_event_id,
-            # display_name, not .name: a catalog-linked event carries its name
-            # on the joined Event row and reads back nameless without this.
-            event_name=row.tournament_event.display_name,
-            membership_id=row.membership_id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            membership_role_id=row.membership_role_id,
-            role_id=row.membership_role.role_id,
-            role_label=row.membership_role.role.label,
+            event=EventMemberRead.from_row(row.tournament_event),
+            member=PersonNameRef.from_membership(row.membership),
+            role=PersonRoleRead(
+                id=row.membership_role.role_id,
+                label=row.membership_role.role.label,
+            ),
             shift=(
-                AssignmentShiftRead.model_validate(row.tournament_shift)
+                TournamentShiftBase.model_validate(row.tournament_shift)
                 if row.tournament_shift is not None else None
             ),
             created_at=row.created_at,
             updated_at=row.updated_at,
-        )
-
-
-class EventAssignmentRead(BaseModel):
-    """The same assignment as an event embeds it, under `fields=assignments`.
-
-    A separate schema from AssignmentRead because the audience differs, not
-    the caller: an event's own row already establishes which event this is, so
-    repeating `tournament_event_id`/`event_name` on every nested assignment is
-    noise. This is a chip face — who, in what role, when.
-    """
-    id: int
-    membership_id: int
-    first_name: str
-    last_name: str
-    role_id: int
-    role_label: str
-    shift: AssignmentShiftRead | None
-
-    @classmethod
-    def from_row(cls, row) -> "EventAssignmentRead":
-        user = row.membership.user
-        return cls(
-            id=row.id,
-            membership_id=row.membership_id,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            role_id=row.membership_role.role_id,
-            role_label=row.membership_role.role.label,
-            shift=(
-                AssignmentShiftRead.model_validate(row.tournament_shift)
-                if row.tournament_shift is not None else None
-            ),
         )

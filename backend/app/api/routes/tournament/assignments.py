@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import resolve_membership_role, validate_shift_on_event
@@ -31,6 +31,9 @@ def _with_relations(query):
     lazy loads that pydantic triggers one row at a time."""
     return query.options(
         joinedload(TournamentEventAssignment.tournament_event).joinedload(TournamentEvent.event),
+        # EventMemberRead now carries the event's shifts, so the nested event
+        # needs them loaded or every assignment costs a query for them.
+        joinedload(TournamentEventAssignment.tournament_event).selectinload(TournamentEvent.shifts),
         joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
         joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
         joinedload(TournamentEventAssignment.tournament_shift),

@@ -4,7 +4,7 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 from app.schemas.event import EventResponse
 from app.schemas.tournament import VALID_DIVISIONS
-from app.schemas.tournament.shift import TournamentShiftRead
+from app.schemas.tournament.shift import TournamentShiftBase, TournamentShiftRead
 from app.schemas.tournament.track import TournamentTrackRead
 
 VALID_EVENT_TYPES = {"standard", "trial"}
@@ -133,27 +133,37 @@ class EventRead(BaseModel):
 
 
 class EventMemberRead(BaseModel):
-    """The member-facing event shape (?public=true).
+    """The member-facing event shape (?public=true), and the shape any other
+    response embeds when it needs to name an event — an assignment, say.
 
-    Deliberately only what names an event: `building`/`room`/`floor` are the
-    physical assignment, which stays staff-side until the day, and
-    `volunteers_needed` is a staffing target rather than anything a member
-    acts on. The shifts and tracks are out too — they're a by-product of
-    whatever happens to be attached yet, so publishing them would imply a
-    schedule the TD hasn't committed to.
+    Still not the staff shape: `building`/`room`/`floor` are the physical
+    assignment, which stays staff-side until the day, and `volunteers_needed`
+    is a staffing target rather than anything a member acts on.
 
-    Matches the {id, name, division} shape resolve_field_options already
-    gives an event_preference option, so one renderer serves both.
+    `shifts` used to be excluded on the grounds that publishing them implied a
+    schedule the TD hadn't committed to. That no longer holds: members already
+    answer availability questions built from these exact shifts, so the
+    schedule is not a secret being leaked — it is the thing they were asked
+    about. `event_type` joins it because "trial" is something a member should
+    be able to see before signing up for an event.
     """
     id: int
     name: str | None = None
     division: str | None = None
+    event_type: str = "standard"
+    shifts: list[TournamentShiftBase] = []
 
     @classmethod
     def from_row(cls, event) -> "EventMemberRead":
         # display_name, not name: a catalog-linked event carries its name on
         # the joined canonical Event, leaving its own column null.
-        return cls(id=event.id, name=event.display_name, division=event.division)
+        return cls(
+            id=event.id,
+            name=event.display_name,
+            division=event.division,
+            event_type=event.event_type,
+            shifts=[TournamentShiftBase.model_validate(s) for s in event.shifts],
+        )
 
 
 class EventLoadDefaultsSkipped(BaseModel):

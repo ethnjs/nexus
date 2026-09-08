@@ -519,7 +519,9 @@ export const adminTournamentsApi = {
 // Tournament Shifts — nested under /tournaments/{id}/shifts/, and attached
 // to events via /tournaments/{id}/events/{eventId}/shifts/{shiftId}/
 // -------------------------------------------------------------------------
-export interface TournamentShift {
+/** A shift reduced to when and where it is — what a reader that only needs to
+ *  name a shift gets (a member-facing event, an assignment). */
+export interface TournamentShiftBase {
   id:            number
   tournament_id: number
   // The primary track whose day this shift falls on. Required — a shift with
@@ -528,8 +530,12 @@ export interface TournamentShift {
   label:         string
   start:         string
   end:           string
+}
+
+export interface TournamentShift extends TournamentShiftBase {
   // How many TournamentEvents this shift is currently attached to — drives
-  // the "attached to N events" delete-confirm warning.
+  // the "attached to N events" delete-confirm warning. Absent from the base:
+  // it costs a join per shift and means nothing outside the shift catalog.
   event_count:   number
   created_at:    string
   updated_at:    string
@@ -1639,11 +1645,38 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
-/** The member-facing event shape (?public=true) — only what names an event. */
+/** The member-facing event shape (?public=true), and what any response embeds
+ *  when it needs to name an event — an assignment, say. Still not the staff
+ *  shape: no building/room/floor, no volunteers_needed. */
 export interface TournamentEventMember {
   id: number
   name: string | null
   division: string | null
+  event_type: string
+  shifts: TournamentShiftBase[]
+}
+
+/** Who someone is, with no claim about what they do here. The assignment
+ *  shape below names its own role, so the member's role list would be noise. */
+export interface PersonNameRef {
+  user_id: number
+  membership_id: number | null
+  first_name: string | null
+  last_name: string | null
+}
+
+/** One member staffing one event in one role, optionally within one shift.
+ *  The same shape whether it arrives from the assignments collection, from a
+ *  write, or nested under an event via `fields=assignments`. */
+export interface Assignment {
+  id: number
+  event: TournamentEventMember
+  member: PersonNameRef
+  role: { id: number | null; label: string }
+  // Null means genuinely unpinned — test writing has no shifts at all.
+  shift: TournamentShiftBase | null
+  created_at: string
+  updated_at: string
 }
 
 export interface MemberForm {

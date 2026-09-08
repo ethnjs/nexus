@@ -16,7 +16,7 @@ from app.models.models import (
     TournamentEvent, TournamentEventAssignment, TournamentEventShift,
     TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift,
 )
-from app.schemas.tournament.assignment import AssignmentRead, EventAssignmentRead
+from app.schemas.tournament.assignment import AssignmentRead
 
 
 def _make_event(db, tournament, name="Boomilever"):
@@ -178,13 +178,12 @@ class TestCascades:
         assert db.query(TournamentEventAssignment).count() == 0
 
 
-class TestReadSchemas:
-    """from_row flattens four relationships — none of these names live on the
-    assignment row, so from_attributes alone can't build either schema."""
+class TestReadSchema:
+    """An assignment is a join, so it reads as the things it joins — nested
+    event/member/role/shift objects, every one of them a type that already
+    existed. No flattened event_name/first_name/role_label."""
 
-    def test_assignment_read_flattens_event_member_role_and_shift(
-        self, db, td_tournament, other_user
-    ):
+    def test_it_nests_the_event_member_role_and_shift(self, db, td_tournament, other_user):
         event = _make_event(db, td_tournament, name="Anatomy")
         shift = _make_shift(db, td_tournament, label="Morning")
         mr = _membership_role(db, td_tournament, other_user, "Test Writer")
@@ -193,13 +192,40 @@ class TestReadSchemas:
 
         read = AssignmentRead.from_row(row)
 
-        assert read.event_name == "Anatomy"
-        assert (read.first_name, read.last_name) == (other_user.first_name, other_user.last_name)
-        assert read.role_label == "Test Writer"
-        assert read.membership_role_id == mr.id
+        assert read.event.name == "Anatomy"
+        assert read.event.division == "C"
+        assert read.member.user_id == other_user.id
+        assert read.member.membership_id == mr.membership_id
+        assert (read.member.first_name, read.member.last_name) == (
+            other_user.first_name, other_user.last_name,
+        )
+        assert read.role.label == "Test Writer"
         assert read.shift is not None
         assert read.shift.label == "Morning"
         assert read.shift.track_id == primary_track_id(db, td_tournament.id)
+
+    def test_the_member_carries_no_role_list(self, db, td_tournament, other_user):
+        """PersonNameRef, not PersonRefResponse: the assignment names its own
+        role, and PersonRefResponse's `roles: null` would positively assert
+        "holds no membership here", which is false for an assigned member."""
+        event = _make_event(db, td_tournament)
+        mr = _membership_role(db, td_tournament, other_user)
+        row = _assign(db, event, mr, None)
+        db.commit()
+
+        assert "roles" not in AssignmentRead.from_row(row).member.model_dump()
+
+    def test_the_nested_shift_omits_event_count(self, db, td_tournament, other_user):
+        """TournamentShiftBase, not TournamentShiftRead — event_count drives
+        the shift catalog's delete warning and would cost a join per shift
+        here to count events nobody asked about."""
+        event = _make_event(db, td_tournament)
+        shift = _make_shift(db, td_tournament)
+        mr = _membership_role(db, td_tournament, other_user)
+        row = _assign(db, event, mr, shift)
+        db.commit()
+
+        assert "event_count" not in AssignmentRead.from_row(row).shift.model_dump()
 
     def test_event_name_resolves_through_the_catalog_row(
         self, db, td_tournament, other_user, event_factory, event_category
@@ -215,7 +241,7 @@ class TestReadSchemas:
         row = _assign(db, event, mr, None)
         db.commit()
 
-        assert AssignmentRead.from_row(row).event_name == "Codebusters"
+        assert AssignmentRead.from_row(row).event.name == "Codebusters"
 
     def test_shift_is_null_not_omitted_when_the_assignment_has_none(
         self, db, td_tournament, other_user
@@ -227,24 +253,9 @@ class TestReadSchemas:
         row = _assign(db, event, mr, None)
         db.commit()
 
-        assert AssignmentRead.from_row(row).shift is None
-        assert "shift" in AssignmentRead.from_row(row).model_dump()
-
-    def test_event_assignment_read_drops_the_event_it_is_nested_under(
-        self, db, td_tournament, other_user
-    ):
-        """The chip face. The event row already says which event this is, so
-        repeating it on every nested assignment is noise."""
-        event = _make_event(db, td_tournament)
-        mr = _membership_role(db, td_tournament, other_user)
-        row = _assign(db, event, mr, None)
-        db.commit()
-
-        dumped = EventAssignmentRead.from_row(row).model_dump()
-
-        assert "tournament_event_id" not in dumped
-        assert "event_name" not in dumped
-        assert dumped["role_label"] == "Test Writer"
+        read = AssignmentRead.from_row(row)
+        assert read.shift is None
+        assert "shift" in read.model_dump()
 
 
 class TestShiftAttachment:
@@ -313,8 +324,8 @@ class TestCreateRoute:
 
         assert response.status_code == 201
         body = response.json()
-        assert body["event_name"] == "Anatomy"
-        assert body["role_label"] == "Test Writer"
+        assert body["event"]["name"] == "Anatomy"
+        assert body["role"]["label"] == "Test Writer"
         assert body["shift"] is None
 
     def test_grants_the_role_when_the_member_does_not_hold_it(
@@ -585,7 +596,7 @@ class TestUpdateAndDeleteRoutes:
         )
 
         assert response.status_code == 200
-        assert response.json()["role_label"] == "Test Reviewer"
+        assert response.json()["role"]["label"] == "Test Reviewer"
         assert response.json()["shift"]["id"] == shift.id
 
     def test_an_explicit_null_clears_the_shift(self, client, db, td_user, td_tournament, other_user):

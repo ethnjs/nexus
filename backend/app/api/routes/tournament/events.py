@@ -1,7 +1,7 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import (
@@ -155,9 +155,14 @@ def list_events(
     get_tournament(tournament_id, db)
 
     query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
-    if not public:
-        # Only the staff shape carries shifts and tracks; loading them for a
-        # member read would be joins nobody looks at.
+    if public:
+        # The member shape carries shifts now (see EventMemberRead), but not
+        # their event_count — so a plain load, without the extra hop the staff
+        # shape needs below to compute it.
+        query = query.options(selectinload(TournamentEvent.shifts))
+    else:
+        # Only the staff shape carries tracks, and only it needs each shift's
+        # attached events to render event_count.
         query = query.options(
             joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events),
             # TournamentTrackRead embeds the university, so load it here too —

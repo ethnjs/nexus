@@ -22,6 +22,18 @@ def _make_event(client, tournament_id, **overrides):
     return client.post(f"/tournaments/{tournament_id}/events/", json=payload)
 
 
+def _make_shift(client, tournament_id, **overrides):
+    tracks = client.get(f"/tournaments/{tournament_id}/tracks/?public=true").json()
+    payload = {
+        "track_id": next(t for t in tracks if t["is_primary"])["id"],
+        "label": "Shift 1",
+        "start": EVENT_DATE + "T08:00:00Z",
+        "end": EVENT_DATE + "T12:00:00Z",
+    }
+    payload.update(overrides)
+    return client.post(f"/tournaments/{tournament_id}/shifts/", json=payload)
+
+
 # ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
@@ -211,14 +223,34 @@ def test_list_events_public_readable_by_plain_member(client, td_user, other_tour
 
 def test_list_events_public_omits_location_and_staffing(client, td_user, td_tournament):
     """Room assignment stays staff-side until the day, and volunteers_needed
-    is a planning target — the member shape is only what names an event."""
+    is a planning target. Shifts and event_type are *not* withheld: members
+    already answer availability questions built from these same shifts, and
+    whether an event is trial is something they should see before signing up."""
     login(client, "td@test.com", "tdpass")
     _make_event(
         client, td_tournament.id, name="Boomilever", division="C",
         building="Science Hall", room="204", floor="2", volunteers_needed=6,
     )
     rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
-    assert set(rows[0]) == {"id", "name", "division"}
+    assert set(rows[0]) == {"id", "name", "division", "event_type", "shifts"}
+
+
+def test_list_events_public_carries_shifts_without_event_count(
+    client, td_user, td_tournament,
+):
+    """TournamentShiftBase, not TournamentShiftRead — event_count exists for
+    the shift catalog's delete warning and would cost a join per shift here."""
+    login(client, "td@test.com", "tdpass")
+    shift_id = _make_shift(client, td_tournament.id).json()["id"]
+    _make_event(client, td_tournament.id, name="Boomilever", division="C",
+                shift_ids=[shift_id])
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/events/?public=true").json()
+    shift = rows[0]["shifts"][0]
+
+    assert shift["id"] == shift_id
+    assert "event_count" not in shift
+    assert {"track_id", "label", "start", "end"} <= set(shift)
 
 
 def test_list_events_public_uses_display_name_for_catalog_events(
