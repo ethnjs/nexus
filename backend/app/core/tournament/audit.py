@@ -28,12 +28,19 @@ OWNERSHIP_TRANSFERRED = "ownership_transferred"
 TRACK_DELETE_PENDING = "track_delete_pending"
 TRACK_DELETE_CANCELLED = "track_delete_cancelled"
 TRACK_PURGED = "track_purged"
+# Staffing changes. Logged partly for provenance, but mainly because creating
+# an assignment can grant the member a role as a side effect — a permission
+# change that no role_updated entry would otherwise record.
+ASSIGNMENT_CREATED = "assignment_created"
+ASSIGNMENT_UPDATED = "assignment_updated"
+ASSIGNMENT_DELETED = "assignment_deleted"
 
 ALL_ACTIONS: list[str] = [
     ROLE_CREATED, ROLE_UPDATED, ROLE_DELETED,
     JOIN_CODE_CREATED, JOIN_CODE_UPDATED, JOIN_CODE_DEACTIVATED, STAFF_INVITE_SENT,
     TOURNAMENT_VERIFIED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED, OWNERSHIP_TRANSFERRED,
     TRACK_DELETE_PENDING, TRACK_DELETE_CANCELLED, TRACK_PURGED,
+    ASSIGNMENT_CREATED, ASSIGNMENT_UPDATED, ASSIGNMENT_DELETED,
 ]
 
 
