@@ -215,6 +215,85 @@ def test_list_events_non_member_gets_404(client, td_user, other_tournament):
 # ?public=true — the member-facing read
 # ---------------------------------------------------------------------------
 
+class TestFieldSelection:
+    """The three rules the `fields` registry exists to keep: absent means
+    everything, an unrequested group is absent rather than null, and identity
+    is never a group."""
+
+    def _one_event(self, client, tournament_id):
+        shift_id = _make_shift(client, tournament_id).json()["id"]
+        _make_event(
+            client, tournament_id, name="Boomilever", division="C",
+            building="Science Hall", room="204", volunteers_needed=6,
+            shift_ids=[shift_id],
+        )
+
+    def test_omitting_fields_returns_everything(self, client, td_user, td_tournament):
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+
+        row = client.get(f"/tournaments/{td_tournament.id}/events/").json()[0]
+
+        assert {"shifts", "tracks", "building", "room", "volunteers_needed"} <= set(row)
+
+    def test_an_unrequested_group_is_absent_not_null(self, client, td_user, td_tournament):
+        """The distinction the whole scheme rests on: null means "no value",
+        a missing key means "you didn't ask"."""
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+
+        row = client.get(f"/tournaments/{td_tournament.id}/events/?fields=shifts").json()[0]
+
+        assert "shifts" in row
+        assert "building" not in row
+        assert "tracks" not in row
+
+    def test_identity_survives_the_narrowest_request(self, client, td_user, td_tournament):
+        """An empty `fields` is a real answer — identity and nothing else —
+        and a caller must never be handed a row it cannot identify."""
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+
+        row = client.get(f"/tournaments/{td_tournament.id}/events/?fields=").json()[0]
+
+        assert {"id", "tournament_id", "name", "division", "event_type"} <= set(row)
+        assert "shifts" not in row
+
+    def test_an_unknown_group_is_rejected(self, client, td_user, td_tournament):
+        """A typo should fail the request, not silently drop a section."""
+        login(client, "td@test.com", "tdpass")
+
+        response = client.get(f"/tournaments/{td_tournament.id}/events/?fields=shifts,bogus")
+
+        assert response.status_code == 422
+        assert "bogus" in response.json()["detail"]
+
+    def test_it_narrows_the_single_event_read_too(self, client, td_user, td_tournament):
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+        event_id = client.get(f"/tournaments/{td_tournament.id}/events/").json()[0]["id"]
+
+        row = client.get(
+            f"/tournaments/{td_tournament.id}/events/{event_id}/?fields=location"
+        ).json()
+
+        assert row["building"] == "Science Hall"
+        assert "shifts" not in row
+
+    def test_fields_does_not_apply_to_the_member_shape(self, client, td_user, td_tournament):
+        """`public` picks the audience, `fields` narrows within the staff
+        shape. The member read is already minimal, so `fields` is ignored
+        rather than given a second meaning there."""
+        login(client, "td@test.com", "tdpass")
+        self._one_event(client, td_tournament.id)
+
+        row = client.get(
+            f"/tournaments/{td_tournament.id}/events/?public=true&fields=location"
+        ).json()[0]
+
+        assert set(row) == {"id", "name", "division", "event_type", "shifts"}
+
+
 def test_list_events_public_readable_by_plain_member(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
