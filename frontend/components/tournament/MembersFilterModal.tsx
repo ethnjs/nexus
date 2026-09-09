@@ -39,6 +39,18 @@ function usableValues(key: string, values: Set<string>): string[] {
   return PAIRED_KEYS.includes(key as MembersFilterKey) ? list.filter((v) => v.includes(":")) : list;
 }
 
+/** `assigned`'s two values collapse to the boolean the backend's dedicated
+ *  `assigned` query param wants (see membersApi.list) — it isn't a repeated
+ *  filter value like the rest of this state, so membersFilterParams excludes
+ *  it and every caller pulls it separately through this helper. Both
+ *  selected, like neither, means "no narrowing" — the same "both = no
+ *  filter" rule Age and every other button-group section here follows. */
+export function membersFilterAssigned(filters: MembersFilterState): boolean | undefined {
+  const has = (v: string) => filters.assigned.has(v);
+  if (has("assigned") === has("unassigned")) return undefined;
+  return has("assigned");
+}
+
 /** The saved wire shape (arrays, keyed by filter) back into filter state.
     Unknown keys are dropped and unknown value shapes ignored — a filter
     removed in a later release must not come back as a chip that narrows
@@ -56,10 +68,12 @@ export function membersFilterFromStored(
   return state;
 }
 
-/** The committed filters as repeatable query params, empty keys dropped. */
+/** The committed filters as repeatable query params, empty keys dropped.
+ *  Excludes `assigned` — see membersFilterAssigned. */
 export function membersFilterParams(filters: MembersFilterState): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(filters)
+      .filter(([key]) => key !== "assigned")
       .map(([key, values]) => [key, usableValues(key, values)] as const)
       .filter(([, values]) => values.length > 0),
   );
