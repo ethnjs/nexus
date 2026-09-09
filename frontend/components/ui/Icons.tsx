@@ -495,6 +495,15 @@ export function IconCalendar({ size = 13, ...props }: IconProps) {
 }
 
 
+export function IconClock({ size = 13, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64zM296 168C296 154.7 306.7 144 320 144C333.3 144 344 154.7 344 168L344 304L440 304C453.3 304 464 314.7 464 328C464 341.3 453.3 352 440 352L320 352C306.7 352 296 341.3 296 328L296 168z" />
+    </svg>
+  );
+}
+
+
 export function IconLocation({ size = 13, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={props.style} className={props.className}>

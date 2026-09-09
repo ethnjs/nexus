@@ -17,6 +17,7 @@
  * unrepresentable rather than merely unusual.
  */
 import type { Assignment, MembershipFull, TournamentShiftBase } from "@/lib/api";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 
 export type FlagCode =
   | "unavailable"
@@ -140,7 +141,7 @@ export function assignmentFlags(
       flags.push({
         code: "double_booked",
         label: "Double-booked",
-        detail: `Also assigned to ${clash.event.name ?? "another event"} at this time.`,
+        detail: `Also assigned to ${eventNameWithDivision(clash.event)} at this time.`,
       });
     }
   }

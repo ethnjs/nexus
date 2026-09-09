@@ -5,42 +5,54 @@ interface EmptyStateProps {
   title: string
   description?: string
   action?: ReactNode
+  /**
+   * `md` (default) is the full-page box: 240px tall, stacked, serif title.
+   * `sm` is a one-line strip that fills its container's width and takes only
+   * the height it needs — for an empty slot *inside* a populated page, like
+   * an unstaffed row on a board, where the tall box would dwarf the rows
+   * around it and repeat down the page.
+   */
+  size?: 'sm' | 'md'
 }
 
-export function EmptyState({ icon, title, description, action }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, size = 'md' }: EmptyStateProps) {
+  const compact = size === 'sm'
   return (
     <div style={{
-      display: 'flex', flexDirection: 'column',
+      display: 'flex',
+      flexDirection: compact ? 'row' : 'column',
       alignItems: 'center', justifyContent: 'center',
-      height: '240px', gap: '12px', textAlign: 'center',
+      height: compact ? undefined : '240px',
+      padding: compact ? '10px 12px' : undefined,
+      gap: compact ? '8px' : '12px', textAlign: 'center',
       border: '1px dashed var(--color-border)',
-      borderRadius: 'var(--radius-lg)',
+      borderRadius: compact ? 'var(--radius-md)' : 'var(--radius-lg)',
       background: 'var(--color-surface)',
     }}>
       {icon && (
-        <div style={{ color: 'var(--color-text-tertiary)' }}>
+        <div style={{ color: 'var(--color-text-tertiary)', display: 'flex' }}>
           {icon}
         </div>
       )}
       <p style={{
-        fontFamily: 'Georgia, serif',
-        fontSize: '20px',
-        color: 'var(--color-text-primary)',
+        fontFamily: compact ? 'var(--font-sans)' : 'Georgia, serif',
+        fontSize: compact ? '12px' : '20px',
+        color: compact ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
       }}>
         {title}
       </p>
       {description && (
         <p style={{
           fontFamily: 'var(--font-sans)',
-          fontSize: '13px',
+          fontSize: compact ? '12px' : '13px',
           color: 'var(--color-text-secondary)',
-          maxWidth: '260px',
+          maxWidth: compact ? undefined : '260px',
         }}>
           {description}
         </p>
       )}
       {action && (
-        <div style={{ marginTop: '4px' }}>
+        <div style={{ marginTop: compact ? 0 : '4px' }}>
           {action}
         </div>
       )}
