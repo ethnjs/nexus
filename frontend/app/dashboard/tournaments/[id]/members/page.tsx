@@ -28,7 +28,7 @@ import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedir
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
   MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
-  membersFilterAssigned, membersFilterFromStored, emptyMembersFilter,
+  membersFilterAssigned, membersFilterFromStored, membersFilterToStored, emptyMembersFilter,
 } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
@@ -386,7 +386,10 @@ export default function MembersPage() {
 
   const applyFilters = useCallback((next: MembersFilterState) => {
     setFilters(next);
-    persistView({ filters: membersFilterParams(next) });
+    // Not membersFilterParams: that drops `assigned`, which the roster query
+    // sends as its own bool param — saved state has no such split, and
+    // persisting the query shape lost the Assigned filter on every reload.
+    persistView({ filters: membersFilterToStored(next) });
   }, [persistView]);
 
   const applySort = useCallback((field: SortField, direction: SortDir) => {
