@@ -15,7 +15,7 @@ from app.core.tournament.tracks import (
     live_primary_track_count, track_blocking_references, track_member_data_count,
 )
 from app.db.session import get_db
-from app.models.models import TournamentTrack, User
+from app.models.models import TournamentRole, TournamentTrack, User
 from app.schemas.tournament.track import (
     TournamentTrackCreate, TournamentTrackDeleteResult, TournamentTrackRead,
     TournamentTrackUpdate, require_primary_fields,
@@ -33,6 +33,12 @@ def _name_taken(db: Session, tournament_id: int, name: str, *, excluding_id: int
     if excluding_id is not None:
         query = query.filter(TournamentTrack.id != excluding_id)
     return query.first() is not None
+
+
+def _check_default_role(db: Session, tournament_id: int, role_id: int | None) -> None:
+    if role_id is None:
+        return
+    get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
 
 
 def _validate_state(track: TournamentTrack) -> None:
@@ -85,6 +91,7 @@ def create_track(
     require_not_archived(tournament)
     if _name_taken(db, tournament_id, payload.name):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+    _check_default_role(db, tournament_id, payload.default_role_id)
 
     track = TournamentTrack(tournament_id=tournament_id, **payload.model_dump())
     try:
@@ -122,6 +129,8 @@ def update_track(
     updates = payload.model_dump(exclude_unset=True)
     if "name" in updates and _name_taken(db, tournament_id, updates["name"], excluding_id=track.id):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A track with this name already exists")
+    if "default_role_id" in updates:
+        _check_default_role(db, tournament_id, updates["default_role_id"])
 
     # Demoting the last primary track would leave the tournament with no
     # dates, venue or divisions at all — the same hole deleting it would.

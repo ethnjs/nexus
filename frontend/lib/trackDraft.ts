@@ -13,11 +13,13 @@ export interface TrackDraft {
   university_id: number | null;
   division:      TournamentDivision[];
   allow_confirm: boolean;
+  default_role_id: number | null;
 }
 
 export const EMPTY_TRACK_DRAFT: TrackDraft = {
   name: "", is_primary: false, start_date: "", end_date: "",
   location: "", university_id: null, division: [], allow_confirm: false,
+  default_role_id: null,
 };
 
 export function trackToDraft(track: TournamentTrack): TrackDraft {
@@ -30,6 +32,7 @@ export function trackToDraft(track: TournamentTrack): TrackDraft {
     university_id: track.university?.id ?? null,
     division:      track.division ?? [],
     allow_confirm: track.allow_confirm,
+    default_role_id: track.default_role_id,
   };
 }
 
@@ -45,6 +48,7 @@ export function trackDraftPayload(draft: TrackDraft): TournamentTrackCreate {
     name:          draft.name.trim(),
     is_primary:    draft.is_primary,
     allow_confirm: draft.allow_confirm,
+    default_role_id: draft.default_role_id,
   };
   if (!draft.is_primary) {
     return { ...base, start_date: null, end_date: null, location: null, university_id: null, division: null };

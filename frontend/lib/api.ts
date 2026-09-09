@@ -386,6 +386,10 @@ export interface TournamentTrack {
   is_archived:   boolean
   /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
   allow_confirm: boolean
+  // The role the assignments board grants a member placed on this track with
+  // no role picked yet. Every track can carry one, cosmetic or not — Test
+  // Writing's is often Test Writer.
+  default_role_id: number | null
   created_at:    string
   updated_at:    string
 }
@@ -402,6 +406,7 @@ export interface TournamentTrackCreate {
   location?:      string | null
   division?:      TournamentDivision[] | null
   allow_confirm?: boolean
+  default_role_id?: number | null
 }
 
 export type TournamentTrackUpdate = Partial<TournamentTrackCreate>

@@ -438,6 +438,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                           draft={row.draft}
                           errors={trackErrors[row.key] ?? {}}
                           universities={universities}
+                          // No tournament exists yet to hold a role catalog —
+                          // the dropdown just offers "None" until one is set
+                          // up after creation, in tournament settings.
+                          roles={[]}
                           locked={false}
                           onChange={(updates) => updateTrackRow(row.key, updates)}
                         />

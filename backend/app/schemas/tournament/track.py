@@ -39,6 +39,9 @@ class _TrackFields(BaseModel):
     university_id: int | None = None
     location: str | None = None
     division: list[str] | None = None
+    # Not part of the primary/cosmetic invariant below — every track, cosmetic
+    # or not, can carry a default role (Test Writing's is often Test Writer).
+    default_role_id: int | None = None
 
     @field_validator("division")
     @classmethod
@@ -122,6 +125,7 @@ class TournamentTrackUpdate(BaseModel):
     university_id: int | None = None
     location: str | None = None
     division: list[str] | None = None
+    default_role_id: int | None = None
 
     @field_validator("name")
     @classmethod
@@ -144,6 +148,7 @@ class TournamentTrackRead(BaseModel):
     university: UniversityResponse | None = None
     location: str | None = None
     division: list[str] | None = None
+    default_role_id: int | None = None
     # Pending delete — see the model. Only ever true in the tournament
     # settings listing; every other audience filters these out.
     is_archived: bool

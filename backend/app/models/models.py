@@ -837,11 +837,18 @@ class TournamentTrack(Base):
     # *out* never consults this — declining a track is always the member's
     # own call.
     allow_confirm = Column(Boolean, nullable=False, default=False)
+    # The role the assignments board grants when a member is placed on this
+    # track with no role picked yet — Test Writing's default is Test Writer,
+    # a competition day's is more often a general volunteer role. SET NULL
+    # rather than a blocking FK: deleting a role a track defaults to should
+    # not be blocked by that default, just clear it.
+    default_role_id = Column(Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), default=utcnow)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tournament = relationship("Tournament", back_populates="tracks")
     university = relationship("University", back_populates="tracks")
+    default_role = relationship("TournamentRole")
     shifts = relationship("TournamentShift", back_populates="track", cascade="all, delete-orphan")
     events = relationship(
         "TournamentEvent", secondary="tournament_event_tracks", back_populates="tracks"
