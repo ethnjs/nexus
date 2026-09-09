@@ -1240,7 +1240,16 @@ export default function AssignmentsPage() {
     assignmentsApi.list(tournamentId).then((data) => { if (current) setRows(data) }).catch(() => {})
     tournamentShiftsApi.list(tournamentId).then((data) => { if (current) setAllShifts(data) }).catch(() => {})
     rolesApi.list(tournamentId).then((data) => { if (current) setRoleCatalog(data) }).catch(() => {})
-    tournamentTracksApi.list(tournamentId).then((data) => { if (current) setTracks(data) }).catch(() => {})
+    // Live tracks only. The route returns pending-delete ones too (the
+    // settings listing is what needs them), so every other consumer drops
+    // them the same way — they are on their way out, and the board offers
+    // these as things to filter by, hide, or assign a default role from.
+    // Columns are unaffected: those come off each event's own `tracks`, so an
+    // archived track still attached to an event keeps its column until the
+    // delete goes through.
+    tournamentTracksApi.list(tournamentId)
+      .then((data) => { if (current) setTracks(data.filter((t) => !t.is_archived)) })
+      .catch(() => {})
     // manage_members-gated — a coordinator with only manage_events can view
     // the board (assignments read is manage_events OR manage_members) but
     // not the roster, so the belt just degrades to empty for them rather
