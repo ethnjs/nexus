@@ -708,7 +708,11 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
         else list(DEFAULT_SECTION_ORDER) + [DEFAULT_CUSTOM_SECTION_ID]
     )
 
-    groups: set[str] = set()
+    # Contact is the panel's header, not one of its sections — the same way
+    # roles is the table's row identity rather than a column. No section maps
+    # to it, so deriving groups from the section list alone left the header
+    # rendering an email and phone the payload never carried.
+    groups: set[str] = {"contact"}
     for section_id in section_ids:
         if not section_id or section_id in hidden:
             continue

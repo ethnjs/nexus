@@ -498,6 +498,42 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
     assert [t["name"] for t in response.json()["track_statuses"]] == ["Main", "Shown Track"]
 
 
+def test_panel_surface_carries_contact(client, td_user, td_tournament, db):
+    """The panel's header shows email and phone, so its surface has to ask for
+    them — no section maps to contact, and deriving the payload from the
+    section list alone left the header rendering fields that weren't there."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    for surface in ("members_panel", "member_page"):
+        body = client.get(
+            f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={surface}"
+        ).json()
+        assert body["user"]["email"] == u.email, surface
+        assert "phone" in body["user"], surface
+
+
+def test_panel_contact_survives_hiding_every_section(client, td_user, td_tournament, db):
+    """Contact is the header, not a section — hiding all of them empties the
+    body without taking the name and email above it."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"hidden": [], "sections": []}},
+    ).status_code == 200
+
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
+    ).json()
+    assert body["user"]["email"] == u.email
+
+
 def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td_tournament, db):
     """The panel renders a section even when a member has no data for it, so
     an empty list no longer means "hidden" — hidden_sections is what says a
