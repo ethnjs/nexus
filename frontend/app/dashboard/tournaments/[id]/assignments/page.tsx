@@ -765,12 +765,16 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
       style={{
         display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0,
         padding: '6px 8px', borderRadius: 'var(--radius-sm)',
-        border: `1px solid ${isOver ? 'var(--color-accent)' : 'var(--color-border)'}`,
+        // Border stays the ordinary colour while hovered — the tint alone
+        // says "you can drop here", the same as the event row and the shift
+        // columns. --color-accent is near-black, so lighting the border made
+        // one column jump out of a row of otherwise quiet boxes.
+        border: '1px solid var(--color-border)',
         background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
         // Tall enough to be aimed at while empty — this is the only way onto
         // a cosmetic track, so it cannot be a hairline.
         minHeight: '58px',
-        transition: 'background 120ms ease, border-color 120ms ease',
+        transition: 'background 120ms ease',
       }}
     >
       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', minWidth: 0 }}>
