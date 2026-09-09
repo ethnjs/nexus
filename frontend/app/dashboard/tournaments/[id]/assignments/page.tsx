@@ -1274,6 +1274,7 @@ export default function AssignmentsPage() {
   }, [events, eventDisplay.hiddenTracks])
 
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
+  const trackById = useMemo(() => new Map(tracks.map((t) => [t.id, t])), [tracks])
   // Display only, so it is built from `rows` rather than replacing it: a row
   // pinned to a hidden track's shift is dropped here, but stays in `rows` for
   // the conflict flags and for every write path — hiding a day must not make
@@ -1510,9 +1511,16 @@ export default function AssignmentsPage() {
   }
 
   function trackForDrop(event: TournamentEvent, trackId?: number): TournamentTrack | undefined {
-    return trackId === undefined
-      ? event.tracks[0]
-      : event.tracks.find((t) => t.id === trackId)
+    // Only the bare row target arrives without an id, and it has nothing but
+    // the event's own list to go on.
+    if (trackId === undefined) return event.tracks[0]
+    // Otherwise the tournament's catalog, not `event.tracks`. A shift names
+    // the track it falls on and that is authoritative — an event's track list
+    // is a separate bridge and the two do drift, so looking the id up in the
+    // event's list turns a perfectly good shift into "this event has no
+    // track". Falls back to the event's own list for a track the catalog
+    // drops, i.e. one that is pending delete.
+    return trackById.get(trackId) ?? event.tracks.find((t) => t.id === trackId)
   }
 
   function defaultRoleFor(event: TournamentEvent, trackId?: number): Role | null {
