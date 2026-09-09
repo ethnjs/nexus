@@ -529,6 +529,36 @@ class TestRosterFilters:
         assert [o["value"] for o in entree["options"]] == ["pizza"]
         assert body["collect_is_over_18"] is False
 
+    def test_event_preference_options_name_the_division_without_parentheses(
+        self, client, db, td_user, td_tournament,
+    ):
+        """"Chess C", not "Chess (C)" — the division identifies which of the
+        two same-named events a row is, so it reads as part of the name."""
+        from app.models.models import TournamentEvent, TournamentMembershipEventPreference
+
+        track_id = primary_track_id(db, td_tournament.id)
+        chess_c = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        chess_b = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="B")
+        no_division = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy")
+        db.add_all([chess_c, chess_b, no_division])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        # A stored answer is what puts the track in event_preferences at all.
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=track_id, tournament_event_id=chess_c.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        group = next(g for g in body["event_preferences"] if g["value"] == str(track_id))
+        labels = [o["label"] for o in group["options"]]
+        assert "Chess C" in labels
+        # An event with no division is named by itself, with no trailing space.
+        assert "Anatomy" in labels
+        # Sorted by name then division, so the two Chess rows keep a fixed order.
+        assert labels.index("Chess B") < labels.index("Chess C")
+
     def test_lunch_options_come_from_the_question_not_the_answers(self, client, db, td_user, td_tournament):
         """A choice nobody picked is still offerable — that's how a TD finds
         who didn't pick it."""

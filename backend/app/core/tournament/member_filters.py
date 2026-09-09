@@ -342,10 +342,14 @@ def build_filter_options(db, tournament) -> dict:
 
     # Every tournament event, not just the ones somebody ranked — the filter
     # is as often used to find who *didn't* pick an event.
+    # "Boomilever C", not "Boomilever (C)" — the division is part of the
+    # event's name here rather than an aside about it, the same way the
+    # client's eventNameWithDivision reads it. Name alone can't identify a
+    # row: the same event usually runs in two divisions.
     event_options = [
         {
             "value": str(event_id),
-            "label": f"{name or 'Unknown event'}{f' ({division})' if division else ''}",
+            "label": f"{name or 'Unknown event'}{f' {division}' if division else ''}",
         }
         # func.coalesce is the SQL form of TournamentEvent.display_name:
         # `name` is only set on custom events, so a catalog-linked one takes
@@ -355,7 +359,9 @@ def build_filter_options(db, tournament) -> dict:
         )
         .outerjoin(Event, TournamentEvent.event_id == Event.id)
         .filter(TournamentEvent.tournament_id == tournament.id)
-        .order_by(func.coalesce(TournamentEvent.name, Event.name))
+        # By division too, now that it ends the label: the two Chess rows
+        # would otherwise sit in whatever order the rows came back in.
+        .order_by(func.coalesce(TournamentEvent.name, Event.name), TournamentEvent.division)
     ]
     pref_track_ids = {
         match.group(1)
