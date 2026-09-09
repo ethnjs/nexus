@@ -35,7 +35,7 @@ KNOWN_SURFACES = frozenset({
 # ---------------------------------------------------------------------------
 KNOWN_FILTER_KEYS = frozenset({
     "role", "track", "lunch", "event_pref",
-    "competition_event", "volunteer_event", "age", "shift",
+    "competition_event", "volunteer_event", "age", "shift", "assigned",
 })
 
 # Sorting is client-side (the roster is one page), so these are validated but

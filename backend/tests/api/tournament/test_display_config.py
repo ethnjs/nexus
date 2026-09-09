@@ -111,6 +111,20 @@ def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournamen
     assert saved["members_table"]["sort"] == {"field": "last_name", "direction": "desc"}
 
 
+def test_put_display_config_saves_assigned_filter(client, td_user, td_tournament):
+    """Every roster query param has to be storable, or the filter applies but
+    silently fails to persist — the write is fire-and-forget, so a rejected
+    key is invisible to the coordinator who set it."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filters": {"assigned": ["unassigned"]}}},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["members_table"]["filters"] == {"assigned": ["unassigned"]}
+
+
 def test_put_display_config_rejects_unknown_filter(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(

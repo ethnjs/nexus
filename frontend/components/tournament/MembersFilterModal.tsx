@@ -14,7 +14,7 @@ import { IconPlus } from "@/components/ui/Icons";
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
   "role", "track", "lunch", "event_pref",
-  "competition_event", "volunteer_event", "age", "shift",
+  "competition_event", "volunteer_event", "age", "shift", "assigned",
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
@@ -99,6 +99,11 @@ interface MembersFilterModalProps {
   /** From the page, which already holds the tournament's role list. */
   roleOptions: FilterOptionItem[];
   filters: MembersFilterState;
+  /** Pre-resolved options, for a caller that already holds them or isn't
+      backed by a real tournament (the assignments sketch). Given, the modal
+      skips its own fetch — so it never sits on a spinner waiting for a
+      request that will not answer. */
+  options?: MemberFilterOptions;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: MembersFilterState) => void;
   onClose: () => void;
@@ -366,19 +371,31 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
 }
 
 export function MembersFilterModal({
-  tournamentId, roleOptions, filters, onApply, onClose,
+  tournamentId, roleOptions, filters, options: suppliedOptions, onApply, onClose,
 }: MembersFilterModalProps) {
-  const [options, setOptions] = useState<MemberFilterOptions | null>(null);
+  const [fetched, setFetched] = useState<MemberFilterOptions | null>(null);
+  const options = suppliedOptions ?? fetched;
   // Draft until Apply, so closing with Cancel leaves the roster as it was.
-  const [draft, setDraft] = useState<MembersFilterState>(
-    () => Object.fromEntries(
-      Object.entries(filters).map(([key, values]) => [key, new Set(values)]),
-    ) as MembersFilterState,
-  );
+  //
+  // Seeded from the full key set and then overlaid, rather than copied from
+  // `filters` outright: every section below reads its key's `.size`
+  // unguarded, so a caller whose state predates a newly-added filter would
+  // crash the modal. That state is easy to come by — a config saved before
+  // the filter existed, a hand-built one (the assignments sketch), or a Fast
+  // Refresh that keeps the page's state across the edit adding it.
+  const [draft, setDraft] = useState<MembersFilterState>(() => {
+    const seeded = emptyMembersFilter();
+    for (const key of MEMBERS_FILTER_KEYS) {
+      const values = filters[key];
+      if (values) seeded[key] = new Set(values);
+    }
+    return seeded;
+  });
 
   useEffect(() => {
-    membersApi.filterOptions(tournamentId).then(setOptions).catch(() => setOptions(null));
-  }, [tournamentId]);
+    if (suppliedOptions) return;
+    membersApi.filterOptions(tournamentId).then(setFetched).catch(() => setFetched(null));
+  }, [tournamentId, suppliedOptions]);
 
   function set(key: MembersFilterKey, values: Set<string>) {
     setDraft((prev) => ({ ...prev, [key]: values }));
@@ -399,6 +416,13 @@ export function MembersFilterModal({
     ...track, options: TRACK_STATUS_OPTIONS,
   }));
 
+  // Both options, or neither, is the same roster — so selecting both reads
+  // as "no filter" rather than as a contradiction, same as Age.
+  const assignedOptions: FilterOptionItem[] = [
+    { value: "assigned", label: "Assigned" },
+    { value: "unassigned", label: "Unassigned" },
+  ];
+
   const ageOptions: FilterOptionItem[] = [
     ...(options?.collect_is_over_18 ? [{ value: "over_18", label: "18+" }] : []),
     ...(options?.collect_is_over_21 ? [{ value: "over_21", label: "21+" }] : []),
@@ -416,6 +440,16 @@ export function MembersFilterModal({
             title="Roles" options={roleOptions} selected={draft.role}
             onToggle={(v) => toggle("role", v)} onClear={() => set("role", new Set())}
           />
+          <FilterSection
+            title="Assignments" active={draft.assigned.size > 0}
+            onClear={() => set("assigned", new Set())}
+          >
+            <ButtonGroup
+              options={assignedOptions.map((o) => ({ value: o.value, label: o.label }))}
+              value={[...draft.assigned]}
+              onChange={(value) => toggle("assigned", value)}
+            />
+          </FilterSection>
           <PairedChipFilter
             title="Track status" groups={trackGroups} selected={draft.track}
             onChange={(next) => set("track", next)}

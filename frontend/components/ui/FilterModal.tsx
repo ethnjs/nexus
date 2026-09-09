@@ -145,12 +145,17 @@ export function FilterModal<K extends string>({ title, sections, filters, onAppl
     <Modal title={title} onClose={onClose} width={width}>
       {sections.map((section) => {
         const Section = section.control === "checkbox" ? CheckboxFilterSection : ButtonGroupFilterSection;
+        // Falls back rather than indexing blind: the sections are the
+        // caller's, so a key its filter state doesn't carry yet — one added
+        // after a stored config was written — would otherwise reach the
+        // section as undefined and crash on `.size`.
+        const excluded = draft[section.key] ?? new Set<string>();
         return (
           <Section
             key={section.key}
             title={section.title}
             options={section.options}
-            excluded={draft[section.key]}
+            excluded={excluded}
             onChange={(excluded) => setField(section.key, excluded)}
           />
         );
