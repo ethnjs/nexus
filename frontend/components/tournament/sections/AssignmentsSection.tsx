@@ -16,12 +16,16 @@ import {
 import { useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
 import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
+import { RolePillMenu } from "@/components/assignments/RolePillMenu";
+import {
+  AVAILABILITY_GREEN, AVAILABILITY_RED,
+} from "@/components/tournament/AvailabilityTimeline";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Button } from "@/components/ui/Button";
-import { IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
-import { PillMenu } from "@/components/ui/PillMenu";
+import { IconEvents, IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover } from "@/components/ui/Popover";
 import { Tooltip } from "@/components/ui/Tooltip";
 import {
@@ -30,7 +34,7 @@ import {
   type TournamentShift, type TournamentTrack,
 } from "@/lib/api";
 import {
-  buildLanes, laneFlags, roleSummary, sameRole,
+  buildLanes, laneFlags, roleKey, rolesOf, sameRole,
   type AssignmentRole, type Lane,
 } from "@/lib/assignments/lanes";
 import { assignmentFlags, memberFacts, type Flag } from "@/lib/assignments/flags";
@@ -78,7 +82,7 @@ export function AssignmentsSection({
   // The event catalog behind the Add button. Fetched here rather than passed:
   // it is this section's own picker, and no other part of the panel wants it.
   const [catalog, setCatalog] = useState<TournamentEvent[] | null>(null);
-  const [pending, setPending] = useState<TournamentEvent | null>(null);
+  const [pending, setPending] = useState<TournamentEvent[]>([]);
 
   useEffect(() => {
     if (locked) return;
@@ -141,47 +145,76 @@ export function AssignmentsSection({
     }
   }
 
-  /** Place `event` on exactly `shifts` of `track` — the one write every drag,
-   *  drop and resize in this section comes down to. */
-  function placeEvent(
-    eventId: number, track: TournamentTrack, shifts: TournamentShift[], role: AssignmentRole,
+  /**
+   * Make this event's placement on `track` be exactly `shifts` × `roles`.
+   *
+   * Every write in this section is this one call: a drop, a resize, and a
+   * role change differ only in which of the three arguments moved. Scoped to
+   * one track, because the same event can be staffed on Day 1 *and* on Test
+   * Writing — those are separate placements and editing one must not touch
+   * the other.
+   *
+   * Diffed cell by cell rather than deleted and recreated: recreating a cell
+   * races the delete of the row already holding it, which is how you lose a
+   * shift nobody asked to remove.
+   */
+  function syncLane(
+    eventId: number, track: TournamentTrack,
+    shifts: TournamentShift[], roles: AssignmentRole[],
   ) {
+    if (roles.length === 0) return;
     const previous = rows;
-    const lane = rows.filter((row) => row.event.id === eventId);
-    const wanted = shifts.length > 0 ? shifts.map((s) => s.id) : [null];
-    const keep = new Map<string, Assignment>();
-    for (const row of lane) {
-      const key = `${row.shift?.id ?? "none"}|${row.track.id}`;
-      keep.set(key, row);
-    }
+    const lane = rows.filter((row) => row.event.id === eventId && row.track.id === track.id);
+    const cellKey = (shiftId: number | null, role: AssignmentRole) =>
+      `${shiftId ?? "none"}|${roleKey(role)}`;
+    const have = new Map(lane.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]));
 
-    const kept: Assignment[] = [];
-    const missing: (number | null)[] = [];
+    const wanted = shifts.length > 0 ? shifts.map((s) => s.id) : [null];
+    const keptIds = new Set<number>();
+    const missing: { shiftId: number | null; role: AssignmentRole }[] = [];
     for (const shiftId of wanted) {
-      const found = keep.get(`${shiftId ?? "none"}|${track.id}`);
-      if (found) kept.push(found);
-      else missing.push(shiftId);
+      for (const role of roles) {
+        const found = have.get(cellKey(shiftId, role));
+        if (found) keptIds.add(found.id);
+        else missing.push({ shiftId, role });
+      }
     }
-    const keptIds = new Set(kept.map((row) => row.id));
     const removed = lane.filter((row) => !keptIds.has(row.id));
     if (missing.length === 0 && removed.length === 0) return;
 
-    // Optimistic: the kept rows stay, the removed ones go, and the new cells
-    // appear once the server answers with real ids.
-    setRows((current) => current.filter((row) => !removed.some((r) => r.id === row.id)));
+    // The removals show at once; the new cells arrive with the re-read, since
+    // only the server can hand them their ids.
+    const goneIds = new Set(removed.map((row) => row.id));
+    setRows((current) => current.filter((row) => !goneIds.has(row.id)));
 
     runWrite(async () => {
-      for (const shiftId of missing) {
+      for (const cell of missing) {
         await assignmentsApi.create(tournamentId, {
           tournament_event_id: eventId,
           membership_id: membershipId,
-          role_id: role.id!,
-          tournament_shift_id: shiftId,
-          tournament_track_id: shiftId === null ? track.id : null,
+          role_id: cell.role.id!,
+          tournament_shift_id: cell.shiftId,
+          tournament_track_id: cell.shiftId === null ? track.id : null,
         });
       }
       for (const row of removed) await assignmentsApi.delete(tournamentId, row.id);
     }, previous);
+  }
+
+  /** The track a lane sits on, as the catalog knows it — the row carries a
+   *  ref (id, name, is_primary), and writes need the default role too. */
+  function trackOf(lane: Lane): TournamentTrack | undefined {
+    return tracks.find((t) => t.id === lane.assignments[0].track.id);
+  }
+
+  function laneShifts(lane: Lane): TournamentShift[] {
+    const ids = new Set(lane.assignments.map((row) => row.shift?.id).filter((id) => id != null));
+    return allShifts.filter((shift) => ids.has(shift.id));
+  }
+
+  function setLaneRoles(lane: Lane, roles: AssignmentRole[]) {
+    const track = trackOf(lane);
+    if (track) syncLane(Number(lane.key), track, laneShifts(lane), roles);
   }
 
   function removeLane(lane: Lane) {
@@ -193,19 +226,19 @@ export function AssignmentsSection({
     }, previous);
   }
 
-  /** Swap the lane's role. A PATCH per row, not a rebuild: the cells don't
-   *  move, only what they say — and the route grants the role if this member
-   *  doesn't hold it yet. */
+  /** Swap every role for this one — the menu's default. */
   function pickRole(lane: Lane, role: AssignmentRole) {
-    if (lane.roles.length === 1 && sameRole(lane.roles[0], role)) return;
-    const previous = rows;
-    const ids = new Set(lane.assignments.map((row) => row.id));
-    setRows((current) => current.map((row) => (ids.has(row.id) ? { ...row, role } : row)));
-    runWrite(async () => {
-      for (const row of lane.assignments) {
-        await assignmentsApi.update(tournamentId, row.id, { role_id: role.id! });
-      }
-    }, previous);
+    setLaneRoles(lane, [role]);
+  }
+
+  /** Add or drop one, leaving the rest — the menu's "select multiple". A
+   *  lane is one row per shift per role, so a second role is a second row on
+   *  each of the lane's shifts. */
+  function toggleRole(lane: Lane, role: AssignmentRole) {
+    const next = lane.roles.some((r) => sameRole(r, role))
+      ? lane.roles.filter((r) => !sameRole(r, role))
+      : [...lane.roles, role].sort((a, b) => a.label.localeCompare(b.label));
+    setLaneRoles(lane, next);
   }
 
   function defaultRoleFor(track: TournamentTrack): AssignmentRole | null {
@@ -229,14 +262,30 @@ export function AssignmentsSection({
       : [];
 
     const eventId = source.eventId as number;
-    const existing = rows.filter((row) => row.event.id === eventId);
-    const role = existing[0]?.role ?? defaultRoleFor(track);
-    if (!role) {
+    // Dragging a chip off one track and onto another is a move, not a second
+    // placement — the source's rows go with it. Its roles come along too:
+    // whoever placed it there chose them, and a drop is about *where*.
+    const fromTrackId = source.fromTrackId as number | undefined;
+    const carried = rows.filter((row) => row.event.id === eventId
+      && (fromTrackId === undefined || row.track.id === fromTrackId));
+    const roles = carried.length > 0
+      ? rolesOf(carried)
+      : [defaultRoleFor(track)].filter((role): role is AssignmentRole => role !== null);
+    if (roles.length === 0) {
       show(`No default role set for ${track.name} — set one in tournament settings first.`, "error");
       return;
     }
-    placeEvent(eventId, track, shifts, role);
-    setPending(null);
+
+    if (fromTrackId !== undefined && fromTrackId !== track.id) {
+      const previous = rows;
+      const goneIds = new Set(carried.map((row) => row.id));
+      setRows((current) => current.filter((row) => !goneIds.has(row.id)));
+      runWrite(async () => {
+        for (const row of carried) await assignmentsApi.delete(tournamentId, row.id);
+      }, previous);
+    }
+    syncLane(eventId, track, shifts, roles);
+    setPending((current) => current.filter((e) => e.id !== eventId));
   }
 
   useRegisterBoardDnd("member-panel-assignments", {
@@ -246,50 +295,60 @@ export function AssignmentsSection({
       const eventId = Number(activeId.split(":")[1]);
       const name = rows.find((row) => row.event.id === eventId)?.event.name
         ?? (catalog ?? []).find((e) => e.id === eventId)?.name
-        ?? pending?.name;
+        ?? pending.find((e) => e.id === eventId)?.name;
       return name ? <DragLabel label={name} /> : null;
     },
   });
 
-  const assigned = new Set(rows.map((row) => row.event.id));
-  const pickable = (catalog ?? []).filter((event) => !assigned.has(event.id));
+  // Every event, including ones already placed: the same event is genuinely
+  // staffed on more than one track — supervised on Day 1, written for Test
+  // Writing — so a picker that hid what is already here would refuse the
+  // second placement.
+  const pickable = catalog ?? [];
 
   return (
     <ProfileCard>
-      <SectionHeading title="Assignments">
+      <SectionHeading
+        title="Assignments"
+        action={!locked && (
+          <Popover
+            trigger={
+              <Button type="button" variant="secondary" size="sm">
+                <IconPlus size={12} /> Add event
+              </Button>
+            }
+            items={pickable}
+            getKey={(event) => event.id}
+            renderLabel={(event) => eventNameWithDivision(event)}
+            getSearchText={(event) => eventNameWithDivision(event)}
+            searchable
+            onSelect={(event) => setPending((current) => (
+              current.some((e) => e.id === event.id) ? current : [...current, event]
+            ))}
+            emptyMessage={catalog === null ? "Loading…" : "No events yet"}
+            width={280}
+          />
+        )}
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-          {!locked && (
+          {/* Picked but not placed. The row exists only while something is
+              waiting in it — dropping one is what says which track and shift
+              it is for, which an assignment row cannot be created without. */}
+          {pending.length > 0 && (
             <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-              <Popover
-                trigger={
-                  <Button type="button" variant="secondary" size="sm">
-                    <IconPlus size={12} /> Add event
-                  </Button>
-                }
-                items={pickable}
-                getKey={(event) => event.id}
-                renderLabel={(event) => eventNameWithDivision(event)}
-                getSearchText={(event) => eventNameWithDivision(event)}
-                searchable
-                onSelect={(event) => setPending(event)}
-                emptyMessage={catalog === null ? "Loading…" : "Every event is already here"}
-                width={280}
-                align="left"
-              />
-              {/* Picked but not placed. Dropping it is what says which track
-                  and shift it is for, which is the thing an assignment row
-                  cannot be created without. */}
-              {pending && (
-                <PendingChip event={pending} onCancel={() => setPending(null)} />
-              )}
-              {pending && (
-                <span style={{
-                  fontFamily: "var(--font-sans)", fontSize: "11px",
-                  color: "var(--color-text-tertiary)",
-                }}>
-                  Drag it onto a shift or a workstream
-                </span>
-              )}
+              {pending.map((event) => (
+                <PendingChip
+                  key={event.id}
+                  event={event}
+                  onCancel={() => setPending((current) => current.filter((e) => e.id !== event.id))}
+                />
+              ))}
+              <span style={{
+                fontFamily: "var(--font-sans)", fontSize: "11px",
+                color: "var(--color-text-tertiary)",
+              }}>
+                Drag onto a shift or a workstream
+              </span>
             </div>
           )}
 
@@ -309,10 +368,10 @@ export function AssignmentsSection({
               flagsFor={flagsFor}
               locked={locked}
               onPickRole={pickRole}
+              onToggleRole={toggleRole}
               onRemove={removeLane}
               onResize={(lane, from, to) => {
-                const role = lane.roles[0] ?? defaultRoleFor(track);
-                if (role) placeEvent(Number(lane.key), track, shifts.slice(from, to + 1), role);
+                syncLane(Number(lane.key), track, shifts.slice(from, to + 1), lane.roles);
               }}
             />
           ))}
@@ -325,6 +384,7 @@ export function AssignmentsSection({
               flagsFor={flagsFor}
               locked={locked}
               onPickRole={pickRole}
+              onToggleRole={toggleRole}
               onRemove={removeLane}
             />
           )}
@@ -344,7 +404,7 @@ function eventNameWithDivision(event: TournamentEvent): string {
 // ---------------------------------------------------------------------------
 function DayTimeline({
   track, shifts, rows, availableShiftIds, showAvailability, roleCatalog, flagsFor,
-  locked, onPickRole, onRemove, onResize,
+  locked, onPickRole, onToggleRole, onRemove, onResize,
 }: {
   track: TournamentTrack;
   shifts: TournamentShift[];
@@ -355,6 +415,7 @@ function DayTimeline({
   flagsFor: (a: Assignment) => Flag[];
   locked: boolean;
   onPickRole: (lane: Lane, role: AssignmentRole) => void;
+  onToggleRole: (lane: Lane, role: AssignmentRole) => void;
   onRemove: (lane: Lane) => void;
   onResize: (lane: Lane, from: number, to: number) => void;
 }) {
@@ -413,7 +474,10 @@ function DayTimeline({
         ))}
       </div>
 
-      <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "3px" }}>
+      <div style={{
+        position: "relative", display: "flex", flexDirection: "column",
+        gap: "2px", padding: "3px 0", minHeight: "34px",
+      }}>
         {/* The columns are the drop targets and the availability shading at
             once, drawn once behind the bars so they run the row's full
             height rather than repeating per lane. */}
@@ -432,13 +496,11 @@ function DayTimeline({
         </div>
 
         {lanes.length === 0 && (
-          <div style={{ position: "relative", padding: "6px 0" }}>
-            <span style={{
-              fontFamily: "var(--font-sans)", fontSize: "11px",
-              color: "var(--color-text-tertiary)",
-            }}>
-              Nothing on this day
-            </span>
+          // Sits above the column layer rather than replacing it, so the
+          // availability shading still reads across an empty day — which is
+          // the day you most want to see it on.
+          <div style={{ position: "relative", pointerEvents: "none" }}>
+            <EmptyState size="sm" icon={<IconEvents size={20} />} title="Nothing this day" />
           </div>
         )}
 
@@ -455,6 +517,7 @@ function DayTimeline({
               flagsFor={flagsFor}
               locked={locked}
               onPickRole={onPickRole}
+              onToggleRole={onToggleRole}
               onRemove={onRemove}
               onResize={onResize}
             />
@@ -482,9 +545,9 @@ function ShiftCell({ shift, trackId, first, available, shade, locked }: {
     data: { kind: "panel-shift", shiftId: shift.id, trackId },
     disabled: locked,
   });
-  const shaded = shade
-    ? (available ? "var(--color-success-subtle)" : "var(--color-danger-subtle)")
-    : "transparent";
+  // The availability section's own two, so the same green means the same
+  // thing at the same weight wherever a member's availability is drawn.
+  const shaded = shade ? (available ? AVAILABILITY_GREEN : AVAILABILITY_RED) : "transparent";
   return (
     <div
       ref={setNodeRef}
@@ -501,7 +564,7 @@ function ShiftCell({ shift, trackId, first, available, shade, locked }: {
 // The no-shift area: one column per workstream
 // ---------------------------------------------------------------------------
 function WorkstreamRow({
-  tracks, rows, roleCatalog, flagsFor, locked, onPickRole, onRemove,
+  tracks, rows, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove,
 }: {
   tracks: TournamentTrack[];
   rows: Assignment[];
@@ -509,6 +572,7 @@ function WorkstreamRow({
   flagsFor: (a: Assignment) => Flag[];
   locked: boolean;
   onPickRole: (lane: Lane, role: AssignmentRole) => void;
+  onToggleRole: (lane: Lane, role: AssignmentRole) => void;
   onRemove: (lane: Lane) => void;
 }) {
   return (
@@ -535,6 +599,7 @@ function WorkstreamRow({
             flagsFor={flagsFor}
             locked={locked}
             onPickRole={onPickRole}
+            onToggleRole={onToggleRole}
             onRemove={onRemove}
           />
         ))}
@@ -544,7 +609,7 @@ function WorkstreamRow({
 }
 
 function WorkstreamColumn({
-  track, lanes, roleCatalog, flagsFor, locked, onPickRole, onRemove,
+  track, lanes, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove,
 }: {
   track: TournamentTrack;
   lanes: Lane[];
@@ -552,6 +617,7 @@ function WorkstreamColumn({
   flagsFor: (a: Assignment) => Flag[];
   locked: boolean;
   onPickRole: (lane: Lane, role: AssignmentRole) => void;
+  onToggleRole: (lane: Lane, role: AssignmentRole) => void;
   onRemove: (lane: Lane) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -585,6 +651,7 @@ function WorkstreamColumn({
           flags={laneFlags(lane, flagsFor)}
           locked={locked}
           onPickRole={onPickRole}
+          onToggleRole={onToggleRole}
           onRemove={onRemove}
         />
       ))}
@@ -598,7 +665,7 @@ function WorkstreamColumn({
 
 /** A bar on a day's timeline: the chip plus the span it covers. */
 function EventBar({
-  lane, columns, roleCatalog, flagsFor, locked, onPickRole, onRemove, onResize,
+  lane, columns, roleCatalog, flagsFor, locked, onPickRole, onToggleRole, onRemove, onResize,
 }: {
   lane: Lane;
   columns: number;
@@ -606,6 +673,7 @@ function EventBar({
   flagsFor: (a: Assignment) => Flag[];
   locked: boolean;
   onPickRole: (lane: Lane, role: AssignmentRole) => void;
+  onToggleRole: (lane: Lane, role: AssignmentRole) => void;
   onRemove: (lane: Lane) => void;
   onResize: (lane: Lane, from: number, to: number) => void;
 }) {
@@ -653,13 +721,17 @@ function EventBar({
   }
 
   return (
-    <div style={{ gridColumn: `${first + 1} / ${last + 2}`, minWidth: 0, padding: "0 2px" }}>
+    // Generous padding, not decoration: the availability shading is *behind*
+    // these bars, and a chip that fills its column hides the answer the
+    // column was drawn to give.
+    <div style={{ gridColumn: `${first + 1} / ${last + 2}`, minWidth: 0, padding: "3px 6px" }}>
       <EventChip
         lane={lane}
         roleCatalog={roleCatalog}
         flags={laneFlags(lane, flagsFor)}
         locked={locked}
         onPickRole={onPickRole}
+        onToggleRole={onToggleRole}
         onRemove={onRemove}
         onResizeStart={startResize}
         resizingEdge={resizing}
@@ -669,13 +741,14 @@ function EventBar({
 }
 
 function EventChip({
-  lane, roleCatalog, flags, locked, onPickRole, onRemove, onResizeStart, resizingEdge,
+  lane, roleCatalog, flags, locked, onPickRole, onToggleRole, onRemove, onResizeStart, resizingEdge,
 }: {
   lane: Lane;
   roleCatalog: Role[];
   flags: Flag[];
   locked: boolean;
   onPickRole: (lane: Lane, role: AssignmentRole) => void;
+  onToggleRole: (lane: Lane, role: AssignmentRole) => void;
   onRemove: (lane: Lane) => void;
   /** Given, the chip grows its own resize edges — no separate handles. */
   onResizeStart?: (edge: "start" | "end", e: ReactPointerEvent) => void;
@@ -685,7 +758,9 @@ function EventChip({
   const eventId = lane.assignments[0].event.id;
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `panel-event:${eventId}`,
-    data: { kind: "panel-event", eventId },
+    // fromTrackId is what makes a drop on another track a *move*: without it
+    // the drop would place a second copy and leave this one where it is.
+    data: { kind: "panel-event", eventId, fromTrackId: lane.assignments[0].track.id },
     disabled: locked,
   });
 
@@ -720,16 +795,11 @@ function EventChip({
         onPointerDown={(e) => e.stopPropagation()}
         style={{ display: "flex", flexShrink: 0, cursor: "default" }}
       >
-        <PillMenu
-          label={roleSummary(lane.roles)}
-          tone={lane.roles.length > 0 ? "default" : "muted"}
-          items={roleCatalog}
-          getKey={(role) => role.id}
-          renderLabel={(role) => role.label}
-          isSelected={(role) => lane.roles.some((r) => sameRole(r, role))}
-          onSelect={(role) => onPickRole(lane, { id: role.id, label: role.label })}
-          width={200}
-          align="left"
+        <RolePillMenu
+          roles={lane.roles}
+          roleCatalog={roleCatalog}
+          onPickRole={(role) => onPickRole(lane, role)}
+          onToggleRole={(role) => onToggleRole(lane, role)}
         />
       </span>
       {flags.length > 0 && (
@@ -786,7 +856,7 @@ function ResizeGrip({ edge, active, onStart }: {
     >
       <div style={{
         width: "2px", height: "9px", borderRadius: "1px",
-        background: active || hovered ? "var(--color-accent)" : "var(--color-border-strong)",
+        background: "var(--color-border-strong)",
         opacity: active || hovered ? 1 : 0, transition: "opacity 120ms ease",
       }} />
     </div>
@@ -809,7 +879,10 @@ function PendingChip({ event, onCancel }: { event: TournamentEvent; onCancel: ()
       style={{
         display: "flex", alignItems: "center", gap: "6px",
         padding: "3px 10px", borderRadius: "var(--radius-md)",
-        border: "1px dashed var(--color-accent)",
+        // Dashed to read as "not placed yet", in the ordinary border colour:
+        // --color-accent is near-black and drew a hard box around the one
+        // thing on screen that is only half-real.
+        border: "1px dashed var(--color-border-strong)",
         background: "var(--color-accent-subtle)",
         fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 500,
         cursor: "grab", opacity: isDragging ? 0.4 : 1, outline: "none",

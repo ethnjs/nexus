@@ -32,6 +32,7 @@ import {
 import { DockedPanel } from '@/components/layout/DockedPanel'
 
 import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
+import { RolePillMenu } from '@/components/assignments/RolePillMenu'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
 import {
   MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
@@ -59,9 +60,7 @@ import {
 } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
-import { PillMenu } from '@/components/ui/PillMenu'
 import { Spinner } from '@/components/ui/Spinner'
-import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
   ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tournamentEventsApi,
@@ -76,7 +75,7 @@ import {
   type Flag,
 } from '@/lib/assignments/flags'
 import {
-  buildLanes as buildAssignmentLanes, laneFlags, roleKey, roleSummary, rolesOf, sameRole,
+  buildLanes as buildAssignmentLanes, laneFlags, roleKey, rolesOf, sameRole,
   type AssignmentRole, type Lane,
 } from '@/lib/assignments/lanes'
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
@@ -240,12 +239,6 @@ function Chip({
   resizingEdge?: 'start' | 'end' | null
 }) {
   const [hovered, setHovered] = useState(false)
-  // Off by default: one role is the ordinary case, and in checklist mode
-  // switching from one to another meant ticking the new one and then
-  // unticking the old — with the last-role lock making the order matter. In
-  // list mode a click just moves them. Per chip and per opening is fine; it
-  // is a way of using the menu, not a setting.
-  const [multiRole, setMultiRole] = useState(false)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip:${assignment.id}`,
     data: { kind: 'chip', assignment },
@@ -330,37 +323,11 @@ function Chip({
         onPointerDown={(e) => e.stopPropagation()}
         style={{ display: 'flex', flexShrink: 0, cursor: 'default' }}
       >
-        <PillMenu
-          label={roleSummary(roles)}
-          tone={roles.length > 0 ? 'default' : 'muted'}
-          items={roleCatalog}
-          getKey={(role) => role.id}
-          renderLabel={(role) => role.label}
-          header={
-            <label style={{
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              gap: '8px', padding: '2px 4px', cursor: 'pointer',
-            }}>
-              <span style={{
-                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
-                color: 'var(--color-text-secondary)',
-              }}>
-                Select multiple
-              </span>
-              <Toggle checked={multiRole} onChange={setMultiRole} />
-            </label>
-          }
-          checklist={multiRole}
-          isSelected={(role) => roles.some((r) => sameRole(r, role))}
-          // Only in checklist mode: clearing the last role would delete the
-          // assignment outright, and a menu that says "roles" should not be
-          // able to unassign someone. Picking a role in list mode replaces
-          // the set rather than emptying it, so nothing needs locking.
-          isDisabled={multiRole ? (role) => roles.length === 1 && sameRole(roles[0], role) : undefined}
-          disabledReason={() => 'Add another role before removing this one'}
-          onSelect={multiRole ? onToggleRole : onPickRole}
-          width={200}
-          align="left"
+        <RolePillMenu
+          roles={roles}
+          roleCatalog={roleCatalog}
+          onToggleRole={onToggleRole}
+          onPickRole={onPickRole}
         />
       </span>
       {flags.length > 0 && (

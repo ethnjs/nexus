@@ -58,9 +58,14 @@ function mergeSpans(spans: Span[]): Span[] {
   return merged;
 }
 
-const GREEN = "color-mix(in srgb, var(--color-success) 28%, transparent)";
+// Exported: the assignments section shades its own timeline from the same
+// two, so "green" means the same density of the same green in both places.
+export const AVAILABILITY_GREEN = "color-mix(in srgb, var(--color-success) 28%, transparent)";
+export const AVAILABILITY_RED = "color-mix(in srgb, var(--color-danger) 12%, transparent)";
+
+const GREEN = AVAILABILITY_GREEN;
 const GREEN_HOVER = "color-mix(in srgb, var(--color-success) 60%, transparent)";
-const RED = "color-mix(in srgb, var(--color-danger) 12%, transparent)";
+const RED = AVAILABILITY_RED;
 
 function timeRange(span: Span): string {
   return `${formatTime(new Date(span.start).toISOString())}–${formatTime(new Date(span.end).toISOString())}`;
