@@ -163,6 +163,14 @@ function divisionVariant(division: string | null) {
 }
 
 
+/** An event's shiftless tracks. `is_primary` is the whole test: only a
+ *  primary track has dates, and only a dated track can hold shifts (see
+ *  TournamentTrack in models.py), so a cosmetic one can never be a column. */
+function cosmeticTracksOf(event: TournamentEvent): TournamentTrack[] {
+  return event.tracks.filter((track) => !track.is_primary)
+}
+
+
 /** A hover-revealed icon button inside a chip. Hidden from the pointer while
  *  invisible, not merely transparent — otherwise a stray click on a chip you
  *  were only passing over hits a control you cannot see. */
@@ -683,7 +691,9 @@ const ShiftTimeline = memo(function ShiftTimeline({
         <UnpinnedSection
           eventId={event.id}
           unpinned={unpinned}
+          cosmeticTracks={cosmeticTracksOf(event)}
           roleCatalog={roleCatalog}
+          dragging={dragging}
           flagsFor={flagsFor}
           onToggleRole={onToggleRole}
           onRemove={onRemove}
@@ -693,15 +703,94 @@ const ShiftTimeline = memo(function ShiftTimeline({
   )
 })
 
+/**
+ * One cosmetic track's drop target, inside the no-shift area.
+ *
+ * A cosmetic track (is_primary false — Test Writing, Review) has no shifts by
+ * construction, so it can never be a timeline column; before this it had no
+ * target of its own at all, and a drop anywhere on the event granted
+ * `tracks[0]`'s default role. On an event that runs on both Day 1 and Test
+ * Writing that is simply the wrong role, with nothing on screen to say so.
+ *
+ * The role is named on the target rather than left to be discovered after the
+ * drop, since granting it is the whole reason to aim here rather than at the
+ * generic "no shift" area beside it.
+ */
+function TrackDropZone({ eventId, track, roleCatalog }: {
+  eventId: number
+  track: TournamentTrack
+  roleCatalog: Role[]
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `track:${eventId}:${track.id}`,
+    data: { kind: 'track', eventId, trackId: track.id },
+  })
+  const role = track.default_role_id === null
+    ? null
+    : roleCatalog.find((r) => r.id === track.default_role_id) ?? null
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        display: 'flex', alignItems: 'baseline', gap: '6px',
+        padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+        // Dashed, so an empty target reads as a place to put something rather
+        // than as a chip that is already there.
+        border: `1px dashed ${isOver ? 'var(--color-accent)' : 'var(--color-border)'}`,
+        background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
+        transition: 'background 120ms ease, border-color 120ms ease',
+      }}
+    >
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
+        color: 'var(--color-text-secondary)', whiteSpace: 'nowrap',
+      }}>
+        {track.name}
+      </span>
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize: '10px', whiteSpace: 'nowrap',
+        // A track with no default role is still a target: the drop fails with
+        // a message naming the track, which is more use than a zone you
+        // cannot aim at and cannot ask why.
+        color: role ? 'var(--color-text-tertiary)' : 'var(--color-warning)',
+      }}>
+        {role ? role.label : 'No default role'}
+      </span>
+    </div>
+  )
+}
+
+/** The row of them. Rendered only mid-drag, like the no-shift section itself:
+ *  at rest these say what *would* happen, which is the metadata column's job
+ *  (it already badges every track the event runs on). */
+function TrackDropZones({ eventId, tracks, roleCatalog }: {
+  eventId: number
+  tracks: TournamentTrack[]
+  roleCatalog: Role[]
+}) {
+  if (tracks.length === 0) return null
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+      {tracks.map((track) => (
+        <TrackDropZone key={track.id} eventId={eventId} track={track} roleCatalog={roleCatalog} />
+      ))}
+    </div>
+  )
+}
+
 /** Assigned to the event but pinned to no shift — test writing, and anything
  *  not yet scheduled. Its own section because these are exactly the people a
  *  TD needs to find and drag up onto a column. */
 function UnpinnedSection({
-  eventId, unpinned, roleCatalog, flagsFor, onToggleRole, onRemove,
+  eventId, unpinned, cosmeticTracks, roleCatalog, dragging, flagsFor, onToggleRole, onRemove,
 }: {
   eventId: number
   unpinned: Lane[]
+  /** The event's shiftless tracks, each getting its own target below. */
+  cosmeticTracks: TournamentTrack[]
   roleCatalog: Role[]
+  dragging: boolean
   flagsFor: (a: Assignment) => Flag[]
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
@@ -712,44 +801,58 @@ function UnpinnedSection({
   })
 
   return (
-    <div
-      ref={setNodeRef}
-      style={{
-        position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px',
-        marginTop: '2px', paddingTop: '6px',
-        borderTop: '1px solid var(--color-border)',
-        background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
-        transition: 'background 120ms ease',
-      }}
-    >
-      <span style={{
-        fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
-        letterSpacing: '0.05em', textTransform: 'uppercase',
-        color: 'var(--color-text-tertiary)',
-      }}>
-        No shift · {unpinned.length}
-      </span>
-      {unpinned.length === 0 && (
+    // The section's chrome (rule, spacing) is this wrapper's, and the
+    // droppable is the block inside it. The two are deliberately not one
+    // element: the per-track targets below are siblings of the generic one,
+    // never nested inside it, because two overlapping droppables leave which
+    // one a drop lands on to the collision detector's tie-break.
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: '6px',
+      marginTop: '2px', paddingTop: '6px',
+      borderTop: '1px solid var(--color-border)',
+    }}>
+      <div
+        ref={setNodeRef}
+        style={{
+          position: 'relative', display: 'flex', flexDirection: 'column', gap: '4px',
+          borderRadius: 'var(--radius-sm)',
+          background: isOver ? 'var(--color-accent-subtle)' : 'transparent',
+          transition: 'background 120ms ease',
+        }}
+      >
         <span style={{
-          fontFamily: 'var(--font-sans)', fontSize: '11px',
+          fontFamily: 'var(--font-sans)', fontSize: '10px', fontWeight: 600,
+          letterSpacing: '0.05em', textTransform: 'uppercase',
           color: 'var(--color-text-tertiary)',
         }}>
-          Drop here to assign without a shift
+          No shift · {unpinned.length}
         </span>
-      )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-        {unpinned.map((lane) => (
-          <Chip
-            key={lane.key}
-            assignment={lane.assignments[0]}
-            roles={lane.roles}
-            roleCatalog={roleCatalog}
-            onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-            onRemove={() => onRemove(lane.key, eventId)}
-            flags={laneFlags(lane, flagsFor)}
-          />
-        ))}
+        {unpinned.length === 0 && (
+          <span style={{
+            fontFamily: 'var(--font-sans)', fontSize: '11px',
+            color: 'var(--color-text-tertiary)',
+          }}>
+            Drop here to assign without a shift
+          </span>
+        )}
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {unpinned.map((lane) => (
+            <Chip
+              key={lane.key}
+              assignment={lane.assignments[0]}
+              roles={lane.roles}
+              roleCatalog={roleCatalog}
+              onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
+              onRemove={() => onRemove(lane.key, eventId)}
+              flags={laneFlags(lane, flagsFor)}
+            />
+          ))}
+        </div>
       </div>
+
+      {dragging && (
+        <TrackDropZones eventId={eventId} tracks={cosmeticTracks} roleCatalog={roleCatalog} />
+      )}
     </div>
   )
 }
@@ -795,6 +898,9 @@ function EventRow({
     data: { kind: 'event', eventId: event.id },
     disabled: event.shifts.length > 0,
   })
+  // Only to know whether to offer the per-track targets. Flips twice per
+  // drag, not per frame — see useBoardDragging.
+  const dragging = useBoardDragging()
 
   const location = [event.building, event.room].filter(Boolean).join(' ')
   // The event's window: earliest shift start to latest shift end. Derived,
@@ -809,7 +915,6 @@ function EventRow({
 
   return (
     <div
-      ref={setRowRef}
       style={{
         display: 'grid', gridTemplateColumns: '220px 1fr', gap: '12px',
         padding: '10px 12px', borderRadius: 'var(--radius-md)',
@@ -874,26 +979,39 @@ function EventRow({
 
       {event.shifts.length === 0 ? (
         // No shifts to lay a timeline over — test writing and friends.
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-          {rowAssignments.length === 0 ? (
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <EmptyState size="sm" title="Nobody assigned" />
-            </div>
-          ) : (
-            // No shifts to index against, so every row lands in `unpinned` —
-            // which is the grouping we want anyway: one chip per person,
-            // carrying however many roles they hold here.
-            buildLanes(rowAssignments, []).unpinned.map((lane) => (
-              <Chip
-                key={lane.key}
-                assignment={lane.assignments[0]}
-                roles={lane.roles}
-                roleCatalog={roleCatalog}
-                onToggleRole={(role) => onToggleRole(lane.key, event.id, role)}
-                onRemove={() => onRemove(lane.key, event.id)}
-                flags={laneFlags(lane, flagsFor)}
-              />
-            ))
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', minWidth: 0 }}>
+          {/* The row-wide target is attached here rather than to the row
+              itself, so the per-track targets below are its siblings and not
+              boxes nested inside it. The row still tints, since `overRow`
+              comes from the hook regardless of where the ref hangs. */}
+          <div ref={setRowRef} style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {rowAssignments.length === 0 ? (
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <EmptyState size="sm" title="Nobody assigned" />
+              </div>
+            ) : (
+              // No shifts to index against, so every row lands in `unpinned` —
+              // which is the grouping we want anyway: one chip per person,
+              // carrying however many roles they hold here.
+              buildLanes(rowAssignments, []).unpinned.map((lane) => (
+                <Chip
+                  key={lane.key}
+                  assignment={lane.assignments[0]}
+                  roles={lane.roles}
+                  roleCatalog={roleCatalog}
+                  onToggleRole={(role) => onToggleRole(lane.key, event.id, role)}
+                  onRemove={() => onRemove(lane.key, event.id)}
+                  flags={laneFlags(lane, flagsFor)}
+                />
+              ))
+            )}
+          </div>
+          {dragging && (
+            <TrackDropZones
+              eventId={event.id}
+              tracks={cosmeticTracksOf(event)}
+              roleCatalog={roleCatalog}
+            />
           )}
         </div>
       ) : (
@@ -1242,11 +1360,19 @@ export default function AssignmentsPage() {
   }
 
   /** The role a track hands a member placed on it with nothing picked yet —
-   *  see TournamentTrack.default_role_id. An event on several tracks (rare)
-   *  takes the first; a track with no default configured, or an event with
-   *  no track at all, has nothing to fall back to. */
-  function defaultRoleFor(event: TournamentEvent): Role | null {
-    const roleId = event.tracks[0]?.default_role_id ?? null
+   *  see TournamentTrack.default_role_id. `trackId` names the track a drop
+   *  aimed at; without one the event's first track answers, which is only
+   *  ever right when there is nothing to disambiguate. A track with no
+   *  default configured, or an event with no track at all, has nothing to
+   *  fall back to. */
+  function trackForDrop(event: TournamentEvent, trackId?: number): TournamentTrack | undefined {
+    return trackId === undefined
+      ? event.tracks[0]
+      : event.tracks.find((t) => t.id === trackId)
+  }
+
+  function defaultRoleFor(event: TournamentEvent, trackId?: number): Role | null {
+    const roleId = trackForDrop(event, trackId)?.default_role_id ?? null
     if (roleId === null) return null
     return roleCatalog.find((r) => r.id === roleId) ?? null
   }
@@ -1525,6 +1651,7 @@ export default function AssignmentsPage() {
    *   shift    that one column
    *   allday   every shift the event has
    *   noshift  the event, pinned to nothing
+   *   track    the same, but billed to one cosmetic track for its role
    *
    * Returns null shifts as [null] rather than [] so the caller always writes
    * exactly one row per entry — an empty list would silently assign nobody.
@@ -1542,7 +1669,8 @@ export default function AssignmentsPage() {
     const target = over.data.current
     if (!target) return
     const kind = target.kind as string
-    if (kind !== 'shift' && kind !== 'allday' && kind !== 'noshift' && kind !== 'event') return
+    if (kind !== 'shift' && kind !== 'allday' && kind !== 'noshift'
+      && kind !== 'event' && kind !== 'track') return
     if (!requireWriteAccess()) return
 
     const eventId = target.eventId as number
@@ -1589,12 +1717,16 @@ export default function AssignmentsPage() {
       const member = memberById.get(source.membershipId as number)
       if (!member) return
 
-      const role = defaultRoleFor(event)
+      // A drop on a track zone says which track to bill it to; every other
+      // target leaves it to the event's first.
+      const trackId = kind === 'track' ? (target.trackId as number) : undefined
+      const role = defaultRoleFor(event, trackId)
       if (!role) {
+        const track = trackForDrop(event, trackId)
         show(
-          event.tracks.length === 0
+          !track
             ? 'This event has no track to look up a default role from.'
-            : `No default role set for ${event.tracks[0].name} — set one in tournament settings before assigning from the board.`,
+            : `No default role set for ${track.name} — set one in tournament settings before assigning from the board.`,
           'error',
         )
         return
