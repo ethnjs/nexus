@@ -61,6 +61,7 @@ import { Input } from '@/components/ui/Input'
 import { PageHeader } from '@/components/ui/PageHeader'
 import { PillMenu } from '@/components/ui/PillMenu'
 import { Spinner } from '@/components/ui/Spinner'
+import { Toggle } from '@/components/ui/Toggle'
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
   ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tournamentEventsApi,
@@ -236,7 +237,7 @@ function ChipAction({
 // Chip — one assigned person. Name only.
 // ---------------------------------------------------------------------------
 function Chip({
-  assignment, roles, roleCatalog, onToggleRole, onRemove, flags, onResizeStart, resizingEdge,
+  assignment, roles, roleCatalog, onToggleRole, onPickRole, onRemove, flags, onResizeStart, resizingEdge,
 }: {
   assignment: Assignment
   /** Every role this person holds on the event — the lane's roles, not the
@@ -244,7 +245,11 @@ function Chip({
   roles: AssignmentRole[]
   /** Every role the tournament offers, for the pill's picker. */
   roleCatalog: Role[]
+  /** Adds or removes one role, leaving the rest — the multi-select path. */
   onToggleRole: (role: AssignmentRole) => void
+  /** Replaces every role this person holds here with the one picked — the
+   *  default path, since swapping a role is far commoner than stacking one. */
+  onPickRole: (role: AssignmentRole) => void
   /** Drops the whole bar — every shift, every role. */
   onRemove: () => void
   flags: Flag[]
@@ -255,6 +260,12 @@ function Chip({
   resizingEdge?: 'start' | 'end' | null
 }) {
   const [hovered, setHovered] = useState(false)
+  // Off by default: one role is the ordinary case, and in checklist mode
+  // switching from one to another meant ticking the new one and then
+  // unticking the old — with the last-role lock making the order matter. In
+  // list mode a click just moves them. Per chip and per opening is fine; it
+  // is a way of using the menu, not a setting.
+  const [multiRole, setMultiRole] = useState(false)
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip:${assignment.id}`,
     data: { kind: 'chip', assignment },
@@ -345,13 +356,29 @@ function Chip({
           items={roleCatalog}
           getKey={(role) => role.id}
           renderLabel={(role) => role.label}
-          checklist
+          header={
+            <label style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              gap: '8px', padding: '2px 4px', cursor: 'pointer',
+            }}>
+              <span style={{
+                fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
+                color: 'var(--color-text-secondary)',
+              }}>
+                Select multiple
+              </span>
+              <Toggle checked={multiRole} onChange={setMultiRole} />
+            </label>
+          }
+          checklist={multiRole}
           isSelected={(role) => roles.some((r) => sameRole(r, role))}
-          // Clearing the last role would delete the assignment outright — a
-          // menu that says "roles" should not be able to unassign someone.
-          isDisabled={(role) => roles.length === 1 && sameRole(roles[0], role)}
+          // Only in checklist mode: clearing the last role would delete the
+          // assignment outright, and a menu that says "roles" should not be
+          // able to unassign someone. Picking a role in list mode replaces
+          // the set rather than emptying it, so nothing needs locking.
+          isDisabled={multiRole ? (role) => roles.length === 1 && sameRole(roles[0], role) : undefined}
           disabledReason={() => 'Add another role before removing this one'}
-          onSelect={onToggleRole}
+          onSelect={multiRole ? onToggleRole : onPickRole}
           width={200}
           align="left"
         />
@@ -447,7 +474,7 @@ function laneFlags(lane: Lane, flagsFor: (a: Assignment) => Flag[]): Flag[] {
 }
 
 function TimelineBar({
-  lane, eventId, columns, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onRemove,
+  lane, eventId, columns, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
 }: {
   lane: Lane
   eventId: number
@@ -460,6 +487,7 @@ function TimelineBar({
    *  lane's rows as of pointerdown (see the closure note on startResize). */
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
 }) {
   const first = Math.min(...lane.covered)
@@ -529,6 +557,7 @@ function TimelineBar({
         roles={lane.roles}
         roleCatalog={roleCatalog}
         onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
+        onPickRole={(role) => onPickRole(lane.key, eventId, role)}
         onRemove={() => onRemove(lane.key, eventId)}
         flags={flags}
         onResizeStart={startResize}
@@ -571,7 +600,7 @@ function ShiftColumn({
  * so the other rows now bail out here.
  */
 const ShiftTimeline = memo(function ShiftTimeline({
-  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onRemove, overAllShifts,
+  event, rowAssignments, roleCatalog, flagsFor, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove, overAllShifts,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -583,6 +612,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
 }) {
   const shiftIds = event.shifts.map((s) => s.id)
   const { lanes, unpinned } = buildLanes(rowAssignments, shiftIds)
@@ -703,6 +733,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
             onResize={onResize}
             onResizeCommit={onResizeCommit}
             onToggleRole={onToggleRole}
+            onPickRole={onPickRole}
             onRemove={onRemove}
           />
         </div>
@@ -723,6 +754,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
           onToggleRole={onToggleRole}
+          onPickRole={onPickRole}
           onRemove={onRemove}
         />
       )}
@@ -743,13 +775,14 @@ const ShiftTimeline = memo(function ShiftTimeline({
  * The role is named in the header rather than left to be discovered after the
  * drop, since granting it is the whole point of aiming at this column.
  */
-function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onRemove }: {
+function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
   eventId: number
   track: TournamentTrack
   lanes: Lane[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -805,6 +838,7 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
             roles={lane.roles}
             roleCatalog={roleCatalog}
             onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
+            onPickRole={(role) => onPickRole(lane.key, eventId, role)}
             onRemove={() => onRemove(lane.key, eventId)}
             flags={laneFlags(lane, flagsFor)}
           />
@@ -837,13 +871,14 @@ function bucketByTrack(lanes: Lane[], tracks: TournamentTrack[]): Map<number, La
  *  because nothing ranks them — an event's cosmetic tracks are parallel
  *  workstreams, not a hierarchy — and they divide the people area exactly,
  *  which is the row's width less the metadata column. */
-function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onRemove }: {
+function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove }: {
   eventId: number
   tracks: TournamentTrack[]
   lanes: Lane[]
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
 }) {
   if (tracks.length === 0) return null
@@ -862,6 +897,7 @@ function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggle
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
           onToggleRole={onToggleRole}
+          onPickRole={onPickRole}
           onRemove={onRemove}
         />
       ))}
@@ -884,7 +920,7 @@ function NoShiftTracks({ eventId, tracks, lanes, roleCatalog, flagsFor, onToggle
  * placement: they are still draggable up onto a shift.
  */
 function UnpinnedSection({
-  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onRemove,
+  eventId, unpinned, cosmeticTracks, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove,
 }: {
   eventId: number
   unpinned: Lane[]
@@ -893,6 +929,7 @@ function UnpinnedSection({
   roleCatalog: Role[]
   flagsFor: (a: Assignment) => Flag[]
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
 }) {
   return (
@@ -909,6 +946,7 @@ function UnpinnedSection({
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
           onToggleRole={onToggleRole}
+          onPickRole={onPickRole}
           onRemove={onRemove}
         />
       ) : (
@@ -928,6 +966,7 @@ function UnpinnedSection({
                 roles={lane.roles}
                 roleCatalog={roleCatalog}
                 onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
+                onPickRole={(role) => onPickRole(lane.key, eventId, role)}
                 onRemove={() => onRemove(lane.key, eventId)}
                 flags={laneFlags(lane, flagsFor)}
               />
@@ -956,7 +995,7 @@ function MetaLine({ icon, children }: { icon: ReactNode; children: ReactNode }) 
 // Event row
 // ---------------------------------------------------------------------------
 function EventRow({
-  event, rowAssignments, roleCatalog, flagsFor, display, onResize, onResizeCommit, onToggleRole, onRemove,
+  event, rowAssignments, roleCatalog, flagsFor, display, onResize, onResizeCommit, onToggleRole, onPickRole, onRemove,
 }: {
   event: TournamentEvent
   rowAssignments: Assignment[]
@@ -966,6 +1005,7 @@ function EventRow({
   onResize: (laneKey: string, eventId: number, edge: 'start' | 'end', index: number) => void
   onResizeCommit: (laneKey: string, eventId: number, beforeRows: Assignment[]) => void
   onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   onRemove: (laneKey: string, eventId: number) => void
 }) {
   // Two targets on a row with shifts: the metadata column means "every
@@ -1074,6 +1114,7 @@ function EventRow({
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             onToggleRole={onToggleRole}
+            onPickRole={onPickRole}
             onRemove={onRemove}
           />
         ) : (
@@ -1095,6 +1136,7 @@ function EventRow({
                   roles={lane.roles}
                   roleCatalog={roleCatalog}
                   onToggleRole={(role) => onToggleRole(lane.key, event.id, role)}
+                  onPickRole={(role) => onPickRole(lane.key, event.id, role)}
                   onRemove={() => onRemove(lane.key, event.id)}
                   flags={laneFlags(lane, flagsFor)}
                 />
@@ -1111,6 +1153,7 @@ function EventRow({
           onResize={onResize}
           onResizeCommit={onResizeCommit}
           onToggleRole={onToggleRole}
+          onPickRole={onPickRole}
           onRemove={onRemove}
           overAllShifts={overAllShifts}
         />
@@ -1681,7 +1724,16 @@ export default function AssignmentsPage() {
    *  the bar, not to a single column — a runner for the first half and a
    *  scorer for the second is two bars, which is what dragging one out gives
    *  you. A single discrete action, unlike resize, so it syncs immediately. */
-  function handleToggleRole(laneKey: string, eventId: number, role: AssignmentRole) {
+  /**
+   * Rewrite one lane's roles, keeping its shifts. `next` is handed the lane's
+   * roles as they are *now* rather than as the chip last rendered them —
+   * a menu left open across someone else's change would otherwise write back
+   * a set built from stale props.
+   */
+  function setLaneRoles(
+    laneKey: string, eventId: number,
+    next: (current: AssignmentRole[]) => AssignmentRole[],
+  ) {
     if (!requireWriteAccess()) return
     const event = (boardEvents ?? []).find((e) => e.id === eventId)
     if (!event) return
@@ -1689,11 +1741,9 @@ export default function AssignmentsPage() {
     const inLane = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey)
     if (inLane.length === 0) return
 
-    const currentRoles = rolesOf(inLane)
-    const nextRoles = currentRoles.some((r) => sameRole(r, role))
-      ? currentRoles.filter((r) => !sameRole(r, role))
-      : [...currentRoles, role].sort((a, b) => a.label.localeCompare(b.label))
-    // The picker locks the last role, but a stale click could still land.
+    const nextRoles = next(rolesOf(inLane))
+    // Emptying a lane would delete the assignment outright, which is the ×'s
+    // job. The picker locks the last role, but a stale click could still land.
     if (nextRoles.length === 0) return
 
     const { rows: nextRows, added, removed } = rebuildLane(
@@ -1702,6 +1752,19 @@ export default function AssignmentsPage() {
     setRows(nextRows)
     for (const row of added) createAssignmentRow(row)
     for (const row of removed) deleteAssignmentRow(row)
+  }
+
+  function handleToggleRole(laneKey: string, eventId: number, role: AssignmentRole) {
+    setLaneRoles(laneKey, eventId, (current) => (current.some((r) => sameRole(r, role))
+      ? current.filter((r) => !sameRole(r, role))
+      : [...current, role].sort((a, b) => a.label.localeCompare(b.label))))
+  }
+
+  /** Swap every role for this one. Picking the role someone already solely
+   *  holds rebuilds the same lane, which rebuildLane recognises as no change
+   *  and writes nothing for. */
+  function handlePickRole(laneKey: string, eventId: number, role: AssignmentRole) {
+    setLaneRoles(laneKey, eventId, () => [role])
   }
 
   const { setPanel, clearPanel } = useSetLayoutPanel()
@@ -2097,6 +2160,7 @@ export default function AssignmentsPage() {
                 onResize={handleResize}
                 onResizeCommit={handleResizeCommit}
                 onToggleRole={handleToggleRole}
+                onPickRole={handlePickRole}
                 onRemove={handleRemove}
               />
             ))
