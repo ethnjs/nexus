@@ -596,20 +596,32 @@ const ShiftTimeline = memo(function ShiftTimeline({
         ))}
       </div>
 
-      {/* One time per divider — a boundary is shared by the shift before and
+      {/* Times and shift names share one line: they name the same axis, and
+          stacking them cost a whole row of header to say it twice. They can
+          share because they never want the same x — a name is centred in its
+          column, a time sits on the divider *between* columns, so each falls
+          in the other's gap. The times are absolutely positioned (out of the
+          grid's flow) rather than being cells of it, since a boundary belongs
+          to no single column.
+
+          One time per divider — a boundary is shared by the shift before and
           after it, so printing it once says what two per-column ranges said
-          redundantly. Set beside the line rather than centred on it: a label
-          straddling the divider belongs visibly to neither column, and the
-          divider is the thing it is naming. Every label sits to the *right*
-          of its line, so each one reads as "this column starts at"; the last
-          boundary has no column after it, so it flips to the left. */}
-      <div style={{ position: 'relative', height: '12px', pointerEvents: 'none' }}>
+          redundantly. Every time sits to the *right* of its line, so each
+          reads as "this column starts at"; the last boundary has no column
+          after it, so it flips to the left. */}
+      <div style={{
+        position: 'relative', pointerEvents: 'none',
+        display: 'grid', gridTemplateColumns: gridColumns,
+        borderBottom: '1px solid var(--color-border)', paddingBottom: '4px',
+      }}>
         {boundaries.map((moment, i) => (
           <span
             key={i}
             style={{
-              position: 'absolute', left: `${(i / columns) * 100}%`,
-              transform: i === columns ? 'translateX(-100%)' : 'none',
+              position: 'absolute', left: `${(i / columns) * 100}%`, top: '50%',
+              // translateY centres it against the taller shift name beside it;
+              // the last one also pulls itself back inside the right edge.
+              transform: i === columns ? 'translate(-100%, -50%)' : 'translateY(-50%)',
               paddingLeft: i === columns ? 0 : '4px',
               paddingRight: i === columns ? '4px' : 0,
               fontFamily: 'var(--font-sans)', fontSize: '10px',
@@ -619,13 +631,6 @@ const ShiftTimeline = memo(function ShiftTimeline({
             {formatTime(moment)}
           </span>
         ))}
-      </div>
-
-      <div style={{
-        position: 'relative', pointerEvents: 'none',
-        display: 'grid', gridTemplateColumns: gridColumns,
-        borderBottom: '1px solid var(--color-border)', paddingBottom: '4px',
-      }}>
         {event.shifts.map((shift) => (
           <span key={shift.id} style={{
             fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 500,
