@@ -21,7 +21,7 @@
  * bookkeeping structure.
  */
 import {
-  memo, useEffect, useMemo, useRef, useState,
+  memo, useCallback, useEffect, useMemo, useRef, useState,
   type PointerEvent as ReactPointerEvent, type ReactNode,
 } from 'react'
 import { useParams } from 'next/navigation'
@@ -35,10 +35,12 @@ import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
 import {
   MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
+  membersFilterFromStored, membersFilterToStored,
   type MembersFilterState,
 } from '@/components/tournament/MembersFilterModal'
 import {
-  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_TYPE_OPTIONS, isEventsFilterActive,
+  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_TYPE_OPTIONS, eventsFilterFromStored,
+  eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
 import { emptyFilterState } from '@/components/ui/FilterModal'
@@ -60,7 +62,7 @@ import { PillMenu } from '@/components/ui/PillMenu'
 import { Spinner } from '@/components/ui/Spinner'
 import { Tooltip } from '@/components/ui/Tooltip'
 import {
-  ApiError, assignmentsApi, membersApi, rolesApi, tournamentEventsApi,
+  ApiError, assignmentsApi, displayConfigApi, membersApi, rolesApi, tournamentEventsApi,
   tournamentShiftsApi, tournamentTracksApi,
   type Assignment, type MembershipFull, type Role, type TournamentEvent,
   type TournamentShift, type TournamentTrack,
@@ -71,15 +73,19 @@ import {
   memberFacts,
   type Flag,
 } from '@/lib/assignments/flags'
+import { persistDisplayConfigSurface } from '@/lib/displayConfig'
+import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces'
 import { formatTime } from '@/lib/timeFormat'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
 import { useToast } from '@/lib/useToast'
 
 import {
-  DEFAULT_EVENT_DISPLAY, EventDisplayModal, type EventDisplayState,
+  DEFAULT_EVENT_DISPLAY, EventDisplayModal, eventDisplayFromColumns,
+  eventDisplayToColumns, type EventDisplayState,
 } from '@/components/assignments/EventDisplayModal'
 import {
-  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, type MemberDisplayState,
+  DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, memberDisplayFromHidden,
+  memberDisplayToHidden, type MemberDisplayState,
 } from '@/components/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/assignments/MemberCard'
 
@@ -947,6 +953,58 @@ export default function AssignmentsPage() {
   const [showMemberFilterModal, setShowMemberFilterModal] = useState(false)
   const [showMemberDisplayModal, setShowMemberDisplayModal] = useState(false)
 
+  // This viewer's saved view of the board — the event rows' filters and
+  // metadata under one surface, the belt's under another. Read once: unlike
+  // the roster's, nothing here gates a fetch (both halves filter client-side),
+  // so the board renders on its defaults and settles onto the saved view when
+  // this lands, rather than holding the page on a request.
+  useEffect(() => {
+    if (!canView) return
+    let current = true
+    displayConfigApi.get(tournamentId)
+      .then((config) => {
+        if (!current) return
+        const events = config[ASSIGNMENTS_EVENTS]
+        setEventFilters(eventsFilterFromStored(events?.filters))
+        setEventDisplay(eventDisplayFromColumns(events?.columns))
+        const card = config[ASSIGNMENT_CARD]
+        setMemberFilters(membersFilterFromStored(card?.filters))
+        setMemberDisplay(memberDisplayFromHidden(card?.hidden))
+      })
+      // No saved view (or no permission to read one) is not an error — the
+      // board's defaults are a perfectly good board.
+      .catch(() => {})
+    return () => { current = false }
+  }, [tournamentId, canView])
+
+  const applyEventFilters = useCallback((next: EventsFilterState) => {
+    setEventFilters(next)
+    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
+      filters: eventsFilterToStored(next),
+    })
+  }, [tournamentId])
+
+  const applyEventDisplay = useCallback((next: EventDisplayState) => {
+    setEventDisplay(next)
+    persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
+      columns: eventDisplayToColumns(next),
+    })
+  }, [tournamentId])
+
+  const applyMemberFilters = useCallback((next: MembersFilterState) => {
+    setMemberFilters(next)
+    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
+      filters: membersFilterToStored(next),
+    })
+  }, [tournamentId])
+
+  const applyMemberDisplay = useCallback((next: MemberDisplayState) => {
+    setMemberDisplay(next)
+    persistDisplayConfigSurface(tournamentId, ASSIGNMENT_CARD, {
+      hidden: memberDisplayToHidden(next),
+    })
+  }, [tournamentId])
+
   // Every id a not-yet-synced row gets — negative, so "real" (server-known)
   // vs. "still local" is just `id > 0` anywhere a handler needs to tell them
   // apart, with no second bookkeeping structure to keep in step.
@@ -1393,7 +1451,7 @@ export default function AssignmentsPage() {
                   memberQuery || memberFilterActive ? (
                     <Button
                       size="sm" variant="secondary"
-                      onClick={() => { setMemberQuery(''); setMemberFilters(emptyMembersFilter()) }}
+                      onClick={() => { setMemberQuery(''); applyMemberFilters(emptyMembersFilter()) }}
                     >
                       Clear filters
                     </Button>
@@ -1444,7 +1502,7 @@ export default function AssignmentsPage() {
     )
   }, [
     focused, focusedId, belt, allShifts, memberQuery, memberFilters,
-    memberFilterActive, memberDisplay, setPanel, clearPanel,
+    memberFilterActive, memberDisplay, applyMemberFilters, setPanel, clearPanel,
   ])
 
   // Unmount only — leaving the page must not leave the panels behind.
@@ -1663,7 +1721,7 @@ export default function AssignmentsPage() {
                 <Button
                   size="sm"
                   variant="secondary"
-                  onClick={() => { setEventQuery(''); setEventFilters(emptyFilterState(EVENTS_FILTER_KEYS)) }}
+                  onClick={() => { setEventQuery(''); applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS)) }}
                 >
                   Clear
                 </Button>
@@ -1697,14 +1755,14 @@ export default function AssignmentsPage() {
           trackOptions={trackOptions}
           showStaffing
           filters={eventFilters}
-          onApply={setEventFilters}
+          onApply={applyEventFilters}
           onClose={() => setShowEventFilterModal(false)}
         />
       )}
       {showEventDisplayModal && (
         <EventDisplayModal
           display={eventDisplay}
-          onApply={setEventDisplay}
+          onApply={applyEventDisplay}
           onClose={() => setShowEventDisplayModal(false)}
         />
       )}
@@ -1715,7 +1773,7 @@ export default function AssignmentsPage() {
           tournamentId={tournamentId}
           roleOptions={roleCatalog.map((r) => ({ value: String(r.id), label: r.label }))}
           filters={memberFilters}
-          onApply={setMemberFilters}
+          onApply={applyMemberFilters}
           onClose={() => setShowMemberFilterModal(false)}
         />
       )}
@@ -1723,7 +1781,7 @@ export default function AssignmentsPage() {
         <MemberDisplayModal
           display={memberDisplay}
           tracks={tracks.map((t) => ({ id: t.id, label: t.name }))}
-          onApply={setMemberDisplay}
+          onApply={applyMemberDisplay}
           onClose={() => setShowMemberDisplayModal(false)}
         />
       )}

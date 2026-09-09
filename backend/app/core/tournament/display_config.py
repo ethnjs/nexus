@@ -14,9 +14,14 @@ MEMBERS_TABLE = "members_table"
 MEMBER_PAGE = "member_page"
 ASSIGNMENT_CARD = "assignment_card"
 EVENTS_TABLE = "events_table"
+# The assignments board's event rows. Separate from ASSIGNMENT_CARD (the belt
+# card beside them) because the two are configured by their own controls and
+# share no vocabulary — one describes an event, the other a person.
+ASSIGNMENTS_EVENTS = "assignments_events"
 
 KNOWN_SURFACES = frozenset({
     MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD, EVENTS_TABLE,
+    ASSIGNMENTS_EVENTS,
 })
 
 # ---------------------------------------------------------------------------
@@ -131,6 +136,62 @@ KNOWN_EVENT_SORT_FIELDS = frozenset({"name", "division", "day"})
 
 
 # ---------------------------------------------------------------------------
+# Assignments board — event rows
+#
+# `columns` here are the optional bits of metadata a row prints under the
+# event name, not table columns; the storage shape is the same ("what this
+# viewer has turned on, in order") so it reuses the same field rather than
+# inventing a parallel one. Its own key set, though — an event row shows a
+# time *range* the events table has no column for, and the table's category /
+# volunteers-needed have nowhere to go on a row.
+#
+# No `shifts` entry: the row's timeline already is the shift display.
+ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = (
+    "division", "type", "room", "time", "tracks",
+)
+
+# Everything on. A row's metadata is one line of small text, so the default
+# is "show what you have" and a TD trims from there.
+DEFAULT_ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = ASSIGNMENT_EVENT_COLUMNS
+
+# Filtered in the client like the events table, so these store the *excluded*
+# values too. Two keys more than that table: the board loads assignments and
+# per-event tracks, so it can offer staffed/unstaffed and track sections the
+# events page has no data for.
+KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS = frozenset({
+    "division", "type", "category", "track", "staffing",
+})
+
+# ---------------------------------------------------------------------------
+# Assignments board — member belt card
+#
+# Hidden-by-exception, matching the card's client-side model: a field absent
+# from `hidden` shows, so a field added to the card later is visible without
+# migrating anyone's saved state.
+#
+# Its filters are the roster's vocabulary (KNOWN_FILTER_KEYS) — the belt is
+# filtered by the members modal — but a separate surface from MEMBERS_TABLE
+# on purpose: narrowing the belt to staff an event is a different question
+# from how you last read the roster, and one must not clobber the other.
+# ---------------------------------------------------------------------------
+CARD_FIELD_NAMESPACE = "card_field:"
+CARD_TRACK_NAMESPACE = "card_track:"
+
+ASSIGNMENT_CARD_FIELDS = frozenset({
+    "roles", "age", "track_status", "event_preferences", "availability",
+    "competition_school", "competition_event",
+    "volunteer_tournament", "volunteer_event", "volunteer_role",
+})
+
+# The fields that are a per-track list, and so can be hidden one track at a
+# time ("card_track:{field}:{track_id}"). Scoped per field, not shared: a TD
+# may well want Day 1's preferences beside every track's availability.
+ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS = frozenset({
+    "track_status", "event_preferences", "availability",
+})
+
+
+# ---------------------------------------------------------------------------
 # Member panel sections
 #
 # Built-in sections keep a stable id: a TD reorders and hides them, but never
@@ -210,6 +271,31 @@ def is_known_namespace(item: str) -> bool:
     return item.startswith(KNOWN_NAMESPACES)
 
 
+def is_known_hidden_item(surface: str, item: str) -> bool:
+    """Whether `surface` may hide `item`.
+
+    Surface-scoped for the same reason is_known_column is: the belt card's
+    hideable things are its own fields ("card_field:availability") and their
+    per-track slices ("card_track:availability:3"), which mean nothing on a
+    panel, while a panel's "track:3" means nothing on a card. Everything else
+    keeps the shared namespace set.
+
+    Track ids aren't checked against the catalog — a deleted track's saved
+    entry is inert, the same leniency filter values already get.
+    """
+    if surface == ASSIGNMENT_CARD:
+        if item.startswith(CARD_FIELD_NAMESPACE):
+            return item[len(CARD_FIELD_NAMESPACE):] in ASSIGNMENT_CARD_FIELDS
+        if item.startswith(CARD_TRACK_NAMESPACE):
+            field, _, track = item[len(CARD_TRACK_NAMESPACE):].partition(":")
+            return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
+        return False
+    # An event row has no hideable sub-items — its metadata is `columns`.
+    if surface == ASSIGNMENTS_EVENTS:
+        return False
+    return is_known_namespace(item)
+
+
 def unslug(text: str) -> str:
     """"test_review" -> "Test Review". Reserved-key suffixes and field_keys
     are slugs meant for lookup, never for a TD to read — every catalog label
@@ -231,6 +317,8 @@ def is_known_column(surface: str, key: str) -> bool:
     """
     if surface == EVENTS_TABLE:
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
+    if surface == ASSIGNMENTS_EVENTS:
+        return key in ASSIGNMENT_EVENT_COLUMNS
     if surface != MEMBERS_TABLE:
         return False
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
@@ -248,6 +336,13 @@ def known_filter_keys(surface: str) -> frozenset[str]:
         return KNOWN_FILTER_KEYS
     if surface == EVENTS_TABLE:
         return KNOWN_EVENT_FILTER_KEYS
+    if surface == ASSIGNMENTS_EVENTS:
+        return KNOWN_ASSIGNMENT_EVENT_FILTER_KEYS
+    # The belt is filtered by the roster's own modal, so it stores the roster's
+    # keys — see the note on ASSIGNMENT_CARD_FIELDS about why it is still its
+    # own surface.
+    if surface == ASSIGNMENT_CARD:
+        return KNOWN_FILTER_KEYS
     return frozenset()
 
 

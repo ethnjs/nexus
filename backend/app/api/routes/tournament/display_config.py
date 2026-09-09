@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.display_config import (
     CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, KNOWN_SURFACES, build_catalog,
-    is_known_column, is_known_namespace, is_known_section, known_filter_keys,
+    is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
     known_sort_fields, section_field_ids,
 )
 from app.core.tournament.memberships import get_membership_by_user
@@ -107,10 +107,10 @@ def update_display_config(
                 detail=f"Unknown surface '{surface}'",
             )
         for item in config.hidden:
-            if not is_known_namespace(item):
+            if not is_known_hidden_item(surface, item):
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Unknown namespace for hidden item '{item}'",
+                    detail=f"Surface '{surface}' cannot hide '{item}'",
                 )
         for column in config.columns or []:
             if not is_known_column(surface, column):

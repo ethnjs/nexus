@@ -14,9 +14,10 @@
  * of its columns is checked. "Show the section but none of its fields" is a
  * state that renders as nothing, which is not worth a control of its own.
  *
- * Nothing here talks to an API — the assignments board keeps this display
- * config in memory rather than persisting it through displayConfigApi like
- * the panel does, so the filtering happens at render time in the card itself.
+ * Nothing here talks to an API itself: the board owns the state and persists
+ * it through displayConfigApi under the `assignment_card` surface (see the
+ * converters below). Either way the filtering happens at render time in the
+ * card — the server's payload for this surface is a fixed field set.
  */
 import { useState } from "react";
 
@@ -70,6 +71,44 @@ export const DEFAULT_MEMBER_DISPLAY: MemberDisplayState = {
   ],
   hiddenTracks: [],
 };
+
+// Mirrors CARD_FIELD_NAMESPACE / CARD_TRACK_NAMESPACE in
+// core/tournament/display_config.py — one flat `hidden` list per surface is
+// the storage shape every surface uses, so the two kinds of entry are told
+// apart by prefix rather than by two columns.
+const CARD_FIELD_PREFIX = "card_field:";
+const CARD_TRACK_PREFIX = "card_track:";
+
+/** The saved wire shape into display state. `hidden` is one flat namespaced
+    list on the server (a whole-field entry, or one field's track slice), so
+    the two arrays are split back apart here. Unknown prefixes are dropped:
+    a field removed in a later release must not sit in the list hiding
+    nothing. */
+export function memberDisplayFromHidden(
+  hidden: string[] | null | undefined,
+): MemberDisplayState {
+  // Never saved — not "nothing hidden". An empty saved list is a real state
+  // (everything shown), and it must not spring back to the default.
+  if (!Array.isArray(hidden)) return DEFAULT_MEMBER_DISPLAY;
+  const state: MemberDisplayState = { hiddenFields: [], hiddenTracks: [] };
+  for (const item of hidden) {
+    if (typeof item !== "string") continue;
+    if (item.startsWith(CARD_FIELD_PREFIX)) {
+      state.hiddenFields.push(item.slice(CARD_FIELD_PREFIX.length) as MemberFieldId);
+    } else if (item.startsWith(CARD_TRACK_PREFIX)) {
+      state.hiddenTracks.push(item.slice(CARD_TRACK_PREFIX.length));
+    }
+  }
+  return state;
+}
+
+/** Display state as the stored wire shape — the inverse of the above. */
+export function memberDisplayToHidden(display: MemberDisplayState): string[] {
+  return [
+    ...display.hiddenFields.map((id) => `${CARD_FIELD_PREFIX}${id}`),
+    ...display.hiddenTracks.map((key) => `${CARD_TRACK_PREFIX}${key}`),
+  ];
+}
 
 export function fieldShown(display: MemberDisplayState, id: MemberFieldId): boolean {
   return !display.hiddenFields.includes(id);

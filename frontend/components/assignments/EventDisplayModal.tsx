@@ -37,6 +37,28 @@ const DISPLAY_FIELDS: { key: keyof EventDisplayState; label: string }[] = [
   { key: "tracks", label: "Tracks" },
 ];
 
+/** The saved wire shape (a list of the turned-on keys, like a table's
+    `columns`) into display state. Absent means "never saved" and falls back
+    to the default — an empty array is a real answer, "show no metadata", and
+    is why null and [] are kept apart. A key added to the modal later is off
+    for anyone with a saved list, which is the price of storing what's on
+    rather than what's off; with five fixed keys that beats a migration. */
+export function eventDisplayFromColumns(
+  columns: string[] | null | undefined,
+): EventDisplayState {
+  if (!Array.isArray(columns)) return DEFAULT_EVENT_DISPLAY;
+  const on = new Set(columns);
+  return Object.fromEntries(
+    Object.keys(DEFAULT_EVENT_DISPLAY).map((key) => [key, on.has(key)]),
+  ) as unknown as EventDisplayState;
+}
+
+/** Display state as the stored wire shape. Order follows DISPLAY_FIELDS so
+    two saves of the same config are byte-identical. */
+export function eventDisplayToColumns(display: EventDisplayState): string[] {
+  return DISPLAY_FIELDS.filter(({ key }) => display[key]).map(({ key }) => key);
+}
+
 export function EventDisplayModal({
   display,
   onApply,

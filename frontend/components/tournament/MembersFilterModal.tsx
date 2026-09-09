@@ -68,6 +68,20 @@ export function membersFilterFromStored(
   return state;
 }
 
+/** The committed filters as the stored wire shape, empty keys dropped.
+ *  Deliberately not membersFilterParams: that shape is what the *roster
+ *  query* takes, which excludes `assigned` because the backend reads it as
+ *  its own bool param. Saved state has no such split — a viewer who left the
+ *  belt on "unassigned" expects it there next time — so this keeps every
+ *  key. Unpaired values are kept as saved too; they are ignored on read. */
+export function membersFilterToStored(filters: MembersFilterState): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(filters)
+      .map(([key, values]): [string, string[]] => [key, [...values]])
+      .filter(([, values]) => values.length > 0),
+  );
+}
+
 /** The committed filters as repeatable query params, empty keys dropped.
  *  Excludes `assigned` — see membersFilterAssigned. */
 export function membersFilterParams(filters: MembersFilterState): Record<string, string[]> {

@@ -181,6 +181,73 @@ def test_put_display_config_rejects_unknown_namespace(client, td_user, td_tourna
     assert response.status_code == 422
 
 
+# ---------------------------------------------------------------------------
+# The assignments board's two surfaces — event rows and the belt card
+# ---------------------------------------------------------------------------
+
+def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    payload = {
+        "assignments_events": {
+            "hidden": [],
+            "columns": ["division", "time"],
+            "filters": {"staffing": ["staffed"], "track": ["3"]},
+        },
+        "assignment_card": {
+            "hidden": ["card_field:availability", "card_track:event_preferences:7"],
+            "filters": {"assigned": ["unassigned"], "age": ["over_18"]},
+        },
+    }
+    response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["assignments_events"]["columns"] == ["division", "time"]
+    assert body["assignment_card"]["hidden"] == [
+        "card_field:availability", "card_track:event_preferences:7",
+    ]
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json() == body
+
+
+def test_put_assignments_events_rejects_foreign_column(client, td_user, td_tournament):
+    """A column the events *table* has but a board row doesn't — surfaces
+    don't fall through to each other's vocabularies."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": [], "columns": ["volunteers_needed"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignments_events_rejects_hidden_items(client, td_user, td_tournament):
+    """An event row has no hideable sub-items; its metadata is `columns`."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": ["track:3"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignment_card_rejects_unknown_field(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card": {"hidden": ["card_field:email"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignment_card_rejects_track_slice_of_scalar_field(client, td_user, td_tournament):
+    """`age` is one value, not a per-track list, so it has no track slices."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card": {"hidden": ["card_track:age:3"]}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_display_config_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
