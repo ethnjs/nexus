@@ -627,6 +627,7 @@ export default function MembersPage() {
                 label="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
                 placeholder="Search name or email"
                 icon={<IconSearch size={14} />}
                 font="sans"

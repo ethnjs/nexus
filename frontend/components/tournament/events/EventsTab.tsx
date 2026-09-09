@@ -423,6 +423,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   label="Search"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
+                  onClear={() => setSearch("")}
                   placeholder="Search event name"
                   icon={<IconSearch size={14} />}
                   font="sans"

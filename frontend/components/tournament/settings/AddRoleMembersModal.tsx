@@ -80,6 +80,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
+          onClear={() => setSearch("")}
           placeholder="Search members"
           icon={<IconSearch size={14} />}
           font="sans"

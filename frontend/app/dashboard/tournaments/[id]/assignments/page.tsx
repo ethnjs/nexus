@@ -1665,6 +1665,7 @@ export default function AssignmentsPage() {
             <Input
               value={memberQuery}
               onChange={(e) => setMemberQuery(e.target.value)}
+              onClear={() => setMemberQuery('')}
               placeholder="Search members"
               icon={<IconSearch />}
               size="md"
@@ -1930,6 +1931,7 @@ export default function AssignmentsPage() {
             <Input
               value={eventQuery}
               onChange={(e) => setEventQuery(e.target.value)}
+              onClear={() => setEventQuery('')}
               placeholder="Search events"
               icon={<IconSearch />}
               size="md"

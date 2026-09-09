@@ -455,6 +455,7 @@ function ShiftEventsSection({ shiftId, trackId, events, locked, error, onSetEven
               size="sm" font="sans" fullWidth
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              onClear={() => setSearch("")}
               placeholder="Search events on this track"
               icon={<IconSearch size={13} />}
             />

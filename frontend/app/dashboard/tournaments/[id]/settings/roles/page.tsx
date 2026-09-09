@@ -150,6 +150,7 @@ export default function RolesSettingsPage() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
                 placeholder="Search roles"
                 icon={<IconSearch size={14} />}
                 font="sans"
