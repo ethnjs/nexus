@@ -119,6 +119,62 @@ def test_create_event_has_no_times_of_its_own(client, td_user, td_tournament):
     assert "start_time" not in body and "end_time" not in body
 
 
+def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
+    """Attach order is not schedule order. The assignments board lays an
+    event's shifts out left to right as a timeline, so a shift added late but
+    starting early (Impound, 7-8am, attached after Morning) has to sort into
+    its place rather than print the day as 8am, 12pm, 4pm, 8am."""
+    login(client, "td@test.com", "tdpass")
+    morning = _make_shift(
+        client, td_tournament.id, label="Morning",
+        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z",
+    ).json()["id"]
+    afternoon = _make_shift(
+        client, td_tournament.id, label="Afternoon",
+        start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z",
+    ).json()["id"]
+    impound = _make_shift(
+        client, td_tournament.id, label="Impound",
+        start=EVENT_DATE + "T07:00:00Z", end=EVENT_DATE + "T08:00:00Z",
+    ).json()["id"]
+
+    body = _make_event(
+        client, td_tournament.id, shift_ids=[morning, afternoon, impound],
+    ).json()
+    assert [s["label"] for s in body["shifts"]] == ["Impound", "Morning", "Afternoon"]
+
+    row = client.get(f"/tournaments/{td_tournament.id}/events/{body['id']}/").json()
+    assert [s["label"] for s in row["shifts"]] == ["Impound", "Morning", "Afternoon"]
+
+
+def test_event_shifts_come_back_in_time_order(client, td_user, td_tournament):
+    """Attach order is not schedule order. The assignments board lays an
+    event's shifts out left to right as a timeline, so a shift added late but
+    starting early (Impound, 7-8am, attached after Morning) has to sort into
+    its place rather than print the day as 8am, 12pm, 4pm, 8am."""
+    login(client, "td@test.com", "tdpass")
+    morning = _make_shift(
+        client, td_tournament.id, label="Morning",
+        start=EVENT_DATE + "T08:00:00Z", end=EVENT_DATE + "T12:00:00Z",
+    ).json()["id"]
+    afternoon = _make_shift(
+        client, td_tournament.id, label="Afternoon",
+        start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T16:00:00Z",
+    ).json()["id"]
+    impound = _make_shift(
+        client, td_tournament.id, label="Impound",
+        start=EVENT_DATE + "T07:00:00Z", end=EVENT_DATE + "T08:00:00Z",
+    ).json()["id"]
+
+    body = _make_event(
+        client, td_tournament.id, shift_ids=[morning, afternoon, impound],
+    ).json()
+    assert [s["label"] for s in body["shifts"]] == ["Impound", "Morning", "Afternoon"]
+
+    row = client.get(f"/tournaments/{td_tournament.id}/events/{body['id']}/").json()
+    assert [s["label"] for s in row["shifts"]] == ["Impound", "Morning", "Afternoon"]
+
+
 def test_create_event_rejects_the_old_time_fields(client, td_user, td_tournament):
     """A caller still sending times gets a 422 rather than a silent drop."""
     login(client, "td@test.com", "tdpass")

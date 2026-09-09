@@ -699,8 +699,15 @@ class TournamentEvent(Base):
 
     tournament = relationship("Tournament", back_populates="events")
     event = relationship("Event")
+    # Chronological, not attach order. The assignments board lays these out
+    # left to right as a timeline and indexes its bars by position, so the
+    # order they arrive in *is* the schedule as far as any reader is
+    # concerned — attaching Impound (7-8am) after Morning put it last and
+    # printed the day as 8am, 12pm, 4pm, 8am. `start` is a full datetime, so
+    # this orders a multi-day event's shifts correctly too.
     shifts = relationship(
-        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events"
+        "TournamentShift", secondary="tournament_event_shifts", back_populates="tournament_events",
+        order_by="(TournamentShift.start, TournamentShift.id)",
     )
     # Which tracks this event runs on. Explicit rather than derived through
     # shifts: a cosmetic track (Test Writing) has no shifts by construction,
