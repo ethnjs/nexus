@@ -24,7 +24,7 @@ import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/Ev
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import {
   EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
-  eventsFilterFromStored, eventsFilterToStored,
+  eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
 } from "@/components/tournament/events/EventsFilterModal";
 import { emptyFilterState } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
@@ -57,11 +57,6 @@ type SortDir = "asc" | "desc";
 // Sentinel for the null case of a nullable field (division/category) so it
 // can sit in the same filter Set as real values.
 const UNSET = "__unset__";
-
-const TYPE_OPTIONS = [
-  { value: "standard", label: "Standard" },
-  { value: "trial", label: "Trial" },
-];
 
 const SORT_FIELD_OPTIONS = [
   { value: "name", label: "Name" },
@@ -570,7 +565,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
       {showFilterModal && (
         <EventsFilterModal
           divisionOptions={divisionOptions}
-          typeOptions={TYPE_OPTIONS}
+          typeOptions={EVENT_TYPE_OPTIONS}
           categoryOptions={categoryOptions}
           filters={filters}
           onApply={applyFilters}

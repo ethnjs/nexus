@@ -4,10 +4,25 @@ import {
   emptyFilterState, FilterModal, FilterOption, FilterSectionConfig, FilterState, isFilterActive,
 } from "@/components/ui/FilterModal";
 
-export const EVENTS_FILTER_KEYS = ["division", "type", "category"] as const;
+// track/staffing are optional per caller (see trackOptions/showStaffing below)
+// — the Events tab has neither a per-event track list nor assignment data to
+// filter by, so its state simply carries them as always-empty sets.
+export const EVENTS_FILTER_KEYS = ["division", "type", "category", "track", "staffing"] as const;
 type EventsFilterKey = (typeof EVENTS_FILTER_KEYS)[number];
 
 export type EventsFilterState = FilterState<EventsFilterKey>;
+
+// Fixed two-value enum, shared wherever an event's type is filtered or
+// displayed, so a third type never has to be added in two places at once.
+export const EVENT_TYPE_OPTIONS: FilterOption[] = [
+  { value: "standard", label: "Standard" },
+  { value: "trial", label: "Trial" },
+];
+
+const STAFFING_OPTIONS: FilterOption[] = [
+  { value: "staffed", label: "Staffed" },
+  { value: "unstaffed", label: "Unstaffed" },
+];
 
 export function isEventsFilterActive(filters: EventsFilterState): boolean {
   return isFilterActive(filters);
@@ -45,20 +60,33 @@ interface EventsFilterModalProps {
   divisionOptions: FilterOption[];
   typeOptions: FilterOption[];
   categoryOptions: FilterOption[];
+  /** Omit to hide the Track section — the Events tab has no per-event track
+   *  list to filter against; the assignments board does. */
+  trackOptions?: FilterOption[];
+  /** Adds the Staffed/Unstaffed section. Off by default: staffing is derived
+   *  from assignment data, which the Events tab doesn't load (see the note on
+   *  TournamentEvent's `event` field about assignments staying a separate
+   *  fetch, joined client-side). The assignments board, which already loads
+   *  that data, turns this on. */
+  showStaffing?: boolean;
   filters: EventsFilterState;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: EventsFilterState) => void;
   onClose: () => void;
 }
 
-// Division/Type have a handful of fixed values (button group); Category is
-// open-ended and grows with the event list (checkbox list).
-export function EventsFilterModal({ divisionOptions, typeOptions, categoryOptions, filters, onApply, onClose }: EventsFilterModalProps) {
+// Division/Type/Track have a handful of fixed values (button group);
+// Category is open-ended and grows with the event list (checkbox list).
+export function EventsFilterModal({
+  divisionOptions, typeOptions, categoryOptions, trackOptions, showStaffing, filters, onApply, onClose,
+}: EventsFilterModalProps) {
   const sections: FilterSectionConfig<EventsFilterKey>[] = [
     { key: "division", title: "Division", options: divisionOptions, control: "buttons" },
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
   ];
+  if (trackOptions) sections.push({ key: "track", title: "Track", options: trackOptions, control: "buttons" });
+  if (showStaffing) sections.push({ key: "staffing", title: "Staffing", options: STAFFING_OPTIONS, control: "buttons" });
 
   return (
     <FilterModal
