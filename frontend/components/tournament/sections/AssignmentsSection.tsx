@@ -17,6 +17,9 @@ import { useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
 import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
 import { RolePillMenu } from "@/components/assignments/RolePillMenu";
+import {
+  AVAILABILITY_GREEN, AVAILABILITY_RED,
+} from "@/components/tournament/AvailabilityTimeline";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { FieldValue } from "@/components/profile/PanelField";
@@ -58,13 +61,6 @@ interface AssignmentsSectionProps {
   /** Fires after a write lands, so the panel can re-read the member. */
   onChanged?: () => void;
 }
-
-// The same two colours the availability bar uses, at roughly half the
-// strength. There the colour *is* the content and can be as loud as it likes;
-// here it is a backdrop with chips, names and role pills on top of it, and at
-// full strength it competed with them.
-const SHADE_AVAILABLE = "color-mix(in srgb, var(--color-success) 13%, transparent)";
-const SHADE_UNAVAILABLE = "color-mix(in srgb, var(--color-danger) 6%, transparent)";
 
 /** A bar here is one event, not one person — the inverse of the board's key. */
 function laneKeyOf(assignment: Assignment) {
@@ -565,7 +561,9 @@ function ShiftCell({ shift, trackId, available, shade, locked }: {
     data: { kind: "panel-shift", shiftId: shift.id, trackId },
     disabled: locked,
   });
-  const shaded = shade ? (available ? SHADE_AVAILABLE : SHADE_UNAVAILABLE) : "transparent";
+  // The availability bar's own two — one definition, so the two timelines
+  // never drift into meaning different greens.
+  const shaded = shade ? (available ? AVAILABILITY_GREEN : AVAILABILITY_RED) : "transparent";
   return (
     <div
       ref={setNodeRef}

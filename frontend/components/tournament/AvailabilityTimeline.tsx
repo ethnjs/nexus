@@ -58,13 +58,22 @@ function mergeSpans(spans: Span[]): Span[] {
   return merged;
 }
 
-// Exported: the assignments section shades its own timeline from the same
-// two, so "green" means the same density of the same green in both places.
-export const AVAILABILITY_GREEN = "color-mix(in srgb, var(--color-success) 28%, transparent)";
-export const AVAILABILITY_RED = "color-mix(in srgb, var(--color-danger) 12%, transparent)";
+// The one definition of "available" and "not", exported because the member
+// panel's assignments section shades its own timeline with them — the same
+// green has to mean the same thing at the same weight wherever a member's
+// availability is drawn.
+//
+// Light, because in both places the colour sits *under* something: chips and
+// role pills there, the shift blocks and their labels here. It reads as a
+// ground rather than as a mark.
+export const AVAILABILITY_GREEN = "color-mix(in srgb, var(--color-success) 13%, transparent)";
+export const AVAILABILITY_RED = "color-mix(in srgb, var(--color-danger) 6%, transparent)";
 
 const GREEN = AVAILABILITY_GREEN;
-const GREEN_HOVER = "color-mix(in srgb, var(--color-success) 60%, transparent)";
+// Hover is the one place the green is the mark rather than the ground: it
+// answers "which block is this badge?", so it stays well clear of the resting
+// fill instead of scaling with it.
+const GREEN_HOVER = "color-mix(in srgb, var(--color-success) 34%, transparent)";
 const RED = AVAILABILITY_RED;
 
 function timeRange(span: Span): string {
