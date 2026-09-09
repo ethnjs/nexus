@@ -13,6 +13,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
 import { tournamentsApi, ApiError } from "@/lib/api";
+import { BoardDndProvider } from "@/components/assignments/BoardDnd";
 
 function TournamentNotFound() {
   const router = useRouter();
@@ -190,9 +191,15 @@ export default function TournamentLayout({
             page (e.g. the roles editor) registers. */}
         <UnsavedChangesProvider>
           <LayoutPanelProvider>
-            <TournamentShell tournamentId={tournamentId}>
-              {children}
-            </TournamentShell>
+            {/* Above the shell so the assignments board's drag context
+                reaches both <main> and the panel slot — its member belt is
+                rendered into the latter, a sibling of <main> rather than a
+                descendant of it. Inert on every other tab. */}
+            <BoardDndProvider>
+              <TournamentShell tournamentId={tournamentId}>
+                {children}
+              </TournamentShell>
+            </BoardDndProvider>
           </LayoutPanelProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>
