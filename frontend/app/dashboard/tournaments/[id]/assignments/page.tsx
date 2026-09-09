@@ -163,6 +163,26 @@ function divisionVariant(division: string | null) {
 }
 
 
+/**
+ * The same event with its shifts in schedule order.
+ *
+ * The board reads `shifts` as the timeline itself — the array index is the
+ * column, a bar's span is a slice of it, and the boundary times are its
+ * starts and ends — so an event whose Impound shift was attached after
+ * Morning printed the day as 8am, 12pm, 4pm, 8am. The API sorts these now
+ * (TournamentEvent.shifts order_by), and this normalises on arrival anyway:
+ * every ordering assumption downstream is local to this page, so this is
+ * where it should be guaranteed rather than assumed.
+ */
+function withOrderedShifts(event: TournamentEvent): TournamentEvent {
+  return {
+    ...event,
+    shifts: [...event.shifts].sort(
+      (a, b) => new Date(a.start).getTime() - new Date(b.start).getTime() || a.id - b.id,
+    ),
+  }
+}
+
 /** An event's shiftless tracks. `is_primary` is the whole test: only a
  *  primary track has dates, and only a dated track can hold shifts (see
  *  TournamentTrack in models.py), so a cosmetic one can never be a column. */
@@ -1209,7 +1229,7 @@ export default function AssignmentsPage() {
     if (!canView) return
     let current = true
     tournamentEventsApi.list(tournamentId)
-      .then((data) => { if (current) setEvents(data) })
+      .then((data) => { if (current) setEvents(data.map(withOrderedShifts)) })
       .catch((err: unknown) => {
         if (current) setLoadError(err instanceof ApiError ? err.message : 'Failed to load events.')
       })
