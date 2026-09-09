@@ -76,6 +76,7 @@ import {
 } from '@/lib/assignments/flags'
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
 import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces'
+import { eventName } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
 import { useToast } from '@/lib/useToast'
@@ -1030,8 +1031,10 @@ function EventRow({
             division trails it as a tag rather than leading, so the names line
             up on the left edge instead of being indented by a badge. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          {/* eventName, not `name`: a catalog-linked event leaves its own
+              name column null and carries it on the joined canonical event. */}
           <span style={{ fontFamily: 'var(--font-sans)', fontWeight: 500, fontSize: '13px' }}>
-            {event.name}
+            {eventName(event)}
           </span>
           {display.division && event.division && (
             <Badge variant={divisionVariant(event.division)}>{event.division}</Badge>
@@ -1278,7 +1281,7 @@ export default function AssignmentsPage() {
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
     return (events ?? []).filter((event) => {
-      if (text && !(event.name ?? '').toLowerCase().includes(text)) return false
+      if (text && !eventName(event).toLowerCase().includes(text)) return false
       if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
       if (!filterAllows(eventFilters.type, event.event_type)) return false
       if (!filterAllows(eventFilters.category, eventCategoryKey(event))) return false
@@ -1773,7 +1776,9 @@ export default function AssignmentsPage() {
     const source = active.data.current
 
     const eventRef = {
-      id: event.id, name: event.name, division: event.division,
+      // Resolved the way the server resolves it (EventMemberRead sends
+      // display_name), so an optimistic row names its event like a real one.
+      id: event.id, name: event.event?.name ?? event.name, division: event.division,
       event_type: event.event_type, shifts: event.shifts,
     }
     const shiftFor = (id: number | null) =>
