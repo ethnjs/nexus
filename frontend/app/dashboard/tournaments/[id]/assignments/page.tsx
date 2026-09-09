@@ -1858,26 +1858,64 @@ export default function AssignmentsPage() {
       const assignment = source.assignment as Assignment
       // Move the whole bar, not the one row under the cursor: a bar is a
       // grid of rows sharing a membership, and moving one of them would tear
-      // the span — or drop every role but one. A cross-event move has no
-      // single PATCH for it (the shift, not the event, is what a write can
-      // repoint), so it's a delete of the old rows and a create of the new.
+      // the span — or drop every role but one.
       const laneKey = laneKeyOf(assignment)
       const moving = rows.filter((row) =>
         row.event.id === assignment.event.id && laneKeyOf(row) === laneKey)
       const movingIds = new Set(moving.map((r) => r.id))
       const template = moving[0] ?? assignment
       const rolesToKeep = rolesOf(moving.length > 0 ? moving : [assignment])
-      const newRows: Assignment[] = shiftIds.flatMap((shiftId) => rolesToKeep.map((role) => ({
-        ...template,
-        id: nextLocalId(),
-        event: eventRef,
-        role,
-        shift: shiftFor(shiftId),
-        updated_at: new Date().toISOString(),
-      })))
-      setRows((current) => [...current.filter((row) => !movingIds.has(row.id)), ...newRows])
-      for (const row of moving) deleteAssignmentRow(row)
-      for (const row of newRows) createAssignmentRow(row)
+
+      // Diffed by cell rather than deleted and recreated wholesale, the same
+      // way rebuildLane treats a resize. Two reasons, and the second is the
+      // one that bites: a drop that changes nothing has to write nothing, and
+      // a drop that *overlaps* its own bar (shifts 1-2 dragged onto 2-3)
+      // shares the (shift 2, role) cell with itself. Recreating that cell
+      // races the delete of the row already holding it — the create loses on
+      // the unique index, rolls back, and then the delete takes the original
+      // away, so the person silently loses a shift they never left.
+      //
+      // Only within one event. A cross-event move shares no cells (the row
+      // names its event) and has no single PATCH for it either, since the
+      // shift is what a write can repoint — so it stays a delete and create.
+      const sameEvent = event.id === assignment.event.id
+      const cellKey = (shiftId: number | null, role: AssignmentRole) =>
+        `${shiftId ?? 'none'}|${roleKey(role)}`
+      const reusable = new Map(
+        sameEvent ? moving.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]) : [],
+      )
+
+      const kept: Assignment[] = []
+      const added: Assignment[] = []
+      for (const shiftId of shiftIds) {
+        for (const role of rolesToKeep) {
+          const found = reusable.get(cellKey(shiftId, role))
+          if (found) { kept.push(found); continue }
+          added.push({
+            ...template,
+            id: nextLocalId(),
+            event: eventRef,
+            role,
+            shift: shiftFor(shiftId),
+            updated_at: new Date().toISOString(),
+          })
+        }
+      }
+      const keptIds = new Set(kept.map((row) => row.id))
+      const removed = moving.filter((row) => !keptIds.has(row.id))
+
+      // Put back exactly where it came from. Not an error to swallow — there
+      // is nothing to write, so nothing is written and the rows never leave
+      // state. A *different* card landing on an occupied cell still creates,
+      // still hits the unique index, and still reports the 409: the server
+      // can't tell those two apart, only this can.
+      if (added.length === 0 && removed.length === 0) return
+
+      setRows((current) => [
+        ...current.filter((row) => !movingIds.has(row.id)), ...kept, ...added,
+      ])
+      for (const row of removed) deleteAssignmentRow(row)
+      for (const row of added) createAssignmentRow(row)
       return
     }
 
