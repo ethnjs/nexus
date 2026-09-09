@@ -621,7 +621,7 @@ const ShiftTimeline = memo(function ShiftTimeline({
   const dragging = useBoardDragging()
   const columns = event.shifts.length
   const gridColumns = `repeat(${columns}, minmax(0, 1fr))`
-  const cosmeticTracks = cosmeticTracksOf(event)
+  const noShiftTracks = noShiftTracksOf(event, unpinned)
 
   // One time at every divider, edges included — n shifts have n+1 boundaries,
   // and each internal one is both a shift's end and the next one's start.
@@ -746,11 +746,11 @@ const ShiftTimeline = memo(function ShiftTimeline({
           dragging. So it also appears, empty, for the duration of a drag. */}
       </div>
 
-      {(unpinned.length > 0 || (dragging && cosmeticTracks.length > 0)) && (
+      {(unpinned.length > 0 || (dragging && noShiftTracks.length > 0)) && (
         <UnpinnedSection
           eventId={event.id}
           unpinned={unpinned}
-          cosmeticTracks={cosmeticTracks}
+          cosmeticTracks={noShiftTracks}
           roleCatalog={roleCatalog}
           flagsFor={flagsFor}
           onToggleRole={onToggleRole}
@@ -849,22 +849,48 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
 }
 
 /**
- * Which column an unpinned chip sits in.
+ * Which column an unpinned chip sits in — the track the row itself names.
  *
- * An assignment row carries no track — only event, member, role and shift —
- * so its role is the one signal there is: a chip sits under the track whose
- * default role it holds. Anything else (a role picked by hand, or two tracks
- * sharing a default) falls to the first column rather than vanishing. The
- * durable fix is a track on the assignment row itself, which is a migration.
+ * This used to be a guess: an assignment carried only event, member, role and
+ * shift, so a chip was filed under whichever track's *default role* it held,
+ * which two tracks can share and a hand-picked role matches none of. The row
+ * carries its track now (see tournament_track_id), so the question is
+ * answered rather than inferred.
  */
 function bucketByTrack(lanes: Lane[], tracks: TournamentTrack[]): Map<number, Lane[]> {
   const buckets = new Map(tracks.map((track) => [track.id, [] as Lane[]]))
   for (const lane of lanes) {
-    const owner = tracks.find((track) => track.default_role_id !== null
-      && lane.roles.some((role) => role.id === track.default_role_id))
-    buckets.get(owner?.id ?? tracks[0].id)!.push(lane)
+    buckets.get(lane.assignments[0].track.id)?.push(lane)
   }
   return buckets
+}
+
+/**
+ * The no-shift area's columns: every cosmetic track the event runs on, plus
+ * any track that actually holds unpinned rows here.
+ *
+ * The second half is not hypothetical — detaching a shift from an event
+ * unpins its assignments while leaving them on that day's track (see
+ * detach_shifts_from_assignments, which unpins rather than deletes precisely
+ * so the staffing isn't silently lost). Without a column for it, "not lost"
+ * would still mean "nowhere on screen".
+ */
+function noShiftTracksOf(event: TournamentEvent, unpinned: Lane[]): TournamentTrack[] {
+  const columns = cosmeticTracksOf(event)
+  const shown = new Set(columns.map((track) => track.id))
+  for (const lane of unpinned) {
+    const track = lane.assignments[0].track
+    if (shown.has(track.id)) continue
+    shown.add(track.id)
+    // The event's own copy where there is one — it carries default_role_id,
+    // which the column header names.
+    columns.push(event.tracks.find((t) => t.id === track.id) ?? {
+      ...track, tournament_id: event.tournament_id, start_date: null, end_date: null,
+      university: null, location: null, division: null, is_archived: false,
+      allow_confirm: false, default_role_id: null, created_at: '', updated_at: '',
+    })
+  }
+  return columns
 }
 
 /** The no-shift area, split into one equal column per cosmetic track. Equal
@@ -1109,7 +1135,7 @@ function EventRow({
         cosmeticTracks.length > 0 ? (
           <NoShiftTracks
             eventId={event.id}
-            tracks={cosmeticTracks}
+            tracks={noShiftTracksOf(event, buildLanes(rowAssignments, []).unpinned)}
             lanes={buildLanes(rowAssignments, []).unpinned}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
@@ -1524,6 +1550,9 @@ export default function AssignmentsPage() {
         membership_id: row.member.membership_id!,
         role_id: row.role.id!,
         tournament_shift_id: row.shift?.id ?? null,
+        // Ignored by the server when a shift is given (the shift names its
+        // own track); the whole answer when one isn't.
+        tournament_track_id: row.shift ? null : row.track.id,
       })
       setRows((current) => current.map((r) => (r.id === row.id ? created : r)))
     } catch (err) {
@@ -1576,6 +1605,14 @@ export default function AssignmentsPage() {
     return trackById.get(trackId) ?? event.tracks.find((t) => t.id === trackId)
   }
 
+  /** The compact track an optimistic row carries, shaped like the server's
+   *  TournamentTrackRef so the local row and the one that replaces it read
+   *  the same. */
+  function trackRefFor(event: TournamentEvent, trackId?: number) {
+    const track = trackForDrop(event, trackId)
+    return track ? { id: track.id, name: track.name, is_primary: track.is_primary } : null
+  }
+
   function defaultRoleFor(event: TournamentEvent, trackId?: number): Role | null {
     const roleId = trackForDrop(event, trackId)?.default_role_id ?? null
     if (roleId === null) return null
@@ -1623,11 +1660,16 @@ export default function AssignmentsPage() {
     for (const shiftId of shiftIds) {
       for (const role of roles) {
         const found = existing.get(cellKey(shiftId, role))
+        const shift = shiftId === null ? null : event.shifts.find((s) => s.id === shiftId) ?? null
         next.push(found ?? {
           ...inLane[0],
           id: nextLocalId(),
           role,
-          shift: shiftId === null ? null : event.shifts.find((s) => s.id === shiftId) ?? null,
+          shift,
+          // An event can hold shifts on more than one day, so a bar stretched
+          // across them changes track as it goes. Unpinned cells keep the
+          // lane's own track — there is no shift to take one from.
+          track: (shift ? trackRefFor(event, shift.track_id) : null) ?? inLane[0].track,
           updated_at: new Date().toISOString(),
         })
       }
@@ -1948,17 +1990,28 @@ export default function AssignmentsPage() {
       // names its event) and has no single PATCH for it either, since the
       // shift is what a write can repoint — so it stays a delete and create.
       const sameEvent = event.id === assignment.event.id
-      const cellKey = (shiftId: number | null, role: AssignmentRole) =>
-        `${shiftId ?? 'none'}|${roleKey(role)}`
+      const trackRef = trackRefFor(event, trackForDropId(kind, target, event, shiftIds))
+      if (!trackRef) {
+        show('This drop names no track to assign against.', 'error')
+        return
+      }
+      // The track is part of a cell's identity, not just its payload: two
+      // unpinned rows for the same person and role differ only by it, so
+      // dragging a chip from Test Writing to Test Reviewing has to read as a
+      // move rather than as a drop onto the cell it already occupies.
+      const cellKey = (shiftId: number | null, trackId: number, role: AssignmentRole) =>
+        `${shiftId ?? 'none'}|${trackId}|${roleKey(role)}`
       const reusable = new Map(
-        sameEvent ? moving.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]) : [],
+        sameEvent
+          ? moving.map((row) => [cellKey(row.shift?.id ?? null, row.track.id, row.role), row])
+          : [],
       )
 
       const kept: Assignment[] = []
       const added: Assignment[] = []
       for (const shiftId of shiftIds) {
         for (const role of rolesToKeep) {
-          const found = reusable.get(cellKey(shiftId, role))
+          const found = reusable.get(cellKey(shiftId, trackRef.id, role))
           if (found) { kept.push(found); continue }
           added.push({
             ...template,
@@ -1966,6 +2019,7 @@ export default function AssignmentsPage() {
             event: eventRef,
             role,
             shift: shiftFor(shiftId),
+            track: trackRef,
             updated_at: new Date().toISOString(),
           })
         }
@@ -1996,9 +2050,10 @@ export default function AssignmentsPage() {
       // so outright; a shift knows the day it falls on, so a timeline drop
       // answers from the shift rather than from whichever track happened to
       // be listed first on the event.
-      const role = defaultRoleFor(event, trackForDropId(kind, target, event, shiftIds))
+      const trackId = trackForDropId(kind, target, event, shiftIds)
+      const role = defaultRoleFor(event, trackId)
       if (!role) {
-        const track = trackForDrop(event, trackForDropId(kind, target, event, shiftIds))
+        const track = trackForDrop(event, trackId)
         show(
           !track
             ? 'This event has no track to look up a default role from.'
@@ -2008,9 +2063,17 @@ export default function AssignmentsPage() {
         return
       }
 
+      // Every row names its track now, so an optimistic one has to as well —
+      // it is what files the chip into a column before the server answers.
+      const trackRef = trackRefFor(event, trackId)
+      if (!trackRef) {
+        show('This drop names no track to assign against.', 'error')
+        return
+      }
       const newRows: Assignment[] = shiftIds.map((shiftId) => ({
         id: nextLocalId(),
         event: eventRef,
+        track: trackRef,
         member: {
           user_id: member.user!.id,
           membership_id: member.id,

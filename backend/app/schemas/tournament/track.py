@@ -138,6 +138,21 @@ class TournamentTrackUpdate(BaseModel):
         return _validate_division(value) if value is not None else value
 
 
+class TournamentTrackRef(BaseModel):
+    """A track reduced to naming it — for a reader that has to say which track
+    something is on without the catalog row's dates, venue and divisions. Same
+    split, and the same reason, as TournamentShiftBase.
+
+    `is_primary` rides along because it is what tells a competition day from a
+    workstream, and every renderer of one of these branches on that.
+    """
+    id: int
+    name: str
+    is_primary: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TournamentTrackRead(BaseModel):
     id: int
     tournament_id: int

@@ -15,6 +15,7 @@ from tests.conftest import grant_role, login, primary_track_id
 from app.models.models import (
     TournamentEvent, TournamentEventAssignment, TournamentEventShift,
     TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift,
+    TournamentTrack,
 )
 from app.schemas.tournament.assignment import AssignmentRead
 
@@ -42,6 +43,15 @@ def _make_shift(db, tournament, label="Shift 1", hour=8):
     return shift
 
 
+def _attach_shift(db, event, shift):
+    """The bridge row that makes a shift one of this event's — without it the
+    route refuses to pin an assignment to it."""
+    db.add(TournamentEventShift(
+        tournament_event_id=event.id, tournament_shift_id=shift.id,
+    ))
+    db.commit()
+
+
 def _membership_role(db, tournament, user, role_label="Test Writer"):
     """The join row an assignment actually points at."""
     grant_role(db, tournament, user, role_label)
@@ -58,12 +68,19 @@ def _membership_role(db, tournament, user, role_label="Test Writer"):
     )
 
 
-def _assign(db, event, membership_role, shift=None):
+def _assign(db, event, membership_role, shift=None, track_id=None):
+    """Every row names a track now. A pinned one takes its shift's, which is
+    what the composite FK requires; an unpinned one falls back to the
+    tournament's primary track, since these fixtures have no cosmetic one."""
+    tournament_id = event.tournament_id
     row = TournamentEventAssignment(
         tournament_event_id=event.id,
         membership_id=membership_role.membership_id,
         membership_role_id=membership_role.id,
         tournament_shift_id=shift.id if shift else None,
+        tournament_track_id=(
+            shift.track_id if shift else (track_id or primary_track_id(db, tournament_id))
+        ),
     )
     db.add(row)
     return row
@@ -347,8 +364,134 @@ def _membership_id(db, tournament, user):
     )
 
 
-def _post(client, tournament, **body):
+def _post(client, db, tournament, **body):
+    """An unpinned assignment has to name its track (a shift names its own),
+    so this fills in the primary one for the cases that only care about the
+    member and the role."""
+    if body.get("tournament_shift_id") is None and "tournament_track_id" not in body:
+        body["tournament_track_id"] = primary_track_id(db, tournament.id)
     return client.post(f"/tournaments/{tournament.id}/assignments/", json=body)
+
+
+class TestTrack:
+    """Which track a row is for. Derivable from the shift when there is one,
+    and otherwise carried only by this column — a cosmetic track has no shifts
+    at all, so before it there was nothing on the row saying "Test Writing"."""
+
+    def _cosmetic(self, db, tournament, name="Test Writing"):
+        track = TournamentTrack(tournament_id=tournament.id, name=name)
+        db.add(track)
+        db.commit()
+        return track
+
+    def test_a_shift_sets_the_track_itself(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        shift = _make_shift(db, td_tournament)
+        _attach_shift(db, event, shift)
+        login(client, "td@test.com", "tdpass")
+
+        body = _post(
+            client, db, td_tournament,
+            tournament_event_id=event.id,
+            membership_id=_membership_id(db, td_tournament, other_user),
+            role_id=_role_id(db, td_tournament, "Test Writer"),
+            tournament_shift_id=shift.id,
+        ).json()
+        assert body["track"]["id"] == shift.track_id
+        assert body["track"]["is_primary"] is True
+
+    def test_an_unpinned_row_must_name_a_track(self, client, db, td_user, td_tournament, other_user):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        login(client, "td@test.com", "tdpass")
+
+        response = client.post(f"/tournaments/{td_tournament.id}/assignments/", json={
+            "tournament_event_id": event.id,
+            "membership_id": _membership_id(db, td_tournament, other_user),
+            "role_id": _role_id(db, td_tournament, "Test Writer"),
+        })
+        assert response.status_code == 422
+
+    def test_a_shift_and_a_contradicting_track_is_rejected(
+        self, client, db, td_user, td_tournament, other_user,
+    ):
+        """Naming both and disagreeing is a confused client, not a second
+        opinion — the database would refuse the row anyway."""
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        shift = _make_shift(db, td_tournament)
+        _attach_shift(db, event, shift)
+        cosmetic = self._cosmetic(db, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        response = _post(
+            client, db, td_tournament,
+            tournament_event_id=event.id,
+            membership_id=_membership_id(db, td_tournament, other_user),
+            role_id=_role_id(db, td_tournament, "Test Writer"),
+            tournament_shift_id=shift.id,
+            tournament_track_id=cosmetic.id,
+        )
+        assert response.status_code == 422
+
+    def test_the_same_role_on_two_cosmetic_tracks_is_two_rows(
+        self, client, db, td_user, td_tournament, other_user,
+    ):
+        """The case the old uniqueness key could not express: one person, one
+        role, one event, two workstreams."""
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        writing = self._cosmetic(db, td_tournament, "Test Writing")
+        reviewing = self._cosmetic(db, td_tournament, "Test Reviewing")
+        login(client, "td@test.com", "tdpass")
+
+        body = {
+            "tournament_event_id": event.id,
+            "membership_id": _membership_id(db, td_tournament, other_user),
+            "role_id": _role_id(db, td_tournament, "Test Writer"),
+        }
+        assert _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code == 201
+        assert _post(client, db, td_tournament, **body, tournament_track_id=reviewing.id).status_code == 201
+        # ...but the same track twice is still the duplicate it always was.
+        assert _post(client, db, td_tournament, **body, tournament_track_id=writing.id).status_code == 409
+
+    def test_a_track_from_another_tournament_is_a_404(
+        self, client, db, td_user, td_tournament, other_tournament, other_user,
+    ):
+        grant_role(db, td_tournament, other_user, "Test Writer")
+        event = _make_event(db, td_tournament, name="Anatomy")
+        foreign = self._cosmetic(db, other_tournament, "Elsewhere")
+        login(client, "td@test.com", "tdpass")
+
+        response = _post(
+            client, db, td_tournament,
+            tournament_event_id=event.id,
+            membership_id=_membership_id(db, td_tournament, other_user),
+            role_id=_role_id(db, td_tournament, "Test Writer"),
+            tournament_track_id=foreign.id,
+        )
+        assert response.status_code == 404
+
+    def test_unpinning_keeps_the_track_it_was_on(
+        self, client, db, td_user, td_tournament, other_user,
+    ):
+        """"Still Day 1, no particular shift" — the same state a shift leaving
+        an event leaves behind (see detach_shifts_from_assignments)."""
+        membership_role = _membership_role(db, td_tournament, other_user)
+        event = _make_event(db, td_tournament, name="Anatomy")
+        shift = _make_shift(db, td_tournament)
+        _attach_shift(db, event, shift)
+        row = _assign(db, event, membership_role, shift=shift)
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        body = client.patch(
+            f"/tournaments/{td_tournament.id}/assignments/{row.id}/",
+            json={"tournament_shift_id": None},
+        ).json()
+        assert body["shift"] is None
+        assert body["track"]["id"] == shift.track_id
 
 
 class TestCreateRoute:
@@ -358,7 +501,7 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -385,7 +528,7 @@ class TestCreateRoute:
 
         role_id = _role_id(db, td_tournament, "Test Writer")
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id, membership_id=membership.id, role_id=role_id,
         )
 
@@ -402,7 +545,7 @@ class TestCreateRoute:
         login(client, "other@test.com", "otherpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Tournament Director"),
@@ -420,7 +563,7 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -439,7 +582,7 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -464,8 +607,8 @@ class TestCreateRoute:
             role_id=_role_id(db, td_tournament, "Test Writer"),
         )
 
-        assert _post(client, td_tournament, **body).status_code == 201
-        assert _post(client, td_tournament, **body).status_code == 409
+        assert _post(client, db, td_tournament, **body).status_code == 201
+        assert _post(client, db, td_tournament, **body).status_code == 409
         assert db.query(TournamentEventAssignment).count() == 1
 
     def test_another_tournaments_event_is_not_found(
@@ -476,7 +619,7 @@ class TestCreateRoute:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=foreign_event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -506,7 +649,7 @@ class TestOverridesAreAllowed:
         login(client, "td@test.com", "tdpass")
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id, membership_id=membership_id,
             role_id=_role_id(db, td_tournament, "Test Writer"),
         )
@@ -525,7 +668,7 @@ class TestOverridesAreAllowed:
 
         # No TournamentMembershipAvailability row for this shift at all.
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Test Writer"),
@@ -553,8 +696,8 @@ class TestOverridesAreAllowed:
             role_id=_role_id(db, td_tournament, "Test Writer"),
             tournament_shift_id=shift.id,
         )
-        assert _post(client, td_tournament, tournament_event_id=first.id, **body).status_code == 201
-        assert _post(client, td_tournament, tournament_event_id=second.id, **body).status_code == 201
+        assert _post(client, db, td_tournament, tournament_event_id=first.id, **body).status_code == 201
+        assert _post(client, db, td_tournament, tournament_event_id=second.id, **body).status_code == 201
 
 
 class TestPermissions:
@@ -575,7 +718,7 @@ class TestPermissions:
         assert client.get(f"/tournaments/{td_tournament.id}/assignments/").status_code == 200
 
         response = _post(
-            client, td_tournament,
+            client, db, td_tournament,
             tournament_event_id=event.id,
             membership_id=_membership_id(db, td_tournament, other_user),
             role_id=_role_id(db, td_tournament, "Schedule Only"),
@@ -600,7 +743,7 @@ class TestListRoute:
         login(client, "td@test.com", "tdpass")
         for event in (anatomy, astronomy):
             _post(
-                client, td_tournament, tournament_event_id=event.id,
+                client, db, td_tournament, tournament_event_id=event.id,
                 membership_id=membership_id,
                 role_id=_role_id(db, td_tournament, "Test Writer"),
             )
@@ -619,7 +762,7 @@ class TestUpdateAndDeleteRoutes:
         db.add(TournamentEventShift(tournament_event_id=event.id, tournament_shift_id=shift.id))
         db.commit()
         created = _post(
-            client, tournament, tournament_event_id=event.id,
+            client, db, tournament, tournament_event_id=event.id,
             membership_id=_membership_id(db, tournament, user),
             role_id=_role_id(db, tournament, "Test Writer"),
             tournament_shift_id=shift.id,
@@ -699,7 +842,7 @@ class TestMembershipReads:
         grant_role(db, tournament, user, "Test Writer")
         event = _make_event(db, tournament, name="Anatomy")
         return _post(
-            client, tournament, tournament_event_id=event.id,
+            client, db, tournament, tournament_event_id=event.id,
             membership_id=_membership_id(db, tournament, user),
             role_id=_role_id(db, tournament, "Test Writer"),
         )
@@ -813,7 +956,7 @@ class TestAudit:
         login(client, "td@test.com", "tdpass")
 
         _post(
-            client, td_tournament, tournament_event_id=event.id,
+            client, db, td_tournament, tournament_event_id=event.id,
             membership_id=membership.id,
             role_id=_role_id(db, td_tournament, "Test Writer"),
         )

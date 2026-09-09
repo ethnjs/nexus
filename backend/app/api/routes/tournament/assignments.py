@@ -4,7 +4,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.assignments import resolve_membership_role, validate_shift_on_event
+from app.core.tournament.assignments import (
+    resolve_assignment_track, resolve_membership_role, validate_shift_on_event,
+)
 from app.core.tournament.audit import (
     ASSIGNMENT_CREATED, ASSIGNMENT_DELETED, ASSIGNMENT_UPDATED, log_action,
 )
@@ -37,6 +39,7 @@ def _with_relations(query):
         joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
         joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
         joinedload(TournamentEventAssignment.tournament_shift),
+        joinedload(TournamentEventAssignment.tournament_track),
     )
 
 
@@ -67,6 +70,7 @@ def _audit_data(assignment: TournamentEventAssignment, role_granted: bool = Fals
         "membership_id": assignment.membership_id,
         "role_id": assignment.membership_role.role_id,
         "shift_id": assignment.tournament_shift_id,
+        "track_id": assignment.tournament_track_id,
         "role_granted": role_granted,
     }
 
@@ -136,7 +140,10 @@ def create_assignment(
     )
     role = get_scoped_or_404(db, TournamentRole, payload.role_id, tournament_id, "Role")
 
-    validate_shift_on_event(db, event, payload.tournament_shift_id, tournament_id)
+    shift = validate_shift_on_event(db, event, payload.tournament_shift_id, tournament_id)
+    track_id = resolve_assignment_track(
+        db, shift, payload.tournament_track_id, tournament_id,
+    )
 
     held_before = {mr.role_id for mr in membership.roles}
     membership_role = resolve_membership_role(db, tournament, membership, role, current_user)
@@ -146,6 +153,7 @@ def create_assignment(
         membership_id=membership.id,
         membership_role_id=membership_role.id,
         tournament_shift_id=payload.tournament_shift_id,
+        tournament_track_id=track_id,
     )
     db.add(assignment)
     _flush_or_conflict(db)
@@ -195,10 +203,25 @@ def update_assignment(
         role_granted = role.id not in held_before
 
     if "tournament_shift_id" in payload.model_fields_set:
-        validate_shift_on_event(
+        shift = validate_shift_on_event(
             db, assignment.tournament_event, payload.tournament_shift_id, tournament_id,
         )
+        # Pinning to a shift takes that shift's track. Unpinning keeps the
+        # track the row already had unless the caller names another — "still
+        # Day 1, no particular shift" is a real state, and it is exactly what
+        # detach_shifts_from_assignments leaves behind when a shift drops off
+        # an event, so the two paths should not disagree.
+        if shift is not None or payload.tournament_track_id is not None:
+            assignment.tournament_track_id = resolve_assignment_track(
+                db, shift, payload.tournament_track_id, tournament_id,
+            )
         assignment.tournament_shift_id = payload.tournament_shift_id
+    elif payload.tournament_track_id is not None:
+        # Re-tracking without touching the shift: only meaningful while there
+        # isn't one, since a pinned row's track is its shift's.
+        assignment.tournament_track_id = resolve_assignment_track(
+            db, assignment.tournament_shift, payload.tournament_track_id, tournament_id,
+        )
 
     _flush_or_conflict(db)
     log_action(

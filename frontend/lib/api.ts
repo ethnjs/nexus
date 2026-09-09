@@ -642,6 +642,10 @@ export interface AssignmentInput {
   // first (rank-bound) rather than making the caller do it separately.
   role_id: number
   tournament_shift_id?: number | null
+  /** Required when there's no shift, ignored when there is — a shift already
+   *  names its track and the server takes that as the answer. Naming one that
+   *  contradicts the shift is a 422, not a silent correction. */
+  tournament_track_id?: number | null
 }
 
 export const assignmentsApi = {
@@ -664,7 +668,7 @@ export const assignmentsApi = {
   update: (
     tournamentId: number,
     id: number,
-    body: { role_id?: number; tournament_shift_id?: number | null },
+    body: { role_id?: number; tournament_shift_id?: number | null; tournament_track_id?: number | null },
   ) => api.patch<Assignment>(`/tournaments/${tournamentId}/assignments/${id}/`, body),
   // Unassigning never revokes the role the assignment used — that grant is a
   // fact about the member, not a detail of this placement.
@@ -1737,8 +1741,19 @@ export interface Assignment {
   role: PersonRole
   /** Null means genuinely unpinned — test writing has no shifts at all. */
   shift: TournamentShiftBase | null
+  /** Never null, unlike the shift: every row is for a track. A pinned row
+   *  repeats what its shift says; an unpinned one carries the only record of
+   *  which of an event's workstreams it belongs to. */
+  track: TournamentTrackRef
   created_at: string
   updated_at: string
+}
+
+/** A track reduced to naming it — mirrors TournamentTrackRef on the server. */
+export interface TournamentTrackRef {
+  id: number
+  name: string
+  is_primary: boolean
 }
 
 export interface MemberForm {

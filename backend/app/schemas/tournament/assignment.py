@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.schemas.person import PersonNameRef, PersonRoleRead
 from app.schemas.tournament.event import EventMemberRead
 from app.schemas.tournament.shift import TournamentShiftBase
+from app.schemas.tournament.track import TournamentTrackRef
 
 
 # ---------------------------------------------------------------------------
@@ -24,6 +25,11 @@ class AssignmentCreate(BaseModel):
     # that has shifts — some staffing genuinely isn't pinned to one, and test
     # writing has no shifts at all.
     tournament_shift_id: int | None = None
+    # Required only when there is no shift, since a shift already names its
+    # track and the route takes that as the answer (see
+    # resolve_assignment_track). Naming one that disagrees with the shift is a
+    # 422 rather than a silent correction.
+    tournament_track_id: int | None = None
 
 
 class AssignmentUpdate(BaseModel):
@@ -34,6 +40,9 @@ class AssignmentUpdate(BaseModel):
     update_assignment."""
     role_id: int | None = None
     tournament_shift_id: int | None = None
+    # Only read when the row ends up with no shift — pinning it to one takes
+    # the track from the shift, whatever this says.
+    tournament_track_id: int | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +74,11 @@ class AssignmentRead(BaseModel):
     # start/end/track_id ride along because the board derives its
     # double-booking and track-status warnings from them client-side.
     shift: TournamentShiftBase | None
+    # Never null, unlike the shift: every row is for a track. A pinned row
+    # repeats what its shift already says; an unpinned one has this and
+    # nothing else, which is how the board knows which of an event's
+    # workstreams a chip belongs to.
+    track: TournamentTrackRef
     created_at: datetime
     updated_at: datetime
 
@@ -82,6 +96,7 @@ class AssignmentRead(BaseModel):
                 TournamentShiftBase.model_validate(row.tournament_shift)
                 if row.tournament_shift is not None else None
             ),
+            track=TournamentTrackRef.model_validate(row.tournament_track),
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

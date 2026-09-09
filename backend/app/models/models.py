@@ -787,6 +787,14 @@ class TournamentShift(Base):
     def event_count(self) -> int:
         return len(self.tournament_events)
 
+    __table_args__ = (
+        # Redundant on its own (id is already the PK), and here only so an
+        # assignment can carry a composite FK against it — that is what makes
+        # the database, rather than every write path, the thing that stops a
+        # row naming a shift on one track and a track on another.
+        UniqueConstraint("id", "track_id", name="uq_tournament_shift_id_track"),
+    )
+
     # Unlike event_count (advisory only — deletion still cascades through
     # events), a nonzero availability_count hard-blocks deletion — see
     # delete_shift. Availability write-through is membership-owned data,
@@ -954,15 +962,35 @@ class TournamentEventAssignment(Base):
     # the event leaves the row alone here, so the events route unpins it
     # instead (detach_shifts_from_assignments) — losing a shift from the
     # schedule must not silently lose the staffing.
-    tournament_shift_id = Column(
-        Integer, ForeignKey("tournament_shifts.id", ondelete="CASCADE"),
-        nullable=True, index=True,
+    # No inline ForeignKey, for the same reason membership_role_id has none:
+    # the composite constraint below is this column's FK, pairing it with the
+    # track so the two cannot name different days.
+    tournament_shift_id = Column(Integer, nullable=True, index=True)
+
+    # Which track this staffing is for. Always set, and denormalized on
+    # purpose: a pinned row's track is derivable from its shift, but storing
+    # it means "who is on Day 1" is one indexed read, and the composite FK
+    # below makes the copy unfalsifiable rather than merely intended.
+    #
+    # It is the *only* record of the answer for an unpinned row. A cosmetic
+    # track (Test Writing) has no shifts by construction, so before this the
+    # board could only guess which of them a chip belonged to by matching its
+    # role against each track's default — which two tracks can share.
+    tournament_track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=False, index=True,
     )
 
     created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
     tournament_event = relationship("TournamentEvent", back_populates="assignments")
+    # lazy="joined" like the shift below: every read renders the track's name.
+    # `overlaps` on both sides of the same overlap: TournamentShift.assignments
+    # writes this column too, through the composite FK. See tournament_shift.
+    tournament_track = relationship(
+        "TournamentTrack", lazy="joined", overlaps="assignments,tournament_shift",
+    )
     # The composite FK means membership_id sits under two relationships at
     # once; `overlaps` tells SQLAlchemy that's the design, not two mappings
     # fighting over one column.
@@ -976,7 +1004,15 @@ class TournamentEventAssignment(Base):
         "TournamentMembershipRole", back_populates="assignments", lazy="joined",
         overlaps="assignments,membership",
     )
-    tournament_shift = relationship("TournamentShift", back_populates="assignments", lazy="joined")
+    # `overlaps`: the composite FK means this relationship's join columns
+    # include tournament_track_id, which tournament_track above also writes.
+    # Both are correct — the shift is what sets the track for a pinned row —
+    # and this says so rather than leaving SQLAlchemy to warn about two
+    # mappings fighting over one column.
+    tournament_shift = relationship(
+        "TournamentShift", back_populates="assignments", lazy="joined",
+        overlaps="tournament_track",
+    )
 
     @property
     def role(self) -> "TournamentRole":
@@ -995,6 +1031,18 @@ class TournamentEventAssignment(Base):
             ondelete="CASCADE",
             name="fk_assignment_membership_role",
         ),
+        # Same trick for the shift: this is tournament_shift_id's only FK, and
+        # pairing it with the track means a row pinned to a Day 1 shift cannot
+        # claim to be Day 2 staffing. An unpinned row has a NULL here, and a
+        # composite FK with a NULL column is not checked at all — which is
+        # exactly right, since then the track column is the whole answer and
+        # its own FK above is what validates it.
+        ForeignKeyConstraint(
+            ["tournament_shift_id", "tournament_track_id"],
+            ["tournament_shifts.id", "tournament_shifts.track_id"],
+            ondelete="CASCADE",
+            name="fk_assignment_shift_track",
+        ),
         # Two partial indexes, not one UniqueConstraint: Postgres treats NULLs
         # as distinct, so a plain constraint over a nullable shift would let the
         # same member be assigned to the same shiftless event any number of
@@ -1005,9 +1053,13 @@ class TournamentEventAssignment(Base):
             unique=True,
             postgresql_where=(tournament_shift_id.isnot(None)),
         ),
+        # The track is part of the key here, unlike the pinned index above
+        # where the shift already implies it: one person can hold the same
+        # role on an event's Test Writing *and* its Test Reviewing, and
+        # without the track those two rows collide.
         Index(
             "uq_event_assignment_no_shift",
-            "tournament_event_id", "membership_role_id",
+            "tournament_event_id", "membership_role_id", "tournament_track_id",
             unique=True,
             postgresql_where=(tournament_shift_id.is_(None)),
         ),

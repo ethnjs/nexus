@@ -18,7 +18,8 @@ from app.core.tournament import get_scoped_or_404
 from app.core.tournament.roles import validate_role_action
 from app.models.models import (
     Tournament, TournamentEvent, TournamentEventAssignment, TournamentEventShift,
-    TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift, User,
+    TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift,
+    TournamentTrack, User,
 )
 
 
@@ -59,7 +60,7 @@ def resolve_membership_role(
 
 def validate_shift_on_event(
     db: Session, event: TournamentEvent, shift_id: int | None, tournament_id: int,
-) -> None:
+) -> TournamentShift | None:
     """A shift must be one this event actually runs in.
 
     The one structural rule here. Assigning someone to a shift the event isn't
@@ -70,9 +71,12 @@ def validate_shift_on_event(
     `None` is always valid, including on an event that has shifts: it means
     "on this event, no particular shift", which is the only thing test writing
     can mean and a legitimate intermediate state elsewhere.
+
+    Returns the shift it validated (None for an unpinned row), so a caller
+    that also needs the track it falls on doesn't fetch it a second time.
     """
     if shift_id is None:
-        return
+        return None
 
     shift = get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
     attached = (
@@ -85,6 +89,43 @@ def validate_shift_on_event(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"'{shift.label}' is not one of this event's shifts",
         )
+    return shift
+
+
+def resolve_assignment_track(
+    db: Session,
+    shift: TournamentShift | None,
+    track_id: int | None,
+    tournament_id: int,
+) -> int:
+    """Which track a row is for — always answered, never guessed.
+
+    A pinned row's shift already carries it, and the database enforces the
+    pair (see fk_assignment_shift_track), so the shift is taken as the answer
+    rather than checked against whatever the caller sent alongside. Sending
+    both and disagreeing is a confused client, not a second opinion, so it is
+    rejected rather than silently resolved one way.
+
+    An unpinned row has nothing else to go on, which is the whole reason the
+    column exists: a cosmetic track has no shifts, so "Test Writing" was
+    previously recoverable only by matching the row's role against each
+    track's default — ambiguous whenever two tracks share one.
+    """
+    if shift is not None:
+        if track_id is not None and track_id != shift.track_id:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"'{shift.label}' is not on the track this assignment names",
+            )
+        return shift.track_id
+
+    if track_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="An assignment with no shift must name the track it is for",
+        )
+    get_scoped_or_404(db, TournamentTrack, track_id, tournament_id, "Track")
+    return track_id
 
 
 def detach_shifts_from_assignments(
