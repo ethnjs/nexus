@@ -10,7 +10,7 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { ButtonGroup } from '@/components/ui/ButtonGroup'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { FilterModal, FilterOption, FilterSectionConfig, FilterState, emptyFilterState, isFilterActive } from '@/components/ui/FilterModal'
+import { FilterModal, FilterOption, FilterSectionConfig, FilterState, emptyFilterState, filterAllows, isFilterActive } from '@/components/ui/FilterModal'
 import { IconSearch, IconArrowDown, IconFilter, IconX } from '@/components/ui/Icons'
 import { EditableOption } from '@/components/forms/OptionsEditor'
 
@@ -153,9 +153,9 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
     const q = search.trim().toLowerCase()
     const filtered = browsableEvents.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false
-      if (filters.division.has(e.division ?? UNSET)) return false
-      if (filters.type.has(e.event_type)) return false
-      if (filters.category.has(categoryKey(e))) return false
+      if (!filterAllows(filters.division, e.division ?? UNSET)) return false
+      if (!filterAllows(filters.type, e.event_type)) return false
+      if (!filterAllows(filters.category, categoryKey(e))) return false
       return true
     })
     return [...filtered].sort((a, b) => {

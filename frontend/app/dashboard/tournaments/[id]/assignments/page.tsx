@@ -43,7 +43,7 @@ import {
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
-import { emptyFilterState } from '@/components/ui/FilterModal'
+import { emptyFilterState, filterAllows } from '@/components/ui/FilterModal'
 import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
@@ -1070,17 +1070,17 @@ export default function AssignmentsPage() {
     const text = eventQuery.trim().toLowerCase()
     return (events ?? []).filter((event) => {
       if (text && !(event.name ?? '').toLowerCase().includes(text)) return false
-      if (eventFilters.division.has(event.division ?? '')) return false
-      if (eventFilters.type.has(event.event_type)) return false
-      // Multi-valued: an event stays shown as long as at least one of its
-      // tracks isn't excluded — unchecking Day 1 shouldn't hide an event that
-      // also runs on Day 2.
+      if (!filterAllows(eventFilters.division, event.division ?? '')) return false
+      if (!filterAllows(eventFilters.type, event.event_type)) return false
+      // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
+      // of its tracks is picked — filtering to Day 1 shouldn't hide an event
+      // that runs on both Day 1 and Day 2.
       if (eventFilters.track.size > 0) {
         const ids = (eventTrackIds.get(event.id) ?? []).map(String)
-        if (ids.length === 0 || ids.every((id) => eventFilters.track.has(id))) return false
+        if (!ids.some((id) => eventFilters.track.has(id))) return false
       }
       const staffed = (byEvent.get(event.id)?.length ?? 0) > 0
-      if (eventFilters.staffing.has(staffed ? 'staffed' : 'unstaffed')) return false
+      if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
       return true
     })
   }, [events, byEvent, eventFilters, eventQuery, eventTrackIds])

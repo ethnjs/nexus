@@ -127,9 +127,10 @@ DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
 
 # Unlike the roster's, these filters are applied in the client (the events
 # list is one page and every filtered field is already on the row), so the
-# stored values are the *excluded* ones the FilterModal deals in rather than
-# query params. Opaque here either way — a category that no longer exists is
-# inert, exactly as a deleted track is on the roster.
+# stored values are the *selected* ones the FilterModal deals in rather than
+# query params — an empty list for a key means that key narrows nothing.
+# Opaque here either way: a category that no longer exists is inert, exactly
+# as a deleted track is on the roster.
 KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
 
 KNOWN_EVENT_SORT_FIELDS = frozenset({"name", "division", "day"})
@@ -154,7 +155,7 @@ ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = (
 # is "show what you have" and a TD trims from there.
 DEFAULT_ASSIGNMENT_EVENT_COLUMNS: tuple[str, ...] = ASSIGNMENT_EVENT_COLUMNS
 
-# Filtered in the client like the events table, so these store the *excluded*
+# Filtered in the client like the events table, so these store the *selected*
 # values too. Two keys more than that table: the board loads assignments and
 # per-event tracks, so it can offer staffed/unstaffed and track sections the
 # events page has no data for.

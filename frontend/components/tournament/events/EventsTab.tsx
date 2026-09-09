@@ -26,7 +26,7 @@ import {
   EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
   eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
 } from "@/components/tournament/events/EventsFilterModal";
-import { emptyFilterState } from "@/components/ui/FilterModal";
+import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
 import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
 import {
   DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns,
@@ -239,9 +239,9 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (filters.division.has(e.division ?? UNSET)) return false;
-      if (filters.type.has(e.event_type)) return false;
-      if (filters.category.has(categoryKey(e))) return false;
+      if (!filterAllows(filters.division, e.division ?? UNSET)) return false;
+      if (!filterAllows(filters.type, e.event_type)) return false;
+      if (!filterAllows(filters.category, categoryKey(e))) return false;
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {

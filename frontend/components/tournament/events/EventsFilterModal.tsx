@@ -30,8 +30,9 @@ export function isEventsFilterActive(filters: EventsFilterState): boolean {
 
 /** The saved wire shape (arrays, keyed by filter) back into filter state.
     Unknown keys are dropped — a filter removed in a later release must not
-    come back as an exclusion nothing in the modal can clear. Values stay as
-    saved: a category that no longer exists simply excludes nothing. */
+    come back as a narrowing nothing in the modal can clear. Values stay as
+    saved: a category that no longer exists simply matches nothing, and its
+    chip is there to be removed. */
 export function eventsFilterFromStored(
   stored: Record<string, string[]> | null | undefined,
 ): EventsFilterState {
@@ -46,7 +47,7 @@ export function eventsFilterFromStored(
 }
 
 /** Filter state as the stored wire shape, empty keys dropped. These are the
-    *excluded* values — this table filters in the client, so what's persisted
+    *selected* values — this table filters in the client, so what's persisted
     is what the FilterModal deals in rather than query params. */
 export function eventsFilterToStored(filters: EventsFilterState): Record<string, string[]> {
   return Object.fromEntries(
@@ -75,8 +76,10 @@ interface EventsFilterModalProps {
   onClose: () => void;
 }
 
-// Division/Type/Track have a handful of fixed values (button group);
-// Category is open-ended and grows with the event list (checkbox list).
+// Division/Type/Staffing have a handful of fixed values (button group);
+// Category is open-ended and grows with the event list (checkbox list); Track
+// is open-ended too but every value is a short name, so chips + a picker
+// beat a checkbox column that would be the tallest thing in the modal.
 export function EventsFilterModal({
   divisionOptions, typeOptions, categoryOptions, trackOptions, showStaffing, filters, onApply, onClose,
 }: EventsFilterModalProps) {
@@ -85,7 +88,7 @@ export function EventsFilterModal({
     { key: "type", title: "Type", options: typeOptions, control: "buttons" },
     { key: "category", title: "Category", options: categoryOptions, control: "checkbox" },
   ];
-  if (trackOptions) sections.push({ key: "track", title: "Track", options: trackOptions, control: "buttons" });
+  if (trackOptions) sections.push({ key: "track", title: "Track", options: trackOptions, control: "chips" });
   if (showStaffing) sections.push({ key: "staffing", title: "Staffing", options: STAFFING_OPTIONS, control: "buttons" });
 
   return (
