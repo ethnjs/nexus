@@ -44,20 +44,25 @@ class DisplayConfigSurface(BaseModel):
     # Namespaced strings like "track:3" or "lunch_category:entree". Used by
     # the panel to drop individual items from a section's contents.
     hidden: list[str] = []
-    # Members table only: the visible columns, in display order. Absent means
-    # "the default set" — not "no columns", which is why it's None, not [].
+    # Tables only (members and events): the visible columns, in display
+    # order. Absent means "that table's default set" — not "no columns",
+    # which is why it's None, not []. Which keys are legal depends on the
+    # surface; see is_known_column.
     columns: list[str] | None = None
     # Member panel only: section order plus per-section visibility. Absent
     # means the default order with everything shown. A built-in section
     # missing from a saved list still renders, appended in default order, so
     # adding a new section type never requires a migration.
     sections: list[DisplayConfigSection] | None = None
-    # Members table only: the viewer's committed filters, keyed by the roster
-    # query param each set belongs to ({"track": ["3:confirmed"], ...}). An
-    # empty dict and None both mean "no filters" — the client clears by
-    # sending {}, so this never has to distinguish them.
+    # Tables only: the viewer's committed filters, keyed by whatever that
+    # table's filter vocabulary calls each set. The roster keys by its query
+    # params and stores the values it will send back ({"track":
+    # ["3:confirmed"]}); the events table filters client-side and stores the
+    # *excluded* values instead. An empty dict and None both mean "no
+    # filters" — the client clears by sending {}, so this never has to
+    # distinguish them.
     filters: dict[str, list[str]] | None = None
-    # Members table only. Absent means the client's own default sort.
+    # Tables only. Absent means the client's own default sort.
     sort: DisplayConfigSort | None = None
 
 
@@ -89,6 +94,9 @@ class DisplayConfigCatalog(BaseModel):
     # Members table: every column that can be turned on, fixed ones first
     # then the per-entity ones, in the order the modal should list them.
     columns: list[DisplayConfigCatalogItem] = []
+    # Events table: its own column universe, sharing no keys with `columns`
+    # above — the two tables describe different kinds of row.
+    event_columns: list[DisplayConfigCatalogItem] = []
     # Member panel: the built-in sections and their individually hideable
     # fields. Custom sections aren't here — the TD creates those.
     sections: list[DisplayConfigSectionCatalogItem] = []

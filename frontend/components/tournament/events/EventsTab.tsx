@@ -2,47 +2,54 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision, TournamentTrack } from "@/lib/api";
+import {
+  tournamentEventsApi, displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
+  TournamentEvent, TournamentDivision, TournamentTrack,
+} from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
+import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
-import { EventsFilterModal, isEventsFilterActive, EVENTS_FILTER_KEYS } from "@/components/tournament/events/EventsFilterModal";
+import {
+  EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
+  eventsFilterFromStored, eventsFilterToStored,
+} from "@/components/tournament/events/EventsFilterModal";
 import { emptyFilterState } from "@/components/ui/FilterModal";
-import { usePersistedFilter } from "@/lib/usePersistedFilter";
-import { useAuth } from "@/lib/useAuth";
+import { EventsColumnsModal } from "@/components/tournament/events/EventsColumnsModal";
+import {
+  DEFAULT_EVENT_COLUMNS, EVENT_COLUMN_WIDTHS, EventColumn, resolveEventColumns,
+} from "@/components/tournament/events/eventColumns";
+import { EVENTS_TABLE } from "@/lib/displayConfigSurfaces";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
 import { eventFirstDay, eventName } from "@/lib/eventDisplay";
 
-// Name doesn't need much room (event names are short); Start/End are 50%
-// wider than before so a full date+time doesn't get clipped.
-const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 200px 80px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
 const SELECT_COLUMN_WIDTH = "28px";
-function eventColumns(selectMode: boolean) {
-  return `${selectMode ? SELECT_COLUMN_WIDTH : "0px"} ${EVENT_ROW_COLUMNS}`;
-}
 
-const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisionC"> = {
-  A: "divisionA",
-  B: "divisionB",
-  C: "divisionC",
-};
+// Name and Actions bracket the configured columns: the row's identity and
+// its controls, which is why neither is a column a TD can turn off.
+function eventGridColumns(selectMode: boolean, columns: EventColumn[]) {
+  return [
+    selectMode ? SELECT_COLUMN_WIDTH : "0px",
+    EVENT_COLUMN_WIDTHS.name,
+    ...columns.map((column) => column.width),
+    EVENT_COLUMN_WIDTHS.actions,
+  ].join(" ");
+}
 
 type SortField = "name" | "division" | "day";
 type SortDir = "asc" | "desc";
@@ -83,7 +90,6 @@ interface EventsTabProps {
 
 export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const router = useRouter();
-  const { user } = useAuth();
   const { selectedTournament, isArchived } = useTournament();
   const divisions = selectedTournament?.division ?? [];
   const hasDivisions = divisions.length > 0;
@@ -95,11 +101,26 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // there's no row to select yet.
   const [creatingNew, setCreatingNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
+  // Bumped on a Display save so the effect below re-reads the just-saved
+  // columns — it otherwise only runs on a tournament change.
+  const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
-  const [filters, applyFilters] = usePersistedFilter("events", user?.id, tournamentId, EVENTS_FILTER_KEYS);
+  // Filters, sort and columns are all this viewer's own display config, so
+  // they arrive in the one GET below and are written back by persistView.
+  // Per member and per tournament by construction now, which is what the old
+  // localStorage key had to spell out by hand — and they follow a
+  // coordinator to whatever device they open the tournament on.
+  const [filters, setFilters] = useState<EventsFilterState>(() => emptyFilterState(EVENTS_FILTER_KEYS));
+  // Gates the table: filtering is client-side, so rendering before the saved
+  // filters land would show every event for a frame and then narrow.
+  const [viewReady, setViewReady] = useState(false);
   const [showFilterModal, setShowFilterModal] = useState(false);
+  const [showColumnsModal, setShowColumnsModal] = useState(false);
+  // null = nothing saved, so use DEFAULT_EVENT_COLUMNS. An empty array is a
+  // real answer ("show no data columns") and must not fall back.
+  const [columnKeys, setColumnKeys] = useState<string[] | null>(null);
   const [sortField, setSortField] = useState<SortField>("day");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
@@ -140,6 +161,72 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   useEffect(() => {
     loadEvents();
   }, [tournamentId]);
+
+  // This viewer's saved view of the table — columns, filters and sort. The
+  // catalog isn't needed here (unlike the roster's): every events column is a
+  // fixed key with a label the client already knows, so nothing has to be
+  // looked up before a column can render.
+  useEffect(() => {
+    // Nothing to read without the permission the config route wants — the
+    // table still renders, just on its defaults, so this can't be left
+    // waiting on a request it is never going to make.
+    if (!canManageEvents) { setViewReady(true); return; }
+    let current = true;
+    displayConfigApi.get(tournamentId)
+      .catch(() => ({} as DisplayConfig))
+      .then((config) => {
+        if (!current) return;
+        const surface = config?.[EVENTS_TABLE];
+        setColumnKeys(surface?.columns ?? null);
+        // Only on the first load: a re-read after a Display save must not
+        // stomp filters the coordinator changed while that modal was open.
+        setViewReady((already) => {
+          if (already) return true;
+          setFilters(eventsFilterFromStored(surface?.filters));
+          if (surface?.sort && SORT_FIELD_OPTIONS.some((o) => o.value === surface.sort!.field)) {
+            setSortField(surface.sort.field as SortField);
+            setSortDir(surface.sort.direction === "asc" ? "asc" : "desc");
+          }
+          return true;
+        });
+      });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents, displayConfigVersion]);
+
+  // Write-back for the view state this tab owns (filters, sort). Re-reads
+  // before writing because a PUT replaces every surface at once and the
+  // Display modal writes columns into this same surface — see
+  // useDisplayConfigDraft, which merges from the other side for the same
+  // reason. Fire-and-forget: failing to remember a sort order is not worth
+  // interrupting the table over.
+  const persistView = useCallback((patch: Partial<DisplayConfigSurface>) => {
+    displayConfigApi.get(tournamentId)
+      .then((fresh) => displayConfigApi.set(tournamentId, {
+        ...fresh,
+        // A surface that has never been saved still needs its required
+        // `hidden` key, hence the spread order.
+        [EVENTS_TABLE]: { ...{ hidden: [] }, ...fresh[EVENTS_TABLE], ...patch },
+      }))
+      .catch(() => {});
+  }, [tournamentId]);
+
+  const applyFilters = useCallback((next: EventsFilterState) => {
+    setFilters(next);
+    persistView({ filters: eventsFilterToStored(next) });
+  }, [persistView]);
+
+  const applySort = useCallback((field: SortField, direction: SortDir) => {
+    setSortField(field);
+    setSortDir(direction);
+    persistView({ sort: { field, direction } });
+  }, [persistView]);
+
+  const tableColumns = useMemo(
+    // A saved list of [] means "no columns"; only a missing one falls back to
+    // the defaults, which is why null and [] are kept apart.
+    () => resolveEventColumns(columnKeys ?? DEFAULT_EVENT_COLUMNS),
+    [columnKeys],
+  );
 
   const divisionOptions = useMemo(() => {
     const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));
@@ -285,7 +372,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // effect above's cleanup instead would tear the panel down on every re-run.
   useEffect(() => () => clearPanel(), [clearPanel]);
 
-  if (events === null) {
+  if (events === null || !viewReady) {
     return (
       <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}>
         <Spinner size="lg" />
@@ -371,10 +458,16 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                   <IconX size={16} /> Clear filters
                 </Button>
               )}
+              <Button
+                type="button" variant="secondary" size="md"
+                onClick={() => setShowColumnsModal(true)}
+              >
+                <IconEye size={16} /> Display
+              </Button>
               <Dropdown
                 label="Sort by"
                 value={sortField}
-                onChange={(v) => setSortField(v as SortField)}
+                onChange={(v) => applySort(v as SortField, sortDir)}
                 options={SORT_FIELD_OPTIONS}
                 size="md"
                 variant="secondary"
@@ -383,7 +476,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               <Button
                 type="button" variant="secondary" size="md" iconOnly
                 title={sortDir === "asc" ? "Ascending" : "Descending"}
-                onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+                onClick={() => applySort(sortField, sortDir === "asc" ? "desc" : "asc")}
               >
                 <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
               </Button>
@@ -413,7 +506,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
             <div style={{
-              display: "grid", gridTemplateColumns: eventColumns(selectMode), gap: "10px",
+              display: "grid", gridTemplateColumns: eventGridColumns(selectMode, tableColumns), gap: "10px",
               transition: "grid-template-columns 200ms ease",
               padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
               fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
@@ -434,11 +527,18 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 />
               </span>
               <span>Events — {isFiltered ? `${visibleEvents.length} of ${events.length}` : events.length}</span>
-              <span style={{ textAlign: "center" }}>Division</span>
-              <span style={{ textAlign: "center" }}>Type</span>
-              <span>Category</span>
-              <span>Tracks</span>
-              <span style={{ textAlign: "center" }}>Shifts</span>
+              {tableColumns.map((column) => (
+                <span
+                  key={column.key}
+                  style={{
+                    textAlign: column.align === "start" ? "left" : "center",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}
+                  title={column.label}
+                >
+                  {column.label}
+                </span>
+              ))}
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
@@ -449,6 +549,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
                 <EventRow
                   key={e.id}
                   event={e}
+                  columns={tableColumns}
                   isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents && !isArchived}
                   onFocus={() => focusEvent(e.id)}
@@ -474,6 +575,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           filters={filters}
           onApply={applyFilters}
           onClose={() => setShowFilterModal(false)}
+        />
+      )}
+
+      {showColumnsModal && (
+        <EventsColumnsModal
+          tournamentId={tournamentId}
+          onSaved={() => setDisplayConfigVersion((v) => v + 1)}
+          onClose={() => setShowColumnsModal(false)}
         />
       )}
 
@@ -516,9 +625,11 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 }
 
 function EventRow({
-  event, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, columns, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
 }: {
   event: TournamentEvent;
+  /** The viewer's configured columns, between Name and Actions. */
+  columns: EventColumn[];
   isLast: boolean;
   canDelete: boolean;
   onFocus: () => void;
@@ -552,7 +663,7 @@ function EventRow({
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
       style={{
-        display: "grid", gridTemplateColumns: eventColumns(selectMode), alignItems: "center",
+        display: "grid", gridTemplateColumns: eventGridColumns(selectMode, columns), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
         background: isPending
@@ -578,39 +689,11 @@ function EventRow({
       }}>
         {eventName(event)}
       </span>
-      <span style={{ display: "flex", justifyContent: "center" }}>
-        {event.division ? (
-          <Badge variant={DIVISION_BADGE_VARIANT[event.division]}>{event.division}</Badge>
-        ) : (
-          <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>
-        )}
-      </span>
-      <span style={{ display: "flex", justifyContent: "center" }}>
-        <Badge variant={event.event_type === "trial" ? "warning" : "default"}>
-          {event.event_type === "trial" ? "Trial" : "Standard"}
-        </Badge>
-      </span>
-      <span style={{
-        fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
-        overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-      }}>
-        {event.event?.category.name ?? ""}
-      </span>
-      {/* Which parts of the tournament this event belongs to. The days are
-          derivable from its shifts, but they are the same days its track
-          already names — the track is the thing that isn't inferable. */}
-      <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
-        {event.tracks.length > 0
-          ? event.tracks.map((t) => (
-              <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
-                {t.name}
-              </Badge>
-            ))
-          : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
-      </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
-        {event.shifts.length}
-      </span>
+      {/* Each cell knows how to render itself (see eventColumns) — the row
+          only places them, so adding a column is one entry there. */}
+      {columns.map((column) => (
+        <span key={column.key} style={{ minWidth: 0 }}>{column.render(event)}</span>
+      ))}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>
           <IconEdit size={13} />

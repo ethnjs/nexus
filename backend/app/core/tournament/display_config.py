@@ -13,8 +13,11 @@ MEMBERS_PANEL = "members_panel"
 MEMBERS_TABLE = "members_table"
 MEMBER_PAGE = "member_page"
 ASSIGNMENT_CARD = "assignment_card"
+EVENTS_TABLE = "events_table"
 
-KNOWN_SURFACES = frozenset({MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD})
+KNOWN_SURFACES = frozenset({
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD, EVENTS_TABLE,
+})
 
 # ---------------------------------------------------------------------------
 # Members table view state
@@ -74,6 +77,58 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
 DEFAULT_COLUMNS: tuple[str, ...] = (
     COLUMN_EMAIL, COLUMN_PHONE, COLUMN_ACCOUNT_AGE, COLUMN_JOINED, COLUMN_METHOD,
 )
+
+# ---------------------------------------------------------------------------
+# Events table
+#
+# Same three pieces of view state as the roster (columns, filters, sort) in
+# the same per-member blob, for the same reason — but its own vocabulary
+# throughout: an event has no email and a member has no division, so nothing
+# is shared between the two surfaces except the storage shape.
+#
+# Every column is a plain scalar on the event, so unlike the roster there are
+# no per-entity columns here: a tournament adding a track adds a track *chip*
+# to the existing Tracks cell, not a column.
+# ---------------------------------------------------------------------------
+EVENT_COLUMN_DIVISION = "division"
+EVENT_COLUMN_TYPE = "type"
+EVENT_COLUMN_CATEGORY = "category"
+EVENT_COLUMN_TRACKS = "tracks"
+EVENT_COLUMN_SHIFTS = "shifts"
+EVENT_COLUMN_BUILDING = "building"
+EVENT_COLUMN_ROOM = "room"
+EVENT_COLUMN_FLOOR = "floor"
+EVENT_COLUMN_VOLUNTEERS_NEEDED = "volunteers_needed"
+
+EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
+    (EVENT_COLUMN_DIVISION, "Division"),
+    (EVENT_COLUMN_TYPE, "Type"),
+    (EVENT_COLUMN_CATEGORY, "Category"),
+    (EVENT_COLUMN_TRACKS, "Tracks"),
+    (EVENT_COLUMN_SHIFTS, "Shifts"),
+    (EVENT_COLUMN_BUILDING, "Building"),
+    (EVENT_COLUMN_ROOM, "Room"),
+    (EVENT_COLUMN_FLOOR, "Floor"),
+    (EVENT_COLUMN_VOLUNTEERS_NEEDED, "Volunteers needed"),
+)
+
+# Today's fixed table, so the feature landing doesn't rearrange anyone's
+# events page. Location and staffing target are opt-in: they're blank for
+# most of planning and would be four empty columns until the week of.
+DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
+    EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
+    EVENT_COLUMN_TRACKS, EVENT_COLUMN_SHIFTS,
+)
+
+# Unlike the roster's, these filters are applied in the client (the events
+# list is one page and every filtered field is already on the row), so the
+# stored values are the *excluded* ones the FilterModal deals in rather than
+# query params. Opaque here either way — a category that no longer exists is
+# inert, exactly as a deleted track is on the roster.
+KNOWN_EVENT_FILTER_KEYS = frozenset({"division", "type", "category"})
+
+KNOWN_EVENT_SORT_FIELDS = frozenset({"name", "division", "day"})
+
 
 # ---------------------------------------------------------------------------
 # Member panel sections
@@ -162,15 +217,48 @@ def unslug(text: str) -> str:
     return text.replace("_", " ").strip().title()
 
 
-def is_known_column(key: str) -> bool:
-    """A column key is either one of the fixed ids or an entity the panel
+def is_known_column(surface: str, key: str) -> bool:
+    """Whether `key` is a column `surface` can show.
+
+    Surface-scoped because the two tables share no vocabulary: "division" is
+    a real events column and a meaningless roster one. A surface with no
+    columns at all (the panel, the member page) accepts none rather than
+    falling through to another surface's set.
+
+    On the roster a key is either one of the fixed ids or an entity the panel
     already namespaces — event_preference is excluded deliberately: a ranked
-    list of events has no sensible single-cell rendering."""
+    list of events has no sensible single-cell rendering.
+    """
+    if surface == EVENTS_TABLE:
+        return any(key == column_id for column_id, _ in EVENT_COLUMNS)
+    if surface != MEMBERS_TABLE:
+        return False
     if any(key == column_id for column_id, _ in FIXED_COLUMNS):
         return True
     return key.startswith((
         TRACK_NAMESPACE, AVAILABILITY_TRACK_NAMESPACE, LUNCH_NAMESPACE, FORM_FIELD_NAMESPACE,
     ))
+
+
+def known_filter_keys(surface: str) -> frozenset[str]:
+    """The filter keys `surface` may store. Empty for a surface that has no
+    filters, which makes any saved filter on it a 422 rather than dead
+    weight nothing will ever read."""
+    if surface == MEMBERS_TABLE:
+        return KNOWN_FILTER_KEYS
+    if surface == EVENTS_TABLE:
+        return KNOWN_EVENT_FILTER_KEYS
+    return frozenset()
+
+
+def known_sort_fields(surface: str) -> frozenset[str]:
+    """The sort fields `surface` may store — same reasoning as
+    known_filter_keys."""
+    if surface == MEMBERS_TABLE:
+        return KNOWN_SORT_FIELDS
+    if surface == EVENTS_TABLE:
+        return KNOWN_EVENT_SORT_FIELDS
+    return frozenset()
 
 
 def section_field_ids(section_id: str) -> frozenset[str]:
@@ -329,6 +417,11 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         "event_preferences": event_pref_items,
         "custom_fields": custom_field_items,
         "columns": column_items,
+        # Static, unlike every list above: an events column is a scalar on
+        # the event, so nothing here depends on what this tournament holds.
+        # Still served from the catalog rather than hardcoded in the client,
+        # so the labels have one source.
+        "event_columns": [{"key": key, "label": label} for key, label in EVENT_COLUMNS],
         "sections": section_items,
     }
 

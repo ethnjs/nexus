@@ -9,3 +9,6 @@ export const MEMBER_PAGE = "member_page";
 // config — the card face is fixed (name, event prefs, experience), so passing
 // it as `surface` is purely a request for that field set.
 export const ASSIGNMENT_CARD = "assignment_card";
+// The events table. Its own surface with its own column and filter
+// vocabulary — an event and a member share no fields.
+export const EVENTS_TABLE = "events_table";

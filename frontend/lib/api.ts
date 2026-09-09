@@ -2003,16 +2003,19 @@ export interface DisplayConfigSort {
 // sort rather than overwriting each other.
 export interface DisplayConfigSurface {
   hidden: string[]
-  // Members table: visible columns in display order. null means "use the
-  // defaults" — an empty array means "no data columns", so they differ.
+  // Either table: visible columns in display order. null means "use that
+  // table's defaults" — an empty array means "no data columns", so they
+  // differ. Which keys are legal depends on the surface.
   columns?: string[] | null
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
   sections?: DisplayConfigSection[] | null
-  // Members table: committed filters, keyed by the roster query param each
-  // set belongs to. Sets don't survive JSON, so the wire shape is arrays.
+  // Either table: committed filters, keyed by that table's own filter
+  // vocabulary — the roster stores query params it will send back, the
+  // events table stores the values it excludes client-side. Sets don't
+  // survive JSON, so the wire shape is arrays.
   filters?: Record<string, string[]> | null
-  // Members table: the viewer's sort. null means the page's own default.
+  // Either table: the viewer's sort. null means the page's own default.
   sort?: DisplayConfigSort | null
 }
 
@@ -2031,6 +2034,8 @@ export interface DisplayConfigCatalog {
   custom_fields: DisplayConfigCatalogItem[]
   // Members table: every column that can be turned on, fixed ones first.
   columns: DisplayConfigCatalogItem[]
+  // Events table: its own column universe, sharing no keys with `columns`.
+  event_columns: DisplayConfigCatalogItem[]
   // Member panel: built-in sections and their individually hideable fields.
   sections: DisplayConfigSectionCatalogItem[]
 }
