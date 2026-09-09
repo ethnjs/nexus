@@ -10,7 +10,10 @@ import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Toggle } from "@/components/ui/Toggle";
 
-export interface EventDisplayState {
+/** The metadata toggles. Split out from EventDisplayState because these are
+ *  the part stored as `columns` — a flat list of what is on — while the
+ *  tracks below are stored as `hidden`. */
+interface EventMetaDisplay {
   division: boolean;
   type: boolean;
   room: boolean;
@@ -19,17 +22,29 @@ export interface EventDisplayState {
   tracks: boolean;
 }
 
+export interface EventDisplayState extends EventMetaDisplay {
+  /** Track ids dropped from the board entirely: a primary track's shifts stop
+   *  being timeline columns, a cosmetic one's column leaves the no-shift
+   *  area. Hidden-by-exception, so a track added later shows without anyone
+   *  having to re-save. */
+  hiddenTracks: number[];
+}
+
 export const DEFAULT_EVENT_DISPLAY: EventDisplayState = {
   division: true,
   type: true,
   room: true,
   time: true,
   tracks: true,
+  hiddenTracks: [],
 };
+
+// Mirrors TRACK_NAMESPACE in core/tournament/display_config.py.
+const TRACK_PREFIX = "track:";
 
 // No "shifts" entry: the timeline in the people area *is* the shift display,
 // so listing them again in the metadata would say the same thing twice.
-const DISPLAY_FIELDS: { key: keyof EventDisplayState; label: string }[] = [
+const DISPLAY_FIELDS: { key: keyof EventMetaDisplay; label: string }[] = [
   { key: "division", label: "Division" },
   { key: "type", label: "Trial tag" },
   { key: "room", label: "Location" },
@@ -45,12 +60,24 @@ const DISPLAY_FIELDS: { key: keyof EventDisplayState; label: string }[] = [
     rather than what's off; with five fixed keys that beats a migration. */
 export function eventDisplayFromColumns(
   columns: string[] | null | undefined,
+  hidden?: string[] | null,
 ): EventDisplayState {
-  if (!Array.isArray(columns)) return DEFAULT_EVENT_DISPLAY;
+  const hiddenTracks = (hidden ?? [])
+    .filter((item) => item.startsWith(TRACK_PREFIX))
+    .map((item) => Number(item.slice(TRACK_PREFIX.length)))
+    .filter((id) => Number.isInteger(id));
+  if (!Array.isArray(columns)) return { ...DEFAULT_EVENT_DISPLAY, hiddenTracks };
   const on = new Set(columns);
-  return Object.fromEntries(
-    Object.keys(DEFAULT_EVENT_DISPLAY).map((key) => [key, on.has(key)]),
-  ) as unknown as EventDisplayState;
+  const meta = Object.fromEntries(
+    DISPLAY_FIELDS.map(({ key }) => [key, on.has(key)]),
+  ) as unknown as EventMetaDisplay;
+  return { ...meta, hiddenTracks };
+}
+
+/** Hidden tracks as the stored wire shape. Namespaced the same way every
+ *  other surface names a track, so one vocabulary covers them all. */
+export function eventDisplayToHidden(display: EventDisplayState): string[] {
+  return display.hiddenTracks.map((id) => `${TRACK_PREFIX}${id}`);
 }
 
 /** Display state as the stored wire shape. Order follows DISPLAY_FIELDS so
@@ -61,10 +88,14 @@ export function eventDisplayToColumns(display: EventDisplayState): string[] {
 
 export function EventDisplayModal({
   display,
+  tracks,
   onApply,
   onClose,
 }: {
   display: EventDisplayState;
+  /** Every track the tournament runs, primary and cosmetic — the toggles
+   *  below. Ordered as the catalog gives them, which is schedule order. */
+  tracks: { id: number; name: string; is_primary: boolean }[];
   onApply: (next: EventDisplayState) => void;
   onClose: () => void;
 }) {
@@ -93,6 +124,49 @@ export function EventDisplayModal({
             </div>
           ))}
         </div>
+
+        {tracks.length > 0 && (
+          <>
+            <span style={{
+              fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
+              letterSpacing: "0.06em", textTransform: "uppercase",
+              color: "var(--color-text-tertiary)", display: "block",
+              marginTop: "16px", marginBottom: "4px",
+            }}>
+              Tracks
+            </span>
+            <p style={{
+              fontFamily: "var(--font-sans)", fontSize: "11px",
+              color: "var(--color-text-tertiary)", margin: "0 0 8px",
+            }}>
+              Turning one off drops it from every row — a competition day loses its
+              shift columns, a workstream loses its column in the no-shift area.
+            </p>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 20px" }}>
+              {tracks.map((track) => (
+                <div key={track.id} style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px",
+                }}>
+                  <span style={{
+                    fontFamily: "var(--font-sans)", fontSize: "13px", minWidth: 0,
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                  }}>
+                    {track.name}
+                  </span>
+                  <Toggle
+                    checked={!draft.hiddenTracks.includes(track.id)}
+                    onChange={(checked) => setDraft((d) => ({
+                      ...d,
+                      hiddenTracks: checked
+                        ? d.hiddenTracks.filter((id) => id !== track.id)
+                        : [...d.hiddenTracks, track.id],
+                    }))}
+                  />
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginTop: "8px" }}>

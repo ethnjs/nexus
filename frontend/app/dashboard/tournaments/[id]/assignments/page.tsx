@@ -83,7 +83,7 @@ import { useToast } from '@/lib/useToast'
 
 import {
   DEFAULT_EVENT_DISPLAY, EventDisplayModal, eventDisplayFromColumns,
-  eventDisplayToColumns, type EventDisplayState,
+  eventDisplayToColumns, eventDisplayToHidden, type EventDisplayState,
 } from '@/components/assignments/EventDisplayModal'
 import {
   DEFAULT_MEMBER_DISPLAY, MemberDisplayModal, memberDisplayFromHidden,
@@ -1173,7 +1173,7 @@ export default function AssignmentsPage() {
         if (!current) return
         const events = config[ASSIGNMENTS_EVENTS]
         setEventFilters(eventsFilterFromStored(events?.filters))
-        setEventDisplay(eventDisplayFromColumns(events?.columns))
+        setEventDisplay(eventDisplayFromColumns(events?.columns, events?.hidden))
         const card = config[ASSIGNMENT_CARD]
         setMemberFilters(membersFilterFromStored(card?.filters))
         setMemberDisplay(memberDisplayFromHidden(card?.hidden))
@@ -1195,6 +1195,7 @@ export default function AssignmentsPage() {
     setEventDisplay(next)
     persistDisplayConfigSurface(tournamentId, ASSIGNMENTS_EVENTS, {
       columns: eventDisplayToColumns(next),
+      hidden: eventDisplayToHidden(next),
     })
   }, [tournamentId])
 
@@ -1248,8 +1249,46 @@ export default function AssignmentsPage() {
     return () => { current = false }
   }, [tournamentId, canView])
 
+  // Every event with its hidden tracks stripped out — shifts and tracks both.
+  // Derived once and read by *everything* downstream, render and handlers
+  // alike: the timeline indexes bars by position in `shifts`, and a resize
+  // slices that same array, so a handler working from the unfiltered event
+  // while the row draws a filtered one would move the wrong bar.
+  const boardEvents = useMemo(() => {
+    const hidden = new Set(eventDisplay.hiddenTracks)
+    if (hidden.size === 0) return events
+    return (events ?? []).map((event) => ({
+      ...event,
+      shifts: event.shifts.filter((s) => !hidden.has(s.track_id)),
+      tracks: event.tracks.filter((t) => !hidden.has(t.id)),
+    }))
+  }, [events, eventDisplay.hiddenTracks])
+
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
-  const byEvent = useMemo(() => assignmentsByEvent(rows), [rows])
+  // Display only, so it is built from `rows` rather than replacing it: a row
+  // pinned to a hidden track's shift is dropped here, but stays in `rows` for
+  // the conflict flags and for every write path — hiding a day must not make
+  // a double-booking on it invisible to the day that is showing.
+  const visibleRows = useMemo(() => {
+    const hidden = new Set(eventDisplay.hiddenTracks)
+    if (hidden.size === 0) return rows
+    // An unpinned row names no track, so it goes by the same role match that
+    // buckets it into a column (see bucketByTrack) — otherwise hiding Test
+    // Writing would leave its people showing under Writer's Class. Only roles
+    // that are *no* visible track's default count, so a shared default never
+    // hides someone the remaining column is still speaking for.
+    const claimed = new Set(tracks.filter((t) => !t.is_primary && !hidden.has(t.id))
+      .map((t) => t.default_role_id))
+    const hiddenRoles = new Set(tracks
+      .filter((t) => !t.is_primary && hidden.has(t.id) && t.default_role_id !== null)
+      .map((t) => t.default_role_id)
+      .filter((roleId) => !claimed.has(roleId)))
+    return rows.filter((row) => (row.shift === null
+      ? !hiddenRoles.has(row.role.id)
+      : !hidden.has(row.shift.track_id)))
+  }, [rows, tracks, eventDisplay.hiddenTracks])
+
+  const byEvent = useMemo(() => assignmentsByEvent(visibleRows), [visibleRows])
 
   const eventFilterActive = isEventsFilterActive(eventFilters)
   const memberFilterActive = isMembersFilterActive(memberFilters)
@@ -1258,29 +1297,29 @@ export default function AssignmentsPage() {
   // Writing) has no shifts of its own but still belongs on an event and still
   // carries a default role. See TournamentEvent.tracks.
   const eventTrackIds = useMemo(
-    () => new Map((events ?? []).map((e) => [e.id, e.tracks.map((t) => t.id)])),
-    [events],
+    () => new Map((boardEvents ?? []).map((e) => [e.id, e.tracks.map((t) => t.id)])),
+    [boardEvents],
   )
 
   const divisionOptions = useMemo(() => {
-    const options = [...new Set((events ?? []).map((e) => e.division))]
+    const options = [...new Set((boardEvents ?? []).map((e) => e.division))]
       .filter((d) => d !== null)
       .map((d) => ({ value: d, label: `Division ${d}` }))
     // Offered only when something actually has no division — otherwise it is
     // a row that can only ever match nothing.
-    return (events ?? []).some((e) => e.division === null)
+    return (boardEvents ?? []).some((e) => e.division === null)
       ? [...options, { value: EVENT_FILTER_UNSET, label: 'No division' }]
       : options
-  }, [events])
+  }, [boardEvents])
   const trackOptions = useMemo(
     () => tracks.map((t) => ({ value: String(t.id), label: t.name })),
     [tracks],
   )
-  const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events])
+  const categoryOptions = useMemo(() => eventCategoryOptions(boardEvents ?? []), [boardEvents])
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
-    return (events ?? []).filter((event) => {
+    return (boardEvents ?? []).filter((event) => {
       if (text && !eventName(event).toLowerCase().includes(text)) return false
       if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
       if (!filterAllows(eventFilters.type, event.event_type)) return false
@@ -1296,7 +1335,7 @@ export default function AssignmentsPage() {
       if (!filterAllows(eventFilters.staffing, staffed ? 'staffed' : 'unstaffed')) return false
       return true
     })
-  }, [events, byEvent, eventFilters, eventQuery, eventTrackIds])
+  }, [boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
 
   const assignedIds = useMemo(() => new Set(rows.map((r) => r.member.membership_id)), [rows])
 
@@ -1482,6 +1521,13 @@ export default function AssignmentsPage() {
    * pass. Rows for a (shift, role) pair that already exists are reused by
    * identity, so an edit only churns the cells that actually changed — and
    * `added`/`removed` name exactly those cells, for the caller to sync.
+   *
+   * `event` is the *filtered* event (see boardEvents), so its shifts are the
+   * ones on screen. Rows pinned to a shift that isn't — a track the viewer
+   * has hidden — are parked untouched rather than rewritten: this rewrites a
+   * lane to what the grid says, and the grid can only speak for the columns
+   * it is drawing. Without that, resizing a Day 1 bar with Day 2 hidden would
+   * delete every Day 2 row in the lane.
    */
   function rebuildLane(
     current: Assignment[],
@@ -1491,11 +1537,14 @@ export default function AssignmentsPage() {
     roles: AssignmentRole[],
     event: TournamentEvent,
   ): { rows: Assignment[]; added: Assignment[]; removed: Assignment[] } {
-    const inLane = current.filter((row) =>
+    const everyRow = current.filter((row) =>
       row.event.id === eventId && laneKeyOf(row) === laneKey)
+    const onScreen = new Set(event.shifts.map((s) => s.id))
+    const parked = everyRow.filter((row) => row.shift !== null && !onScreen.has(row.shift.id))
+    const inLane = everyRow.filter((row) => row.shift === null || onScreen.has(row.shift.id))
     if (inLane.length === 0 || roles.length === 0) return { rows: current, added: [], removed: [] }
 
-    const laneIds = new Set(inLane.map((row) => row.id))
+    const laneIds = new Set(everyRow.map((row) => row.id))
     const cellKey = (shiftId: number | null, role: AssignmentRole) =>
       `${shiftId ?? 'none'}|${roleKey(role)}`
     const existing = new Map(inLane.map((row) => [cellKey(row.shift?.id ?? null, row.role), row]))
@@ -1522,7 +1571,7 @@ export default function AssignmentsPage() {
     }
     const nextIds = new Set(next.map((row) => row.id))
     return {
-      rows: [...current.filter((row) => !laneIds.has(row.id)), ...next],
+      rows: [...current.filter((row) => !laneIds.has(row.id)), ...parked, ...next],
       added: next.filter((row) => !laneIds.has(row.id)),
       removed: inLane.filter((row) => !nextIds.has(row.id)),
     }
@@ -1548,7 +1597,7 @@ export default function AssignmentsPage() {
    */
   function handleResize(laneKey: string, eventId: number, edge: 'start' | 'end', index: number) {
     if (!canManageMembers) return
-    const event = (events ?? []).find((e) => e.id === eventId)
+    const event = (boardEvents ?? []).find((e) => e.id === eventId)
     if (!event) return
 
     setRows((current) => {
@@ -1607,7 +1656,7 @@ export default function AssignmentsPage() {
    *  you. A single discrete action, unlike resize, so it syncs immediately. */
   function handleToggleRole(laneKey: string, eventId: number, role: AssignmentRole) {
     if (!requireWriteAccess()) return
-    const event = (events ?? []).find((e) => e.id === eventId)
+    const event = (boardEvents ?? []).find((e) => e.id === eventId)
     if (!event) return
 
     const inLane = rows.filter((row) => row.event.id === eventId && laneKeyOf(row) === laneKey)
@@ -1770,7 +1819,7 @@ export default function AssignmentsPage() {
     if (!requireWriteAccess()) return
 
     const eventId = target.eventId as number
-    const event = (events ?? []).find((e) => e.id === eventId)
+    const event = (boardEvents ?? []).find((e) => e.id === eventId)
     if (!event) return
     const shiftIds = targetShiftIds(target, event)
     const source = active.data.current
@@ -2006,6 +2055,7 @@ export default function AssignmentsPage() {
       {showEventDisplayModal && (
         <EventDisplayModal
           display={eventDisplay}
+          tracks={tracks}
           onApply={applyEventDisplay}
           onClose={() => setShowEventDisplayModal(false)}
         />

@@ -291,9 +291,11 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
             field, _, track = item[len(CARD_TRACK_NAMESPACE):].partition(":")
             return field in ASSIGNMENT_CARD_TRACK_SCOPED_FIELDS and track.isdigit()
         return False
-    # An event row has no hideable sub-items — its metadata is `columns`.
+    # An event row's hideable items are the tracks it runs on: hiding one
+    # drops its shifts from the timeline, or its column from the no-shift
+    # area. Its own metadata is `columns`, not `hidden`.
     if surface == ASSIGNMENTS_EVENTS:
-        return False
+        return item.startswith(TRACK_NAMESPACE)
     return is_known_namespace(item)
 
 

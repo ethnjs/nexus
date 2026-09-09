@@ -219,12 +219,24 @@ def test_put_assignments_events_rejects_foreign_column(client, td_user, td_tourn
     assert response.status_code == 422
 
 
-def test_put_assignments_events_rejects_hidden_items(client, td_user, td_tournament):
-    """An event row has no hideable sub-items; its metadata is `columns`."""
+def test_put_assignments_events_hides_tracks(client, td_user, td_tournament):
+    """A row's hideable items are its tracks — hiding one drops its shifts
+    from the timeline, or its column from the no-shift area."""
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"assignments_events": {"hidden": ["track:3"]}},
+    )
+    assert response.status_code == 200
+    assert response.json()["assignments_events"]["hidden"] == ["track:3"]
+
+
+def test_put_assignments_events_rejects_non_track_hidden_items(client, td_user, td_tournament):
+    """Only tracks. A row has no lunch categories or form fields to hide."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": ["lunch:3:entree"]}},
     )
     assert response.status_code == 422
 
