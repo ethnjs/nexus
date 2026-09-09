@@ -19,8 +19,10 @@ interface ChipInputProps {
   getChipStatus?: (chip: string) => ChipStatus;
   /** Hides the free-text field — chips are still removable via their "x", but new ones can only arrive through onChange from outside (e.g. a picker). For values with no free-text meaning, like role names. */
   disableInput?: boolean;
-  /** Read-only — hides every chip's "x", so nothing can be removed. Typing/pasting are unaffected by this alone; pair with disableInput for a fully static display. */
+  /** View-only: the editing affordances are *gone*. No chip "x", no free-text field, no `addButton` — the control reads as a display of values that this surface never edits. For a viewer who will never be allowed to change this. */
   locked?: boolean;
+  /** Inert but present: the "x" on each chip and the `addButton` still render, greyed and unclickable, and the field can't be typed in. Says "you could edit this, not right now" — for a control switched off by something else on screen, where hiding the affordances would leave a row that looks broken rather than paused. Distinct from `locked`, which is about permission rather than state. */
+  disabled?: boolean;
   /** Per-chip lock, independent of `locked` — chips this returns a reason for show a lock icon (tooltipped with that reason) instead of "x" and can't be removed, while the rest of the chips stay removable. Return undefined for a removable chip. For a reason specific to that chip's value (e.g. a role that ties/outranks the actor), as opposed to `locked`'s blanket "nothing here is editable." */
   chipLockReason?: (chip: string) => string | undefined;
   /** Per-chip hover tooltip — for detail that would overcrowd the chip text itself (e.g. a shift's time range when the chip already shows label + day). Return undefined for a chip with nothing extra to show. */
@@ -62,23 +64,26 @@ const SPLIT_PATTERN = /[,\n]+/;
 // A chip's own "x" — plain native button (Button.tsx's smallest size is
 // 28px with a visible border, too bulky for an inline glyph next to
 // chip text) with its own hover background, since browsers give none.
-function ChipRemoveButton({ onClick }: { onClick: () => void }) {
+function ChipRemoveButton({ onClick, disabled }: { onClick: () => void; disabled?: boolean }) {
   const [hovered, setHovered] = useState(false);
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex", alignItems: "center", justifyContent: "center",
         border: "none", borderRadius: "var(--radius-sm)", background: "transparent",
-        padding: "2px", color: "inherit", cursor: "pointer",
+        padding: "2px", color: "inherit",
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.4 : 1,
         // An inset box-shadow acts as a darkening film regardless of which
         // status color the chip itself is using as background (default/
         // warning/error) — a fixed background color would wash out against
         // some of those and be invisible against others.
-        boxShadow: hovered ? "inset 0 0 0 999px rgba(0,0,0,0.12)" : undefined,
+        boxShadow: hovered && !disabled ? "inset 0 0 0 999px rgba(0,0,0,0.12)" : undefined,
         transition: "box-shadow 100ms ease",
       }}
     >
@@ -91,14 +96,17 @@ function ChipRemoveButton({ onClick }: { onClick: () => void }) {
 // list, chips removable via an "x". Content-agnostic: format validation and
 // duplicate/match warnings are the consumer's job via getChipStatus.
 export function ChipInput({
-  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, chipLockReason,
+  value, onChange, label, error, placeholder, fullWidth, getChipStatus, disableInput, locked, disabled, chipLockReason,
   getChipTooltip, variant = "primary", size = "md", addButton,
   renderChipTrailing,
 }: ChipInputProps) {
   const [draft, setDraft] = useState("");
   const sizing = SIZE_MAP[size];
+  // Both stop every write; they differ only in what stays on screen.
+  const readOnly = locked || disabled;
 
   function addChips(raw: string) {
+    if (readOnly) return;
     const tokens = raw.split(SPLIT_PATTERN).map((t) => t.trim()).filter(Boolean);
     if (tokens.length === 0) return;
     const deduped = tokens.filter((t) => !value.includes(t));
@@ -106,6 +114,9 @@ export function ChipInput({
   }
 
   function removeChip(chip: string) {
+    // Guarded here rather than only at the "x": Backspace on an empty draft
+    // removes the last chip too, and that path bypassed the hidden button.
+    if (readOnly) return;
     onChange(value.filter((c) => c !== chip));
   }
 
@@ -189,12 +200,12 @@ export function ChipInput({
                 </Tooltip>
               )}
               {!locked && !lockReason && (
-                <ChipRemoveButton onClick={() => removeChip(chip)} />
+                <ChipRemoveButton onClick={() => removeChip(chip)} disabled={disabled} />
               )}
             </span>
           );
         })}
-        {!disableInput && (
+        {!disableInput && !locked && (
           <input
             type="text"
             value={draft}
@@ -202,6 +213,7 @@ export function ChipInput({
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
             onBlur={handleBlur}
+            disabled={disabled}
             placeholder={value.length === 0 ? placeholder : undefined}
             style={{
               flex: 1, minWidth: "120px", border: "none", outline: "none",
@@ -210,7 +222,14 @@ export function ChipInput({
             }}
           />
         )}
-        {addButton}
+        {/* `locked` drops it; `disabled` keeps it visible but inert. The
+            wrapper is what makes that work for an arbitrary caller-supplied
+            node — a Popover trigger has no `disabled` of its own to set. */}
+        {!locked && addButton && (
+          disabled
+            ? <span aria-disabled style={{ display: "flex", opacity: 0.4, pointerEvents: "none" }}>{addButton}</span>
+            : addButton
+        )}
       </div>
 
       {error && (

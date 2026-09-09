@@ -331,7 +331,7 @@ export function EventPanel({
               // there, which is not obvious from the name alone.
               getChipStatus={(name) => (pendingTrackNames.has(name) ? "warning" : "default")}
               getChipTooltip={(name) => (pendingTrackNames.has(name) ? PENDING_TRACK_NOTE : undefined)}
-              addButton={!locked && (
+              addButton={
                 <Popover
                   trigger={
                     <Button type="button" variant="secondary" size="sm" iconOnly title="Add track" style={{ padding: 0, flexShrink: 0 }}>
@@ -351,7 +351,7 @@ export function EventPanel({
                   emptyMessage="No tracks yet."
                   width={280}
                 />
-              )}
+              }
             />
           </SettingsRow>
 
