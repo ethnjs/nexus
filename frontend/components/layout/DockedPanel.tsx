@@ -6,7 +6,10 @@ import { IconX, IconChevronLeft, IconChevronRight } from "@/components/ui/Icons"
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 
 interface DockedPanelProps {
-  onClose: () => void;
+  /** Omit for a panel that is always open — no close button, and Escape does
+   *  nothing. A panel the page cannot function without should not offer a
+   *  control that leaves the page in a state it can't use. */
+  onClose?: () => void;
   children: ReactNode;
   width?: number;
   /**
@@ -37,8 +40,9 @@ export function DockedPanel({
 }: DockedPanelProps) {
   const showNav = onPrev !== undefined || onNext !== undefined;
   useEffect(() => {
+    if (!onClose) return;
     function handleKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose?.();
     }
     document.addEventListener("keydown", handleKey);
     return () => document.removeEventListener("keydown", handleKey);
@@ -54,7 +58,10 @@ export function DockedPanel({
         width, flexShrink: 0,
         height: "100%",
         display: "flex", flexDirection: "column",
-        boxShadow: "var(--shadow-lg)",
+        // No shadow. This panel takes horizontal space rather than covering
+        // anything, so there is no depth for one to describe — and with two
+        // docked side by side it only ever landed on the neighbour. The
+        // borderLeft above is the separation.
       }}
     >
       {/* Same height/background as Topbar so this strip's bottom border lines
@@ -76,9 +83,11 @@ export function DockedPanel({
         ) : <span />}
         <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
           {headerActions}
-          <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
-            <IconX size={13} />
-          </Button>
+          {onClose && (
+            <Button type="button" variant="secondary" size="sm" iconOnly onClick={onClose} title="Close">
+              <IconX size={13} />
+            </Button>
+          )}
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto" }}>
