@@ -79,6 +79,7 @@ import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces
 import { eventName } from '@/lib/eventDisplay'
 import { formatTime } from '@/lib/timeFormat'
 import { useSetLayoutPanel } from '@/lib/useLayoutPanel'
+import { useInitialPanelId, usePanelUrlSync } from '@/lib/usePanelUrl'
 import { useToast } from '@/lib/useToast'
 
 import {
@@ -1150,7 +1151,12 @@ export default function AssignmentsPage() {
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
   const [loadError, setLoadError] = useState<string | undefined>()
 
-  const [focusedId, setFocusedId] = useState<number | null>(null)
+  // Which member's panel is open, mirrored into ?member= so a refresh — or a
+  // link pasted to a colleague — comes back to it. Same param name as the
+  // roster's, since it is the same panel showing the same member.
+  const initialMemberId = useInitialPanelId('member')
+  const [focusedId, setFocusedId] = useState<number | null>(initialMemberId)
+  usePanelUrlSync('member', focusedId)
 
   const [eventQuery, setEventQuery] = useState('')
   const [eventFilters, setEventFilters] = useState<EventsFilterState>(emptyFilterState(EVENTS_FILTER_KEYS))

@@ -8,6 +8,7 @@ import {
 import { formatTimeOfDay, toTimeInput } from "@/lib/timeFormat";
 import { useTournament } from "@/lib/useTournament";
 import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -46,9 +47,16 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
   const [creatingNew, setCreatingNew] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
 
+  const initialShiftId = useInitialPanelId("shift");
   const {
     focusedId, setPanelDirty, focusItem, clearFocus, startExternalFlow, getPrevNext,
-  } = usePanelSelection({ onClearExternal: () => setCreatingNew(false) });
+  } = usePanelSelection({
+    onClearExternal: () => setCreatingNew(false),
+    initialFocusedId: initialShiftId,
+  });
+  // The URL mirrors whichever shift's panel is open, so a refresh comes back
+  // to it.
+  usePanelUrlSync("shift", focusedId);
 
   // Stable identity: it's a dependency of the layout-panel effect below, and
   // a fresh closure each render would re-register the panel every render.
@@ -165,7 +173,11 @@ export function ShiftsTab({ tournamentId, canManageEvents }: ShiftsTabProps) {
     }
 
     if (focusedId !== null) {
-      const shift = (shifts ?? []).find((s) => s.id === focusedId);
+      // Not loaded is not the same as not there — see the same guard in
+      // EventsTab. `shifts` is its own fetch, so the guard above (events)
+      // does not cover it.
+      if (shifts === null) return;
+      const shift = shifts.find((s) => s.id === focusedId);
       if (!shift) { clearFocus(); return; }
       // Keyed on the id so clicking another row remounts the panel — its
       // draft is seeded from props via useState, which wouldn't re-read.

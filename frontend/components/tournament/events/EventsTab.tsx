@@ -20,6 +20,7 @@ import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus,
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/EventPanel";
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import {
@@ -115,6 +116,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   const [sortField, setSortField] = useState<SortField>("day");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
+  const initialEventId = useInitialPanelId("event");
+
   // The two mutually-exclusive panel flows (single-focus vs. Select mode) and
   // the dirty gate that freezes both — shared with the Members page.
   // onClearExternal drops a still-blank "new event" draft when either flow
@@ -124,7 +127,14 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     focusedId: focusedEventId, selectMode, selectedIds, massPanelOpen, panelDirty,
     setPanelDirty, focusItem: focusEvent, toggleSelectMode, toggleSelected, toggleSelectAll,
     openMassPanel, clearFocus, clearSelection, forgetItem, startExternalFlow, getPrevNext,
-  } = usePanelSelection({ onClearExternal: () => setCreatingNew(false) });
+  } = usePanelSelection({
+    onClearExternal: () => setCreatingNew(false),
+    initialFocusedId: initialEventId,
+  });
+  // The URL mirrors whichever event's panel is open, so a refresh — or a
+  // pasted link — comes back to it. Only the single-focus flow: a mass
+  // selection is a working set, not a place.
+  usePanelUrlSync("event", focusedEventId);
 
   // Stable identity: it's a dependency of the layout-panel effect below, and
   // a fresh closure each render would re-register the panel every render.
@@ -292,7 +302,12 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     }
 
     if (focusedEventId !== null) {
-      const event = (events ?? []).find((e) => e.id === focusedEventId);
+      // Not loaded is not the same as not there. The id can arrive from the
+      // URL before the first fetch lands, and clearing on a null list would
+      // drop the panel a refresh was meant to reopen — along with the param
+      // naming it.
+      if (events === null) return;
+      const event = events.find((e) => e.id === focusedEventId);
       if (!event) { clearFocus(); return; }
       // Keyed on the event id so clicking a different row while one is
       // already focused remounts the panel — its draft/current state is

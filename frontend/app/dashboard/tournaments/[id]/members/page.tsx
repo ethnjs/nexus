@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
@@ -11,6 +11,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -240,16 +241,11 @@ const MemberRow = memo(function MemberRow({
 
 export default function MembersPage() {
   const params = useParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const tournamentId = Number(params.id);
 
-  // Read once, on the first render only: from here on the URL follows the
-  // page's state, not the other way round, so re-reading it would fight the
-  // router.replace below. Filters aren't here — they're saved server-side in
-  // this viewer's display config, which already survives a refresh.
-  const [initialMemberId] = useState(() => Number(searchParams.get("member")) || null);
+  // Filters aren't in the URL — they're saved server-side in this viewer's
+  // display config, which already survives a refresh.
+  const initialMemberId = useInitialPanelId("member");
 
   const { user: currentUser } = useAuth();
   const { selectedTournament } = useTournament();
@@ -294,14 +290,7 @@ export default function MembersPage() {
     openMassPanel, clearFocus, clearSelection, forgetItem, getPrevNext,
   } = usePanelSelection({ initialFocusedId: initialMemberId });
 
-  // The URL mirrors whichever member's panel is open, so a refresh comes
-  // back to it. replace, not push: this is where you already are, and every
-  // row you click would otherwise cost a Back press to undo.
-  useEffect(() => {
-    const search = focusedId !== null ? `?member=${focusedId}` : "";
-    if (search === window.location.search) return;
-    router.replace(`${pathname}${search}`, { scroll: false });
-  }, [focusedId, pathname, router]);
+  usePanelUrlSync("member", focusedId);
 
   // useMemberRoleLock hands back fresh closures every render, which would
   // re-register the docked panel in a loop if they went straight into the
