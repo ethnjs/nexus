@@ -17,14 +17,11 @@ import { useDraggable, useDroppable, type DragEndEvent } from "@dnd-kit/core";
 
 import { useRegisterBoardDnd } from "@/components/assignments/BoardDnd";
 import { RolePillMenu } from "@/components/assignments/RolePillMenu";
-import {
-  AVAILABILITY_GREEN, AVAILABILITY_RED,
-} from "@/components/tournament/AvailabilityTimeline";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { SectionHeading } from "@/components/profile/SectionHeading";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Button } from "@/components/ui/Button";
-import { IconEvents, IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
+import { IconPlus, IconWarning, IconX } from "@/components/ui/Icons";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Popover } from "@/components/ui/Popover";
 import { Tooltip } from "@/components/ui/Tooltip";
@@ -61,6 +58,13 @@ interface AssignmentsSectionProps {
   /** Fires after a write lands, so the panel can re-read the member. */
   onChanged?: () => void;
 }
+
+// The same two colours the availability bar uses, at roughly half the
+// strength. There the colour *is* the content and can be as loud as it likes;
+// here it is a backdrop with chips, names and role pills on top of it, and at
+// full strength it competed with them.
+const SHADE_AVAILABLE = "color-mix(in srgb, var(--color-success) 13%, transparent)";
+const SHADE_UNAVAILABLE = "color-mix(in srgb, var(--color-danger) 6%, transparent)";
 
 /** A bar here is one event, not one person — the inverse of the board's key. */
 function laneKeyOf(assignment: Assignment) {
@@ -440,6 +444,23 @@ function DayTimeline({
         </span>
       </span>
 
+      {/* The header and the bars share one relative box so the dividers can
+          run the whole height, from above the shift names to the bottom of
+          the last bar — the way an event row's columns do on the board. A
+          divider that started below the header would leave the names
+          floating over a row they are supposed to label. */}
+      <div style={{ position: "relative" }}>
+      <div style={{
+        position: "absolute", inset: 0, display: "grid",
+        gridTemplateColumns: gridColumns, pointerEvents: "none",
+      }}>
+        {shifts.map((shift, i) => (
+          <div key={shift.id} style={{
+            borderLeft: i === 0 ? "none" : "1px solid var(--color-border)",
+          }} />
+        ))}
+      </div>
+
       {/* Times and shift names share one line — they name the same axis, and a
           name is centred in its column while a time sits on the divider
           between two, so each falls in the other's gap. */}
@@ -478,16 +499,15 @@ function DayTimeline({
         position: "relative", display: "flex", flexDirection: "column",
         gap: "2px", padding: "3px 0", minHeight: "34px",
       }}>
-        {/* The columns are the drop targets and the availability shading at
-            once, drawn once behind the bars so they run the row's full
-            height rather than repeating per lane. */}
+        {/* Drop targets and availability shading, over the bars' area only —
+            the dividers are their own layer above, since those run through
+            the header too and this must not tint it. */}
         <div style={{ position: "absolute", inset: 0, display: "grid", gridTemplateColumns: gridColumns }}>
-          {shifts.map((shift, i) => (
+          {shifts.map((shift) => (
             <ShiftCell
               key={shift.id}
               shift={shift}
               trackId={track.id}
-              first={i === 0}
               available={availableShiftIds.has(shift.id)}
               shade={showAvailability}
               locked={locked}
@@ -500,7 +520,7 @@ function DayTimeline({
           // availability shading still reads across an empty day — which is
           // the day you most want to see it on.
           <div style={{ position: "relative", pointerEvents: "none" }}>
-            <EmptyState size="sm" icon={<IconEvents size={20} />} title="Nothing this day" />
+            <EmptyState size="sm" transparent title="Nothing this day" />
           </div>
         )}
 
@@ -524,6 +544,7 @@ function DayTimeline({
           </div>
         ))}
       </div>
+      </div>
     </div>
   );
 }
@@ -532,10 +553,9 @@ function DayTimeline({
  *  turned on. Green and red rather than green and nothing — "didn't say" and
  *  "said no" are the same answer here, which is that staffing them is an
  *  override the flags already warn about. */
-function ShiftCell({ shift, trackId, first, available, shade, locked }: {
+function ShiftCell({ shift, trackId, available, shade, locked }: {
   shift: TournamentShift;
   trackId: number;
-  first: boolean;
   available: boolean;
   shade: boolean;
   locked: boolean;
@@ -545,14 +565,11 @@ function ShiftCell({ shift, trackId, first, available, shade, locked }: {
     data: { kind: "panel-shift", shiftId: shift.id, trackId },
     disabled: locked,
   });
-  // The availability section's own two, so the same green means the same
-  // thing at the same weight wherever a member's availability is drawn.
-  const shaded = shade ? (available ? AVAILABILITY_GREEN : AVAILABILITY_RED) : "transparent";
+  const shaded = shade ? (available ? SHADE_AVAILABLE : SHADE_UNAVAILABLE) : "transparent";
   return (
     <div
       ref={setNodeRef}
       style={{
-        borderLeft: first ? "none" : "1px solid var(--color-border)",
         background: isOver ? "var(--color-accent-subtle)" : shaded,
         transition: "background 120ms ease",
       }}

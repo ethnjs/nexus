@@ -13,9 +13,16 @@ interface EmptyStateProps {
    * around it and repeat down the page.
    */
   size?: 'sm' | 'md'
+  /**
+   * Drops the filled background, keeping the dashed outline. For an empty
+   * slot laid *over* something the reader still needs to see — a day's
+   * availability shading behind an unstaffed timeline, where the usual
+   * surface fill would blank out the answer the row was drawn to give.
+   */
+  transparent?: boolean
 }
 
-export function EmptyState({ icon, title, description, action, size = 'md' }: EmptyStateProps) {
+export function EmptyState({ icon, title, description, action, size = 'md', transparent = false }: EmptyStateProps) {
   const compact = size === 'sm'
   return (
     <div style={{
@@ -27,7 +34,7 @@ export function EmptyState({ icon, title, description, action, size = 'md' }: Em
       gap: compact ? '8px' : '12px', textAlign: 'center',
       border: '1px dashed var(--color-border)',
       borderRadius: compact ? 'var(--radius-md)' : 'var(--radius-lg)',
-      background: 'var(--color-surface)',
+      background: transparent ? 'transparent' : 'var(--color-surface)',
     }}>
       {icon && (
         <div style={{ color: 'var(--color-text-tertiary)', display: 'flex' }}>
