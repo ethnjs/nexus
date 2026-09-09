@@ -47,7 +47,7 @@ function TournamentNotFound() {
 // mounted lags behind panel on close (stays mounted through the collapse
 // transition instead of vanishing instantly); expanded flips a frame after
 // mount so there's an actual 0 -> full-width transition to animate rather
-// than appearing already-open. Same technique as ShiftsTab's own split-view
+// than appearing already-open. Same technique as the shifts page's split-view
 // panel (panelMountedId/panelExpanded there).
 function LayoutPanelSlot() {
   const panel = useLayoutPanelContent();

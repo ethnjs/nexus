@@ -120,7 +120,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
   const [search, setSearch] = useState('')
   // Local draft only, reset every time this modal opens — this is a "what am
   // I browsing right now" filter, not a standing view, so persisting it
-  // (as EventsTab's display config does) would silently carry over into
+  // (as the events page's display config does) would silently carry over into
   // the next bulk-add session with no visible reason why.
   const [filters, setFilters] = useState<FilterState<PickerFilterKey>>(() => emptyFilterState(PICKER_FILTER_KEYS))
   const [showFilterModal, setShowFilterModal] = useState(false)

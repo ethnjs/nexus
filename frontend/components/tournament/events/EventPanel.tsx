@@ -162,7 +162,7 @@ export function EventPanel({
   }
 
   // Discards the draft only — the panel stays open, matching the table's own
-  // "Cancel" bar (ShiftsTab) rather than treating Cancel as a second Close.
+  // "Cancel" bar (the shifts page) rather than treating Cancel as a second Close.
   function handleCancel() {
     setDraft(draftFromEvent(current));
     setSaveError(undefined);
