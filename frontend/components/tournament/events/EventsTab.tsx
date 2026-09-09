@@ -24,6 +24,7 @@ import { EventPanel, EVENT_PANEL_WIDTH } from "@/components/tournament/events/Ev
 import { DeleteEventModal } from "@/components/tournament/events/DeleteEventModal";
 import {
   EventsFilterModal, EventsFilterState, isEventsFilterActive, EVENTS_FILTER_KEYS,
+  EVENT_FILTER_UNSET, eventCategoryKey, eventCategoryOptions,
   eventsFilterFromStored, eventsFilterToStored, EVENT_TYPE_OPTIONS,
 } from "@/components/tournament/events/EventsFilterModal";
 import { emptyFilterState, filterAllows } from "@/components/ui/FilterModal";
@@ -56,17 +57,12 @@ type SortDir = "asc" | "desc";
 
 // Sentinel for the null case of a nullable field (division/category) so it
 // can sit in the same filter Set as real values.
-const UNSET = "__unset__";
 
 const SORT_FIELD_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "division", label: "Division" },
   { value: "day", label: "Day" },
 ];
-
-function categoryKey(e: TournamentEvent): string {
-  return e.event?.category.name ?? UNSET;
-}
 
 function sortValue(e: TournamentEvent, field: SortField): string | number {
   switch (field) {
@@ -225,23 +221,19 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
 
   const divisionOptions = useMemo(() => {
     const opts = (selectedTournament?.division ?? []).map((d: TournamentDivision) => ({ value: d, label: `Division ${d}` }));
-    return (events ?? []).some((e) => e.division === null) ? [...opts, { value: UNSET, label: "No division" }] : opts;
+    return (events ?? []).some((e) => e.division === null) ? [...opts, { value: EVENT_FILTER_UNSET, label: "No division" }] : opts;
   }, [selectedTournament, events]);
 
-  const categoryOptions = useMemo(() => {
-    const names = new Set((events ?? []).filter((e) => e.event).map((e) => e.event!.category.name));
-    const opts = [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
-    return (events ?? []).some((e) => !e.event) ? [...opts, { value: UNSET, label: "No category" }] : opts;
-  }, [events]);
+  const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events]);
 
   const visibleEvents = useMemo(() => {
     if (!events) return [];
     const q = search.trim().toLowerCase();
     const filtered = events.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false;
-      if (!filterAllows(filters.division, e.division ?? UNSET)) return false;
+      if (!filterAllows(filters.division, e.division ?? EVENT_FILTER_UNSET)) return false;
       if (!filterAllows(filters.type, e.event_type)) return false;
-      if (!filterAllows(filters.category, categoryKey(e))) return false;
+      if (!filterAllows(filters.category, eventCategoryKey(e))) return false;
       return true;
     });
     const sorted = [...filtered].sort((a, b) => {

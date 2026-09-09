@@ -82,7 +82,7 @@ function SectionHeader({ title, selected, onChange }: Omit<FilterSectionProps, "
 
 function toggled(selected: Set<string>, value: string): Set<string> {
   const next = new Set(selected);
-  next.has(value) ? next.delete(value) : next.add(value);
+  if (!next.delete(value)) next.add(value);
   return next;
 }
 

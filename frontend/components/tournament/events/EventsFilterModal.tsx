@@ -3,6 +3,7 @@
 import {
   emptyFilterState, FilterModal, FilterOption, FilterSectionConfig, FilterState, isFilterActive,
 } from "@/components/ui/FilterModal";
+import { TournamentEvent } from "@/lib/api";
 
 // track/staffing are optional per caller (see trackOptions/showStaffing below)
 // — the Events tab has neither a per-event track list nor assignment data to
@@ -11,6 +12,28 @@ export const EVENTS_FILTER_KEYS = ["division", "type", "category", "track", "sta
 type EventsFilterKey = (typeof EVENTS_FILTER_KEYS)[number];
 
 export type EventsFilterState = FilterState<EventsFilterKey>;
+
+// The filter value standing for "this event has no such thing" — no division,
+// no category. A sentinel rather than "" because an empty selection already
+// means "no narrowing", so the absence has to be a value you can pick.
+export const EVENT_FILTER_UNSET = "__unset__";
+
+/** An event's category as a filter value. An event with no catalog link has
+ *  no category at all, which is a thing you can filter *for*. */
+export function eventCategoryKey(event: TournamentEvent): string {
+  return event.event?.category.name ?? EVENT_FILTER_UNSET;
+}
+
+/** The category section's options, derived from the loaded events rather than
+ *  a catalog fetch: a category nothing uses is not worth a row, and the
+ *  filtering is client-side over exactly these events anyway. */
+export function eventCategoryOptions(events: TournamentEvent[]): FilterOption[] {
+  const names = new Set(events.filter((e) => e.event).map((e) => e.event!.category.name));
+  const options = [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }));
+  return events.some((e) => !e.event)
+    ? [...options, { value: EVENT_FILTER_UNSET, label: "No category" }]
+    : options;
+}
 
 // Fixed two-value enum, shared wherever an event's type is filtered or
 // displayed, so a third type never has to be added in two places at once.

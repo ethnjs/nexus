@@ -39,7 +39,8 @@ import {
   type MembersFilterState,
 } from '@/components/tournament/MembersFilterModal'
 import {
-  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_TYPE_OPTIONS, eventsFilterFromStored,
+  EventsFilterModal, EVENTS_FILTER_KEYS, EVENT_FILTER_UNSET, EVENT_TYPE_OPTIONS,
+  eventCategoryKey, eventCategoryOptions, eventsFilterFromStored,
   eventsFilterToStored, isEventsFilterActive,
   type EventsFilterState,
 } from '@/components/tournament/events/EventsFilterModal'
@@ -1055,23 +1056,29 @@ export default function AssignmentsPage() {
     [events],
   )
 
-  const divisionOptions = useMemo(
-    () => [...new Set((events ?? []).map((e) => e.division))]
+  const divisionOptions = useMemo(() => {
+    const options = [...new Set((events ?? []).map((e) => e.division))]
       .filter((d) => d !== null)
-      .map((d) => ({ value: d, label: `Division ${d}` })),
-    [events],
-  )
+      .map((d) => ({ value: d, label: `Division ${d}` }))
+    // Offered only when something actually has no division — otherwise it is
+    // a row that can only ever match nothing.
+    return (events ?? []).some((e) => e.division === null)
+      ? [...options, { value: EVENT_FILTER_UNSET, label: 'No division' }]
+      : options
+  }, [events])
   const trackOptions = useMemo(
     () => tracks.map((t) => ({ value: String(t.id), label: t.name })),
     [tracks],
   )
+  const categoryOptions = useMemo(() => eventCategoryOptions(events ?? []), [events])
 
   const visibleEvents = useMemo(() => {
     const text = eventQuery.trim().toLowerCase()
     return (events ?? []).filter((event) => {
       if (text && !(event.name ?? '').toLowerCase().includes(text)) return false
-      if (!filterAllows(eventFilters.division, event.division ?? '')) return false
+      if (!filterAllows(eventFilters.division, event.division ?? EVENT_FILTER_UNSET)) return false
       if (!filterAllows(eventFilters.type, event.event_type)) return false
+      if (!filterAllows(eventFilters.category, eventCategoryKey(event))) return false
       // Multi-valued, so filterAllows doesn't fit: an event passes when *any*
       // of its tracks is picked — filtering to Day 1 shouldn't hide an event
       // that runs on both Day 1 and Day 2.
@@ -1751,7 +1758,7 @@ export default function AssignmentsPage() {
         <EventsFilterModal
           divisionOptions={divisionOptions}
           typeOptions={EVENT_TYPE_OPTIONS}
-          categoryOptions={[]}
+          categoryOptions={categoryOptions}
           trackOptions={trackOptions}
           showStaffing
           filters={eventFilters}
