@@ -30,7 +30,7 @@ interface BoardDndHandlers {
   renderOverlay?: (activeId: string) => ReactNode;
 }
 
-const RegisterContext = createContext<((handlers: BoardDndHandlers) => void) | null>(null);
+const RegisterContext = createContext<((id: string, handlers: BoardDndHandlers) => void) | null>(null);
 
 /**
  * "Is a drag in flight" as its own one-boolean context.
@@ -47,16 +47,25 @@ export function useBoardDragging() {
   return useContext(DraggingContext);
 }
 
-/** Registers this page's drag behaviour with the provider above it. */
-export function useRegisterBoardDnd(handlers: BoardDndHandlers) {
+/**
+ * Registers one surface's drag behaviour with the provider above it.
+ *
+ * `id` because there can be more than one at a time: the assignments board
+ * owns the page while a member panel docked beside it owns its own timeline,
+ * and both are inside this one context. Every registered handler sees every
+ * drag, so each must ignore the ones it doesn't recognise — which they
+ * already do, since both check the target's `kind` before acting.
+ */
+export function useRegisterBoardDnd(id: string, handlers: BoardDndHandlers) {
   const register = useContext(RegisterContext);
-  useEffect(() => { register?.(handlers) });
+  useEffect(() => { register?.(id, handlers) });
 }
 
 export function BoardDndProvider({ children }: { children: ReactNode }) {
-  // Handlers in a ref, not state: they are rebuilt on every page render, and
-  // storing them would loop.
-  const handlers = useRef<BoardDndHandlers>({});
+  // Handlers in a ref, not state: they are rebuilt on every render of every
+  // registered surface, and storing them would loop. Keyed by surface, so a
+  // panel registering doesn't silently unregister the board underneath it.
+  const handlers = useRef(new Map<string, BoardDndHandlers>());
   // The overlay is resolved once, when the drag starts, and held as state.
   // Reading the ref during render would be both a lint error and a real
   // staleness bug — a ref write does not schedule the render that would show
@@ -64,7 +73,19 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
   const [overlay, setOverlay] = useState<ReactNode>(null);
   const [dragging, setDragging] = useState(false);
 
-  const register = useCallback((next: BoardDndHandlers) => { handlers.current = next }, []);
+  const register = useCallback((id: string, next: BoardDndHandlers) => {
+    handlers.current.set(id, next);
+  }, []);
+
+  /** The first surface that claims this drag. An overlay belongs to whoever
+   *  owns the draggable, so the others return null for ids they don't know. */
+  function renderOverlay(activeId: string): ReactNode {
+    for (const entry of handlers.current.values()) {
+      const overlay = entry.renderOverlay?.(activeId);
+      if (overlay) return overlay;
+    }
+    return null;
+  }
 
   const sensors = useSensors(
     // A small threshold so a click on a card is not swallowed as a drag.
@@ -77,13 +98,13 @@ export function BoardDndProvider({ children }: { children: ReactNode }) {
         sensors={sensors}
         onDragStart={(event) => {
           setDragging(true);
-          setOverlay(handlers.current.renderOverlay?.(String(event.active.id)) ?? null);
-          handlers.current.onDragStart?.(event);
+          setOverlay(renderOverlay(String(event.active.id)));
+          for (const entry of handlers.current.values()) entry.onDragStart?.(event);
         }}
         onDragEnd={(event) => {
           setDragging(false);
           setOverlay(null);
-          handlers.current.onDragEnd?.(event);
+          for (const entry of handlers.current.values()) entry.onDragEnd?.(event);
         }}
         onDragCancel={() => { setDragging(false); setOverlay(null) }}
       >

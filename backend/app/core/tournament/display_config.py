@@ -208,6 +208,12 @@ PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
         ("age", "Age"),
     )),
     ("availability", "Availability", ()),
+    # The member's own staffing, laid out as a timeline per competition day.
+    # Its one static field is the availability shading behind that timeline —
+    # the assignments themselves are the section, not a field of it.
+    ("assignments", "Assignments", (
+        ("availability", "Availability shading"),
+    )),
     ("lunch", "Lunch", (
         ("dietary_restriction", "Dietary restriction"),
     )),
@@ -492,6 +498,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     # writes them to `hidden` rather than to the section's hidden_fields.
     entity_fields = {
         "membership": track_items,
+        # Tracks, not availability days: this section is laid out one timeline
+        # per track, so a track is the thing you turn off.
+        "assignments": track_items,
         "availability": availability_items,
         "lunch": lunch_items,
         "event_preferences": event_pref_items,
@@ -645,6 +654,9 @@ _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
 _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
     "membership": ("membership", "roles", "age", "tracks"),
     "availability": ("availability",),
+    # Availability rides along for the shading behind the timeline, which is
+    # a field of this section rather than a section of its own.
+    "assignments": ("assignments", "availability"),
     # dietary_restriction lives on the user profile, not on the lunch rows.
     "lunch": ("lunch", "profile"),
     "event_preferences": ("event_prefs",),

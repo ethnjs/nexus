@@ -990,7 +990,7 @@ export type MembershipView =
     created_at: string
     updated_at: string
     user:       UserFull
-  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections">>;
+  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments">>;
 
 /** A MembershipMe as the member sections can render it, or null when the
  *  caller holds no membership in this tournament — nothing to show. */

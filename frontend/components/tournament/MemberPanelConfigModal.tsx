@@ -22,7 +22,7 @@ import {
   CUSTOM_SECTION_PREFIX, DEFAULT_CUSTOM_SECTION_TITLE, isCustomSection, resolveSections,
 } from "@/lib/panelSections";
 
-interface PanelSectionsModalProps {
+interface MemberPanelConfigModalProps {
   tournamentId: number;
   onClose: () => void;
   onSaved?: () => void;
@@ -35,6 +35,7 @@ interface PanelSectionsModalProps {
 // says a field is namespaced, not what kind of thing it is.
 const ENTITY_GROUP_LABELS: Record<string, string> = {
   membership: "Tracks",
+  assignments: "Tracks",
   availability: "Tracks",
   lunch: "Categories",
   event_preferences: "Tracks",
@@ -116,7 +117,7 @@ function SortableSection({ id, children }: { id: string; children: (handle: Reac
   );
 }
 
-export function PanelSectionsModal({ tournamentId, onClose, onSaved }: PanelSectionsModalProps) {
+export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: MemberPanelConfigModalProps) {
   const { catalog, draft, setDraft, saving, error, save, loading } =
     useDisplayConfigDraft(tournamentId, MEMBERS_PANEL);
   const [expanded, setExpanded] = useState<string | null>(null);

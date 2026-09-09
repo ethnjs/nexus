@@ -5,6 +5,7 @@ import { DisplayConfigSection, MembershipCustomAnswer } from "@/lib/api";
 export const DEFAULT_SECTION_ORDER = [
   "membership",
   "availability",
+  "assignments",
   "lunch",
   "event_preferences",
   "education",

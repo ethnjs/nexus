@@ -3,14 +3,15 @@
 import { startTransition, useEffect, useState } from "react";
 import {
   ApiError, DisplayConfigSection, MembershipFull, Role,
-  TournamentShift, displayConfigApi, membersApi, tournamentShiftsApi,
+  TournamentShift, TournamentTrack, displayConfigApi, membersApi, tournamentShiftsApi,
+  tournamentTracksApi,
 } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { MemberSections } from "@/components/tournament/sections/MemberSections";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
-import { PanelSectionsModal } from "@/components/tournament/PanelSectionsModal";
+import { MemberPanelConfigModal } from "@/components/tournament/MemberPanelConfigModal";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
 
@@ -60,6 +61,12 @@ export function MemberPanel({
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
+  // The assignments section draws one timeline per competition day, so it
+  // needs the tracks themselves — a shift names its track by id only.
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Which tracks this viewer turned off, read from the same surface config
+  // the section list comes from.
+  const [hiddenItems, setHiddenItems] = useState<string[]>([]);
   // Section order, per-section visibility, and the TD's custom sections.
   const [sectionConfig, setSectionConfig] = useState<DisplayConfigSection[] | null>(null);
   const [showSectionsModal, setShowSectionsModal] = useState(false);
@@ -80,10 +87,23 @@ export function MemberPanel({
       .then((data) => startTransition(() => setFull(data)))
       .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
+    tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
     displayConfigApi.get(tournamentId)
-      .then((config) => startTransition(() => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null)))
+      .then((config) => startTransition(() => {
+        setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null);
+        setHiddenItems(config?.[MEMBERS_PANEL]?.hidden ?? []);
+      }))
       .catch(() => {});
   }, [tournamentId, membershipId, reloadKey]);
+
+  // "track:3" is the panel surface's own vocabulary for a hidden track — the
+  // same keys the config modal writes.
+  const hiddenTrackIds = new Set(
+    hiddenItems
+      .filter((item) => item.startsWith("track:"))
+      .map((item) => Number(item.slice("track:".length)))
+      .filter((id) => Number.isInteger(id)),
+  );
 
   function handleRolesUpdated(updated: MembershipFull) {
     setFull((f) => (f ? { ...f, roles: updated.roles } : f));
@@ -153,6 +173,10 @@ export function MemberPanel({
               membership={full}
               sectionConfig={sectionConfig}
               shifts={shifts}
+              tracks={tracks}
+              hiddenTrackIds={hiddenTrackIds}
+              membershipId={membershipId}
+              onAssignmentsChanged={() => setReloadKey((key) => key + 1)}
               allRoles={allRoles}
               canTouchRole={canTouchRole}
               rolesLocked={!canEditMember(full)}
@@ -164,7 +188,7 @@ export function MemberPanel({
         )}
       </div>
       {showSectionsModal && (
-        <PanelSectionsModal
+        <MemberPanelConfigModal
           tournamentId={tournamentId}
           onSaved={() => setReloadKey((key) => key + 1)}
           onClose={() => setShowSectionsModal(false)}

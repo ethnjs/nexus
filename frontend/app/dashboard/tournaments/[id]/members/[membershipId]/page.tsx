@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  ApiError, MembershipView, Role, TournamentShift,
+  ApiError, MembershipView, Role, TournamentShift, TournamentTrack, tournamentTracksApi,
   asMembershipView, membersApi, rolesApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
@@ -33,6 +33,9 @@ import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
  * the same membership data plus what they may do here. Both satisfy
  * MembershipView, so the sections below don't care which one answered.
  */
+// Module-level so the prop keeps one identity across renders.
+const EMPTY_TRACK_IDS = new Set<number>();
+
 export default function MemberPage() {
   const params = useParams();
   const router = useRouter();
@@ -45,6 +48,9 @@ export default function MemberPage() {
 
   const [full, setFull] = useState<MembershipView | null>(null);
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Bumped after the assignments section writes, so the page re-reads.
+  const [reloadKey, setReloadKey] = useState(0);
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [error, setError] = useState<ApiError | null>(null);
 
@@ -81,6 +87,7 @@ export default function MemberPage() {
     // page needs it too), and all this sets is the availability timeline's
     // window — so there is no member-facing variant to ask for.
     tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => setShifts([]));
+    tournamentTracksApi.list(tournamentId).then(setTracks).catch(() => setTracks([]));
   }, [tournamentId, membershipId, canManageMembers, membershipLoading, isSelf]);
 
   // The catalog is only the *pickable* roles — the ones a member already
@@ -147,6 +154,12 @@ export default function MemberPage() {
           membership={full}
           sectionConfig={null}
           shifts={shifts}
+          tracks={tracks}
+          // The page has no display config of its own (sectionConfig is null
+          // here, meaning "every section"), so nothing is hidden either.
+          hiddenTrackIds={EMPTY_TRACK_IDS}
+          membershipId={membershipId}
+          onAssignmentsChanged={() => setReloadKey((key) => key + 1)}
           allRoles={allRoles}
           canTouchRole={canTouchRole}
           rolesLocked={rolesLocked}

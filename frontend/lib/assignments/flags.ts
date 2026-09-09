@@ -47,8 +47,13 @@ export interface MemberFacts {
   assignments: readonly Assignment[];
 }
 
+/** The three groups the warnings actually read. Stated structurally rather
+ *  than as MembershipFull so the member panel's own view of a membership —
+ *  which carries the same three — can be handed straight in. */
+export type FactSource = Pick<MembershipFull, "availability" | "track_statuses" | "assignments">;
+
 export function memberFacts(
-  member: MembershipFull,
+  member: FactSource,
   assignments: readonly Assignment[] = member.assignments ?? [],
 ): MemberFacts {
   return {

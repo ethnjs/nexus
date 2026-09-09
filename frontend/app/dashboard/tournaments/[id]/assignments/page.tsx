@@ -75,6 +75,10 @@ import {
   memberFacts,
   type Flag,
 } from '@/lib/assignments/flags'
+import {
+  buildLanes as buildAssignmentLanes, laneFlags, roleKey, roleSummary, rolesOf, sameRole,
+  type AssignmentRole, type Lane,
+} from '@/lib/assignments/lanes'
 import { persistDisplayConfigSurface } from '@/lib/displayConfig'
 import { ASSIGNMENT_CARD, ASSIGNMENTS_EVENTS } from '@/lib/displayConfigSurfaces'
 import { eventName } from '@/lib/eventDisplay'
@@ -92,8 +96,6 @@ import {
   memberDisplayToHidden, type MemberDisplayState,
 } from '@/components/assignments/MemberDisplayModal'
 import { MemberCard } from '@/components/assignments/MemberCard'
-
-type AssignmentRole = Assignment['role']
 
 type DragListeners = ReturnType<typeof useDraggable>['listeners']
 
@@ -129,28 +131,6 @@ function useGrabCursor(listeners: DragListeners) {
   return { pressed, onPointerDown }
 }
 
-/** PersonRole.id is nullable — a role can be a free-text label with no
- *  catalog row behind it — so identity falls back to the label. Every role
- *  this board creates comes from the catalog (numeric id), so this only ever
- *  matters for reading existing assignments. */
-function roleKey(role: AssignmentRole): string {
-  return role.id === null ? `label:${role.label}` : `id:${role.id}`
-}
-
-function sameRole(a: AssignmentRole, b: AssignmentRole): boolean {
-  return roleKey(a) === roleKey(b)
-}
-
-/** The distinct roles a set of rows carries, in a stable order so the pill's
- *  summary doesn't reshuffle every time rows are rebuilt. */
-function rolesOf(rows: Assignment[]): AssignmentRole[] {
-  const seen = new Map<string, AssignmentRole>()
-  for (const row of rows) {
-    const key = roleKey(row.role)
-    if (!seen.has(key)) seen.set(key, row.role)
-  }
-  return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label))
-}
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
@@ -410,15 +390,6 @@ function Chip({
 // ---------------------------------------------------------------------------
 // Shift timeline
 // ---------------------------------------------------------------------------
-export interface Lane {
-  key: string
-  assignments: Assignment[]
-  /** Indices into the event's shift list that this person covers. */
-  covered: number[]
-  /** Every distinct role the lane's rows carry. */
-  roles: AssignmentRole[]
-}
-
 /** A bar's identity: one member on one event. Roles used to be part of the
  *  key — writing and reviewing the same event were two bars. Now a bar owns
  *  a *set* of roles, so the lane is one row per shift per role and the person
@@ -427,50 +398,9 @@ function laneKeyOf(assignment: Assignment) {
   return String(assignment.member.membership_id)
 }
 
+/** The board's bars: one per member on the event, across its shifts. */
 function buildLanes(rowAssignments: Assignment[], shiftIds: number[]) {
-  const pinned = new Map<string, Assignment[]>()
-  const loose = new Map<string, Assignment[]>()
-
-  for (const assignment of rowAssignments) {
-    const index = assignment.shift ? shiftIds.indexOf(assignment.shift.id) : -1
-    const into = index === -1 ? loose : pinned
-    const key = laneKeyOf(assignment)
-    const list = into.get(key)
-    if (list) list.push(assignment)
-    else into.set(key, [assignment])
-  }
-
-  const toLanes = (grouped: Map<string, Assignment[]>): Lane[] =>
-    [...grouped.entries()].map(([key, rows]) => ({
-      key,
-      assignments: rows,
-      // Distinct, because the same shift now appears once per role.
-      covered: [...new Set(
-        rows.map((row) => (row.shift ? shiftIds.indexOf(row.shift.id) : -1)),
-      )].filter((i) => i >= 0),
-      roles: rolesOf(rows),
-    }))
-
-  return { lanes: toLanes(pinned), unpinned: toLanes(loose) }
-}
-
-/** The pill's own text. One role names itself; several would overflow a chip
- *  that may be one column wide, so the rest are a count the menu spells out. */
-function roleSummary(roles: AssignmentRole[]): string {
-  if (roles.length === 0) return 'Role'
-  if (roles.length === 1) return roles[0].label
-  return `${roles[0].label} +${roles.length - 1}`
-}
-
-/** One message per distinct warning. A lane is one assignment row per shift,
- *  so flagging each row repeats "not available for Sun afternoon" once per
- *  shift the bar covers — which is what made the tooltip a paragraph. */
-function laneFlags(lane: Lane, flagsFor: (a: Assignment) => Flag[]): Flag[] {
-  const seen = new Map<string, Flag>()
-  for (const flag of lane.assignments.flatMap(flagsFor)) {
-    if (!seen.has(flag.detail)) seen.set(flag.detail, flag)
-  }
-  return [...seen.values()]
+  return buildAssignmentLanes(rowAssignments, shiftIds, laneKeyOf)
 }
 
 function TimelineBar({
@@ -2105,7 +2035,7 @@ export default function AssignmentsPage() {
   // The DndContext lives in the layout — the belt is rendered into the panel
   // slot, which is outside <main>, so a context inside this page could never
   // reach it. Behaviour still belongs here; only the context moved.
-  useRegisterBoardDnd({
+  useRegisterBoardDnd('board', {
     onDragEnd: handleDragEnd,
     renderOverlay: (activeId) => {
       const label = labelFor(activeId)
