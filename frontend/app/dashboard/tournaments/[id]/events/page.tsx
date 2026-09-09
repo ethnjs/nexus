@@ -158,22 +158,27 @@ export default function EventsPage() {
     startExternalFlow(() => setCreatingNew(true));
   }
 
-  async function loadEvents() {
-    try {
-      const next = await tournamentEventsApi.list(tournamentId);
-      setEvents(next);
-    } catch (err) {
-      setLoadError(err instanceof ApiError ? err.message : "Failed to load events.");
-    }
-  }
-
   // Gated on the permission, and re-run when it lands: the table used to be a
   // child that only mounted once the check had passed, so unmounted meant
   // unfetched. Inlined, this effect runs on the first render too — while
   // membership is still loading and the answer is a provisional false.
+  //
+  // The fetch is written out here rather than kept as a loadEvents() helper:
+  // it had exactly one caller (every other change to the list is applied
+  // locally by a panel's onSaved/onDeleted), and a helper that sets state is
+  // a helper an effect cannot call without looking like a synchronous
+  // setState. Inline, the writes are plainly in a promise callback, and the
+  // `current` flag drops a response that lands after a tournament switch.
   useEffect(() => {
     if (!canManageEvents) return;
-    loadEvents();
+    let current = true;
+    tournamentEventsApi.list(tournamentId)
+      .then((next) => { if (current) setEvents(next); })
+      .catch((err: unknown) => {
+        if (!current) return;
+        setLoadError(err instanceof ApiError ? err.message : "Failed to load events.");
+      });
+    return () => { current = false; };
   }, [tournamentId, canManageEvents]);
 
   // This viewer's saved view of the table — columns, filters and sort. The
@@ -181,10 +186,10 @@ export default function EventsPage() {
   // fixed key with a label the client already knows, so nothing has to be
   // looked up before a column can render.
   useEffect(() => {
-    // Nothing to read without the permission the config route wants — the
-    // table still renders, just on its defaults, so this can't be left
-    // waiting on a request it is never going to make.
-    if (!canManageEvents) { setViewReady(true); return; }
+    // Nothing to read without the permission the config route wants. Nothing
+    // to release either: viewReady only gates the table, and a viewer without
+    // the permission never reaches it — the no-access card returns first.
+    if (!canManageEvents) return;
     let current = true;
     displayConfigApi.get(tournamentId)
       .catch(() => ({} as DisplayConfig))
