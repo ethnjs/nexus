@@ -216,7 +216,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           value={name}
           onChange={(e) => { setName(e.target.value); setErrors(({ name, ...rest }) => rest) }}
           error={errors.name}
-          placeholder="e.g. USC Invitational"
+          placeholder="e.g. Caltech Invitational"
           fullWidth
           autoFocus
         />
@@ -241,7 +241,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
               value={locationText}
               onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
               error={errors.location}
-              placeholder="e.g. USC, Los Angeles CA"
+              placeholder="e.g. Caltech, Pasadena CA"
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: spansDays ? '1fr 1fr' : '1fr', gap: '12px' }}>
