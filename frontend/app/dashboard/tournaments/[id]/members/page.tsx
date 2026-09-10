@@ -255,6 +255,9 @@ export default function MembersPage() {
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Unfiltered roster size. `members` is already server-filtered, so it
+  // can't supply the "of N" half of the count.
+  const [totalMembers, setTotalMembers] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
@@ -328,6 +331,16 @@ export default function MembersPage() {
     rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
     return () => { current = false; };
   }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters]);
+
+  // Identity-only (fields: []) since only the length is used.
+  useEffect(() => {
+    if (!canManageMembers) return;
+    let current = true;
+    membersApi.list(tournamentId, { fields: [] })
+      .then((rows) => { if (current) setTotalMembers(rows.length); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, [tournamentId, canManageMembers]);
 
   // This viewer's saved view of the table — columns, filters and sort — plus
   // the catalog that names each column key. Both halves are needed before a
@@ -588,7 +601,7 @@ export default function MembersPage() {
     );
   }
 
-  const isFiltered = search.trim() !== "" || isMembersFilterActive(filters);
+  const total = totalMembers ?? members.length;
 
   return (
     <div>
@@ -600,7 +613,7 @@ export default function MembersPage() {
         </p>
       )}
 
-      {members.length === 0 ? (
+      {total === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconMembers size={28} />}
@@ -696,7 +709,7 @@ export default function MembersPage() {
                     onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
                   />
                 </span>
-                <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
+                <span>Members — {visibleMembers.length}/{total}</span>
                 {tableColumns.map((column) => (
                   <span
                     key={column.key}
@@ -790,6 +803,7 @@ export default function MembersPage() {
           onClose={() => setRemoveTarget(null)}
           onRemoved={() => {
             setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            setTotalMembers((n) => (n === null ? n : n - 1));
             // Otherwise a removed-but-still-selected/focused row would keep a
             // panel open against a member who no longer exists.
             forgetItem(removeTarget.id);

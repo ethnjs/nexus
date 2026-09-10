@@ -134,6 +134,12 @@ function useGrabCursor(listeners: DragListeners) {
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
 
+// Matches the members table header (MembersTable.module.css .header).
+const COUNT_LABEL_STYLE: React.CSSProperties = {
+  fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
+  letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)',
+}
+
 function fullName(member: { first_name: string | null; last_name: string | null }) {
   return [member.first_name, member.last_name].filter(Boolean).join(' ')
 }
@@ -1754,6 +1760,7 @@ export default function AssignmentsPage() {
               font="sans"
               fullWidth
             />
+            <span style={COUNT_LABEL_STYLE}>Members — {belt.length}/{members.length}</span>
 
             {belt.length === 0 ? (
               <EmptyState
@@ -1814,7 +1821,7 @@ export default function AssignmentsPage() {
       BELT_PANEL_WIDTH + (focused ? MEMBER_PANEL_WIDTH : 0),
     )
   }, [
-    focused, focusedId, belt, allShifts, memberQuery, memberFilters,
+    focused, focusedId, belt, members, allShifts, memberQuery, memberFilters,
     memberFilterActive, memberDisplay, applyMemberFilters, setPanel, clearPanel,
   ])
 
@@ -2092,6 +2099,7 @@ export default function AssignmentsPage() {
               <IconEye size={14} /> Display
             </Button>
           </div>
+          <span style={COUNT_LABEL_STYLE}>Events — {visibleEvents.length}/{events.length}</span>
 
           {visibleEvents.length === 0 ? (
             <EmptyState
