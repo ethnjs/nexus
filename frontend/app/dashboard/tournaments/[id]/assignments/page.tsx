@@ -1970,9 +1970,6 @@ export default function AssignmentsPage() {
       }))
       setRows((current) => [...current, ...newRows])
       for (const row of newRows) createAssignmentRow(row)
-      // The card leaves the belt on assignment, so a detail panel still
-      // pointing at it would be orphaned.
-      if (focusedId === member.id) setFocusedId(null)
     }
   }
 
