@@ -49,9 +49,12 @@ function TournamentDropdown({ tournamentId }: { tournamentId?: string | number }
   function handleChange(value: string) {
     const t = tournaments.find((c) => String(c.id) === value);
     if (!t) return;
-    const segment = window.location.pathname.split("/").pop() ?? "overview";
+    // Always overview, never the section you were on. The old path can't be
+    // carried across: deeper routes hold entity ids belonging to the previous
+    // tournament, and permissions differ per tournament, so a TD-only page
+    // like settings/general is a dead end where you're a plain member.
     guard(() => {
-      router.push(`/dashboard/tournaments/${t.id}/${segment}`);
+      router.push(`/dashboard/tournaments/${t.id}/overview`);
     });
   }
 
