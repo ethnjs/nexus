@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MembershipEventPreference, MembershipEventPreferenceOption } from "@/lib/api";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { Badge } from "@/components/ui/Badge";
 import { Banner } from "@/components/ui/Banner";
 import { ProfileCard } from "@/components/profile/ProfileCard";
@@ -10,10 +11,6 @@ import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelFie
 
 interface EventPreferencesSectionProps {
   eventPreferences: MembershipEventPreference[];
-}
-
-function eventLabel(event: { name: string | null; division: string | null }): string {
-  return `${event.name ?? "Unknown event"}${event.division ? ` ${event.division}` : ""}`;
 }
 
 function StaleTag() {
@@ -44,7 +41,7 @@ function OptionRow({ option, open, onToggle }: {
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <Rank rank={option.rank} />
         {option.events.length === 1
-          ? <Badge variant="default">{eventLabel(option.events[0])}</Badge>
+          ? <Badge variant="default">{eventNameWithDivision(option.events[0])}</Badge>
           : <FieldValue>{option.label}</FieldValue>}
         {option.is_archived && <StaleTag />}
       </div>
@@ -82,7 +79,7 @@ function OptionRow({ option, open, onToggle }: {
         <div style={{ overflow: "hidden" }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "6px 0 2px 14px" }}>
             {option.events.map((event) => (
-              <Badge key={event.id} variant="default">{eventLabel(event)}</Badge>
+              <Badge key={event.id} variant="default">{eventNameWithDivision(event)}</Badge>
             ))}
           </div>
         </div>

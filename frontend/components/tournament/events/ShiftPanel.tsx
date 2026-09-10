@@ -7,6 +7,7 @@ import {
 } from "@/lib/api";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { toDateInput, toTimeInput, fromDayAndTime } from "@/lib/timeFormat";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -331,13 +332,6 @@ export function ShiftPanel({
       )}
     </DockedPanel>
   );
-}
-
-// Name + division — a custom event's name alone can collide across
-// divisions, and a catalog-linked one reads better with its division here.
-function eventNameWithDivision(e: TournamentEvent): string {
-  const name = e.event?.name ?? e.name ?? "—";
-  return e.division ? `${name} ${e.division}` : name;
 }
 
 const ALL = "all";

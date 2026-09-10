@@ -28,6 +28,7 @@ import type {
   MembershipFull, TournamentShift,
 } from '@/lib/api'
 import { formatDayLabel, toDateInput } from '@/lib/timeFormat'
+import { eventNameWithDivision } from '@/lib/eventDisplay'
 
 import { fieldShown, trackShown, type MemberDisplayState } from '@/components/assignments/MemberDisplayModal'
 
@@ -49,10 +50,6 @@ function statusVariant(status: string) {
   if (status === 'confirmed') return 'confirmed' as const
   if (status === 'declined') return 'declined' as const
   return 'interested' as const
-}
-
-function eventLabel(event: { name: string | null; division: string | null }): string {
-  return `${event.name ?? 'Unknown event'}${event.division ? ` ${event.division}` : ''}`
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +175,7 @@ function OptionRow({ option, open, onToggle }: {
       <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
         <Rank rank={option.rank} />
         {option.events.length === 1
-          ? <Badge variant="default">{eventLabel(option.events[0])}</Badge>
+          ? <Badge variant="default">{eventNameWithDivision(option.events[0])}</Badge>
           : <Muted>{option.label}</Muted>}
       </div>
     )
@@ -225,7 +222,7 @@ function OptionRow({ option, open, onToggle }: {
         <div style={{ overflow: 'hidden' }}>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', padding: '4px 0 2px 16px' }}>
             {option.events.map((event) => (
-              <Badge key={event.id} variant="default">{eventLabel(event)}</Badge>
+              <Badge key={event.id} variant="default">{eventNameWithDivision(event)}</Badge>
             ))}
           </div>
         </div>

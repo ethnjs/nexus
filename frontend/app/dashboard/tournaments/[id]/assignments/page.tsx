@@ -1841,7 +1841,7 @@ export default function AssignmentsPage() {
     const eventRef = {
       // Resolved the way the server resolves it (EventMemberRead sends
       // display_name), so an optimistic row names its event like a real one.
-      id: event.id, name: event.event?.name ?? event.name, division: event.division,
+      id: event.id, name: eventName(event), division: event.division,
       event_type: event.event_type, shifts: event.shifts,
     }
     const shiftFor = (id: number | null) =>

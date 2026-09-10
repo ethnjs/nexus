@@ -38,7 +38,7 @@ import {
   type AssignmentRole, type Lane,
 } from "@/lib/assignments/lanes";
 import { assignmentFlags, memberFacts, type Flag } from "@/lib/assignments/flags";
-import { eventName } from "@/lib/eventDisplay";
+import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { formatDayLabel, formatTime, toDateInput } from "@/lib/timeFormat";
 import { useToast } from "@/lib/useToast";
 
@@ -296,10 +296,10 @@ export function AssignmentsSection({
     renderOverlay: (activeId) => {
       if (!activeId.startsWith("panel-")) return null;
       const eventId = Number(activeId.split(":")[1]);
-      const name = rows.find((row) => row.event.id === eventId)?.event.name
-        ?? (catalog ?? []).find((e) => e.id === eventId)?.name
-        ?? pending.find((e) => e.id === eventId)?.name;
-      return name ? <DragLabel label={name} /> : null;
+      const event = rows.find((row) => row.event.id === eventId)?.event
+        ?? (catalog ?? []).find((e) => e.id === eventId)
+        ?? pending.find((e) => e.id === eventId);
+      return event ? <DragLabel label={eventNameWithDivision(event)} /> : null;
     },
   });
 
@@ -395,11 +395,6 @@ export function AssignmentsSection({
       </SectionHeading>
     </ProfileCard>
   );
-}
-
-function eventNameWithDivision(event: TournamentEvent): string {
-  const name = eventName(event);
-  return event.division ? `${name} ${event.division}` : name;
 }
 
 // ---------------------------------------------------------------------------
@@ -805,7 +800,7 @@ function EventChip({
         fontFamily: "var(--font-sans)", fontWeight: 500, whiteSpace: "nowrap",
         overflow: "hidden", textOverflow: "ellipsis", minWidth: 0,
       }}>
-        {lane.assignments[0].event.name}
+        {eventNameWithDivision(lane.assignments[0].event)}
       </span>
       {/* stopPropagation so pressing the pill doesn't start a drag of the
           whole chip and swallow the click that opens the menu. */}
@@ -833,7 +828,7 @@ function EventChip({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={() => onRemove(lane)}
           title="Remove from this event"
-          aria-label={`Remove ${lane.assignments[0].event.name}`}
+          aria-label={`Remove ${eventNameWithDivision(lane.assignments[0].event)}`}
           style={{
             display: "flex", alignItems: "center", justifyContent: "center",
             flexShrink: 0, padding: 0, width: "13px", height: "13px",
