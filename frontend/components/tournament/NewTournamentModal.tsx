@@ -201,11 +201,14 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     // Advanced widens the modal rather than lengthening it: details on the
     // left, the track list on the right, so a four-track regional doesn't
     // become a page-tall form.
-    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 880 : 440}>
+    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 1000 : 440}>
       <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div style={{
           display: advanced ? 'grid' : 'flex',
-          gridTemplateColumns: advanced ? 'minmax(0, 1fr) minmax(0, 1fr)' : undefined,
+          // The left column holds four short inputs and stops; the right holds
+          // the track editor, whose labels and helper text wrap badly at half
+          // width. Fixed left, elastic right.
+          gridTemplateColumns: advanced ? '300px minmax(0, 1fr)' : undefined,
           flexDirection: 'column', alignItems: 'start', gap: advanced ? '24px' : '14px',
         }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
