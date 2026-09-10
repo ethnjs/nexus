@@ -32,23 +32,11 @@ export function isMembersFilterActive(filters: MembersFilterState): boolean {
 // the pair is from an older release (availability used to persist bare shift
 // ids) — the server ignores it, so the modal has to as well, or a chip would
 // sit there claiming to narrow a roster it isn't touching.
-const PAIRED_KEYS: readonly MembersFilterKey[] = ["track", "lunch", "event_pref", "shift"];
+const PAIRED_KEYS: readonly MembersFilterKey[] = ["track", "lunch", "event_pref", "shift", "assigned"];
 
 function usableValues(key: string, values: Set<string>): string[] {
   const list = [...values];
   return PAIRED_KEYS.includes(key as MembersFilterKey) ? list.filter((v) => v.includes(":")) : list;
-}
-
-/** `assigned`'s two values collapse to the boolean the backend's dedicated
- *  `assigned` query param wants (see membersApi.list) — it isn't a repeated
- *  filter value like the rest of this state, so membersFilterParams excludes
- *  it and every caller pulls it separately through this helper. Both
- *  selected, like neither, means "no narrowing" — the same "both = no
- *  filter" rule Age and every other button-group section here follows. */
-export function membersFilterAssigned(filters: MembersFilterState): boolean | undefined {
-  const has = (v: string) => filters.assigned.has(v);
-  if (has("assigned") === has("unassigned")) return undefined;
-  return has("assigned");
 }
 
 /** The saved wire shape (arrays, keyed by filter) back into filter state.
@@ -69,11 +57,7 @@ export function membersFilterFromStored(
 }
 
 /** The committed filters as the stored wire shape, empty keys dropped.
- *  Deliberately not membersFilterParams: that shape is what the *roster
- *  query* takes, which excludes `assigned` because the backend reads it as
- *  its own bool param. Saved state has no such split — a viewer who left the
- *  belt on "unassigned" expects it there next time — so this keeps every
- *  key. Unpaired values are kept as saved too; they are ignored on read. */
+ *  Unpaired values are kept as saved; they are ignored on read. */
 export function membersFilterToStored(filters: MembersFilterState): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(filters)
@@ -82,12 +66,10 @@ export function membersFilterToStored(filters: MembersFilterState): Record<strin
   );
 }
 
-/** The committed filters as repeatable query params, empty keys dropped.
- *  Excludes `assigned` — see membersFilterAssigned. */
+/** The committed filters as repeatable query params, empty keys dropped. */
 export function membersFilterParams(filters: MembersFilterState): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(filters)
-      .filter(([key]) => key !== "assigned")
       .map(([key, values]) => [key, usableValues(key, values)] as const)
       .filter(([, values]) => values.length > 0),
   );
@@ -118,6 +100,12 @@ const TRACK_STATUS_OPTIONS: FilterOptionItem[] = [
 // Only worth colouring when the pill names one status — a pill reading
 // "2 selected" has no single colour to be.
 const TRACK_STATUS_TONES: Record<string, PillTone> = { confirmed: "success", declined: "danger" };
+
+// Per track, like track status: "who's unassigned for Day 1".
+const ASSIGNMENT_STATUS_OPTIONS: FilterOptionItem[] = [
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Unassigned" },
+];
 
 // Above this many rows a picker is faster to type into than to scroll.
 const SEARCHABLE_ABOVE = 8;
@@ -444,12 +432,9 @@ export function MembersFilterModal({
     ...track, options: TRACK_STATUS_OPTIONS,
   }));
 
-  // Both options, or neither, is the same roster — so selecting both reads
-  // as "no filter" rather than as a contradiction, same as Age.
-  const assignedOptions: FilterOptionItem[] = [
-    { value: "assigned", label: "Assigned" },
-    { value: "unassigned", label: "Unassigned" },
-  ];
+  const assignmentGroups: FilterOptionGroup[] = (options?.tracks ?? []).map((track) => ({
+    ...track, options: ASSIGNMENT_STATUS_OPTIONS,
+  }));
 
   const ageOptions: FilterOptionItem[] = [
     ...(options?.collect_is_over_18 ? [{ value: "over_18", label: "18+" }] : []),
@@ -468,16 +453,12 @@ export function MembersFilterModal({
             title="Roles" options={roleOptions} selected={draft.role}
             onToggle={(v) => toggle("role", v)} onClear={() => set("role", new Set())}
           />
-          <FilterSection
-            title="Assignments" active={draft.assigned.size > 0}
-            onClear={() => set("assigned", new Set())}
-          >
-            <ButtonGroup
-              options={assignedOptions.map((o) => ({ value: o.value, label: o.label }))}
-              value={[...draft.assigned]}
-              onChange={(value) => toggle("assigned", value)}
-            />
-          </FilterSection>
+          <PairedChipFilter
+            title="Assignments" groups={assignmentGroups} selected={draft.assigned}
+            onChange={(next) => set("assigned", next)}
+            anyLabel="Any" addLabel="Filter by track"
+            emptyMessage="No active tracks."
+          />
           <PairedChipFilter
             title="Track status" groups={trackGroups} selected={draft.track}
             onChange={(next) => set("track", next)}

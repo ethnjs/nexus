@@ -1075,12 +1075,8 @@ export const membersApi = {
     roleId?: number;
     excludeRoleId?: number;
     maxRank?: number;
-    // Tri-state, unlike `filters`: omit for no narrowing, false for the
-    // assignments board's unassigned belt, true for everyone already staffed.
-    assigned?: boolean;
   } = {}) => {
     const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
-    if (opts.assigned !== undefined) params.set("assigned", String(opts.assigned));
     if (opts.surface) params.set("surface", opts.surface);
     if (opts.fields) params.set("fields", opts.fields.join(","));
     if (opts.q) params.set("q", opts.q);

@@ -29,7 +29,7 @@ import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedir
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
   MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
-  membersFilterAssigned, membersFilterFromStored, membersFilterToStored, emptyMembersFilter,
+  membersFilterFromStored, membersFilterToStored, emptyMembersFilter,
 } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
@@ -324,7 +324,6 @@ export default function MembersPage() {
     membersApi.list(tournamentId, {
       surface: MEMBERS_TABLE,
       filters: membersFilterParams(filters),
-      assigned: membersFilterAssigned(filters),
     })
       .then((rows) => { if (current) setMembers(rows); })
       .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });

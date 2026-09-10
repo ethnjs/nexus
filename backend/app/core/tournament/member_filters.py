@@ -114,7 +114,7 @@ def apply_member_filters(
     volunteer_events: list[int] | None = None,
     age_flags: list[str] | None = None,
     shifts: list[str] | None = None,
-    assigned: bool | None = None,
+    assigned: list[str] | None = None,
 ) -> Query:
     """Narrows a TournamentMembership query by the roster's filter params.
 
@@ -215,19 +215,26 @@ def apply_member_filters(
                 & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
             ))
 
-    if assigned is not None:
-        # Tri-state, unlike the list filters above: absent means no narrowing
-        # at all, which is why this is `is not None` and not a truth test —
-        # `assigned=false` is a real request (the board's unassigned belt) and
-        # must not read as "no filter".
-        #
-        # Deliberately "holds no assignment anywhere in this tournament",
-        # not "on the event in focus". A member staffing one event is placed;
-        # the belt is who hasn't been placed at all.
-        staffed = exists().where(
-            TournamentEventAssignment.membership_id == TournamentMembership.id
-        )
-        query = query.filter(staffed if assigned else ~staffed)
+    if assigned:
+        # "trackId:assigned|unassigned", per track like track status — "who's
+        # unassigned for Day 1" is the question. ANY (an unnarrowed chip) and
+        # both values on one track narrow nothing.
+        clauses = []
+        for track_id, value in _split_pairs(assigned):
+            if not track_id.isdigit():
+                continue
+            staffed = exists().where(
+                (TournamentEventAssignment.membership_id == TournamentMembership.id)
+                & (TournamentEventAssignment.tournament_track_id == int(track_id))
+            )
+            if value == "assigned":
+                clauses.append(staffed)
+            elif value == "unassigned":
+                clauses.append(~staffed)
+            elif value == ANY:
+                clauses.append(true())
+        if clauses:
+            query = query.filter(or_(*clauses))
 
     return query
 

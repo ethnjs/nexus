@@ -1121,6 +1121,9 @@ export default function AssignmentsPage() {
   // Bumped after a board write lands for the focused member, so the open
   // MemberPanel re-reads — it holds its own copy of their assignments.
   const [panelAssignmentsVersion, setPanelAssignmentsVersion] = useState(0)
+  // Bumped after any assignment write lands, so the belt's server-side
+  // filter (the assigned filter especially) re-reads.
+  const [boardWriteVersion, setBoardWriteVersion] = useState(0)
   const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
   const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
@@ -1332,11 +1335,10 @@ export default function AssignmentsPage() {
     })
   }, [boardEvents, byEvent, eventFilters, eventQuery, eventTrackIds])
 
-  const assignedIds = useMemo(() => new Set(rows.map((r) => r.member.membership_id)), [rows])
 
-  // Members matching the answer-based filters, from the same server filter the
-  // members page uses — a client copy drifted (no roles, no event prefs).
-  // null = none of those filters set, so everyone passes.
+  // Members matching the filters, from the same server filter the members
+  // page uses — a client copy drifted. Re-read after writes so the assigned
+  // filter follows a drag. null = no filters set, so everyone passes.
   const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null)
   useEffect(() => {
     const filters = membersFilterParams(memberFilters)
@@ -1349,26 +1351,18 @@ export default function AssignmentsPage() {
       .then((data) => { if (current) setFilterMatchIds(new Set(data.map((m) => m.id))) })
       .catch(() => { if (current) setFilterMatchIds(null) })
     return () => { current = false }
-  }, [tournamentId, canView, memberFilters])
+  }, [tournamentId, canView, memberFilters, boardWriteVersion])
 
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
-    const assigned = [...memberFilters.assigned]
 
     return members.filter((member) => {
-      // Unassigned-only used to be hard-wired here. It is a filter now, so the
-      // panel can also answer "who is on this tournament at all" — and an
-      // empty filter means both, the same as every other section.
-      if (assigned.length === 1) {
-        const isAssigned = assignedIds.has(member.id)
-        if (assigned[0] === 'assigned' ? !isAssigned : isAssigned) return false
-      }
       if (text && !fullName(member.user ?? { first_name: null, last_name: null })
         .toLowerCase().includes(text)) return false
       if (filterMatchIds && !filterMatchIds.has(member.id)) return false
       return true
     })
-  }, [assignedIds, filterMatchIds, members, memberFilters, memberQuery])
+  }, [filterMatchIds, members, memberQuery])
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>()
@@ -1419,7 +1413,7 @@ export default function AssignmentsPage() {
         tournament_track_id: row.shift ? null : row.track.id,
       })
       setRows((current) => current.map((r) => (r.id === row.id ? created : r)))
-      syncPanel(row)
+      afterWrite(row)
     } catch (err) {
       setRows((current) => current.filter((r) => r.id !== row.id))
       show(err instanceof ApiError ? err.message : 'Failed to assign — the change was rolled back.', 'error')
@@ -1432,14 +1426,15 @@ export default function AssignmentsPage() {
     if (row.id < 0) return
     try {
       await assignmentsApi.delete(tournamentId, row.id)
-      syncPanel(row)
+      afterWrite(row)
     } catch (err) {
       setRows((current) => [...current, row])
       show(err instanceof ApiError ? err.message : 'Failed to remove — restored.', 'error')
     }
   }
 
-  function syncPanel(row: Assignment) {
+  function afterWrite(row: Assignment) {
+    setBoardWriteVersion((v) => v + 1)
     if (row.member.membership_id === focusedId) setPanelAssignmentsVersion((v) => v + 1)
   }
 
@@ -1447,9 +1442,12 @@ export default function AssignmentsPage() {
    *  the board for the server's. Only theirs, so other in-flight rows survive. */
   function refreshMemberRows(membershipId: number) {
     assignmentsApi.list(tournamentId, { membershipId })
-      .then((fresh) => setRows((current) => [
-        ...current.filter((r) => r.member.membership_id !== membershipId), ...fresh,
-      ]))
+      .then((fresh) => {
+        setRows((current) => [
+          ...current.filter((r) => r.member.membership_id !== membershipId), ...fresh,
+        ])
+        setBoardWriteVersion((v) => v + 1)
+      })
       .catch(() => {})
   }
 

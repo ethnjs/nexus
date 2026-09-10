@@ -847,41 +847,59 @@ class TestMembershipReads:
             role_id=_role_id(db, tournament, "Test Writer"),
         )
 
-    def test_assigned_false_is_the_unassigned_belt(
+    def _staffed_track_id(self, db):
+        return db.query(TournamentEventAssignment).one().tournament_track_id
+
+    def test_assigned_filters_by_track(
         self, client, db, td_user, td_tournament, other_user
     ):
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
+        track_id = self._staffed_track_id(db)
         url = f"/tournaments/{td_tournament.id}/members/"
 
-        unassigned = client.get(f"{url}?assigned=false").json()
-        assigned = client.get(f"{url}?assigned=true").json()
+        assigned = client.get(f"{url}?assigned={track_id}:assigned").json()
+        unassigned = client.get(f"{url}?assigned={track_id}:unassigned").json()
 
         assert [m["user"]["id"] for m in assigned] == [other_user.id]
         assert other_user.id not in [m["user"]["id"] for m in unassigned]
         # The TD themselves is a member too, and has no assignments.
         assert td_user.id in [m["user"]["id"] for m in unassigned]
 
-    def test_omitting_assigned_narrows_nothing(
+    def test_unassigned_is_scoped_to_its_track(
         self, client, db, td_user, td_tournament, other_user
     ):
-        """Tri-state: absent is not the same request as `assigned=false`, which
-        is exactly the trap a plain truth test would fall into."""
+        """Staffed on one track is still unassigned on another."""
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
         url = f"/tournaments/{td_tournament.id}/members/"
 
+        rows = client.get(f"{url}?assigned=999999:unassigned").json()
+
+        assert other_user.id in [m["user"]["id"] for m in rows]
+
+    def test_an_unnarrowed_or_both_values_chip_narrows_nothing(
+        self, client, db, td_user, td_tournament, other_user
+    ):
+        login(client, "td@test.com", "tdpass")
+        self._assign_other_user(client, db, td_tournament, other_user)
+        track_id = self._staffed_track_id(db)
+        url = f"/tournaments/{td_tournament.id}/members/"
+
         assert len(client.get(url).json()) == 2
-        assert len(client.get(f"{url}?assigned=false").json()) == 1
+        assert len(client.get(f"{url}?assigned={track_id}:__any__").json()) == 2
+        both = f"{url}?assigned={track_id}:assigned&assigned={track_id}:unassigned"
+        assert len(client.get(both).json()) == 2
 
     def test_the_assignments_group_carries_them(
         self, client, db, td_user, td_tournament, other_user
     ):
         login(client, "td@test.com", "tdpass")
         self._assign_other_user(client, db, td_tournament, other_user)
+        track_id = self._staffed_track_id(db)
 
         rows = client.get(
-            f"/tournaments/{td_tournament.id}/members/?fields=assignments&assigned=true"
+            f"/tournaments/{td_tournament.id}/members/?fields=assignments&assigned={track_id}:assigned"
         ).json()
 
         assert rows[0]["assignments"][0]["event"]["name"] == "Anatomy"
