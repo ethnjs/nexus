@@ -442,13 +442,14 @@ export function MembersFilterModal({
   ];
 
   return (
-    <Modal title="Filter members" onClose={onClose} width={640}>
+    <Modal title="Filter members" onClose={onClose} width={760}>
       {options === null ? (
         <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
           <Spinner size="lg" />
         </div>
       ) : (
-        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
+        <div style={{ maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: "4px" }}>
+          {/* Fills the viewport minus the title and footer, so it only scrolls on a short window. */}
           <ChipFilter
             title="Roles" options={roleOptions} selected={draft.role}
             onToggle={(v) => toggle("role", v)} onClear={() => set("role", new Set())}
