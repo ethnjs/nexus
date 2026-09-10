@@ -15,15 +15,15 @@ interface ChecklistConfigEntry {
 }
 
 const CHECKLIST_CONFIG: Record<string, ChecklistConfigEntry> = {
-  roles:        { buildable: true,  onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
+  roles:        { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/settings/roles`) },
   // invite_staff opens a modal rather than navigating — handled as a special
   // case below, not through onClick, but still marked buildable so the card
-  // isn't dimmed/"Coming soon" like the not-yet-built items.
-  invite_staff: { buildable: true,  onClick: null },
-  onboarding:   { buildable: false, onClick: null },
-  events:       { buildable: false, onClick: null },
-  shifts:       { buildable: false, onClick: null },
-  buildings:    { buildable: false, onClick: null },
+  // isn't dimmed/"Coming soon".
+  invite_staff: { buildable: true, onClick: null },
+  events:       { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/events`) },
+  shifts:       { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/shifts`) },
+  first_form:   { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms`) },
+  onboarding:   { buildable: true, onClick: (r, id) => r.push(`/dashboard/tournaments/${id}/forms/onboarding`) },
 };
 
 export function SetupChecklistWidget({ tournamentId }: { tournamentId: string }) {
