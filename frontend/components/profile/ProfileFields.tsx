@@ -10,7 +10,7 @@ import { STUDENT_STATUS, SHIRT_SIZE, University } from "@/lib/api"
 // -------------------------------------------------------------------------
 // Pronouns
 // -------------------------------------------------------------------------
-const COMMON_PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns"]
+const COMMON_PRONOUNS = ["he/him", "she/her", "they/them", "prefer not to say"]
 
 interface PronounsFieldProps {
   value: string

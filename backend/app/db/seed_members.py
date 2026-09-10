@@ -35,7 +35,9 @@ from app.core.config import get_settings
 # from the target database at runtime.
 # ---------------------------------------------------------------------------
 
-PRONOUNS = ["she/her", "he/him", "they/them", "she/they", "he/they", "any pronouns", ""]
+# Mirrors COMMON_PRONOUNS in the profile field, plus blank for the people who
+# skipped the question.
+PRONOUNS = ["he/him", "she/her", "they/them", "prefer not to say", ""]
 MAJORS = [
     "Biology", "Chemistry", "Mechanical Engineering", "Computer Science", "Physics",
     "Neuroscience", "Environmental Science", "Applied Mathematics", "Cognitive Science",
