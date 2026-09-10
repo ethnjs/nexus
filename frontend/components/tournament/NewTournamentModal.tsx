@@ -371,8 +371,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 Tracks<span style={{ color: 'var(--color-danger)' }}> *</span>
               </div>
               <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                One per competition day, plus anything undated — test writing, review — that members sign
-                up for separately. The tournament&rsquo;s dates, venue and divisions come from these.{' '}
+                Add a track for each competition day, plus the prep leading up to it like test writing.
+                Keeping them here instead of in separate tournaments means everyone stays one member
+                with one set of data. Competition days set the tournament&rsquo;s dates, venue and
+                divisions.{' '}
                 <button
                   type="button"
                   onClick={disableAdvanced}

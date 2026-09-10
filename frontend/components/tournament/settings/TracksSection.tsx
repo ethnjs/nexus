@@ -209,9 +209,10 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
     <SettingsSection title="Tracks">
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "24px", padding: "16px 0 20px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0, maxWidth: "62ch", lineHeight: 1.55 }}>
-          A track is a part of the tournament members sign up for separately. A competition day carries
-          its own dates, venue and divisions, and the tournament&rsquo;s are the union of them. Anything
-          else — test writing, review — is a track with none of those, and no shifts.
+          A tournament is more than one thing: each competition day, plus prep like test writing. Tracks
+          keep them under one tournament, so someone who writes tests in October and supervises in
+          February stays one member with one set of data. Competition days carry a date, venue and
+          divisions, and are the only tracks with shifts.
         </p>
         <Button
           type="button" variant="primary" size="md" disabled={locked}

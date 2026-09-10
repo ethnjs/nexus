@@ -43,7 +43,7 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <FieldRow label="Competition day" helper="Carries dates, a venue and divisions. Only these hold shifts.">
+      <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
         <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
       </FieldRow>
 
