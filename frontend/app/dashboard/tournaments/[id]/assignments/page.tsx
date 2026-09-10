@@ -363,12 +363,13 @@ function Chip({
 // ---------------------------------------------------------------------------
 // Shift timeline
 // ---------------------------------------------------------------------------
-/** A bar's identity: one member on one event. Roles used to be part of the
- *  key — writing and reviewing the same event were two bars. Now a bar owns
- *  a *set* of roles, so the lane is one row per shift per role and the person
- *  gets one chip with two role pills instead of two stacked chips. */
+/** A bar's identity: one member on one event, with a *set* of roles (one row
+ *  per shift per role). Shift rows share one key so a bar can span Day 1 and
+ *  Day 2; unpinned rows key by track, so a role edit or drag on Test Writing
+ *  can't rebuild the Day 1 bar, or vice versa. */
 function laneKeyOf(assignment: Assignment) {
-  return String(assignment.member.membership_id)
+  const member = assignment.member.membership_id
+  return assignment.shift ? `${member}:shifts` : `${member}:track:${assignment.track.id}`
 }
 
 /** The board's bars: one per member on the event, across its shifts. */
