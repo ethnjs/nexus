@@ -14,10 +14,10 @@ interface AgeDisclosureModalProps {
 
 function thresholdCopy(tournament: Tournament | null): string {
   if (tournament?.collect_is_over_18 && tournament?.collect_is_over_21) {
-    return "whether you are 18 or older and 21 or older";
+    return "which age group you're in: under 18, 18–20, or 21+";
   }
-  if (tournament?.collect_is_over_21) return "whether you are 21 or older";
-  return "whether you are 18 or older";
+  if (tournament?.collect_is_over_21) return "which age group you're in: under 21 or 21+";
+  return "which age group you're in: under 18 or 18+";
 }
 
 // Blocking — no close button, no click-outside, no Esc (onClose is a
@@ -52,8 +52,8 @@ export function AgeDisclosureModal({ tournamentId, tournament, onResolved }: Age
       {!confirmingDecline ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
-            This tournament asks {thresholdCopy(tournament)}. It only sees whether you meet the
-            threshold — your date of birth is never shared.
+            This tournament asks {thresholdCopy(tournament)}. It only sees the answer — your date
+            of birth is never shared.
           </p>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)", lineHeight: 1.6 }}>
             You need to answer before continuing.
