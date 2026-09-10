@@ -2,7 +2,7 @@
 
 A platform for Science Olympiad tournament directors and alumni chapters to run volunteer logistics without living in spreadsheets.
 
-**Live:** [nexus.ethanshih.com](https://nexus.ethanshih.com)
+**Live:** [nexus.socalscioly.org](https://nexus.socalscioly.org)
 
 ## The problem
 

@@ -135,7 +135,7 @@ async def _send(to: str, subject: str, text: str, html: str) -> None:
     resend.api_key = settings.resend_api_key
 
     params: resend.Emails.SendParams = {
-        "from": "NEXUS <verify@nexus.ethanshih.com>",
+        "from": "NEXUS <verify@nexus.socalscioly.org>",
         "to": to,
         "subject": subject,
         "text": text,

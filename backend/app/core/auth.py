@@ -179,7 +179,7 @@ def set_auth_cookie(response: Response, token: str) -> None:
         samesite="none" if (is_prod or is_preview) else "lax",
         max_age=COOKIE_MAX_AGE,
         path="/",
-        domain=".ethanshih.com" if is_prod else None,
+        domain=".socalscioly.org" if is_prod else None,
     )
 
 
@@ -189,7 +189,7 @@ def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(
         key=COOKIE_NAME,
         path="/",
-        domain=".ethanshih.com" if is_prod else None,
+        domain=".socalscioly.org" if is_prod else None,
     )
 
 
