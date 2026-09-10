@@ -58,7 +58,7 @@ interface AssignmentsSectionProps {
   /** The "Availability shading" field of this section. */
   showAvailability: boolean;
   locked: boolean;
-  /** Fires after a write lands, so the panel can re-read the member. */
+  /** Fires after every write, failed or not, so the panel can re-read the member. */
   onChanged?: () => void;
 }
 
@@ -138,10 +138,13 @@ export function AssignmentsSection({
   async function runWrite(work: () => Promise<void>, previous: Assignment[]) {
     try {
       await work();
-      onChanged?.();
     } catch (err) {
       setRows(previous);
       show(err instanceof ApiError ? err.message : "That change didn't save.", "error");
+    } finally {
+      // Even on failure: a multi-row write can half-land, and only a re-read
+      // knows which half.
+      onChanged?.();
     }
   }
 

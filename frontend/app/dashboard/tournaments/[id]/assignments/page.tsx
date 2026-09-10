@@ -1118,6 +1118,9 @@ export default function AssignmentsPage() {
   const [events, setEvents] = useState<TournamentEvent[] | null>(null)
   const [rows, setRows] = useState<Assignment[]>([])
   const [members, setMembers] = useState<MembershipFull[]>([])
+  // Bumped after a board write lands for the focused member, so the open
+  // MemberPanel re-reads — it holds its own copy of their assignments.
+  const [panelAssignmentsVersion, setPanelAssignmentsVersion] = useState(0)
   const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
   const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
@@ -1458,6 +1461,7 @@ export default function AssignmentsPage() {
         tournament_track_id: row.shift ? null : row.track.id,
       })
       setRows((current) => current.map((r) => (r.id === row.id ? created : r)))
+      syncPanel(row)
     } catch (err) {
       setRows((current) => current.filter((r) => r.id !== row.id))
       show(err instanceof ApiError ? err.message : 'Failed to assign — the change was rolled back.', 'error')
@@ -1470,10 +1474,25 @@ export default function AssignmentsPage() {
     if (row.id < 0) return
     try {
       await assignmentsApi.delete(tournamentId, row.id)
+      syncPanel(row)
     } catch (err) {
       setRows((current) => [...current, row])
       show(err instanceof ApiError ? err.message : 'Failed to remove — restored.', 'error')
     }
+  }
+
+  function syncPanel(row: Assignment) {
+    if (row.member.membership_id === focusedId) setPanelAssignmentsVersion((v) => v + 1)
+  }
+
+  /** The member panel wrote this member's assignments — swap their rows on
+   *  the board for the server's. Only theirs, so other in-flight rows survive. */
+  function refreshMemberRows(membershipId: number) {
+    assignmentsApi.list(tournamentId, { membershipId })
+      .then((fresh) => setRows((current) => [
+        ...current.filter((r) => r.member.membership_id !== membershipId), ...fresh,
+      ]))
+      .catch(() => {})
   }
 
   /** The role a track hands a member placed on it with nothing picked yet —
@@ -1811,6 +1830,8 @@ export default function AssignmentsPage() {
             // belong here.
             onClose={() => setFocusedId(null)}
             onUpdated={(updated) => setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))}
+            onAssignmentsChanged={() => refreshMemberRows(focused.id)}
+            assignmentsVersion={panelAssignmentsVersion}
             onPrev={() => index > 0 && setFocusedId(belt[index - 1].id)}
             onNext={() => index < belt.length - 1 && setFocusedId(belt[index + 1].id)}
             hasPrev={index > 0}
@@ -1821,7 +1842,7 @@ export default function AssignmentsPage() {
       BELT_PANEL_WIDTH + (focused ? MEMBER_PANEL_WIDTH : 0),
     )
   }, [
-    focused, focusedId, belt, members, allShifts, memberQuery, memberFilters,
+    focused, focusedId, belt, members, allShifts, memberQuery, memberFilters, panelAssignmentsVersion,
     memberFilterActive, memberDisplay, applyMemberFilters, setPanel, clearPanel,
   ])
 

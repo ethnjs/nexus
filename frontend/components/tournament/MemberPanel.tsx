@@ -38,6 +38,10 @@ interface MemberPanelProps {
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipFull) => void;
+  /** Fires after the assignments section writes, so a board beside this panel can re-read. */
+  onAssignmentsChanged?: () => void;
+  /** Bumped by the caller after it writes this member's assignments elsewhere — re-reads the member. */
+  assignmentsVersion?: number;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while this panel is showing one member of a multi-select). */
   onPrev?: () => void;
   onNext?: () => void;
@@ -53,7 +57,7 @@ interface MemberPanelProps {
 // "expand" action.
 export function MemberPanel({
   tournamentId, membershipId, allRoles, canTouchRole, canEditMember,
-  collectIsOver18, collectIsOver21, onClose, onUpdated,
+  collectIsOver18, collectIsOver21, onClose, onUpdated, onAssignmentsChanged, assignmentsVersion,
   isArchived, isSelf, onRemove, onSelfRemove,
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
@@ -75,6 +79,8 @@ export function MemberPanel({
   // server-side (see apply_display_config), so a track turned back on in the
   // modal isn't in the payload this panel is already holding.
   const [reloadKey, setReloadKey] = useState(0);
+  // Bumped after this panel's own assignment writes — re-reads only the member.
+  const [memberVersion, setMemberVersion] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -83,9 +89,16 @@ export function MemberPanel({
   // that render blocks the frame and visibly stutters the slide; marked as a
   // transition, React can slice it across frames and let the animation win.
   useEffect(() => {
+    // Superseded responses are dropped: back-to-back writes each trigger a
+    // re-read, and an older one landing last would show stale assignments.
+    let current = true;
     membersApi.get(tournamentId, membershipId, MEMBERS_PANEL)
-      .then((data) => startTransition(() => setFull(data)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
+      .then((data) => { if (current) startTransition(() => setFull(data)); })
+      .catch((e) => { if (current) setError(e instanceof ApiError ? e.message : "Failed to load member."); });
+    return () => { current = false; };
+  }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion]);
+
+  useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
     tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
     displayConfigApi.get(tournamentId)
@@ -176,7 +189,10 @@ export function MemberPanel({
               tracks={tracks}
               hiddenTrackIds={hiddenTrackIds}
               membershipId={membershipId}
-              onAssignmentsChanged={() => setReloadKey((key) => key + 1)}
+              onAssignmentsChanged={() => {
+                setMemberVersion((v) => v + 1);
+                onAssignmentsChanged?.();
+              }}
               allRoles={allRoles}
               canTouchRole={canTouchRole}
               rolesLocked={!canEditMember(full)}
