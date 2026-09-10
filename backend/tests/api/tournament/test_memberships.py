@@ -534,7 +534,9 @@ class TestRosterFilters:
     ):
         """"Chess C", not "Chess (C)" — the division identifies which of the
         two same-named events a row is, so it reads as part of the name."""
-        from app.models.models import TournamentEvent, TournamentMembershipEventPreference
+        from app.models.models import (
+            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+        )
 
         track_id = primary_track_id(db, td_tournament.id)
         chess_c = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
@@ -543,6 +545,11 @@ class TestRosterFilters:
         db.add_all([chess_c, chess_b, no_division])
         m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
         db.flush()
+        # On the track, since a group only offers that track's events.
+        db.add_all([
+            TournamentEventTrack(tournament_event_id=e.id, track_id=track_id)
+            for e in (chess_c, chess_b, no_division)
+        ])
         # A stored answer is what puts the track in event_preferences at all.
         db.add(TournamentMembershipEventPreference(
             membership_id=m.id, track_id=track_id, tournament_event_id=chess_c.id, rank=1,
@@ -558,6 +565,36 @@ class TestRosterFilters:
         assert "Anatomy" in labels
         # Sorted by name then division, so the two Chess rows keep a fixed order.
         assert labels.index("Chess B") < labels.index("Chess C")
+
+    def test_event_preference_options_only_offer_that_tracks_events(
+        self, client, db, td_user, td_tournament,
+    ):
+        """A track's group offers that track's events, like the question
+        itself — plus anything already ranked there."""
+        from app.models.models import (
+            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+        )
+
+        track_id = primary_track_id(db, td_tournament.id)
+        on_track = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy", division="C")
+        off_track = TournamentEvent(tournament_id=td_tournament.id, name="Boomilever", division="C")
+        ranked = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        db.add_all([on_track, off_track, ranked])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        db.add(TournamentEventTrack(tournament_event_id=on_track.id, track_id=track_id))
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=track_id, tournament_event_id=ranked.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        group = next(g for g in body["event_preferences"] if g["value"] == str(track_id))
+        labels = [o["label"] for o in group["options"]]
+        assert "Anatomy C" in labels
+        assert "Chess C" in labels
+        assert "Boomilever C" not in labels
 
     def test_lunch_options_come_from_the_question_not_the_answers(self, client, db, td_user, td_tournament):
         """A choice nobody picked is still offerable — that's how a TD finds

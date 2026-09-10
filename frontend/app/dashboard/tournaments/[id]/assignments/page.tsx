@@ -36,7 +36,7 @@ import { RolePillMenu } from '@/components/assignments/RolePillMenu'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
 import {
   MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
-  membersFilterFromStored, membersFilterToStored,
+  membersFilterFromStored, membersFilterToStored, membersFilterParams,
   type MembersFilterState,
 } from '@/components/tournament/MembersFilterModal'
 import {
@@ -1334,17 +1334,25 @@ export default function AssignmentsPage() {
 
   const assignedIds = useMemo(() => new Set(rows.map((r) => r.member.membership_id)), [rows])
 
+  // Members matching the answer-based filters, from the same server filter the
+  // members page uses — a client copy drifted (no roles, no event prefs).
+  // null = none of those filters set, so everyone passes.
+  const [filterMatchIds, setFilterMatchIds] = useState<Set<number> | null>(null)
+  useEffect(() => {
+    const filters = membersFilterParams(memberFilters)
+    if (!canView || Object.keys(filters).length === 0) {
+      setFilterMatchIds(null)
+      return
+    }
+    let current = true
+    membersApi.list(tournamentId, { fields: [], filters })
+      .then((data) => { if (current) setFilterMatchIds(new Set(data.map((m) => m.id))) })
+      .catch(() => { if (current) setFilterMatchIds(null) })
+    return () => { current = false }
+  }, [tournamentId, canView, memberFilters])
+
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
-    // The roster's paired filters are "{group}:{option}" strings, with
-    // "__any__" on the right meaning "that group, unnarrowed" — see
-    // MembersFilterModal.
-    const trackPairs = [...memberFilters.track].map((v) => v.split(':'))
-    const shiftPairs = [...memberFilters.shift].map((v) => v.split(':'))
-    const lunchPairs = [...memberFilters.lunch].map((v) => v.split(':'))
-    const competition = [...memberFilters.competition_event]
-    const volunteer = [...memberFilters.volunteer_event]
-    const ages = [...memberFilters.age]
     const assigned = [...memberFilters.assigned]
 
     return members.filter((member) => {
@@ -1357,60 +1365,10 @@ export default function AssignmentsPage() {
       }
       if (text && !fullName(member.user ?? { first_name: null, last_name: null })
         .toLowerCase().includes(text)) return false
-
-      if (trackPairs.length) {
-        const statuses = member.track_statuses ?? []
-        const ok = trackPairs.some(([trackId, status]) =>
-          statuses.some((s) =>
-            String(s.track_id) === trackId && (status === '__any__' || s.status === status)))
-        if (!ok) return false
-      }
-
-      if (shiftPairs.length) {
-        const available = member.availability ?? []
-        const ok = shiftPairs.some(([trackId, shiftId]) =>
-          available.some((a) => shiftId === '__any__'
-            ? String(a.track_id) === trackId
-            : String(a.shift_id) === shiftId))
-        if (!ok) return false
-      }
-
-      if (lunchPairs.length) {
-        // The group half is itself "{trackId}:{category}", so a lunch value
-        // arrives as three segments and the answer is everything after them.
-        const lunch = member.lunch ?? []
-        const ok = lunchPairs.some((parts) => {
-          const [trackId, category, answer] = parts
-          return lunch.some((l) =>
-            String(l.track_id) === trackId && l.category === category
-            && (answer === '__any__' || l.value === answer))
-        })
-        if (!ok) return false
-      }
-
-      if (competition.length) {
-        const ids = (member.user?.competition_experience ?? []).map((e) => String(e.event.id))
-        if (!competition.some((id) => ids.includes(id))) return false
-      }
-
-      if (volunteer.length) {
-        const ids = (member.user?.volunteer_experience ?? [])
-          .map((e) => (e.event ? String(e.event.id) : null))
-          .filter((id): id is string => id !== null)
-        if (!volunteer.some((id) => ids.includes(id))) return false
-      }
-
-      if (ages.length) {
-        // Absent is unknown, not false — a member with no flag must not read
-        // as under 18.
-        const ok = ages.some((flag) =>
-          flag === 'over_18' ? member.is_over_18 === true : member.is_over_21 === true)
-        if (!ok) return false
-      }
-
+      if (filterMatchIds && !filterMatchIds.has(member.id)) return false
       return true
     })
-  }, [assignedIds, members, memberFilters, memberQuery])
+  }, [assignedIds, filterMatchIds, members, memberFilters, memberQuery])
 
   const flagsFor = useMemo(() => {
     const perMember = new Map<number, Assignment[]>()

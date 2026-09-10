@@ -288,6 +288,7 @@ def build_filter_options(db, tournament) -> dict:
     )
     from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import unslug
+    from app.core.tournament.tracks import track_event_ids
     from app.models.models import (
         Event, Form, FormField, TournamentEvent, TournamentShift, TournamentTrack,
     )
@@ -370,15 +371,30 @@ def build_filter_options(db, tournament) -> dict:
     }
     # A question can be deleted after members answered it; the answers stay
     # filterable, so the stored tracks are unioned in rather than lost.
-    pref_track_ids |= {
-        str(track_id) for (track_id,) in scoped(TournamentMembershipEventPreference)
-        .with_entities(TournamentMembershipEventPreference.track_id).distinct()
-    }
+    stored_prefs = (
+        scoped(TournamentMembershipEventPreference)
+        .with_entities(
+            TournamentMembershipEventPreference.track_id,
+            TournamentMembershipEventPreference.tournament_event_id,
+        )
+        .distinct()
+        .all()
+    )
+    pref_track_ids |= {str(track_id) for track_id, _ in stored_prefs}
+
+    def events_on(track_id: str) -> list[dict]:
+        # The question's own rule (validate_event_preference_options), plus
+        # anything already ranked there, so an answer outlives its event
+        # leaving the track.
+        allowed = {str(e) for e in track_event_ids(db, int(track_id))} if track_id.isdigit() else set()
+        allowed |= {str(e) for t, e in stored_prefs if str(t) == track_id}
+        return [option for option in event_options if option["value"] in allowed]
+
     event_preferences = [
         {
             "value": track_id,
             "label": track_names.get(track_id, "Unknown track"),
-            "options": event_options,
+            "options": events_on(track_id),
         }
         for track_id in sorted(pref_track_ids, key=lambda t: track_names.get(t, ""))
     ]
