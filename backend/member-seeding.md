@@ -1,7 +1,9 @@
 # Member seeding
 
 `app/db/seed_members.py` fills a tournament with believable members: profiles,
-prior experience, tournament roles, and onboarding form responses.
+prior experience, and onboarding form responses.
+
+Tournament roles are deliberately not seeded — assign those yourself.
 
 ```bash
 cd backend
@@ -66,13 +68,12 @@ submission would.
 
 ### What to seed
 
-Each takes a `--no-` counterpart (`--no-onboarding`, `--no-roles`, …).
+Each takes a `--no-` counterpart (`--no-onboarding`, `--no-profiles`, …).
 
 | Flag | Default | What it covers |
 | --- | --- | --- |
 | `--onboarding` | on | Replays the onboarding form submissions. |
 | `--profiles` | on | Overwrites user profile fields. |
-| `--roles` | on | Assigns tournament roles. |
 | `--experience` | on | Prior competition/volunteer history. |
 | `--enroll` | on | Creates memberships for matching accounts that lack one. |
 
@@ -98,7 +99,7 @@ python -m app.db.seed_members -t 3 --dry-run
 # Local dev, where the accounts are member*@nexus.dev.
 python -m app.db.seed_members -t 3 --email-prefix member
 
-# Profiles and roles only, leaving onboarding responses untouched.
+# Profiles and experience only, leaving onboarding responses untouched.
 python -m app.db.seed_members -t 3 --no-onboarding
 
 # Everyone fully onboarded, no partial states.
@@ -136,7 +137,7 @@ forms, events, or any account outside `--email-prefix`.
 
 ## Portability
 
-Nothing is hardcoded to a database. Tracks, shifts, tournament events, roles,
+Nothing is hardcoded to a database. Tracks, shifts, tournament events,
 universities, the catalog events and the onboarding forms are all looked up at
 runtime by ownership, so the same invocation works against dev and preview
 where the ids differ.
@@ -145,10 +146,6 @@ Profile years are anchored to the tournament's own year (via
 `Tournament.last_day`, itself derived from the primary tracks) rather than to
 today — so graduation year, year level and date of birth agree with each other
 and with the tournament being seeded.
-
-Roles skew toward unprivileged ones, with a small chance of drawing one that
-carries `manage_*` permissions. That is deliberate: a database where no
-non-admin member holds permissions cannot exercise permission gating at all.
 
 ---
 

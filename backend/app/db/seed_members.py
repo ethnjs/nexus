@@ -157,38 +157,6 @@ def seed_experience(rng: random.Random, db: Session, user, catalog_event_ids: li
 
 
 # ---------------------------------------------------------------------------
-# Roles
-# ---------------------------------------------------------------------------
-
-def seed_roles(rng: random.Random, db: Session, membership, roles: list) -> None:
-    """Give each member one or two of the tournament's roles.
-
-    Roles carrying `manage_*` permissions are kept rare rather than excluded —
-    a dev database with no privileged non-admin members can't exercise
-    permission gating at all.
-    """
-    from app.models.models import TournamentMembershipRole
-
-    if not roles:
-        return
-
-    db.query(TournamentMembershipRole).filter(
-        TournamentMembershipRole.membership_id == membership.id
-    ).delete()
-
-    plain = [r for r in roles if not (r.permissions or [])]
-    privileged = [r for r in roles if (r.permissions or [])]
-    pool = plain or roles
-
-    chosen = set(rng.sample(pool, min(rng.randint(1, 2), len(pool))))
-    if privileged and rng.random() < 0.15:
-        chosen.add(rng.choice(privileged))
-
-    for role in chosen:
-        db.add(TournamentMembershipRole(membership_id=membership.id, role_id=role.id))
-
-
-# ---------------------------------------------------------------------------
 # Onboarding — answer generation and submission replay
 # ---------------------------------------------------------------------------
 
@@ -382,7 +350,7 @@ def onboarding_forms(db: Session, tournament_id: int) -> list:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m app.db.seed_members",
-        description="Seed member profiles, roles and onboarding responses for a tournament.",
+        description="Seed member profiles and onboarding responses for a tournament.",
     )
     parser.add_argument("-t", "--tournament", type=int, required=True, metavar="ID",
                         help="tournament id to seed")
@@ -398,8 +366,6 @@ def build_parser() -> argparse.ArgumentParser:
                          help="replay onboarding form submissions (default: on)")
     toggles.add_argument("--profiles", action=argparse.BooleanOptionalAction, default=True,
                          help="overwrite user profile fields (default: on)")
-    toggles.add_argument("--roles", action=argparse.BooleanOptionalAction, default=True,
-                         help="assign tournament roles (default: on)")
     toggles.add_argument("--experience", action=argparse.BooleanOptionalAction, default=True,
                          help="add prior competition/volunteer history (default: on)")
     toggles.add_argument("--enroll", action=argparse.BooleanOptionalAction, default=True,
@@ -428,7 +394,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from app.core.tournament.onboarding import advance_onboarding_progress
     from app.db.session import SessionLocal
-    from app.models.models import Event, Tournament, TournamentRole, University
+    from app.models.models import Event, Tournament, University
 
     rng = random.Random(args.seed)
     db = SessionLocal()
@@ -453,7 +419,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"forms      : {[f.name for f in forms] or 'none'}")
         print(f"seeding    : " + ", ".join(
             name for name, on in (
-                ("profiles", args.profiles), ("roles", args.roles),
+                ("profiles", args.profiles),
                 ("experience", args.experience), ("onboarding", bool(forms)),
             ) if on
         ) or "nothing")
@@ -461,7 +427,6 @@ def main(argv: list[str] | None = None) -> int:
 
         university_ids = [uid for (uid,) in db.query(University.id)]
         catalog_event_ids = [eid for (eid,) in db.query(Event.id)]
-        roles = db.query(TournamentRole).filter(TournamentRole.tournament_id == tournament.id).all()
         # Dates live on the primary tracks, not the tournament — see
         # Tournament.dates. Profile years are anchored to the tournament's own
         # year so a member's graduation year makes sense relative to it.
@@ -482,8 +447,6 @@ def main(argv: list[str] | None = None) -> int:
                 seed_profile(rng, user, university_ids, reference_year)
             if args.experience:
                 seed_experience(rng, db, user, catalog_event_ids)
-            if args.roles:
-                seed_roles(rng, db, membership, roles)
 
             membership.notes = rng.choice(MEMBERSHIP_NOTES)
 
