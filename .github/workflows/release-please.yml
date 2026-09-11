@@ -25,3 +25,23 @@ jobs:
         with:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  dispatch-docs:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    # Uses the PAT below, not GITHUB_TOKEN, so this job needs no repo permissions.
+    permissions: {}
+
+    steps:
+      - name: Notify docs site
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+          VERSION: ${{ needs.release-please.outputs.version }}
+        # jq builds the JSON so values are escaped, not spliced into a string.
+        run: |
+          jq -n --arg repo "$REPO" --arg tag "$TAG" --arg version "$VERSION" \
+            '{event_type: "project-release", client_payload: {repo: $repo, tag: $tag, version: $version}}' \
+            | gh api repos/ethnjs/docs/dispatches --input -
