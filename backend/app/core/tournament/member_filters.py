@@ -335,9 +335,13 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentShift.start)
     ):
         key = str(shift.track_id)
+        # track_names holds live tracks only — a pending-delete one is not
+        # something to filter by.
+        if key not in track_names:
+            continue
         group = shift_days.setdefault(
             key,
-            {"value": key, "label": track_names.get(key, "Unknown track"), "options": []},
+            {"value": key, "label": track_names[key], "options": []},
         )
         group["options"].append({
             "value": str(shift.id),
@@ -388,6 +392,8 @@ def build_filter_options(db, tournament) -> dict:
         .all()
     )
     pref_track_ids |= {str(track_id) for track_id, _ in stored_prefs}
+    # Live tracks only, like every other group here.
+    pref_track_ids &= set(track_names)
 
     def events_on(track_id: str) -> list[dict]:
         # The question's own rule (validate_event_preference_options), plus

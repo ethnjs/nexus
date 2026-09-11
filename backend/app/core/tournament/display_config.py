@@ -398,16 +398,15 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         TournamentMembershipLunch, TournamentShift, TournamentTrack,
     )
 
+    # Live tracks only: a pending-delete track is on its way out, so it is not
+    # something to configure. Every track-keyed item below is narrowed to these.
     tracks = (
         db.query(TournamentTrack)
-        .filter(TournamentTrack.tournament_id == tournament_id)
+        .filter(TournamentTrack.tournament_id == tournament_id, TournamentTrack.is_archived.is_(False))
         .order_by(TournamentTrack.name)
         .all()
     )
-    track_items = [
-        {"key": f"{TRACK_NAMESPACE}{t.id}", "label": f"{t.name} (archived)" if t.is_archived else t.name}
-        for t in tracks
-    ]
+    track_items = [{"key": f"{TRACK_NAMESPACE}{t.id}", "label": t.name} for t in tracks]
 
     track_names = {t.id: t.name for t in tracks}
 
@@ -423,9 +422,10 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     lunch_items = [
         {
             "key": lunch_key(track_id, category),
-            "label": f"{track_names.get(track_id, 'Unknown track')} \u2014 {unslug(category)}",
+            "label": f"{track_names[track_id]} \u2014 {unslug(category)}",
         }
         for track_id, category in sorted(lunch_pairs, key=lambda p: (track_names.get(p[0], ""), p[1]))
+        if track_id in track_names
     ]
 
     event_pref_track_ids = (
@@ -435,8 +435,9 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
         .all()
     )
     event_pref_items = [
-        {"key": f"{EVENT_PREF_NAMESPACE}{track_id}", "label": track_names.get(track_id, "Unknown track")}
+        {"key": f"{EVENT_PREF_NAMESPACE}{track_id}", "label": track_names[track_id]}
         for (track_id,) in sorted(event_pref_track_ids, key=lambda p: track_names.get(p[0], ""))
+        if track_id in track_names
     ]
 
     field_rows = (
@@ -469,9 +470,10 @@ def build_catalog(db, tournament_id: int) -> dict[str, list[dict]]:
     availability_items = [
         {
             "key": f"{AVAILABILITY_TRACK_NAMESPACE}{track_id}",
-            "label": track_names.get(track_id, "Unknown track"),
+            "label": track_names[track_id],
         }
         for (track_id,) in sorted(availability_track_ids, key=lambda p: track_names.get(p[0], ""))
+        if track_id in track_names
     ]
 
     # Table columns: the fixed ones, then one per entity. Entity columns reuse

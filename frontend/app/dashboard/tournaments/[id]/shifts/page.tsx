@@ -380,9 +380,14 @@ export default function ShiftsPage() {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px", marginBottom: "12px" }}>
         {/* Only shown with more than one competition day — with a single
             track every shift is on it, and the filter would be a no-op. */}
-        {tracks.length > 1 ? (
+        {/* Live tracks only — `tracks` keeps pending-delete ones so their
+            shifts can still name them, but they are not a view to switch to. */}
+        {tracks.filter((t) => !t.is_archived).length > 1 ? (
           <ButtonGroup
-            options={[{ value: ALL_TRACKS, label: "All" }, ...tracks.map((t) => ({ value: String(t.id), label: t.name }))]}
+            options={[
+              { value: ALL_TRACKS, label: "All" },
+              ...tracks.filter((t) => !t.is_archived).map((t) => ({ value: String(t.id), label: t.name })),
+            ]}
             value={trackFilter}
             onChange={setTrackFilter}
           />

@@ -342,7 +342,8 @@ def test_get_display_config_catalog_includes_tracks(client, td_user, td_tourname
     assert response.status_code == 200
     tracks = response.json()["tracks"]
     assert {"key": f"track:{track.id}", "label": "Test Writing"} in tracks
-    assert {"key": f"track:{archived.id}", "label": "Retired Track (archived)"} in tracks
+    # A pending-delete track is on its way out — nothing to configure.
+    assert all(item["key"] != f"track:{archived.id}" for item in tracks)
 
 
 def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td_user, td_tournament, db):

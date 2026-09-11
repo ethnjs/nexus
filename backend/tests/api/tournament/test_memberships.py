@@ -596,6 +596,36 @@ class TestRosterFilters:
         assert "Chess C" in labels
         assert "Boomilever C" not in labels
 
+    def test_pending_delete_tracks_are_not_filter_groups(
+        self, client, db, td_user, td_tournament,
+    ):
+        """A pending-delete track is on its way out — no availability or
+        event-preference group for it, even while rows still point at it."""
+        from datetime import datetime, timedelta, timezone
+        from app.models.models import (
+            TournamentEvent, TournamentMembershipEventPreference, TournamentShift, TournamentTrack,
+        )
+
+        archived = TournamentTrack(tournament_id=td_tournament.id, name="Retired", is_archived=True)
+        event = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        db.add_all([archived, event])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        start = datetime.now(timezone.utc)
+        db.add(TournamentShift(
+            tournament_id=td_tournament.id, track_id=archived.id, label="Old",
+            start=start, end=start + timedelta(hours=2),
+        ))
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=archived.id, tournament_event_id=event.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        assert str(archived.id) not in [g["value"] for g in body["shift_days"]]
+        assert str(archived.id) not in [g["value"] for g in body["event_preferences"]]
+
     def test_lunch_options_come_from_the_question_not_the_answers(self, client, db, td_user, td_tournament):
         """A choice nobody picked is still offerable — that's how a TD finds
         who didn't pick it."""
