@@ -1,5 +1,15 @@
+// Formatters built once and reused: toLocale*String with an options object
+// constructs a fresh Intl.DateTimeFormat on every call, which is slow enough
+// to dominate a render that formats a few hundred times (the assignments board).
+const DATE_FMT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" })
+const DAY_LABEL_FMT = new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" })
+const DATE_TIME_FMT = new Intl.DateTimeFormat("en-US", {
+  month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
+})
+const TIME_FMT = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" })
+
 export function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+  return DATE_FMT.format(new Date(iso))
 }
 
 // For binding an ISO datetime to <input type="datetime-local">, whose value
@@ -52,22 +62,20 @@ export function formatTimeOfDay(hhmm: string): string {
 // "Wed, Mar 14" — weekday alongside the date so same-named shifts/events on
 // different days of a multi-day tournament aren't ambiguous in a picker.
 export function formatDayLabel(dayISO: string): string {
-  return new Date(`${dayISO}T00:00:00`).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })
+  return DAY_LABEL_FMT.format(new Date(`${dayISO}T00:00:00`))
 }
 
 // Date + time, for a tooltip pinning down the exact moment behind a coarse
 // label like formatDuration's "3d" or "Today".
 export function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit",
-  })
+  return DATE_TIME_FMT.format(new Date(iso))
 }
 
 // Time only, no date — for compact display where the date is already
 // established by context (e.g. a shift chip inside an event whose own
 // start/end date is already shown above it).
 export function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+  return TIME_FMT.format(new Date(iso))
 }
 
 export function parseUserAgent(ua: string | null): string {
