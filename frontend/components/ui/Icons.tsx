@@ -266,11 +266,21 @@ export function IconCopy({ size = 14, ...props }: IconProps) {
   );
 }
 
-// Font Awesome Free "rocket" — publishing a form.
+// Font Awesome Free "rocket", shrunk up-right to make room for a hand-drawn
+// exhaust flame (a teardrop tipped 45° down-left) — publishing a form.
 export function IconRocket({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <path d="M192 384L88.5 384C63.6 384 48.3 356.9 61.1 335.5L114 247.3C122.7 232.8 138.3 224 155.2 224L250.2 224C326.3 95.1 439.8 88.6 515.7 99.7C528.5 101.6 538.5 111.6 540.3 124.3C551.4 200.2 544.9 313.7 416 389.8L416 484.8C416 501.7 407.2 517.3 392.7 526L304.5 578.9C283.2 591.7 256 576.3 256 551.5L256 448C256 412.7 227.3 384 192 384L191.9 384zM464 224C464 197.5 442.5 176 416 176C389.5 176 368 197.5 368 224C368 250.5 389.5 272 416 272C442.5 272 464 250.5 464 224z" />
+      <g transform="translate(320 320) scale(1.24) translate(-360 -280)">
+        <g transform="translate(138 19) scale(0.73)">
+          <path d="M192 384L88.5 384C63.6 384 48.3 356.9 61.1 335.5L114 247.3C122.7 232.8 138.3 224 155.2 224L250.2 224C326.3 95.1 439.8 88.6 515.7 99.7C528.5 101.6 538.5 111.6 540.3 124.3C551.4 200.2 544.9 313.7 416 389.8L416 484.8C416 501.7 407.2 517.3 392.7 526L304.5 578.9C283.2 591.7 256 576.3 256 551.5L256 448C256 412.7 227.3 384 192 384L191.9 384zM464 224C464 197.5 442.5 176 416 176C389.5 176 368 197.5 368 224C368 250.5 389.5 272 416 272C442.5 272 464 250.5 464 224z" />
+        </g>
+        {/* Centred on the rocket's own axis (x + y = 640 in its path, 624.2
+            after the shrink above), so the tip lines up with nose and window. */}
+        <g transform="translate(243.6 380.6) rotate(45)">
+          <path fillRule="evenodd" d="M0 105C20 90 48 55 48 0A48 48 0 1 0 -48 0C-48 55 -20 90 0 105Z M0 36C6 32 14 22 14 6A14 14 0 1 0 -14 6C-14 22 -6 32 0 36Z" />
+        </g>
+      </g>
     </svg>
   );
 }
