@@ -11,6 +11,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { MemberSections } from "@/components/tournament/sections/MemberSections";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MemberPanelConfigModal } from "@/components/tournament/MemberPanelConfigModal";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
@@ -81,6 +82,9 @@ export function MemberPanel({
   const [reloadKey, setReloadKey] = useState(0);
   // Bumped after this panel's own assignment writes — re-reads only the member.
   const [memberVersion, setMemberVersion] = useState(0);
+  // Bumped when the browser tab regains focus, so collaborators' edits show up.
+  const [focusVersion, setFocusVersion] = useState(0);
+  useRefetchOnFocus(() => setFocusVersion((v) => v + 1));
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -96,7 +100,7 @@ export function MemberPanel({
       .then((data) => { if (current) startTransition(() => setFull(data)); })
       .catch((e) => { if (current) setError(e instanceof ApiError ? e.message : "Failed to load member."); });
     return () => { current = false; };
-  }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion]);
+  }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion, focusVersion]);
 
   useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
