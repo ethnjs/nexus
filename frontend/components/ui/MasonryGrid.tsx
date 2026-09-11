@@ -24,17 +24,19 @@ export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: Masonr
     const grid = ref.current;
     if (!grid) return;
 
+    const spanColumns = (node: HTMLElement) => {
+      const minWidth = Number(node.dataset.minWidth);
+      if (!minWidth) return;
+      // Resolved track sizes, e.g. "352px 352px 352px".
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(" ");
+      const columnWidth = parseFloat(columns[0]);
+      node.style.gridColumn = `span ${Math.min(columns.length, Math.ceil((minWidth + gap) / (columnWidth + gap)))}`;
+    };
+
     // Span is set before measuring: width decides how tall the content wraps.
     const fit = (el: Element) => {
       const node = el as HTMLElement;
-      const minWidth = Number(node.dataset.minWidth);
-      if (minWidth) {
-        // Resolved track sizes, e.g. "352px 352px 352px".
-        const columns = getComputedStyle(grid).gridTemplateColumns.split(" ");
-        const columnWidth = parseFloat(columns[0]);
-        const span = Math.min(columns.length, Math.ceil((minWidth + gap) / (columnWidth + gap)));
-        node.style.gridColumn = `span ${span}`;
-      }
+      spanColumns(node);
       // Trailing rows past the card's height are the vertical gap.
       node.style.gridRowEnd = `span ${Math.ceil(node.getBoundingClientRect().height) + gap}`;
     };

@@ -47,9 +47,9 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
   if (!canSee || !checklist) return null;
 
   return (
-    // data-min-width: the item grid plus the 250px ring — the overview's grid
+    // data-min-width: the item grid plus the ring — the overview's grid
     // spans as many columns as that takes.
-    <OverviewCard title="Setup progress" data-min-width={820}>
+    <OverviewCard title="Setup progress" data-min-width={640}>
       <div style={{ display: "flex", gap: "20px", alignItems: "stretch" }}>
         <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           {checklist.items.map((item) => {
@@ -63,7 +63,7 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
           })}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} size={250} />
+          <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} size={180} />
         </div>
       </div>
 

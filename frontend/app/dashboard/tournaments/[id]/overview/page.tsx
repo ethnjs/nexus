@@ -2,24 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useTournament } from "@/lib/useTournament";
-import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { ApiError, formsApi, MemberForm } from "@/lib/api";
 import { SetupChecklistWidget } from "@/components/tournament/overview/SetupChecklistWidget";
 import { MySignupCards } from "@/components/tournament/overview/MySignupCards";
 import { MemberSummaryCard } from "@/components/tournament/overview/MemberSummaryCard";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { TournamentHeaderCard } from "@/components/tournament/overview/TournamentHeaderCard";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
-import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
 export default function OverviewPage() {
   const params = useParams();
   const tournamentId = params.id as string;
-  const { selectedTournament } = useTournament();
   const [forms, setForms] = useState<MemberForm[] | null>(null);
   const [formsError, setFormsError] = useState<string | null>(null);
   const [hoveredFormId, setHoveredFormId] = useState<string | null>(null);
@@ -30,34 +26,8 @@ export default function OverviewPage() {
       .catch((error) => setFormsError(error instanceof ApiError ? error.message : "Failed to load forms."));
   }, [tournamentId]);
 
-  const rows = selectedTournament ? tournamentFactRows(selectedTournament, "weekday") : [];
-
-  const year = selectedTournament && tournamentYear(selectedTournament);
-  const heading = selectedTournament
-    ? [year, selectedTournament.name].filter(Boolean).join(" ")
-    : "—";
-
-  const metadata = selectedTournament && (
-    <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-      {rows.map((row) => (
-        <span key={row.key} style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-          {row.name && <span style={{ fontWeight: 600, color: "var(--color-text-tertiary)" }}>{row.name}</span>}
-          {row.place && <><IconLocation />{row.place}</>}
-          {row.dates && <><IconCalendar />{row.dates}</>}
-        </span>
-      ))}
-      {selectedTournament.state && <Badge>{selectedTournament.state}</Badge>}
-      {selectedTournament.level && (
-        <Badge>{selectedTournament.level[0].toUpperCase() + selectedTournament.level.slice(1)}</Badge>
-      )}
-      {selectedTournament.division?.map((d) => <Badge key={d}>{d}</Badge>)}
-    </div>
-  );
-
   return (
     <div>
-      <PageHeader heading={heading} metadata={metadata} />
-
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {formsError && (
           <p style={{ margin: 0, fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
@@ -65,6 +35,7 @@ export default function OverviewPage() {
           </p>
         )}
         <MasonryGrid>
+          <TournamentHeaderCard />
           <SetupChecklistWidget tournamentId={tournamentId} />
           <MemberSummaryCard tournamentId={Number(tournamentId)} />
           {forms === null ? (
