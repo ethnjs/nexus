@@ -18,7 +18,7 @@ const TONE_STYLE: Record<PillTone, { background: string; color: string; border: 
   danger:  { background: "var(--color-danger-subtle)",  color: "var(--color-danger)",      border: "var(--color-danger)" },
 };
 
-type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger" | "onOpenChange"> & {
+type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger"> & {
   /** The pill's own text — what's currently chosen, or a prompt to choose. */
   label: string;
   tone?: PillTone;
@@ -30,14 +30,15 @@ type PillMenuProps<T> = Omit<PopoverProps<T>, "trigger" | "onOpenChange"> & {
 // the chip instead of a boxed control embedded in one, and so the chip keeps
 // one fixed height matching its neighbours instead of growing to fit a
 // full-size Dropdown's chrome.
-export function PillMenu<T>({ label, tone = "default", ...popover }: PillMenuProps<T>) {
+export function PillMenu<T>({ label, tone = "default", onOpenChange, ...popover }: PillMenuProps<T>) {
   const [open, setOpen] = useState(false);
   const pill = TONE_STYLE[tone];
 
   return (
     <Popover
       {...popover}
-      onOpenChange={setOpen}
+      // Chained, not replaced: the chevron needs it too.
+      onOpenChange={(next) => { setOpen(next); onOpenChange?.(next); }}
       trigger={
         <span style={{
           display: "inline-flex", alignItems: "center", gap: "2px", boxSizing: "border-box",

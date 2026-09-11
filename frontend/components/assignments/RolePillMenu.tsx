@@ -28,13 +28,13 @@ export function RolePillMenu({ roles, roleCatalog, onToggleRole, onPickRole }: {
   /** Replaces the whole set with this one — the default path. */
   onPickRole: (role: AssignmentRole) => void;
 }) {
-  // Per chip and per opening: it is a way of using the menu for one edit, not
-  // a setting, and it must never stick in the state that costs two clicks per
-  // change.
+  // Reset on every opening, from the chip itself: a chip already holding
+  // several roles opens with checkboxes, since a plain click would replace them.
   const [multi, setMulti] = useState(false);
 
   return (
     <PillMenu
+      onOpenChange={(open) => { if (open) setMulti(roles.length > 1); }}
       label={roleSummary(roles)}
       tone={roles.length > 0 ? "default" : "muted"}
       items={roleCatalog}
