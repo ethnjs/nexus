@@ -6,6 +6,7 @@ import { useTournament } from "@/lib/useTournament";
 import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { ApiError, formsApi, MemberForm } from "@/lib/api";
 import { SetupChecklistWidget } from "@/components/tournament/setup/SetupChecklistWidget";
+import { MySignupCards } from "@/components/tournament/overview/MySignupCards";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -109,6 +110,7 @@ export default function OverviewPage() {
             </div>
           </Card>
         ) : null}
+        <MySignupCards tournamentId={Number(tournamentId)} />
       </div>
     </div>
   );
