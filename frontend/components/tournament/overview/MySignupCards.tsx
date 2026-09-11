@@ -4,16 +4,16 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   MembershipAvailability, MembershipEventPreference, MembershipField, MembershipLunch,
-  MembershipMe, MembershipTrackStatus, membersApi,
+  MembershipMe, MembershipTrackStatus, TournamentShift, membersApi, tournamentShiftsApi,
 } from "@/lib/api";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
-import { formatTime } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelField";
 import { LunchCategoryRows } from "@/components/tournament/sections/LunchSection";
+import { AvailabilityDays } from "@/components/tournament/sections/AvailabilitySection";
 
 // Its own getMe rather than widening useMyMembership's: that provider loads
 // on every page, and only this card needs availability and lunch.
@@ -27,9 +27,13 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
   const router = useRouter();
   const { isArchived, archivedReason } = useArchiveLock();
   const [me, setMe] = useState<MembershipMe | null>(null);
+  // Every offered shift, so each timeline spans its whole day rather than
+  // just the member's own shifts.
+  const [shifts, setShifts] = useState<TournamentShift[]>([]);
 
   useEffect(() => {
     membersApi.getMe(tournamentId, FIELDS).then(setMe).catch(() => setMe(null));
+    tournamentShiftsApi.list(tournamentId).then(setShifts).catch(() => setShifts([]));
   }, [tournamentId]);
 
   // No row (e.g. a site admin who never joined) — nothing of theirs to show.
@@ -47,6 +51,7 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
           key={track.track_id}
           track={track}
           availability={(me.availability ?? []).filter((a) => a.track_id === track.track_id)}
+          shifts={shifts.filter((shift) => shift.track_id === track.track_id)}
           lunch={(me.lunch ?? []).filter((l) => l.track_id === track.track_id)}
           eventPreference={me.event_preferences?.find((p) => p.track_id === track.track_id) ?? null}
           onView={() => router.push(memberPath)}
@@ -60,10 +65,11 @@ export function MySignupCards({ tournamentId }: { tournamentId: number }) {
 }
 
 function TrackSignupCard({
-  track, availability, lunch, eventPreference, onView, onEdit, editLocked, editTitle,
+  track, availability, shifts, lunch, eventPreference, onView, onEdit, editLocked, editTitle,
 }: {
   track: MembershipTrackStatus;
   availability: MembershipAvailability[];
+  shifts: TournamentShift[];
   lunch: MembershipLunch[];
   eventPreference: MembershipEventPreference | null;
   onView: () => void;
@@ -78,7 +84,6 @@ function TrackSignupCard({
     : track.status === "declined"
       ? "You're not volunteering for this track."
       : null;
-  const slots = [...availability].sort((a, b) => a.start.localeCompare(b.start));
 
   return (
     <OverviewCard title={track.name} action={<Badge variant={track.status}>{track.status}</Badge>}>
@@ -88,17 +93,10 @@ function TrackSignupCard({
       ) : (
         <>
           <PanelField label="Availability">
-            {slots.length === 0 ? (
-              <FieldValue muted>No info yet</FieldValue>
-            ) : (
-              <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
-                {slots.map((slot) => (
-                  <Badge key={slot.shift_id} title={`${formatTime(slot.start)}–${formatTime(slot.end)}`}>
-                    {slot.label}
-                  </Badge>
-                ))}
-              </div>
-            )}
+            {/* The member panel's timeline, stacked under its badges to fit the card. */}
+            {availability.length === 0
+              ? <FieldValue muted>No info yet</FieldValue>
+              : <AvailabilityDays availability={availability} allShifts={shifts} stacked />}
           </PanelField>
           <PanelField label="Lunch">
             {lunch.length === 0

@@ -61,10 +61,11 @@ function toTimelineShifts(slots: MembershipAvailability[]): TimelineShift[] {
 
 // One day's row: badges on the left, timeline on the right, sharing a single
 // hovered-shift state so pointing at either one highlights the other.
-function AvailabilityDay({ day, slots, offered }: {
+function AvailabilityDay({ day, slots, offered, stacked }: {
   day: string;
   slots: MembershipAvailability[];
   offered: TournamentShift[] | undefined;
+  stacked?: boolean;
 }) {
   const [hoveredId, setHoveredId] = useState<number | null>(null);
 
@@ -72,8 +73,8 @@ function AvailabilityDay({ day, slots, offered }: {
   const lastEnd = slots.reduce((latest, s) => (s.end > latest ? s.end : latest), slots[0].end);
 
   return (
-    <div style={{ display: "flex", alignItems: "stretch", gap: "16px" }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
+    <div style={{ display: "flex", flexDirection: stacked ? "column" : "row", alignItems: "stretch", gap: stacked ? "8px" : "16px" }}>
+      <div style={{ flex: stacked ? undefined : 1, minWidth: 0 }}>
         <PanelField label={`${formatDayLabel(day)}, ${formatTime(slots[0].start)}–${formatTime(lastEnd)}`}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
             {slots.map((slot) => (
@@ -99,7 +100,27 @@ function AvailabilityDay({ day, slots, offered }: {
         shifts={toTimelineShifts(slots)}
         hoveredId={hoveredId}
         onHover={setHoveredId}
+        fullWidth={stacked}
       />
+    </div>
+  );
+}
+
+/**
+ * One row per day the member marked shifts on — badges plus the timeline.
+ * `stacked` puts the timeline under the badges, for cards too narrow to fit
+ * both side by side.
+ */
+export function AvailabilityDays({ availability, allShifts, stacked }: AvailabilitySectionProps & { stacked?: boolean }) {
+  const offeredByDay = groupByDay(allShifts ?? []);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+      {Array.from(groupByDay(availability).entries())
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, slots]) => (
+          <AvailabilityDay key={day} day={day} slots={slots} offered={offeredByDay.get(day)} stacked={stacked} />
+        ))}
     </div>
   );
 }
@@ -108,20 +129,12 @@ function AvailabilityDay({ day, slots, offered }: {
 // callers can drop this in unconditionally (MemberPanel, and the member's
 // own profile page, once per tournament membership).
 export function AvailabilitySection({ availability, allShifts }: AvailabilitySectionProps) {
-
-  const offeredByDay = groupByDay(allShifts ?? []);
-
   return (
     <ProfileCard>
       <SectionHeading title="Availability">
-        <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-          {availability.length === 0 && <FieldValue muted>No info yet</FieldValue>}
-          {Array.from(groupByDay(availability).entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .map(([day, slots]) => (
-              <AvailabilityDay key={day} day={day} slots={slots} offered={offeredByDay.get(day)} />
-            ))}
-        </div>
+        {availability.length === 0
+          ? <FieldValue muted>No info yet</FieldValue>
+          : <AvailabilityDays availability={availability} allShifts={allShifts} />}
       </SectionHeading>
     </ProfileCard>
   );

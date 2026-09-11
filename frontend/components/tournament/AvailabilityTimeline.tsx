@@ -32,6 +32,8 @@ interface AvailabilityTimelineProps {
    */
   hoveredId: number | null;
   onHover: (id: number | null) => void;
+  /** Fill the parent's width instead of sitting beside something at 220px — for stacked layouts. */
+  fullWidth?: boolean;
 }
 
 const HOUR_MS = 3600000;
@@ -80,7 +82,7 @@ function timeRange(span: Span): string {
   return `${formatTime(new Date(span.start).toISOString())}–${formatTime(new Date(span.end).toISOString())}`;
 }
 
-export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover }: AvailabilityTimelineProps) {
+export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover, fullWidth }: AvailabilityTimelineProps) {
   const total = dayEnd - dayStart;
   if (total <= 0) return null;
 
@@ -95,7 +97,9 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
 
   return (
     <div style={{
-      position: "relative", flex: "0 0 220px", alignSelf: "stretch",
+      position: "relative", alignSelf: "stretch",
+      // A flex-basis would size the height in a column, so stacked callers get a width.
+      ...(fullWidth ? { width: "100%" } : { flex: "0 0 220px" }),
       display: "flex", flexDirection: "column", justifyContent: "center", gap: "3px",
     }}>
       {/* Hour ruler — every other line is labelled, so a dense window stays
