@@ -1,4 +1,7 @@
+import json
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
@@ -27,6 +30,16 @@ from app.api.routes.chapter import memberships as chapter_memberships
 from app.api.routes.chapter import join_codes as chapter_join_codes
 
 settings = get_settings()
+
+
+def _read_app_version() -> str:
+    # frontend/package.json is the version source of truth (bumped by release-please).
+    # Fallback keeps startup alive if a deploy only ships backend/.
+    package_json = Path(__file__).resolve().parents[2] / "frontend" / "package.json"
+    try:
+        return json.loads(package_json.read_text(encoding="utf-8"))["version"]
+    except (OSError, KeyError, ValueError):
+        return "0.0.0-unknown"
 
 
 @asynccontextmanager
@@ -67,7 +80,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NEXUS",
     description="Backend API for NEXUS — Science Olympiad tournament management",
-    version="0.2.0",
+    version=_read_app_version(),
     lifespan=lifespan,
     redirect_slashes=False,
 )
