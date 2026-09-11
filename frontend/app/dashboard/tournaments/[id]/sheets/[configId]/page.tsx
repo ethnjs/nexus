@@ -11,7 +11,7 @@ import {
   RichMappingRow,
   makeRichRow,
   SheetConfigMappingTable,
-} from "@/components/ui/SheetConfigMappingTable";
+} from "@/components/tournament/sheets/SheetConfigMappingTable";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
