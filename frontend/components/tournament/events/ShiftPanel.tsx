@@ -349,7 +349,7 @@ export function ShiftPanel({
       {showDelete && current && (
         <DeleteShiftModal
           tournamentId={tournamentId}
-          shift={current}
+          shifts={[current]}
           onClose={() => setShowDelete(false)}
           onDeleted={() => { onDeleted(current.id); onClose(); }}
         />

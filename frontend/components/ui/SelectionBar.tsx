@@ -1,5 +1,6 @@
 "use client";
 
+import { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { IconX } from "@/components/ui/Icons";
 
@@ -9,17 +10,20 @@ interface SelectionBarProps {
   editLabel?: string;
   onEdit: () => void;
   onCancel: () => void;
+  /** Extra buttons before Edit — e.g. Duplicate / Delete on the shifts page. */
+  actions?: ReactNode;
 }
 
 // Floating bar shown while a table is in select mode — mirrors
 // FloatingSaveBar's fixed-bottom-center slide-in pattern, but for acting on
 // a set of selected rows instead of unsaved form state.
-export function SelectionBar({ visible, count, editLabel = "Edit", onEdit, onCancel }: SelectionBarProps) {
+export function SelectionBar({ visible, count, editLabel = "Edit", onEdit, onCancel, actions }: SelectionBarProps) {
   return (
     <div style={{
       position: "fixed", left: "50%", bottom: visible ? "24px" : "-80px",
       transform: "translateX(-50%)",
-      width: "min(360px, calc(100vw - 40px))",
+      // Grows with extra actions rather than squeezing them.
+      width: "fit-content", minWidth: "min(360px, calc(100vw - 40px))",
       background: "var(--color-surface)", border: "1px solid var(--color-border)",
       borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
       padding: "10px 10px 10px 18px",
@@ -31,6 +35,7 @@ export function SelectionBar({ visible, count, editLabel = "Edit", onEdit, onCan
         {count} selected
       </span>
       <div style={{ display: "flex", alignItems: "center", gap: "8px", flexShrink: 0 }}>
+        {actions}
         <Button type="button" variant="primary" size="sm" disabled={count === 0} onClick={onEdit}>
           {editLabel}
         </Button>

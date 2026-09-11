@@ -20,14 +20,21 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ShiftPanel, SHIFT_PANEL_WIDTH } from "@/components/tournament/events/ShiftPanel";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
+import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournament/events/MassShiftEditor";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { SelectionBar } from "@/components/ui/SelectionBar";
+import { useToast } from "@/lib/useToast";
 import { IconPlus, IconCalendar, IconEdit, IconTrash, IconLock } from "@/components/ui/Icons";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 
-// Label / Track / Start / End / Events / Actions
-const SHIFT_ROW_COLUMNS = "1.6fr 1fr 0.8fr 0.8fr 70px 80px";
+// Select / Label / Track / Start / End / Events / Actions. The select track is
+// always present (0px when off) so its width can animate, like the events table.
+function shiftGridColumns(selectMode: boolean) {
+  return `${selectMode ? "28px" : "0px"} 1.6fr 1fr 0.8fr 0.8fr 70px 80px`;
+}
 
 const ALL_TRACKS = "all";
 
@@ -61,14 +68,19 @@ export default function ShiftsPage() {
   // Bumped per Add click and used as the create panel's key. After a save the
   // panel stays open on the new shift, so without a remount Add is a no-op.
   const [createKey, setCreateKey] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
+  // One shift from a row's trash button, or the whole selection from the toolbar.
+  const [deleteTargets, setDeleteTargets] = useState<TournamentShift[] | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const { show } = useToast();
   // Bumped when the tab regains focus, so collaborators' changes show up.
   const [refreshKey, setRefreshKey] = useState(0);
   useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
 
   const initialShiftId = useInitialPanelId("shift");
   const {
-    focusedId, setPanelDirty, focusItem, clearFocus, startExternalFlow, getPrevNext,
+    focusedId, selectMode, selectedIds, massPanelOpen, panelDirty,
+    setPanelDirty, focusItem, clearFocus, startExternalFlow, getPrevNext,
+    toggleSelectMode, toggleSelected, toggleSelectAll, openMassPanel, clearSelection, forgetItem,
   } = usePanelSelection({
     onClearExternal: () => setCreatingNew(false),
     initialFocusedId: initialShiftId,
@@ -122,6 +134,11 @@ export default function ShiftsPage() {
     return [...list].sort((a, b) => a.start.localeCompare(b.start));
   }, [shifts, trackFilter]);
 
+  const selectedShifts = useMemo(
+    () => (shifts ?? []).filter((s) => selectedIds.has(s.id)),
+    [shifts, selectedIds],
+  );
+
   const { hasPrev, hasNext, prevId, nextId } = getPrevNext(visibleShifts, (s) => s.id);
 
   const shiftTracks = useMemo(() => {
@@ -129,21 +146,25 @@ export default function ShiftsPage() {
     return tracks.filter((t) => ids.has(t.id));
   }, [shifts, tracks]);
 
-  const handleSaved = useCallback((saved: TournamentShift) => {
+  // Lists, so a mass edit or bulk delete reloads tracks once rather than per row.
+  const handleSaved = useCallback((saved: TournamentShift[]) => {
+    const byId = new Map(saved.map((s) => [s.id, s]));
     setShifts((prev) => {
       const list = prev ?? [];
-      return list.some((s) => s.id === saved.id)
-        ? list.map((s) => (s.id === saved.id ? saved : s))
-        : [...list, saved];
+      const known = new Set(list.map((s) => s.id));
+      return [...list.map((s) => byId.get(s.id) ?? s), ...saved.filter((s) => !known.has(s.id))];
     });
     // Moving a shift off a pending track can be what purges it.
     loadTracks();
   }, [loadTracks]);
 
-  const handleDeleted = useCallback((id: number) => {
-    setShifts((prev) => (prev ?? []).filter((s) => s.id !== id));
+  // forgetItem drops a gone row out of the selection and closes a panel on it.
+  const handleDeleted = useCallback((ids: number[]) => {
+    const gone = new Set(ids);
+    setShifts((prev) => (prev ?? []).filter((s) => !gone.has(s.id)));
+    ids.forEach(forgetItem);
     loadTracks();
-  }, [loadTracks]);
+  }, [loadTracks, forgetItem]);
 
   // An event's shift set changed from inside the panel. Both lists are kept
   // locally, so the shifts' own event_count has to be recomputed alongside —
@@ -192,8 +213,8 @@ export default function ShiftsPage() {
           locked={locked}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
-          onSaved={handleSaved}
-          onDeleted={handleDeleted}
+          onSaved={(s) => handleSaved([s])}
+          onDeleted={(id) => handleDeleted([id])}
           onEventUpdated={handleEventUpdated}
         />,
         SHIFT_PANEL_WIDTH,
@@ -220,8 +241,8 @@ export default function ShiftsPage() {
           locked={locked}
           onClose={clearFocus}
           onDirtyChange={setPanelDirty}
-          onSaved={handleSaved}
-          onDeleted={handleDeleted}
+          onSaved={(s) => handleSaved([s])}
+          onDeleted={(id) => handleDeleted([id])}
           onEventUpdated={handleEventUpdated}
           onPrev={() => prevId !== null && focusItem(prevId)}
           onNext={() => nextId !== null && focusItem(nextId)}
@@ -233,9 +254,47 @@ export default function ShiftsPage() {
       return;
     }
 
+    // Select mode: one shift gets the full panel, several get the mass editor.
+    if (massPanelOpen && selectedShifts.length === 1) {
+      const shift = selectedShifts[0];
+      setPanel(
+        <ShiftPanel
+          key={shift.id}
+          tournamentId={tournamentId}
+          shift={shift}
+          tracks={tracks}
+          events={events}
+          locked={locked}
+          onClose={clearSelection}
+          onDirtyChange={setPanelDirty}
+          onSaved={(s) => handleSaved([s])}
+          onDeleted={(id) => handleDeleted([id])}
+          onEventUpdated={handleEventUpdated}
+        />,
+        SHIFT_PANEL_WIDTH,
+      );
+      return;
+    }
+
+    if (massPanelOpen && selectedShifts.length > 1) {
+      setPanel(
+        <MassShiftEditor
+          tournamentId={tournamentId}
+          shifts={selectedShifts}
+          tracks={tracks}
+          onClose={clearSelection}
+          onDirtyChange={setPanelDirty}
+          onSaved={handleSaved}
+        />,
+        MASS_SHIFT_EDITOR_WIDTH,
+      );
+      return;
+    }
+
     clearPanel();
   }, [
-    creatingNew, createKey, focusedId, shifts, events, tracks, trackFilter, tournamentId,
+    creatingNew, createKey, focusedId, massPanelOpen, selectedShifts, clearSelection,
+    shifts, events, tracks, trackFilter, tournamentId,
     canManageEvents, isArchived, prevId, nextId, hasPrev, hasNext,
     focusItem, clearFocus, clearCreatingNew, setPanelDirty,
     handleSaved, handleDeleted, handleEventUpdated, setPanel, clearPanel,
@@ -290,6 +349,21 @@ export default function ShiftsPage() {
     setCreateKey((k) => k + 1);
   });
 
+  // Exact copies with "(copy)" on the label — same track and times, so the TD
+  // edits the copies rather than re-entering everything.
+  async function duplicateSelected() {
+    setDuplicating(true);
+    const outcomes = await Promise.allSettled(selectedShifts.map((s) => tournamentShiftsApi.create(tournamentId, {
+      track_id: s.track_id, label: `${s.label} (copy)`, start: s.start, end: s.end,
+    })));
+    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
+    if (created.length > 0) handleSaved(created);
+    const failed = outcomes.length - created.length;
+    if (failed > 0) show(`Duplicated ${created.length}, ${failed} failed.`, "error");
+    else show(`Duplicated ${created.length} shift${created.length === 1 ? "" : "s"}.`);
+    setDuplicating(false);
+  }
+
   return (
     <div>
       <PageHeader heading="Shifts" />
@@ -314,9 +388,19 @@ export default function ShiftsPage() {
           />
         ) : <span />}
         {canEdit && shifts.length > 0 && (
-          <Button type="button" variant="primary" size="md" onClick={addShift}>
-            <IconPlus size={14} /> Add shift
-          </Button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <Button
+              type="button" variant={selectMode ? "primary" : "secondary"} size="md"
+              onClick={toggleSelectMode}
+              disabled={panelDirty}
+              title={panelDirty ? "Save or discard your changes first" : undefined}
+            >
+              Select
+            </Button>
+            <Button type="button" variant="primary" size="md" onClick={addShift}>
+              <IconPlus size={14} /> Add shift
+            </Button>
+          </div>
         )}
       </div>
 
@@ -336,11 +420,26 @@ export default function ShiftsPage() {
       ) : (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
           <div style={{
-            display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, gap: "10px",
+            display: "grid", gridTemplateColumns: shiftGridColumns(selectMode), gap: "10px",
+            transition: "grid-template-columns 200ms ease",
             padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
             fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
             color: "var(--color-text-tertiary)",
           }}>
+            <span
+              style={{
+                display: "flex", justifyContent: "center", overflow: "hidden",
+                opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+                transition: "opacity 150ms ease",
+              }}
+              title={panelDirty ? "Save or discard your changes first" : undefined}
+            >
+              <Checkbox
+                checked={visibleShifts.length > 0 && visibleShifts.every((s) => selectedIds.has(s.id))}
+                locked={panelDirty}
+                onChange={(checked) => toggleSelectAll(visibleShifts.map((s) => s.id), checked)}
+              />
+            </span>
             <span>Shifts — {visibleShifts.length}</span>
             <span>Track</span>
             <span>Start</span>
@@ -358,23 +457,46 @@ export default function ShiftsPage() {
               focused={focusedId === shift.id}
               canEdit={canEdit}
               onClick={() => focusItem(shift.id)}
-              onDelete={() => setDeleteTarget(shift)}
+              onDelete={() => setDeleteTargets([shift])}
+              selectMode={selectMode}
+              selected={selectedIds.has(shift.id)}
+              selectionLocked={panelDirty}
+              onToggleSelect={() => toggleSelected(shift.id)}
             />
           ))}
         </Card>
       )}
 
-      {deleteTarget && (
+      {/* Stays up while boxes are checked; Edit is what opens a panel. */}
+      <SelectionBar
+        visible={selectMode && !massPanelOpen}
+        count={selectedIds.size}
+        onEdit={openMassPanel}
+        onCancel={toggleSelectMode}
+        actions={
+          <>
+            <Button
+              type="button" variant="secondary" size="sm"
+              disabled={selectedIds.size === 0} loading={duplicating} onClick={duplicateSelected}
+            >
+              Duplicate
+            </Button>
+            <Button
+              type="button" variant="secondary" size="sm"
+              disabled={selectedIds.size === 0} onClick={() => setDeleteTargets(selectedShifts)}
+            >
+              <IconTrash size={13} style={{ color: "var(--color-danger)" }} /> Delete
+            </Button>
+          </>
+        }
+      />
+
+      {deleteTargets && (
         <DeleteShiftModal
           tournamentId={tournamentId}
-          shift={deleteTarget}
-          onClose={() => setDeleteTarget(null)}
-          onDeleted={() => {
-            handleDeleted(deleteTarget.id);
-            // The panel is showing the row that just went away.
-            if (focusedId === deleteTarget.id) clearFocus();
-            setDeleteTarget(null);
-          }}
+          shifts={deleteTargets}
+          onClose={() => setDeleteTargets(null)}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
@@ -384,7 +506,10 @@ export default function ShiftsPage() {
 // Read-only: every edit, including delete, happens in the panel. A row that
 // both previews and edits meant two ways to change the same thing, and only
 // one of them could show a shift's events.
-function ShiftRow({ shift, track, isLast, focused, canEdit, onClick, onDelete }: {
+function ShiftRow({
+  shift, track, isLast, focused, canEdit, onClick, onDelete,
+  selectMode, selected, selectionLocked, onToggleSelect,
+}: {
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
   track: TournamentTrack | undefined;
@@ -393,27 +518,46 @@ function ShiftRow({ shift, track, isLast, focused, canEdit, onClick, onDelete }:
   canEdit: boolean;
   onClick: () => void;
   onDelete: () => void;
+  selectMode: boolean;
+  selected: boolean;
+  /** Open panel has unsaved changes — focus and selection are frozen until it resolves. */
+  selectionLocked: boolean;
+  onToggleSelect: () => void;
 }) {
   const [hovered, setHovered] = useState(false);
+  // In select mode a click toggles the box; otherwise it opens the panel.
+  const highlighted = selectMode ? selected : focused;
+  const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      onClick={onClick}
+      onClick={selectionLocked ? undefined : selectMode ? onToggleSelect : onClick}
+      title={lockedTitle}
       style={{
-        display: "grid", gridTemplateColumns: SHIFT_ROW_COLUMNS, alignItems: "center",
+        display: "grid", gridTemplateColumns: shiftGridColumns(selectMode), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: track?.is_archived && !focused
+        background: track?.is_archived && !highlighted
           ? (hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
-          : focused
+          : highlighted
             ? "var(--color-accent-subtle)"
             : hovered ? "var(--color-bg)" : "transparent",
-        cursor: "pointer",
-        transition: "background 100ms ease",
+        cursor: selectionLocked ? "not-allowed" : "pointer",
+        transition: "background 100ms ease, grid-template-columns 200ms ease",
       }}
     >
+      <span
+        style={{
+          display: "flex", justifyContent: "center", overflow: "hidden",
+          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
+          transition: "opacity 150ms ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
+      </span>
       <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>{shift.label}</span>
       <span style={{ display: "flex", minWidth: 0 }}>
         <Badge
@@ -435,7 +579,7 @@ function ShiftRow({ shift, track, isLast, focused, canEdit, onClick, onDelete }:
       {/* Edit is the same thing clicking the row does — spelled out so the
           row's one action isn't invisible. Delete keeps its own confirm. */}
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
-        <Button type="button" variant="secondary" size="sm" iconOnly title="Edit shift" onClick={onClick}>
+        <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit shift"} onClick={onClick}>
           <IconEdit size={13} />
         </Button>
         {canEdit && (
