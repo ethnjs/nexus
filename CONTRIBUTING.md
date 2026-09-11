@@ -137,3 +137,14 @@ Cover, briefly:
 - **What changed** — grouped by area (backend/frontend, or by subsystem) if it's more than a couple files.
 - **Out of scope** — anything the linked issue implied but this PR deliberately doesn't do.
 - **Test plan** — what you ran, what you checked by hand.
+
+---
+
+## Docs content
+
+`docs/` holds the NEXUS pages for the docs site ([docs.ethanshih.com](https://docs.ethanshih.com)). On each release it's synced into the docs site under `/nexus`. It holds content only — the docs site owns the folder name, sidebar config (`meta.json`), and the changelog landing page.
+
+- **Pages** — `.mdx` files. Every `.md`/`.mdx` file becomes a live page, so don't leave READMEs or notes in `docs/`.
+- **Images** — next to the page that uses them, imported relatively (`![Setup](./setup.png)`).
+- **Videos** — in `docs/public/`, referenced from the site root (`/nexus/demo.mp4`).
+- **Changelog** — `docs/changelog/`, one manually written page per release, named after the release tag (`v1.0.0-beta.mdx`). Frontmatter: `title` is the tag, `date` is the release date and time in ISO 8601 with a UTC offset (`2026-09-15T14:30:00-07:00`) — the docs site orders releases by it.
