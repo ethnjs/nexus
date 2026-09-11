@@ -221,35 +221,72 @@ function ChipAction({
 // ---------------------------------------------------------------------------
 // Chip — one assigned person. Name only.
 // ---------------------------------------------------------------------------
-function Chip({
-  assignment, roles, roleCatalog, onToggleRole, onPickRole, onRemove, flags, onResizeStart, resizingEdge,
-}: {
-  assignment: Assignment
-  /** Every role this person holds on the event — the lane's roles, not the
-   *  one row's, since a lane is one row per shift *per role*. */
-  roles: AssignmentRole[]
+interface ChipProps {
+  /** The bar this chip draws — one person on the event, every role they hold
+   *  here (a lane is one row per shift *per role*). */
+  lane: Lane
+  eventId: number
   /** Every role the tournament offers, for the pill's picker. */
   roleCatalog: Role[]
+  flagsFor: (a: Assignment) => Flag[]
   /** Adds or removes one role, leaving the rest — the multi-select path. */
-  onToggleRole: (role: AssignmentRole) => void
+  onToggleRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   /** Replaces every role this person holds here with the one picked — the
    *  default path, since swapping a role is far commoner than stacking one. */
-  onPickRole: (role: AssignmentRole) => void
+  onPickRole: (laneKey: string, eventId: number, role: AssignmentRole) => void
   /** Drops the whole bar — every shift, every role. */
-  onRemove: () => void
-  flags: Flag[]
+  onRemove: (laneKey: string, eventId: number) => void
   /** Given, the chip grows its own resize edges — no separate handles. */
   onResizeStart?: (edge: 'start' | 'end', e: ReactPointerEvent) => void
   /** Which edge is mid-drag, so its grip stays lit once the cursor has
    *  outrun the chip. */
   resizingEdge?: 'start' | 'end' | null
-}) {
+}
+
+/**
+ * The draggable shell. useDraggable re-renders this on every drop-target
+ * crossing, and context bypasses memo — so the shell stays thin and the real
+ * chip lives in ChipBody, the same split MemberCard uses.
+ */
+function Chip(props: ChipProps) {
   const [hovered, setHovered] = useState(false)
+  const assignment = props.lane.assignments[0]
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `chip:${assignment.id}`,
     data: { kind: 'chip', assignment },
   })
   const grab = useGrabCursor(listeners)
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onPointerEnter={() => setHovered(true)}
+      onPointerLeave={() => setHovered(false)}
+      onPointerDown={grab.onPointerDown}
+      style={{
+        minWidth: 0,
+        cursor: grab.pressed || isDragging ? 'grabbing' : 'grab',
+        opacity: isDragging ? 0.4 : 1,
+        // dnd-kit makes a draggable focusable, so grabbing one paints the
+        // browser's default focus ring — the black outline. Dragging already
+        // has its own visual state; the ring only adds a hard edge.
+        outline: 'none',
+      }}
+    >
+      <ChipBody {...props} hovered={hovered} />
+    </div>
+  )
+}
+
+const ChipBody = memo(function ChipBody({
+  lane, eventId, roleCatalog, flagsFor, onToggleRole, onPickRole, onRemove, onResizeStart, resizingEdge, hovered,
+}: ChipProps & { hovered: boolean }) {
+  const assignment = lane.assignments[0]
+  const roles = lane.roles
+  // Memoised so a hover toggle doesn't recompute every row's flags.
+  const flags = useMemo(() => laneFlags(lane, flagsFor), [lane, flagsFor])
 
   // The edges live inside the chip and sit above the drag listeners.
   // stopPropagation is what keeps a resize from also starting a drag — the
@@ -286,12 +323,6 @@ function Chip({
 
   return (
     <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
-      onPointerDown={grab.onPointerDown}
       style={{
         position: 'relative',
         display: 'flex', alignItems: 'center', gap: '6px',
@@ -300,12 +331,7 @@ function Chip({
         padding: '4px 14px', borderRadius: 'var(--radius-md)',
         border: `1px solid ${flags.length ? 'var(--color-warning)' : 'var(--color-border)'}`,
         background: flags.length ? 'var(--color-warning-subtle)' : 'var(--color-surface)',
-        fontSize: '12px', cursor: grab.pressed || isDragging ? 'grabbing' : 'grab',
-        opacity: isDragging ? 0.4 : 1,
-        // dnd-kit makes a draggable focusable, so grabbing one paints the
-        // browser's default focus ring — the black outline. Dragging already
-        // has its own visual state; the ring only adds a hard edge.
-        outline: 'none',
+        fontSize: '12px',
         // No `overflow: hidden` here — it clipped the warning tooltip, which
         // renders inside the chip. The name below does its own truncating.
         minWidth: 0,
@@ -332,8 +358,8 @@ function Chip({
         <RolePillMenu
           roles={roles}
           roleCatalog={roleCatalog}
-          onToggleRole={onToggleRole}
-          onPickRole={onPickRole}
+          onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
+          onPickRole={(role) => onPickRole(lane.key, eventId, role)}
         />
       </span>
       {flags.length > 0 && (
@@ -349,7 +375,7 @@ function Chip({
       <ChipAction
         hovered={hovered}
         danger
-        onClick={onRemove}
+        onClick={() => onRemove(lane.key, eventId)}
         title="Remove from this event"
         label={`Remove ${fullName(assignment.member)} from this event`}
       >
@@ -358,7 +384,7 @@ function Chip({
       {onResizeStart && edge('end')}
     </div>
   )
-}
+})
 
 // ---------------------------------------------------------------------------
 // Shift timeline
@@ -396,7 +422,6 @@ function TimelineBar({
 }) {
   const first = Math.min(...lane.covered)
   const last = Math.max(...lane.covered)
-  const flags = laneFlags(lane, flagsFor)
   const [resizingEdge, setResizingEdge] = useState<'start' | 'end' | null>(null)
 
   // A raw pointer drag rather than a dnd-kit draggable: resizing changes how
@@ -457,13 +482,13 @@ function TimelineBar({
   return (
     <div style={{ gridColumn: `${first + 1} / ${last + 2}`, minWidth: 0, padding: '0 3px' }}>
       <Chip
-        assignment={lane.assignments[0]}
-        roles={lane.roles}
+        lane={lane}
+        eventId={eventId}
         roleCatalog={roleCatalog}
-        onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-        onPickRole={(role) => onPickRole(lane.key, eventId, role)}
-        onRemove={() => onRemove(lane.key, eventId)}
-        flags={flags}
+        flagsFor={flagsFor}
+        onToggleRole={onToggleRole}
+        onPickRole={onPickRole}
+        onRemove={onRemove}
         onResizeStart={startResize}
         resizingEdge={resizingEdge}
       />
@@ -738,13 +763,13 @@ function TrackColumn({ eventId, track, lanes, roleCatalog, flagsFor, onToggleRol
         {lanes.map((lane) => (
           <Chip
             key={lane.key}
-            assignment={lane.assignments[0]}
-            roles={lane.roles}
+            lane={lane}
+            eventId={eventId}
             roleCatalog={roleCatalog}
-            onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-            onPickRole={(role) => onPickRole(lane.key, eventId, role)}
-            onRemove={() => onRemove(lane.key, eventId)}
-            flags={laneFlags(lane, flagsFor)}
+            flagsFor={flagsFor}
+            onToggleRole={onToggleRole}
+            onPickRole={onPickRole}
+            onRemove={onRemove}
           />
         ))}
       </div>
@@ -892,13 +917,13 @@ function UnpinnedSection({
             {unpinned.map((lane) => (
               <Chip
                 key={lane.key}
-                assignment={lane.assignments[0]}
-                roles={lane.roles}
+                lane={lane}
+                eventId={eventId}
                 roleCatalog={roleCatalog}
-                onToggleRole={(role) => onToggleRole(lane.key, eventId, role)}
-                onPickRole={(role) => onPickRole(lane.key, eventId, role)}
-                onRemove={() => onRemove(lane.key, eventId)}
-                flags={laneFlags(lane, flagsFor)}
+                flagsFor={flagsFor}
+                onToggleRole={onToggleRole}
+                onPickRole={onPickRole}
+                onRemove={onRemove}
               />
             ))}
           </div>
@@ -953,7 +978,13 @@ function EventRow({
     data: { kind: 'event', eventId: event.id },
     disabled: event.shifts.length > 0 || cosmeticTracks.length > 0,
   })
-
+  // Memoised so the lane objects survive this row's per-crossing re-renders
+  // (useDroppable above) — ChipBody's memo compares them by identity.
+  const hasShifts = event.shifts.length > 0
+  const shiftlessLanes = useMemo(
+    () => (hasShifts ? [] : buildLanes(rowAssignments, []).unpinned),
+    [rowAssignments, hasShifts],
+  )
 
   const location = [event.building, event.room].filter(Boolean).join(' ')
   // The event's window: earliest shift start to latest shift end. Derived,
@@ -1039,8 +1070,8 @@ function EventRow({
         cosmeticTracks.length > 0 ? (
           <NoShiftTracks
             eventId={event.id}
-            tracks={noShiftTracksOf(event, buildLanes(rowAssignments, []).unpinned)}
-            lanes={buildLanes(rowAssignments, []).unpinned}
+            tracks={noShiftTracksOf(event, shiftlessLanes)}
+            lanes={shiftlessLanes}
             roleCatalog={roleCatalog}
             flagsFor={flagsFor}
             onToggleRole={onToggleRole}
@@ -1059,16 +1090,16 @@ function EventRow({
               // No shifts to index against, so every row lands in `unpinned` —
               // which is the grouping we want anyway: one chip per person,
               // carrying however many roles they hold here.
-              buildLanes(rowAssignments, []).unpinned.map((lane) => (
+              shiftlessLanes.map((lane) => (
                 <Chip
                   key={lane.key}
-                  assignment={lane.assignments[0]}
-                  roles={lane.roles}
+                  lane={lane}
+                  eventId={event.id}
                   roleCatalog={roleCatalog}
-                  onToggleRole={(role) => onToggleRole(lane.key, event.id, role)}
-                  onPickRole={(role) => onPickRole(lane.key, event.id, role)}
-                  onRemove={() => onRemove(lane.key, event.id)}
-                  flags={laneFlags(lane, flagsFor)}
+                  flagsFor={flagsFor}
+                  onToggleRole={onToggleRole}
+                  onPickRole={onPickRole}
+                  onRemove={onRemove}
                 />
               ))
             )}
