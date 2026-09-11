@@ -91,12 +91,38 @@ Match the existing convention:
 
 ### Commit messages
 
-`type(scope): summary` — one line, no bullet body. `type` is `feat`/`fix`/`refactor`/`docs`/`style`/`test`/`chore`; `scope` is the area touched (`forms`, `tournament`, `ui`, `db`, etc).
+[Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary` — one line, no bullet body. `scope` is optional and names the area touched (`forms`, `tournament`, `ui`, `db`, etc).
 
 ```
 feat(forms): add branching validation for single/multi-select
 fix(db): enable pool_pre_ping to survive Railway's idle connection drops
+feat(api)!: rename /tournaments/{id}/members to /memberships
 ```
+
+The `type` matters: release-please reads commit messages on `main` to pick the next version and write the changelog.
+
+| Type | Use for | Version bump |
+|---|---|---|
+| `feat` | New user-facing functionality | minor |
+| `fix` | Bug fix | patch |
+| `perf` | Performance improvement, no behavior change | patch |
+| `refactor` | Code change, no behavior change | none |
+| `docs` | Docs only | none |
+| `style` | Formatting only | none |
+| `test` | Tests only | none |
+| `build` | Dependencies, build tooling, release config | none |
+| `ci` | GitHub Actions workflows | none |
+| `chore` | Anything else that doesn't ship | none |
+
+**Breaking changes** bump major. Mark them with `!` after the type/scope (`feat!:`, `fix(api)!:`) — this keeps the message single-line. A `BREAKING CHANGE: <description>` footer is also recognized, but prefer `!`.
+
+Pick the type by what the change *does for users*, not by what files it touches — a `fix` that's mislabeled `chore` never gets released.
+
+### Versioning
+
+- SemVer, with the version in `package.json` as the single source of truth — the API's OpenAPI version reads from it.
+- During the pilot year, every release carries a flat `-beta` suffix (e.g. `v0.4.0-beta`), not an incrementing `beta.N`.
+- Versions are never bumped by hand — release-please opens a release PR, and merging it tags the release.
 
 ### Before opening a PR
 
