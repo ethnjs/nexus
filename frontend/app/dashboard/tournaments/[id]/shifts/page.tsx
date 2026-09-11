@@ -18,6 +18,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ShiftPanel, SHIFT_PANEL_WIDTH } from "@/components/tournament/events/ShiftPanel";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { IconPlus, IconCalendar, IconEdit, IconTrash, IconLock } from "@/components/ui/Icons";
 import { useParams } from "next/navigation";
@@ -61,6 +62,9 @@ export default function ShiftsPage() {
   // panel stays open on the new shift, so without a remount Add is a no-op.
   const [createKey, setCreateKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
+  // Bumped when the tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
 
   const initialShiftId = useInitialPanelId("shift");
   const {
@@ -104,7 +108,7 @@ export default function ShiftsPage() {
       });
     tournamentEventsApi.list(tournamentId).then(setEvents).catch(() => setEvents([]));
     loadTracks();
-  }, [tournamentId, canManageEvents, loadTracks]);
+  }, [tournamentId, canManageEvents, loadTracks, refreshKey]);
 
   const trackById = useCallback(
     (trackId: number) => tracks.find((t) => t.id === trackId),

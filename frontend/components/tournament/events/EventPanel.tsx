@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi, ApiError,
+  tournamentEventsApi, ApiError,
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
 } from "@/lib/api";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
@@ -67,6 +68,13 @@ interface EventPanelProps {
   onClose: () => void;
   onSaved: (event: TournamentEvent) => void;
   onDeleted: (id: number) => void;
+  /** Catalogs, loaded once by the page — the panel remounts per event, so
+   *  fetching them here re-requested all three on every arrow press. */
+  canonicalEvents: CanonicalEvent[];
+  allShifts: TournamentShift[] | null;
+  tracks: TournamentTrack[];
+  /** A shift created from this panel, for the page's catalog. */
+  onShiftCreated: (shift: TournamentShift) => void;
   /** Lets the owning table block selection changes while this panel is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while creating a new event, or editing several at once). */
@@ -78,6 +86,7 @@ interface EventPanelProps {
 
 export function EventPanel({
   tournamentId, event, locked, onClose, onSaved, onDeleted, onDirtyChange, onPrev, onNext, hasPrev, hasNext,
+  canonicalEvents, allShifts, tracks, onShiftCreated,
 }: EventPanelProps) {
   const { selectedTournament } = useTournament();
   const divisions = selectedTournament?.division ?? [];
@@ -90,25 +99,11 @@ export function EventPanel({
   // A single-day tournament has only one valid day anyway — default to it
   // immediately instead of making every new event pick it.
   const [draft, setDraft] = useState<EventDraft>(() => draftFromEvent(event));
-  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
-  const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
-  // Every live track, competition day or not: an event can belong to an
-  // undated one (Test Writing), which is the whole point of the bridge.
-  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
   const [showDelete, setShowDelete] = useState(false);
   const [shiftError, setShiftError] = useState<string | undefined>(undefined);
-
-  useEffect(() => {
-    canonicalEventsApi.list().then(setCanonicalEvents).catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    tournamentShiftsApi.list(tournamentId).then(setAllShifts).catch(() => setAllShifts([]));
-    tournamentTracksApi.list(tournamentId, { public: true }).then(setTracks).catch(() => setTracks([]));
-  }, [tournamentId]);
 
   const isNew = current === null;
   // For a new event this compares against the blank default draft, so an
@@ -120,6 +115,31 @@ export function EventPanel({
   );
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+
+  // The list's copy can be stale (a collaborator's edit), so the panel reads
+  // its own row on open and whenever the tab regains focus. Applied only while
+  // the draft is untouched — a ref, since the response lands after render.
+  const dirtyRef = useRef(isDirty);
+  useEffect(() => { dirtyRef.current = isDirty; });
+  const eventId = event?.id ?? null;
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1), eventId !== null);
+  useEffect(() => {
+    if (eventId === null) return;
+    let active = true;
+    tournamentEventsApi.get(tournamentId, eventId)
+      .then((fresh) => {
+        if (!active || dirtyRef.current) return;
+        setCurrent(fresh);
+        setDraft(draftFromEvent(fresh));
+        onSaved(fresh);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  // onSaved is deliberately left out: a new identity per page render must
+  // not refetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, eventId, refreshKey]);
 
   function patch(p: Partial<EventDraft>) {
     setDraft((d) => ({ ...d, ...p }));
@@ -206,7 +226,7 @@ export function EventPanel({
   // PATCH failing would orphan a created-but-unattached shift, but it stays
   // visible on the Shifts tab and in the Add-shift list either way.
   async function handleCreateAndAttachShift(shift: TournamentShift) {
-    setAllShifts((prev) => [...(prev ?? []), shift]);
+    onShiftCreated(shift);
     await handleAttachShift(shift);
   }
 
@@ -215,7 +235,12 @@ export function EventPanel({
     await setShiftIds(current.shifts.filter((s) => s.id !== shiftId).map((s) => s.id)).catch(() => {});
   }
 
-  const trackNames = useMemo(() => new Map(tracks.map((t) => [t.id, t.name])), [tracks]);
+  // Seeded from the event's own tracks, which the events GET already names —
+  // the catalog fetch lands after mount, and chips showed raw ids until then.
+  const trackNames = useMemo(
+    () => new Map([...(current?.tracks ?? []), ...tracks].map((t) => [t.id, t.name])),
+    [current, tracks],
+  );
   const pendingTrackNames = useMemo(
     () => new Set(pendingTracks(tracks).map((t) => t.name)),
     [tracks],

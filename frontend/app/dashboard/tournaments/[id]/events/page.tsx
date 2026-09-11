@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
-  tournamentEventsApi, displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
-  TournamentEvent, TournamentDivision, TournamentTrack,
+  tournamentEventsApi, tournamentShiftsApi, tournamentTracksApi, canonicalEventsApi,
+  displayConfigApi, ApiError, DisplayConfig, DisplayConfigSurface,
+  TournamentEvent, TournamentDivision, TournamentTrack, TournamentShift, CanonicalEvent,
 } from "@/lib/api";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -107,6 +109,20 @@ export default function EventsPage() {
   // Bumped on a Display save so the effect below re-reads the just-saved
   // columns — it otherwise only runs on a tournament change.
   const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
+  // Catalogs the panel needs, loaded once here: the panel remounts per event,
+  // so fetching them there re-requested all three on every arrow press.
+  const [canonicalEvents, setCanonicalEvents] = useState<CanonicalEvent[]>([]);
+  const [allShifts, setAllShifts] = useState<TournamentShift[] | null>(null);
+  // Every live track, competition day or not: an event can belong to an
+  // undated one (Test Writing).
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Bumped when the tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
+  const handleShiftCreated = useCallback(
+    (shift: TournamentShift) => setAllShifts((prev) => [...(prev ?? []), shift]),
+    [],
+  );
 
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
@@ -185,7 +201,24 @@ export default function EventsPage() {
         setLoadError(err instanceof ApiError ? err.message : "Failed to load events.");
       });
     return () => { current = false; };
-  }, [tournamentId, canManageEvents]);
+  }, [tournamentId, canManageEvents, refreshKey]);
+
+  useEffect(() => {
+    if (!canManageEvents) return;
+    let current = true;
+    tournamentShiftsApi.list(tournamentId)
+      .then((next) => { if (current) setAllShifts(next); })
+      .catch(() => { if (current) setAllShifts([]); });
+    tournamentTracksApi.list(tournamentId, { public: true })
+      .then((next) => { if (current) setTracks(next); })
+      .catch(() => { if (current) setTracks([]); });
+    return () => { current = false; };
+  }, [tournamentId, canManageEvents, refreshKey]);
+
+  // The global catalog — changes on an admin's schedule, not a tournament's.
+  useEffect(() => {
+    canonicalEventsApi.list().then(setCanonicalEvents).catch(() => {});
+  }, []);
 
   // This viewer's saved view of the table — columns, filters and sort. The
   // catalog isn't needed here (unlike the roster's): every events column is a
@@ -309,12 +342,14 @@ export default function EventsPage() {
     // when the render below is the no-access card, and that page has no
     // panel to dock.
     if (!canManageEvents) return;
+    const catalog = { canonicalEvents, allShifts, tracks, onShiftCreated: handleShiftCreated };
     if (creatingNew) {
       setPanel(
         <EventPanel
           key={`new-${createKey}`}
           tournamentId={tournamentId}
           event={null}
+          {...catalog}
           locked={isArchived}
           onClose={clearCreatingNew}
           onDirtyChange={setPanelDirty}
@@ -346,6 +381,7 @@ export default function EventsPage() {
           key={event.id}
           tournamentId={tournamentId}
           event={event}
+          {...catalog}
           locked={isArchived}
           onClose={clearFocus}
           onDirtyChange={setPanelDirty}
@@ -367,6 +403,7 @@ export default function EventsPage() {
           key={selectedEvents[0].id}
           tournamentId={tournamentId}
           event={selectedEvents[0]}
+          {...catalog}
           locked={isArchived}
           onClose={clearSelection}
           onDirtyChange={setPanelDirty}
@@ -396,6 +433,7 @@ export default function EventsPage() {
   }, [
     canManageEvents,
     creatingNew, createKey, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
+    canonicalEvents, allShifts, tracks, handleShiftCreated,
     prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);
