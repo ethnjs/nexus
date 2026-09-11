@@ -435,8 +435,10 @@ export default function MembersPage() {
     [allRoles]
   );
 
+  // Roles only — every caller is a roles PATCH, whose response carries none of
+  // the built groups; swapping the whole row would blank the row's columns.
   const handleMemberUpdated = useCallback((updated: MembershipFull) => {
-    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
+    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)));
   }, []);
 
   // Either flow narrows the table for a docked panel — drop the Roles

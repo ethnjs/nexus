@@ -1786,7 +1786,11 @@ export default function AssignmentsPage() {
             // the control entirely rather than wiring a flow that doesn't
             // belong here.
             onClose={() => setFocusedId(null)}
-            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))}
+            // Roles only: the roles PATCH returns none of the built groups
+            // (event prefs, track statuses), so swapping the row would blank them.
+            onUpdated={(updated) => setMembers((prev) => prev.map((m) => (
+              m.id === updated.id ? { ...m, roles: updated.roles } : m
+            )))}
             onAssignmentsChanged={() => refreshMemberRows(focused.id)}
             assignmentsVersion={panelAssignmentsVersion}
             onPrev={() => index > 0 && setFocusedId(belt[index - 1].id)}
