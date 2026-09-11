@@ -47,6 +47,20 @@ def list_shifts(
     return query.order_by(TournamentShift.start).all()
 
 
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/shifts/{shift_id}/ — any member, same gate
+# as the list. The shift panel reads its own row fresh on open.
+# ---------------------------------------------------------------------------
+@router.get("/{shift_id}/", response_model=TournamentShiftRead)
+def get_shift(
+    tournament_id: int,
+    shift_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_membership()),
+):
+    return get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
+
+
 def _resolve_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrack:
     """The track a shift is being placed on, rejected unless it can actually
     hold one. Only a primary track has dates, and a shift with no date range

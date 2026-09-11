@@ -34,6 +34,7 @@ import {
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
@@ -258,6 +259,9 @@ export default function MembersPage() {
   // Unfiltered roster size. `members` is already server-filtered, so it
   // can't supply the "of N" half of the count.
   const [totalMembers, setTotalMembers] = useState<number | null>(null);
+  // Bumped when the browser tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
@@ -329,7 +333,7 @@ export default function MembersPage() {
       .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });
     rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
     return () => { current = false; };
-  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters]);
+  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters, refreshKey]);
 
   // Identity-only (fields: []) since only the length is used.
   useEffect(() => {
@@ -339,7 +343,7 @@ export default function MembersPage() {
       .then((rows) => { if (current) setTotalMembers(rows.length); })
       .catch(() => {});
     return () => { current = false; };
-  }, [tournamentId, canManageMembers]);
+  }, [tournamentId, canManageMembers, refreshKey]);
 
   // This viewer's saved view of the table — columns, filters and sort — plus
   // the catalog that names each column key. Both halves are needed before a

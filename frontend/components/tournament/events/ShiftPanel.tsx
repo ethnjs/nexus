@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   tournamentShiftsApi, tournamentEventsApi, ApiError,
   TournamentEvent, TournamentShift, TournamentTrack,
@@ -8,6 +8,7 @@ import {
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { toDateInput, toTimeInput, fromDayAndTime } from "@/lib/timeFormat";
 import { eventNameWithDivision } from "@/lib/eventDisplay";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
@@ -116,6 +117,29 @@ export function ShiftPanel({
   );
 
   useEffect(() => { onDirtyChange?.(isDirty); }, [isDirty, onDirtyChange]);
+
+  // Same as EventPanel: read the row fresh on open and on tab focus, applied
+  // only while the draft is untouched (a ref — the response lands later).
+  const dirtyRef = useRef(isDirty);
+  useEffect(() => { dirtyRef.current = isDirty; });
+  const shiftId = shift?.id ?? null;
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1), shiftId !== null);
+  useEffect(() => {
+    if (shiftId === null) return;
+    let active = true;
+    tournamentShiftsApi.get(tournamentId, shiftId)
+      .then((fresh) => {
+        if (!active || dirtyRef.current) return;
+        setCurrent(fresh);
+        setDraft(draftWithDayDefault(fresh, defaultTrackId, tracks));
+        onSaved(fresh);
+      })
+      .catch(() => {});
+    return () => { active = false; };
+  // Callbacks and catalogs left out: only the shift and a focus bump refetch.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tournamentId, shiftId, refreshKey]);
 
   const track = tracks.find((t) => t.id === draft.trackId);
   // A pending-delete track can't take a shift (the backend 409s), so it is

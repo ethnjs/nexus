@@ -562,6 +562,8 @@ export const tournamentShiftsApi = {
     api.get<TournamentShift[]>(
       `/tournaments/${tournamentId}/shifts/${opts.trackId ? `?track_id=${opts.trackId}` : ""}`,
     ),
+  get: (tournamentId: number, id: number) =>
+    api.get<TournamentShift>(`/tournaments/${tournamentId}/shifts/${id}/`),
   create: (tournamentId: number, body: TournamentShiftInput) =>
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>

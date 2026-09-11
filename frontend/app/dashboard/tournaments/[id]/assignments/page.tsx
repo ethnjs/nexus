@@ -34,6 +34,7 @@ import { DockedPanel } from '@/components/layout/DockedPanel'
 import { useBoardDragging, useRegisterBoardDnd } from '@/components/assignments/BoardDnd'
 import { RolePillMenu } from '@/components/assignments/RolePillMenu'
 import { MemberPanel, MEMBER_PANEL_WIDTH } from '@/components/tournament/MemberPanel'
+import { useRefetchOnFocus } from '@/lib/useRefetchOnFocus'
 import {
   MembersFilterModal, emptyMembersFilter, isMembersFilterActive,
   membersFilterFromStored, membersFilterToStored, membersFilterParams,
@@ -1156,6 +1157,9 @@ export default function AssignmentsPage() {
   // Bumped after any assignment write lands, so the belt's server-side
   // filter (the assigned filter especially) re-reads.
   const [boardWriteVersion, setBoardWriteVersion] = useState(0)
+  // Bumped when the browser tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0)
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1))
   const [allShifts, setAllShifts] = useState<TournamentShift[]>([])
   const [roleCatalog, setRoleCatalog] = useState<Role[]>([])
   const [tracks, setTracks] = useState<TournamentTrack[]>([])
@@ -1276,7 +1280,7 @@ export default function AssignmentsPage() {
     // than the page 403ing outright.
     membersApi.list(tournamentId).then((data) => { if (current) setMembers(data) }).catch(() => {})
     return () => { current = false }
-  }, [tournamentId, canView])
+  }, [tournamentId, canView, refreshKey])
 
   // Every event with its hidden tracks stripped out — shifts and tracks both.
   // Derived once and read by *everything* downstream, render and handlers
@@ -1383,7 +1387,7 @@ export default function AssignmentsPage() {
       .then((data) => { if (current) setFilterMatchIds(new Set(data.map((m) => m.id))) })
       .catch(() => { if (current) setFilterMatchIds(null) })
     return () => { current = false }
-  }, [tournamentId, canView, memberFilters, boardWriteVersion])
+  }, [tournamentId, canView, memberFilters, boardWriteVersion, refreshKey])
 
   const belt = useMemo(() => {
     const text = memberQuery.trim().toLowerCase()
