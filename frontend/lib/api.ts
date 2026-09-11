@@ -1029,6 +1029,34 @@ export interface MembershipMe extends MembershipBase {
   needs_age_consent: boolean
 }
 
+// Matches MemberSummaryResponse — GET /members/summary/, manage_members.
+// Counts only; the roster is where the people are.
+export interface MemberSummaryAvailabilityOption {
+  option_id:  string
+  label:      string
+  confirmed:  number
+  interested: number
+}
+
+export interface MemberSummaryTrack {
+  track_id:     number
+  name:         string
+  confirmed:    number
+  interested:   number
+  declined:     number
+  pending:      number
+  // Each member counts once, under the largest option their shifts fully
+  // cover — an all-day volunteer isn't also counted as morning.
+  availability: MemberSummaryAvailabilityOption[]
+}
+
+export interface MemberSummary {
+  member_count: number
+  // null when the tournament has no live onboarding steps.
+  onboarding:   { steps: number; completed: number; started: number } | null
+  tracks:       MemberSummaryTrack[]
+}
+
 // Matches build_filter_options — every value is a {value,label} pair whose
 // `value` is exactly what the matching query param takes.
 export interface MemberFilterOptions {
@@ -1106,6 +1134,8 @@ export const membersApi = {
   // tournament actually holds.
   filterOptions: (tournamentId: number) =>
     api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/members/filter-options/`),
+  summary: (tournamentId: number) =>
+    api.get<MemberSummary>(`/tournaments/${tournamentId}/members/summary/`),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
   get: (tournamentId: number, id: number, surface?: string, fields?: MembershipField[]) => {

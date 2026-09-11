@@ -21,6 +21,7 @@ from app.core.tournament.memberships import (
     delete_tournament_form_responses, enrich_built_groups, gate_age_flags,
     get_custom_form_answers, get_membership_by_user, onboarding_reads, resolve_person_refs,
 )
+from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
 )
@@ -50,6 +51,7 @@ from app.schemas.tournament.membership import (
     MembershipLunchRead,
     MembershipLunchUpdate, MembershipMeResponse, MembershipTrackStatusUpdate,
 )
+from app.schemas.tournament.member_summary import MemberSummaryResponse
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
@@ -230,6 +232,22 @@ def get_member_filter_options(
 ):
     tournament = get_tournament(tournament_id, db)
     return build_filter_options(db, tournament)
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/members/summary/ — manage_members
+# The overview's members widget. Its own route rather than a roster param:
+# it returns counts, not memberships, so it shares no shape with GET /members/.
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.get("/summary/", response_model=MemberSummaryResponse)
+def get_member_summary(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    return build_member_summary(db, tournament)
 
 
 # ---------------------------------------------------------------------------
