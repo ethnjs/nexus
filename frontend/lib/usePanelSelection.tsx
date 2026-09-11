@@ -39,7 +39,7 @@ export interface PanelSelection {
   clearFocus: () => void;
   clearSelection: () => void;
   /** Drop a deleted/removed row out of whichever state still points at it. */
-  forgetItem: (id: number) => void;
+  forgetItem: (ids: number | number[]) => void;
   /**
    * Start a caller-owned flow that owns the panel but has no row behind it
    * (Events' "new event" draft). Blocked while dirty and clears focus +
@@ -168,13 +168,14 @@ export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSel
 
   // Otherwise a deleted-but-still-selected/focused row would keep a panel
   // open against a row that no longer exists.
-  const forgetItem = useCallback((id: number) => {
-    if (selectedIds.has(id)) {
-      const next = new Set(selectedIds);
-      next.delete(id);
-      applySelection(next);
+  // Takes a list for bulk deletes: calling it once per id in a loop would
+  // start every call from the same stale selectedIds, keeping all but one.
+  const forgetItem = useCallback((ids: number | number[]) => {
+    const gone = new Set(Array.isArray(ids) ? ids : [ids]);
+    if ([...gone].some((id) => selectedIds.has(id))) {
+      applySelection(new Set([...selectedIds].filter((id) => !gone.has(id))));
     }
-    setFocusedId((prev) => (prev === id ? null : prev));
+    setFocusedId((prev) => (prev !== null && gone.has(prev) ? null : prev));
   }, [selectedIds, applySelection]);
 
   // Prev/next only make sense for the plain single-focus flow (not while

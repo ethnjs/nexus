@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
+import { useToast } from "@/lib/useToast";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
@@ -18,7 +19,7 @@ import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
-import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye, IconLock } from "@/components/ui/Icons";
+import { IconSearch, IconArrowDown, IconEvents, IconWarning, IconEdit, IconPlus, IconTrash, IconFilter, IconX, IconEye, IconLock, IconCopy } from "@/components/ui/Icons";
 import { LoadDefaultEventsModal } from "@/components/tournament/events/LoadDefaultEventsModal";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
@@ -105,7 +106,10 @@ export default function EventsPage() {
   // Bumped per Add click and used as the create panel's key, so Add always
   // opens a blank draft even when the create panel is already up.
   const [createKey, setCreateKey] = useState(0);
-  const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
+  // One event from a row's trash button, or the whole selection from the toolbar.
+  const [deleteTargets, setDeleteTargets] = useState<TournamentEvent[] | null>(null);
+  const [duplicating, setDuplicating] = useState(false);
+  const { show } = useToast();
   // Bumped on a Display save so the effect below re-reads the just-saved
   // columns — it otherwise only runs on a tournament change.
   const [displayConfigVersion, setDisplayConfigVersion] = useState(0);
@@ -178,6 +182,36 @@ export default function EventsPage() {
       setCreatingNew(true);
       setCreateKey((k) => k + 1);
     });
+  }
+
+  // Exact copies, tracks and shifts included. A custom event gets "(copy)" on
+  // its name; a catalog event keeps its link, so the backend refuses a copy in
+  // the same division (one per division) and the toast says so.
+  async function duplicateSelected() {
+    setDuplicating(true);
+    const outcomes = await Promise.allSettled(selectedEvents.map((e) => tournamentEventsApi.create(tournamentId, {
+      tournament_id: tournamentId,
+      event_id: e.event_id,
+      name: e.event_id ? null : `${e.name ?? "Event"} (copy)`,
+      division: e.division,
+      event_type: e.event_type,
+      building: e.building,
+      room: e.room,
+      floor: e.floor,
+      volunteers_needed: e.volunteers_needed,
+      track_ids: e.tracks.map((t) => t.id),
+      shift_ids: e.shifts.map((s) => s.id),
+    })));
+    const created = outcomes.flatMap((o) => (o.status === "fulfilled" ? [o.value] : []));
+    if (created.length > 0) setEvents((prev) => [...(prev ?? []), ...created]);
+    const failure = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
+    if (failure) {
+      const reason = failure.reason instanceof ApiError ? failure.reason.message : "Something went wrong.";
+      show(`Duplicated ${created.length}, ${outcomes.length - created.length} failed: ${reason}`, "error");
+    } else {
+      show(`Duplicated ${created.length} event${created.length === 1 ? "" : "s"}.`);
+    }
+    setDuplicating(false);
   }
 
   // Gated on the permission, and re-run when it lands: the table used to be a
@@ -655,7 +689,7 @@ export default function EventsPage() {
                   isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents && !isArchived}
                   onFocus={() => focusEvent(e.id)}
-                  onDelete={() => setDeleteTarget(e)}
+                  onDelete={() => setDeleteTargets([e])}
                   selectMode={selectMode}
                   selected={selectedIds.has(e.id)}
                   selectionLocked={panelDirty}
@@ -705,20 +739,35 @@ export default function EventsPage() {
         count={selectedIds.size}
         onEdit={openMassPanel}
         onCancel={toggleSelectMode}
+        actions={
+          <>
+            <Button
+              type="button" variant="secondary" size="sm" iconOnly title="Duplicate selected"
+              disabled={selectedIds.size === 0} loading={duplicating} onClick={duplicateSelected}
+            >
+              <IconCopy size={13} />
+            </Button>
+            <Button
+              type="button" variant="secondary" size="sm" iconOnly title="Delete selected"
+              disabled={selectedIds.size === 0} onClick={() => setDeleteTargets(selectedEvents)}
+            >
+              <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+            </Button>
+          </>
+        }
       />
 
-      {deleteTarget && (
+      {deleteTargets && (
         <DeleteEventModal
           tournamentId={tournamentId}
-          eventId={deleteTarget.id}
-          eventName={eventName(deleteTarget)}
-          onClose={() => setDeleteTarget(null)}
-          onDeleted={() => {
-            setEvents((prev) => (prev ?? []).filter((e) => e.id !== deleteTarget.id));
+          events={deleteTargets}
+          onClose={() => setDeleteTargets(null)}
+          onDeleted={(ids) => {
+            const gone = new Set(ids);
+            setEvents((prev) => (prev ?? []).filter((e) => !gone.has(e.id)));
             // Otherwise a deleted-but-still-selected/focused row would keep
             // a panel open against a row that no longer exists.
-            forgetItem(deleteTarget.id);
-            setDeleteTarget(null);
+            forgetItem(ids);
           }}
         />
       )}

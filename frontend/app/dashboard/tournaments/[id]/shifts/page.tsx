@@ -24,7 +24,7 @@ import { MassShiftEditor, MASS_SHIFT_EDITOR_WIDTH } from "@/components/tournamen
 import { Checkbox } from "@/components/ui/Checkbox";
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import { useToast } from "@/lib/useToast";
-import { IconPlus, IconCalendar, IconEdit, IconTrash, IconLock } from "@/components/ui/Icons";
+import { IconPlus, IconCalendar, IconEdit, IconTrash, IconLock, IconCopy } from "@/components/ui/Icons";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -162,7 +162,7 @@ export default function ShiftsPage() {
   const handleDeleted = useCallback((ids: number[]) => {
     const gone = new Set(ids);
     setShifts((prev) => (prev ?? []).filter((s) => !gone.has(s.id)));
-    ids.forEach(forgetItem);
+    forgetItem(ids);
     loadTracks();
   }, [loadTracks, forgetItem]);
 
@@ -476,16 +476,16 @@ export default function ShiftsPage() {
         actions={
           <>
             <Button
-              type="button" variant="secondary" size="sm"
+              type="button" variant="secondary" size="sm" iconOnly title="Duplicate selected"
               disabled={selectedIds.size === 0} loading={duplicating} onClick={duplicateSelected}
             >
-              Duplicate
+              <IconCopy size={13} />
             </Button>
             <Button
-              type="button" variant="secondary" size="sm"
+              type="button" variant="secondary" size="sm" iconOnly title="Delete selected"
               disabled={selectedIds.size === 0} onClick={() => setDeleteTargets(selectedShifts)}
             >
-              <IconTrash size={13} style={{ color: "var(--color-danger)" }} /> Delete
+              <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
             </Button>
           </>
         }

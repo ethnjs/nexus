@@ -525,8 +525,7 @@ export function EventPanel({
       {showDelete && current && (
         <DeleteEventModal
           tournamentId={tournamentId}
-          eventId={current.id}
-          eventName={draft.eventText || "this event"}
+          events={[current]}
           onClose={() => setShowDelete(false)}
           onDeleted={() => { onDeleted(current.id); onClose(); }}
         />
