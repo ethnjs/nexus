@@ -33,6 +33,8 @@ Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
 
 API reference (Scalar): [http://localhost:8001/reference](http://localhost:8001/reference)
 
+Both UIs are served only when `APP_ENV` is `development` or `preview`. In production the API serves just the spec at `/openapi.json`, which the docs site renders.
+
 Dev seed accounts (created automatically on startup):
 - `admin@nexus.dev` / `admin1234` — admin
 - `user1@nexus.dev` .. `user15@nexus.dev` / `user1234` — regular users, no tournament seeded

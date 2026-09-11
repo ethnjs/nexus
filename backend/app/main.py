@@ -29,6 +29,7 @@ from app.api.routes.chapter import memberships as chapter_memberships
 from app.api.routes.chapter import join_codes as chapter_join_codes
 
 settings = get_settings()
+DEV_DOCS = settings.app_env in ("development", "preview")
 
 
 def _read_app_version() -> str:
@@ -81,6 +82,9 @@ app = FastAPI(
     version=_read_app_version(),
     lifespan=lifespan,
     redirect_slashes=False,
+    # Docs UIs are dev-only; in prod the docs site renders the reference from /openapi.json.
+    docs_url="/docs" if DEV_DOCS else None,
+    redoc_url=None,
 )
 
 app.add_middleware(
@@ -136,9 +140,11 @@ def health_check():
     return {"status": "ok", "env": settings.app_env}
 
 
-@app.get("/reference", include_in_schema=False)
-async def scalar_reference():
-    return get_scalar_api_reference(
-        openapi_url="/openapi.json",
-        title="NEXUS API Reference",
-    )
+if DEV_DOCS:
+    @app.get("/reference", include_in_schema=False)
+    async def scalar_reference():
+        return get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="NEXUS API Reference",
+        )
+
