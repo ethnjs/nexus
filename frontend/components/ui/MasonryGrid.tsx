@@ -1,60 +1,67 @@
 "use client";
 
-import { Children, ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useLayoutEffect, useRef } from "react";
 
 interface MasonryGridProps {
   children: ReactNode;
-  /** Columns are as wide as they need to be to fit this many px. */
+  /** Narrowest a column may get before the grid drops to fewer columns. */
   minColumnWidth?: number;
   gap?: number;
 }
 
 /**
- * A masonry layout that keeps its children in reading order.
+ * Cards in columns, each only as tall as its content, placed in source order.
  *
- * Each item is as tall as its own content — a card listing four tracks is
- * legitimately taller than a single-day one, and a CSS grid would either
- * stretch every card to the tallest or leave a ragged bottom row.
- *
- * The obvious implementation is CSS multi-column, but that fills each column
- * top to bottom before starting the next, so items 1-2-3 stack down the left
- * instead of running across the top. Callers here render deliberately ordered
- * lists (newest first), so instead the items are dealt round-robin across the
- * columns: item n goes to column n % count, and left-to-right order survives.
- * The tradeoff is that column heights balance less evenly than CSS columns
- * manage — acceptable when the items are of broadly similar size.
+ * Rows are 1px and each child spans its own height in rows, so grid's
+ * auto-placement drops every card into the leftmost column that frees up
+ * first. CSS columns would fill top-to-bottom instead, breaking the order.
  */
-export function MasonryGrid({ children, minColumnWidth = 280, gap = 16 }: MasonryGridProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [columnCount, setColumnCount] = useState(1);
+export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: MasonryGridProps) {
+  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
+  useLayoutEffect(() => {
+    const grid = ref.current;
+    if (!grid) return;
 
-    // n columns need n widths plus (n-1) gaps, so solving for n gives the
-    // +gap on both sides of the division.
-    function measure(width: number) {
-      setColumnCount(Math.max(1, Math.floor((width + gap) / (minColumnWidth + gap))));
-    }
+    // Trailing rows past the card's height are the vertical gap.
+    const fit = (el: Element) => {
+      (el as HTMLElement).style.gridRowEnd = `span ${Math.ceil(el.getBoundingClientRect().height) + gap}`;
+    };
+    const resize = new ResizeObserver((entries) => entries.forEach((entry) => fit(entry.target)));
 
-    measure(element.clientWidth);
-    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect.width));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [minColumnWidth, gap]);
+    // DOM children, not React children: a component rendering several cards
+    // (or none, until its fetch lands) still lays out card by card.
+    const observeAll = () => {
+      resize.disconnect();
+      for (const child of Array.from(grid.children)) {
+        fit(child);
+        resize.observe(child);
+      }
+    };
+    observeAll();
+    const mutations = new MutationObserver(observeAll);
+    mutations.observe(grid, { childList: true });
 
-  const items = Children.toArray(children);
-  const columns: ReactNode[][] = Array.from({ length: columnCount }, () => []);
-  items.forEach((item, i) => columns[i % columnCount].push(item));
+    return () => {
+      resize.disconnect();
+      mutations.disconnect();
+    };
+  }, [gap]);
 
   return (
-    <div ref={containerRef} style={{ display: "flex", alignItems: "flex-start", gap: `${gap}px` }}>
-      {columns.map((column, i) => (
-        <div key={i} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: `${gap}px` }}>
-          {column}
-        </div>
-      ))}
+    <div
+      ref={ref}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minColumnWidth}px), 1fr))`,
+        gridAutoRows: "1px",
+        columnGap: `${gap}px`,
+        // Cards keep their content height instead of stretching to their span,
+        // which is what makes the measurement stable.
+        alignItems: "start",
+      }}
+    >
+      {children}
     </div>
   );
 }

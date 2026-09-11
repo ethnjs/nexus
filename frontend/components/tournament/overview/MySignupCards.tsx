@@ -83,7 +83,7 @@ function TrackSignupCard({
   return (
     <Card
       radius="lg"
-      style={{ width: "min(100%, 360px)", padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}
+      style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
         <span style={{
@@ -123,9 +123,7 @@ function TrackSignupCard({
         </>
       )}
 
-      {/* marginTop auto pins the actions to the bottom when a row of cards
-          stretches to its tallest one. */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px", marginTop: "auto" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
         <Button type="button" variant="ghost" size="sm" onClick={onView}>View all</Button>
         <Button
           type="button"
