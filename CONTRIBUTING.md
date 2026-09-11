@@ -120,8 +120,8 @@ Pick the type by what the change *does for users*, not by what files it touches 
 
 ### Versioning
 
-- SemVer, with the version in `package.json` as the single source of truth — the API's OpenAPI version reads from it.
-- During the pilot year, every release carries a flat `-beta` suffix (e.g. `v0.4.0-beta`), not an incrementing `beta.N`.
+- SemVer. `.release-please-manifest.json` tracks the released version; release-please writes it to `frontend/package.json` and `backend/VERSION` (the API's OpenAPI version reads from the latter).
+- During the pilot year, every release carries a flat `-beta` suffix, not an incrementing `beta.N`. The core number still moves normally: `v1.0.0-beta` → `v1.1.0-beta` on a `feat`, → `v1.0.1-beta` on a `fix`.
 - Versions are never bumped by hand — release-please opens a release PR, and merging it tags the release.
 
 ### Before opening a PR
