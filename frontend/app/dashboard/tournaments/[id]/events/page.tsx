@@ -100,6 +100,9 @@ export default function EventsPage() {
   // Creating a new event is the one panel that isn't driven by selection —
   // there's no row to select yet.
   const [creatingNew, setCreatingNew] = useState(false);
+  // Bumped per Add click and used as the create panel's key, so Add always
+  // opens a blank draft even when the create panel is already up.
+  const [createKey, setCreateKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<TournamentEvent | null>(null);
   // Bumped on a Display save so the effect below re-reads the just-saved
   // columns — it otherwise only runs on a tournament change.
@@ -155,7 +158,10 @@ export default function EventsPage() {
   // would silently replace a focused event or an in-progress selection with a
   // blank "new event" draft with no warning.
   function handleAddEvent() {
-    startExternalFlow(() => setCreatingNew(true));
+    startExternalFlow(() => {
+      setCreatingNew(true);
+      setCreateKey((k) => k + 1);
+    });
   }
 
   // Gated on the permission, and re-run when it lands: the table used to be a
@@ -306,6 +312,7 @@ export default function EventsPage() {
     if (creatingNew) {
       setPanel(
         <EventPanel
+          key={`new-${createKey}`}
           tournamentId={tournamentId}
           event={null}
           locked={isArchived}
@@ -388,7 +395,7 @@ export default function EventsPage() {
     clearPanel();
   }, [
     canManageEvents,
-    creatingNew, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
+    creatingNew, createKey, focusedEventId, events, massPanelOpen, selectedEvents, tournamentId, isArchived,
     prevId, nextId, hasPrev, hasNext, focusEvent, setPanelDirty,
     clearFocus, clearCreatingNew, clearSelection, setPanel, clearPanel,
   ]);

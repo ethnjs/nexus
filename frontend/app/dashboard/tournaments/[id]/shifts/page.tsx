@@ -57,6 +57,9 @@ export default function ShiftsPage() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [trackFilter, setTrackFilter] = useState<string>(ALL_TRACKS);
   const [creatingNew, setCreatingNew] = useState(false);
+  // Bumped per Add click and used as the create panel's key. After a save the
+  // panel stays open on the new shift, so without a remount Add is a no-op.
+  const [createKey, setCreateKey] = useState(0);
   const [deleteTarget, setDeleteTarget] = useState<TournamentShift | null>(null);
 
   const initialShiftId = useInitialPanelId("shift");
@@ -174,6 +177,7 @@ export default function ShiftsPage() {
     if (creatingNew) {
       setPanel(
         <ShiftPanel
+          key={`new-${createKey}`}
           tournamentId={tournamentId}
           shift={null}
           tracks={tracks}
@@ -227,7 +231,7 @@ export default function ShiftsPage() {
 
     clearPanel();
   }, [
-    creatingNew, focusedId, shifts, events, tracks, trackFilter, tournamentId,
+    creatingNew, createKey, focusedId, shifts, events, tracks, trackFilter, tournamentId,
     canManageEvents, isArchived, prevId, nextId, hasPrev, hasNext,
     focusItem, clearFocus, clearCreatingNew, setPanelDirty,
     handleSaved, handleDeleted, handleEventUpdated, setPanel, clearPanel,
@@ -277,7 +281,10 @@ export default function ShiftsPage() {
   const canEdit = canManageEvents && !isArchived;
   // Blocked while the panel is dirty and clears whatever else is open —
   // otherwise this silently replaces an in-progress edit with a blank draft.
-  const addShift = () => startExternalFlow(() => setCreatingNew(true));
+  const addShift = () => startExternalFlow(() => {
+    setCreatingNew(true);
+    setCreateKey((k) => k + 1);
+  });
 
   return (
     <div>
