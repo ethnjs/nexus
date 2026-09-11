@@ -9,7 +9,7 @@ import { Toggle } from "@/components/ui/Toggle";
 import { IconPresets, IconX } from "@/components/ui/Icons";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
 import { FormQuestionType, TournamentTrack } from "@/lib/api";
-import { EditableField } from "@/lib/forms/editableField";
+import { EditableField, cleanOption, hasCustomValues } from "@/lib/forms/editableField";
 import {
   PresetKind, PRESETS, activePresetKind, isEntityBackedPreset, slugifyFieldKey, isPresetError, isFieldKeyError,
   presetIncompleteMessage,
@@ -35,12 +35,13 @@ function isAssignmentList(value: unknown): boolean {
 // row. Returns a single starter row only when there was nothing to keep.
 function carryOptions(field: EditableField, kind: PresetKind | null, questionType: FormQuestionType): EditableOption[] {
   if (!OPTION_BEARING_TYPES.includes(questionType)) return [];
-  const supportsBranching = questionType === "single_select_radio" || questionType === "single_select_dropdown";
   const existing = field.config?.options ?? [];
   if (existing.length === 0) return [isEntityBackedPreset(kind) ? newEntityOption() : newOption()];
+  // cleanOption, not a spread: a carried-over key the new shape doesn't
+  // declare (branch keys on a non-branching type, anything preset-specific)
+  // would 422 the save invisibly.
   return existing.map((option) => ({
-    ...option,
-    ...(supportsBranching ? {} : { next_field_id: null, action: null }),
+    ...cleanOption(option, questionType),
     value: isEntityBackedPreset(kind)
       ? (Array.isArray(option.value) && option.value.every((value) => typeof value === "number") ? option.value : [])
       : kind === "track_status"
@@ -135,6 +136,9 @@ export function PresetPopover({
       const options = carryOptions(field, null, field.question_type);
       onFieldChange({
         field_key: slugifyFieldKey(field.label),
+        // Re-derived, not kept: an entity value (an id list) just became the
+        // row's label, so the custom-value list it came from is gone.
+        customValuesEnabled: hasCustomValues(options),
         config: {
           ...sanitizeConfigForType(field.config, field.question_type),
           track_status_enabled: undefined,
@@ -170,6 +174,7 @@ export function PresetPopover({
     onFieldChange({
       field_key: fieldKey,
       question_type: questionType,
+      customValuesEnabled: hasCustomValues(options),
       config: {
         ...sanitizeConfigForType(field.config, questionType),
         required: kind === "track_status" ? true : field.config?.required ?? false,

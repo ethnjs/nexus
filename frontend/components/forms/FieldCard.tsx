@@ -15,7 +15,7 @@ import {
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
-import { EditableField } from "@/lib/forms/editableField";
+import { EditableField, cleanOption } from "@/lib/forms/editableField";
 import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
@@ -265,6 +265,9 @@ export function FieldCard({
   // to fill in via the picker), everything else gets the plain freeform one.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
+    // Per-option keys too — sanitizeConfigForType only knows config-level
+    // ones, and a radio's branch keys on a checkbox option 422 the save.
+    if (config.options) config.options = config.options.map((option) => cleanOption(option, questionType));
     const needsStarterOption = OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
     onFieldChange({

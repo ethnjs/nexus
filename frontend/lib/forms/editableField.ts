@@ -1,7 +1,7 @@
-import { FormField, FormFieldConfig, FormFieldInput } from "@/lib/api";
+import { FormField, FormFieldConfig, FormFieldInput, FormFieldOption, FormQuestionType } from "@/lib/api";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
-import { OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
+import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -37,8 +37,31 @@ export function deriveBranchingEnabled(field: FormField): boolean {
   return (field.config?.options ?? []).some((o) => o.next_field_id != null || o.action != null);
 }
 
+export function hasCustomValues(options: FormFieldOption[] | null | undefined): boolean {
+  return (options ?? []).some((o) => typeof o.value === "string" && o.value !== o.label);
+}
+
 export function deriveCustomValuesEnabled(field: FormField): boolean {
-  return (field.config?.options ?? []).some((o) => typeof o.value === "string" && o.value !== o.label);
+  return hasCustomValues(field.config?.options);
+}
+
+type StagedOption = FormFieldOption & { clientKey?: string };
+
+// Rebuilds an option from only the keys the backend's option schemas declare.
+// They're extra="forbid", so a stray key — even `next_field_id: null` on a
+// checkbox — 422s the whole save with nothing on screen pointing at it.
+// Branch keys survive only on a type that branches.
+export function cleanOption(option: StagedOption, questionType: FormQuestionType): StagedOption {
+  const branching = BRANCHING_TYPES.includes(questionType);
+  return {
+    ...(option.clientKey !== undefined ? { clientKey: option.clientKey } : {}),
+    option_id: option.option_id,
+    value: option.value,
+    label: option.label,
+    ...(option.is_archived !== undefined ? { is_archived: option.is_archived } : {}),
+    ...(branching && option.next_field_id !== undefined ? { next_field_id: option.next_field_id } : {}),
+    ...(branching && option.action !== undefined ? { action: option.action } : {}),
+  };
 }
 
 // Attaches a stable clientKey to every option in a loaded field's config —
@@ -94,9 +117,11 @@ export function toFieldInput(field: EditableField, notifyResponders?: boolean): 
   // batch. Enforced here as well as at each staging site so no editing path
   // can produce a payload the server refuses.
   if (!OPTION_BEARING_TYPES.includes(field.question_type)) delete config.options;
+  // Last line of defence: whatever path staged the options, only schema keys
+  // (and never clientKey) leave the browser.
   if (config.options) {
     config.options = (config.options as EditableOption[]).map((option) => {
-      const { clientKey, ...rest } = option;
+      const { clientKey, ...rest } = cleanOption(option, field.question_type);
       void clientKey;
       return rest;
     });
