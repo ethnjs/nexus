@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { membersApi, sheetsApi, SheetConfig } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { Modal } from "@/components/ui/Modal";
 import { IconArrowLeft, IconEdit, IconWarning, IconExport } from "@/components/ui/Icons";
 import {
@@ -152,6 +153,7 @@ export default function ViewSheetConfigPage() {
   const params = useParams();
   const tournamentId = Number(params.id);
   const configId     = Number(params.configId);
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [config, setConfig]       = useState<SheetConfig | null>(null);
   const [loading, setLoading]     = useState(true);
@@ -270,6 +272,8 @@ export default function ViewSheetConfigPage() {
             variant="secondary"
             size="sm"
             onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}/edit`)}
+            disabled={isArchived}
+            title={archivedReason}
           >
             <IconEdit size={18} />
             Edit
@@ -339,12 +343,17 @@ export default function ViewSheetConfigPage() {
           )}
 
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
-            <Button variant="danger" size="sm" onClick={() => setShowDeleteConfig(true)}>
+            <Button
+              variant="danger" size="sm" onClick={() => setShowDeleteConfig(true)}
+              disabled={isArchived} title={archivedReason}
+            >
               Delete config
             </Button>
             <Button
               variant="danger"
               size="sm"
+              disabled={isArchived}
+              title={archivedReason}
               interactive={false}
               style={{ background: "transparent", color: "var(--color-danger)", borderColor: "var(--color-danger)" }}
               onClick={() => setShowDeleteMemberships(true)}

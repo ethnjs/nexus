@@ -51,6 +51,7 @@ import { useMemberRoleLock } from '@/lib/roles/useMemberRoleLock'
 import { useAuth } from '@/lib/useAuth'
 import { useMyMembership } from '@/lib/useMyMembership'
 import { useTournament } from '@/lib/useTournament'
+import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
@@ -1432,9 +1433,15 @@ export default function AssignmentsPage() {
    *  on the assignments routes (manage_members) — narrower than canView,
    *  which also admits manage_events alone for reading the board. */
   function requireWriteAccess(): boolean {
-    if (canManageMembers) return true
-    show("You need the manage members permission to edit assignments.", 'error')
-    return false
+    if (!canManageMembers) {
+      show("You need the manage members permission to edit assignments.", 'error')
+      return false
+    }
+    if (isArchived) {
+      show(ARCHIVED_REASON, 'error')
+      return false
+    }
+    return true
   }
 
   async function createAssignmentRow(row: Assignment) {
@@ -1622,7 +1629,7 @@ export default function AssignmentsPage() {
    * which fires once, on release, rather than once per pixel.
    */
   function handleResize(laneKey: string, eventId: number, edge: 'start' | 'end', index: number) {
-    if (!canManageMembers) return
+    if (!canManageMembers || isArchived) return
     const event = (boardEvents ?? []).find((e) => e.id === eventId)
     if (!event) return
 

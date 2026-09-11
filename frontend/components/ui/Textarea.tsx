@@ -26,6 +26,8 @@ interface TextProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
   /** Grows the box to fit wrapped content instead of scrolling internally —
    * e.g. a 1-row textarea that should expand as the text wraps to more lines. */
   autoGrow?: boolean
+  /** App-level read-only (e.g. an archived tournament) — same treatment as Input's `locked`. */
+  locked?: boolean
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -50,9 +52,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
   ({
     label, error, fullWidth, rows = 4, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, style,
     expandable = false, expandedWidth = '280px', expandedHeight = '140px', autoGrow = false,
-    onFocus, onBlur, onMouseEnter, onMouseLeave,
+    locked = false, onFocus, onBlur, onMouseEnter, onMouseLeave,
     ...props
   }, ref) => {
+    const inactive = locked || !!props.disabled
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -135,13 +138,13 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             padding: sizing.padding,
             fontFamily: FONT_MAP[font],
             fontSize: sizing.fontSize,
-            background: props.disabled ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
-            color: props.disabled ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
+            background: inactive ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
+            color: inactive ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
             borderRadius: 'var(--radius-sm)',
             outline: 'none',
             width: fullWidth ? '100%' : undefined,
-            cursor: props.disabled ? 'not-allowed' : undefined,
+            cursor: inactive ? 'not-allowed' : undefined,
             resize: autoGrow ? 'none' : undefined,
             transition: 'border-color 150ms ease, width 150ms ease, height 150ms ease',
             overflow: autoGrow ? 'hidden' : sizing.height ? (expanded ? 'auto' : 'hidden') : undefined,
@@ -186,6 +189,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
           className={className}
           value={value ?? ''}
           {...props}
+          disabled={inactive}
         />
         {error && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>

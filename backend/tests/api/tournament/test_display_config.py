@@ -270,7 +270,8 @@ def test_put_display_config_requires_manage_members(client, td_user, other_tourn
     assert response.status_code == 403
 
 
-def test_put_display_config_rejects_archived_tournament(client, td_user, td_tournament, db):
+def test_put_display_config_allowed_on_archived_tournament(client, td_user, td_tournament, db):
+    """Cosmetic and per viewer — archiving freezes data, not how you view it."""
     td_tournament.is_archived = True
     db.commit()
     login(client, "td@test.com", "tdpass")
@@ -278,7 +279,7 @@ def test_put_display_config_rejects_archived_tournament(client, td_user, td_tour
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"members_panel": {"hidden": []}},
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------

@@ -16,8 +16,17 @@ export interface FormActionOption {
 /** Every status move a form offers right now, primary first — shared by the
  *  builder's StatusControl and the forms table so the two can't drift.
  *  Mirrors the backend: an archived form goes back to draft before it can be
- *  republished, and a form with responses can be archived but never deleted. */
-export function formStatusActions(form: { status: FormStatus; response_count: number }): FormActionOption[] {
+ *  republished, and a form with responses can be archived but never deleted.
+ *  `lockedReason` (an archived tournament) disables every move with that reason. */
+export function formStatusActions(
+  form: { status: FormStatus; response_count: number },
+  lockedReason?: string,
+): FormActionOption[] {
+  const options = statusMoves(form);
+  return lockedReason ? options.map((option) => ({ ...option, disabledReason: lockedReason })) : options;
+}
+
+function statusMoves(form: { status: FormStatus; response_count: number }): FormActionOption[] {
   const primary: FormActionOption =
     form.status === "draft"
       ? { action: "publish", label: "Publish", subtitle: "Start accepting responses", target: "published" }

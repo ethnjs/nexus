@@ -6,17 +6,19 @@ import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 
-export function StatusControl({ form, onUpdated, onDeleted }: {
+export function StatusControl({ form, onUpdated, onDeleted, lockedReason }: {
   form: Form;
   onUpdated: (form: Form) => void;
   onDeleted: () => void;
+  /** Set when no status move may run at all (archived tournament). */
+  lockedReason?: string;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
   // The rules for which moves exist live in formStatusActions, shared with
   // the forms table; this only runs them.
-  const [primary, ...rest] = formStatusActions(form);
+  const [primary, ...rest] = formStatusActions(form, lockedReason);
 
   async function run(option: FormActionOption) {
     setError(undefined);
@@ -50,13 +52,13 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
   }));
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }} title={lockedReason}>
       <SplitButton
         label={primary.label}
         variant="primary"
         size="md"
         loading={busy}
-        primaryDisabled={false}
+        primaryDisabled={!!primary.disabledReason}
         onClick={() => run(primary)}
         options={options}
       />

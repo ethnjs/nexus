@@ -313,6 +313,8 @@ class FormRead(BaseModel):
     status: Literal["draft", "published", "archived"]
     owner_type: Literal["tournament", "chapter"]
     tournament_id: int | None = None
+    # Null for a chapter form, which has no tournament to be archived.
+    tournament_is_archived: bool | None = None
     chapter_id: int | None = None
     created_by: int
     created_at: datetime

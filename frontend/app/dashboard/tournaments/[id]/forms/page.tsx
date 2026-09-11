@@ -18,6 +18,7 @@ import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { FormActionIcon } from "@/components/forms/FormActionIcon";
 import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 import { useToast } from "@/lib/useToast";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 
 // Name / Status / Creator / Responses / Updated / Actions. Name and Creator
 // share the free space (Name used to take ~5x Creator's share). Actions is
@@ -32,10 +33,11 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-function FormRow({ form, isLast, onAction }: {
+function FormRow({ form, isLast, onAction, lockedReason }: {
   form: FormListItem;
   isLast: boolean;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  lockedReason?: string;
 }) {
   const [hovered, setHovered] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -86,7 +88,7 @@ function FormRow({ form, isLast, onAction }: {
       <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
         {/* Which moves exist depends on the status and on whether anyone has
             responded — the same rules the builder's status menu uses. */}
-        {formStatusActions(form).map((option) => (
+        {formStatusActions(form, lockedReason).map((option) => (
           <Button
             key={option.action}
             type="button" variant="secondary" size="sm" iconOnly
@@ -117,9 +119,10 @@ function FormRow({ form, isLast, onAction }: {
   );
 }
 
-function FormTable({ forms, onAction }: {
+function FormTable({ forms, onAction, lockedReason }: {
   forms: FormListItem[];
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  lockedReason?: string;
 }) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
@@ -138,7 +141,7 @@ function FormTable({ forms, onAction }: {
       </div>
 
       {forms.map((form, i) => (
-        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} onAction={onAction} />
+        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} onAction={onAction} lockedReason={lockedReason} />
       ))}
     </Card>
   );
@@ -151,6 +154,7 @@ export default function FormsPage() {
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -224,7 +228,10 @@ export default function FormsPage() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
-        <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+        <Button
+          type="button" variant="primary" size="md" onClick={() => setCreating(true)}
+          disabled={isArchived} title={archivedReason}
+        >
           <IconPlus size={14} /> New Form
         </Button>
       </div>
@@ -242,14 +249,17 @@ export default function FormsPage() {
             title="No forms yet"
             description="Create a form to start collecting responses from members."
             action={
-              <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Button
+                type="button" variant="primary" size="sm" onClick={() => setCreating(true)}
+                disabled={isArchived} title={archivedReason}
+              >
                 <IconPlus size={14} /> New Form
               </Button>
             }
           />
         </Card>
       ) : (
-        <FormTable forms={forms} onAction={handleAction} />
+        <FormTable forms={forms} onAction={handleAction} lockedReason={archivedReason} />
       )}
 
       {deleteTarget && (

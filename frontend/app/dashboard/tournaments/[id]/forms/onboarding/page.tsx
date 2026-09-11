@@ -10,6 +10,8 @@ import { CSS } from "@dnd-kit/utilities";
 import { formsApi, tournamentOnboardingApi, FormListItem, OnboardingForm, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { useArchiveLock } from "@/lib/useArchiveLock";
+import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -25,6 +27,7 @@ export default function OnboardingFormsPage() {
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [allForms, setAllForms] = useState<FormListItem[] | null>(null);
   const [baseline, setBaseline] = useState<OnboardingForm[] | null>(null);
@@ -151,7 +154,7 @@ export default function OnboardingFormsPage() {
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
         <Popover
           trigger={
-            <Button type="button" variant="primary" size="md">
+            <Button type="button" variant="primary" size="md" disabled={isArchived} title={archivedReason}>
               <IconPlus size={14} /> Add form
             </Button>
           }
@@ -189,6 +192,7 @@ export default function OnboardingFormsPage() {
                   form={form}
                   step={i + 1}
                   removing={removingId === form.id}
+                  lockedReason={archivedReason}
                   onEdit={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
                   onRemove={() => handleRemove(form.id)}
                 />
@@ -232,14 +236,24 @@ function OnboardingFormPill({ form, dragging = false }: { form: OnboardingForm; 
   );
 }
 
-function OnboardingFormRow({ form, step, removing, onEdit, onRemove }: {
+// Onboarding walks published steps only — anything else is skipped, not
+// blocking, so the TD needs to see which steps members won't get right now.
+const SKIP_REASON: Partial<Record<OnboardingForm["status"], string>> = {
+  draft: "Skipped — form is a draft",
+  archived: "Skipped — form is archived",
+};
+
+function OnboardingFormRow({ form, step, removing, lockedReason, onEdit, onRemove }: {
   form: OnboardingForm;
   step: number;
   removing: boolean;
+  /** Archived tournament — the sequence is frozen: no reordering or removing. */
+  lockedReason?: string;
   onEdit: () => void;
   onRemove: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: form.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: form.id, disabled: !!lockedReason });
+  const skipReason = SKIP_REASON[form.status];
   const [hovered, setHovered] = useState(false);
   const style = {
     transform: isDragging ? undefined : CSS.Translate.toString(transform),
@@ -266,7 +280,7 @@ function OnboardingFormRow({ form, step, removing, onEdit, onRemove }: {
           position: "absolute", left: "-7px", top: "50%", transform: "translateY(-50%)",
           display: "flex", padding: "2px", color: "var(--color-text-tertiary)",
           border: "none", background: "transparent", cursor: "grab", touchAction: "none",
-          opacity: hovered ? 1 : 0, pointerEvents: hovered ? "auto" : "none", transition: "opacity 100ms ease",
+          opacity: hovered && !lockedReason ? 1 : 0, pointerEvents: hovered && !lockedReason ? "auto" : "none", transition: "opacity 100ms ease",
         }}
       >
         <IconGripVertical size={16} />
@@ -285,13 +299,19 @@ function OnboardingFormRow({ form, step, removing, onEdit, onRemove }: {
         background: "var(--color-surface)",
       }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500, flex: 1 }}>{form.name}</span>
+        {skipReason && (
+          <Badge variant="warning" title="Members skip this step until the form is published again.">
+            {skipReason}
+          </Badge>
+        )}
         <div style={{ display: "flex", gap: "6px" }}>
           <Button type="button" variant="secondary" size="sm" iconOnly title="Edit form" onClick={onEdit}>
             <IconEdit size={13} />
           </Button>
           <Button
             type="button" variant="secondary" size="sm" iconOnly loading={removing}
-            title="Remove from onboarding"
+            disabled={!!lockedReason}
+            title={lockedReason ?? "Remove from onboarding"}
             onClick={onRemove}
             style={{ color: "var(--color-danger)" }}
           >

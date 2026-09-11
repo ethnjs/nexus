@@ -11,6 +11,8 @@ interface EditableTextProps {
   title?: string
   /** Mount already in edit mode with the field focused — for text created empty by a button press, where the next thing the user does is always name it. */
   startEditing?: boolean
+  /** Reads as plain text and can't enter edit mode — put the reason in `title`. */
+  locked?: boolean
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -30,7 +32,7 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false }: EditableTextProps) {
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false }: EditableTextProps) {
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -124,13 +126,13 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
 
   return (
     <span
-      onClick={startEdit}
+      onClick={locked ? undefined : startEdit}
       title={title}
       style={{
         ...style,
         ...BOX_STYLE,
         color: 'var(--color-text-primary)',
-        cursor: 'text',
+        cursor: locked ? 'not-allowed' : 'text',
         borderBottom: '1px solid transparent',
       }}
     >

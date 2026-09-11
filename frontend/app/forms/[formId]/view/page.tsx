@@ -62,18 +62,32 @@ export default function FormViewPage() {
     return <div style={{ display: "flex", justifyContent: "center", padding: "80px 0" }}><Spinner size="lg" /></div>;
   }
 
+  // Nothing left to review — the response stands as submitted, and there's
+  // no self-serve way to revise it (see backend/form-edit-lifecycle.md).
+  if (existing && existing.pending_updates.length === 0) {
+    return (
+      <div style={{ padding: "80px 24px", textAlign: "center" }}>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+          You&rsquo;ve already completed this form. Ask an organizer if something needs changing.
+        </p>
+      </div>
+    );
+  }
+
+  // A manager can still open a draft/archived form here, and an archived
+  // tournament freezes every form — say so up front rather than letting
+  // someone fill it out only to have the submit rejected.
+  if (form.status !== "published" || form.tournament_is_archived) {
+    return (
+      <div style={{ padding: "80px 24px", textAlign: "center" }}>
+        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+          This form isn&rsquo;t accepting responses right now.
+        </p>
+      </div>
+    );
+  }
+
   if (existing) {
-    // Nothing left to review — the response stands as submitted, and there's
-    // no self-serve way to revise it (see backend/form-edit-lifecycle.md).
-    if (existing.pending_updates.length === 0) {
-      return (
-        <div style={{ padding: "80px 24px", textAlign: "center" }}>
-          <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            You&rsquo;ve already completed this form. Ask an organizer if something needs changing.
-          </p>
-        </div>
-      );
-    }
     return (
       <FormUpdateFlow
         form={form}

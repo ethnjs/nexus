@@ -25,6 +25,7 @@ import { StepIndicator } from "@/components/ui/StepIndicator";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/tournament/sheets/SheetMappingValidationModals";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -139,6 +140,9 @@ export default function NewSheetPage() {
   const router       = useRouter();
   const params       = useParams();
   const tournamentId = Number(params.id);
+  // Reachable by URL even with the list's Add button locked — the final
+  // save is where it has to stop.
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [step, setStep] = useState<Step>("url");
 
@@ -612,7 +616,7 @@ export default function NewSheetPage() {
             {renderErrorBanner()}
             <div style={{ display: "flex", gap: "10px" }}>
               <Button variant="secondary" size="lg" onClick={() => setStep(sheetType === "volunteers" ? "form-url" : "sheet-select")}>Back</Button>
-              <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync}>Save &amp; Sync</Button>
+              <Button variant="primary" size="lg" loading={saveLoading} onClick={handleSaveAndSync} disabled={isArchived} title={archivedReason}>Save &amp; Sync</Button>
             </div>
           </div>
         </div>

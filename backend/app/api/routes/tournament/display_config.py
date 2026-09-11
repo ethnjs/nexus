@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_tournament
 from app.core.tournament.display_config import (
     CUSTOM_SECTION_PREFIX, KNOWN_SORT_DIRECTIONS, KNOWN_SURFACES, build_catalog,
     is_known_column, is_known_hidden_item, is_known_section, known_filter_keys,
@@ -90,8 +90,9 @@ def update_display_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_any_permission(MANAGE_MEMBERS, MANAGE_EVENTS)),
 ):
-    tournament = get_tournament(tournament_id, db)
-    require_not_archived(tournament)
+    # No archive check: columns, filters and sort are cosmetic and per viewer,
+    # so they stay editable on an archived tournament.
+    get_tournament(tournament_id, db)
 
     membership = get_membership_by_user(db, tournament_id, current_user.id)
     if not membership:

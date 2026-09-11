@@ -10,9 +10,10 @@ import { Textarea } from "@/components/ui/Textarea";
 // the field list. Always editable-looking (not click-to-reveal like the
 // sub-header's dashboard-facing name), using the app's standard Input/
 // Textarea rather than an underline-only Google-Forms-style treatment.
-export function TitleCard({ form, onUpdated }: {
+export function TitleCard({ form, onUpdated, locked = false }: {
   form: Form;
   onUpdated: (form: Form) => void;
+  locked?: boolean;
 }) {
   const [title, setTitle] = useState(form.title ?? "");
   const [description, setDescription] = useState(form.description ?? "");
@@ -48,6 +49,7 @@ export function TitleCard({ form, onUpdated }: {
         font="sans"
         size="lg"
         fullWidth
+        locked={locked}
       />
       <Textarea
         label="Description"
@@ -57,6 +59,7 @@ export function TitleCard({ form, onUpdated }: {
         font="sans"
         rows={2}
         fullWidth
+        locked={locked}
       />
       {error && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>

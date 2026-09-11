@@ -1139,6 +1139,11 @@ class Form(Base):
     responses = relationship("FormResponse", back_populates="form", cascade="all, delete-orphan")
     tournament_form = relationship("TournamentForm", back_populates="form", uselist=False, cascade="all, delete-orphan")
 
+    @property
+    def tournament_is_archived(self) -> bool | None:
+        """Lets the builder lock itself. None for a chapter form — no tournament."""
+        return self.tournament.is_archived if self.tournament else None
+
     __table_args__ = (
         CheckConstraint(
             "(owner_type = 'tournament' AND tournament_id IS NOT NULL AND chapter_id IS NULL) OR "

@@ -2579,6 +2579,15 @@ def test_age_flags_gate_applies_to_my_membership_too(client, td_tournament, othe
 # DELETE /tournaments/{tournament_id}/members/me/ — leave a tournament
 # ---------------------------------------------------------------------------
 
+def test_leave_tournament_rejected_on_archived_tournament(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    other_tournament.is_archived = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 403
+
+
 def test_leave_tournament_member_can_leave(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")

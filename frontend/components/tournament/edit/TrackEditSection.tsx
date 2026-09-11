@@ -23,10 +23,12 @@ const NOT_AVAILABLE = "__none__";
  * widget a respondent answers the form with, so a member sees the TD's own
  * option labels rather than a second set of controls invented here.
  */
-export function TrackEditSection({ track, draft, onChange }: {
+export function TrackEditSection({ track, draft, onChange, locked = false }: {
   track: MyTrackOptions;
   draft: TrackDraft;
   onChange: (updates: Partial<TrackDraft>) => void;
+  /** Archived tournament — every answer stays visible, none can change. */
+  locked?: boolean;
 }) {
   const statuses = allowedStatuses(track.allow_confirm);
   const hasQuestions = track.availability.length > 0 || track.lunch.length > 0 || !!track.event_preferences;
@@ -55,6 +57,7 @@ export function TrackEditSection({ track, draft, onChange }: {
         <ButtonGroup
           options={statuses.map((status) => ({ value: status, label: STATUS_LABEL[status] }))}
           value={draft.status ?? ""}
+          locked={locked}
           onChange={(value) => {
             const status = value as TrackStatus;
             // Declining and clearing availability are the same act — keeping
@@ -76,7 +79,7 @@ export function TrackEditSection({ track, draft, onChange }: {
               <QuestionRenderer
                 field={field}
                 interactive
-                locked={declined}
+                locked={declined || locked}
                 value={draft.availability[field.id]}
                 onChange={(value) => onChange({
                   availability: { ...draft.availability, [field.id]: value },
@@ -95,6 +98,7 @@ export function TrackEditSection({ track, draft, onChange }: {
             <ButtonGroup
               options={[{ value: NOT_AVAILABLE, label: "I'm not available" }]}
               value={draft.notAvailable ? NOT_AVAILABLE : ""}
+              locked={locked}
               onChange={() => onChange({
                 notAvailable: !draft.notAvailable,
                 status: draft.notAvailable ? draft.status : "declined",
@@ -109,7 +113,7 @@ export function TrackEditSection({ track, draft, onChange }: {
           key={field.id}
           field={field}
           interactive
-          locked={declined}
+          locked={declined || locked}
           value={draft.lunch[field.id]}
           onChange={(value) => onChange({ lunch: { ...draft.lunch, [field.id]: value } })}
         />
@@ -119,7 +123,7 @@ export function TrackEditSection({ track, draft, onChange }: {
         <QuestionRenderer
           field={track.event_preferences}
           interactive
-          locked={declined}
+          locked={declined || locked}
           value={draft.eventPreference}
           onChange={(value) => onChange({ eventPreference: value })}
         />

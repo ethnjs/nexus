@@ -9,6 +9,7 @@ import {
 } from "@/lib/api";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { useTournament } from "@/lib/useTournament";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -93,7 +94,8 @@ export default function EventsPage() {
   const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
 
   const router = useRouter();
-  const { selectedTournament, isArchived } = useTournament();
+  const { selectedTournament } = useTournament();
+  const { isArchived, archivedReason } = useArchiveLock();
   const divisions = selectedTournament?.division ?? [];
   const hasDivisions = divisions.length > 0;
 
@@ -548,12 +550,18 @@ export default function EventsPage() {
               title="No events yet"
               description="Load this tournament's default events, or add them one at a time."
               action={
-                canManageEvents && !isArchived ? (
+                canManageEvents ? (
                   <div style={{ display: "flex", gap: "10px" }}>
-                    <Button type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}>
+                    <Button
+                      type="button" variant="primary" size="sm" onClick={() => setShowLoadModal(true)}
+                      disabled={isArchived} title={archivedReason}
+                    >
                       Load default events
                     </Button>
-                    <Button type="button" variant="secondary" size="sm" onClick={handleAddEvent}>
+                    <Button
+                      type="button" variant="secondary" size="sm" onClick={handleAddEvent}
+                      disabled={isArchived} title={archivedReason}
+                    >
                       <IconPlus size={12} /> Add event
                     </Button>
                   </div>
@@ -616,24 +624,24 @@ export default function EventsPage() {
               >
                 <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
               </Button>
-              {canManageEvents && !isArchived && (
+              {canManageEvents && (
                 <Button
                   type="button" variant={selectMode ? "primary" : "secondary"} size="md"
                   onClick={toggleSelectMode}
-                  disabled={panelDirty}
-                  title={panelDirty ? "Save or discard your changes first" : undefined}
+                  disabled={panelDirty || isArchived}
+                  title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
                 >
                   Select
                 </Button>
               )}
             </div>
 
-            {canManageEvents && !isArchived && (
+            {canManageEvents && (
               <Button
                 type="button" variant="primary" size="md"
                 onClick={handleAddEvent}
-                disabled={panelDirty}
-                title={panelDirty ? "Save or discard your changes first" : undefined}
+                disabled={panelDirty || isArchived}
+                title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
               >
                 <IconPlus size={14} /> Add event
               </Button>
@@ -687,7 +695,8 @@ export default function EventsPage() {
                   event={e}
                   columns={tableColumns}
                   isLast={i === visibleEvents.length - 1}
-                  canDelete={canManageEvents && !isArchived}
+                  canDelete={canManageEvents}
+                  deleteLockedReason={archivedReason}
                   onFocus={() => focusEvent(e.id)}
                   onDelete={() => setDeleteTargets([e])}
                   selectMode={selectMode}
@@ -776,13 +785,15 @@ export default function EventsPage() {
 }
 
 function EventRow({
-  event, columns, isLast, canDelete, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, columns, isLast, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
 }: {
   event: TournamentEvent;
   /** The viewer's configured columns, between Name and Actions. */
   columns: EventColumn[];
   isLast: boolean;
   canDelete: boolean;
+  /** Shown and disabled rather than hidden — archiving locks, it doesn't hide. */
+  deleteLockedReason?: string;
   onFocus: () => void;
   onDelete: () => void;
   selectMode: boolean;
@@ -850,7 +861,10 @@ function EventRow({
           <IconEdit size={13} />
         </Button>
         {canDelete && (
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Delete event" onClick={onDelete}>
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
+            disabled={!!deleteLockedReason} title={deleteLockedReason ?? "Delete event"}
+          >
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
           </Button>
         )}

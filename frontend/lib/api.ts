@@ -1780,6 +1780,8 @@ export interface Form {
   response_count:  number
   prerequisites:   TournamentFormPrerequisites | null
   fields:          FormField[]
+  /** null for a chapter form — there's no tournament to be archived. */
+  tournament_is_archived: boolean | null
 }
 
 // Matches ChapterMemberResponse — no chapter dashboard exists yet, so this

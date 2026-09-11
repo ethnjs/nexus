@@ -729,6 +729,7 @@ def leave_tournament(
     current_user: User = Depends(get_current_user),
 ):
     tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     if tournament.owner_id == current_user.id:
         raise HTTPException(

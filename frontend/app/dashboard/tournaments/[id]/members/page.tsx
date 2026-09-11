@@ -9,6 +9,7 @@ import {
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
@@ -217,16 +218,14 @@ const MemberRow = memo(function MemberRow({
         style={{ display: "flex", justifyContent: "center", gap: "4px" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {!isArchived && (
-          <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            title={isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
-            disabled={!isSelf && locked}
-            onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
-          >
-            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
-          </Button>
-        )}
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
+          disabled={isArchived || (!isSelf && locked)}
+          onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
+        >
+          <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+        </Button>
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           disabled={selectionLocked}
@@ -679,12 +678,12 @@ export default function MembersPage() {
             >
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>
-            {canManageMembers && !isArchived && (
+            {canManageMembers && (
               <Button
                 type="button" variant={selectMode ? "primary" : "secondary"} size="md"
                 onClick={toggleSelectMode}
-                disabled={panelDirty}
-                title={panelDirty ? DIRTY_TITLE : undefined}
+                disabled={panelDirty || isArchived}
+                title={isArchived ? ARCHIVED_REASON : panelDirty ? DIRTY_TITLE : undefined}
               >
                 Select
               </Button>

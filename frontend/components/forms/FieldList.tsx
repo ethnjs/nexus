@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
@@ -49,7 +50,9 @@ const SCROLL_MUTE_MS = 600;
 // snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
-export function FieldList({ form }: { form: Form }) {
+/** `locked` (archived tournament) keeps every card a read-only preview — none
+ *  can expand, so the toolbar and save bar never appear either. */
+export function FieldList({ form, locked = false }: { form: Form; locked?: boolean }) {
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
       .filter((f) => !f.is_archived)
@@ -591,7 +594,10 @@ export function FieldList({ form }: { form: Form }) {
             title="No fields yet"
             description="Add a field to start building this form."
             action={
-              <Button type="button" variant="primary" size="sm" onClick={() => addField()}>
+              <Button
+                type="button" variant="primary" size="sm" onClick={() => addField()}
+                disabled={locked} title={locked ? ARCHIVED_REASON : undefined}
+              >
                 <IconPlus size={14} /> Add field
               </Button>
             }
@@ -636,6 +642,7 @@ export function FieldList({ form }: { form: Form }) {
                 onRequireTrack={() => setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })}
                 errors={validation.errorsFor(field.clientKey)}
                 allowArchive={hasResponses}
+                locked={locked}
               />
             ))}
           </SortableContext>
@@ -660,6 +667,7 @@ export function FieldList({ form }: { form: Form }) {
       <ArchivedFieldsSection
         formId={form.id}
         fields={archivedFields}
+        locked={locked}
         onUnarchive={unarchiveField}
         onDeleted={(fieldId) => {
           setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));

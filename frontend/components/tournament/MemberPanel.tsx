@@ -15,6 +15,7 @@ import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MemberPanelConfigModal } from "@/components/tournament/MemberPanelConfigModal";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -138,15 +139,15 @@ export function MemberPanel({
       headerActions={
         <>
           {/* The table's Actions column collapses while this panel is open, so
-              Remove lives here instead. Same gate the row used: archived hides
-              it, outranked/owner disables it, and your own row redirects to the
-              leave flow. Waits for `full` — the lock can't be judged without
-              the member it applies to. */}
-          {full && !isArchived && (onRemove || onSelfRemove) && (
+              Remove lives here instead. Same gate the row used: archived or
+              outranked/owner locks it, and your own row redirects to the leave
+              flow. Waits for `full` — the lock can't be judged without the
+              member it applies to. */}
+          {full && (onRemove || onSelfRemove) && (
             <Button
               type="button" variant="secondary" size="sm" iconOnly
-              title={isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
-              disabled={!isSelf && !canEditMember(full)}
+              title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
+              disabled={isArchived || (!isSelf && !canEditMember(full))}
               onClick={() => (isSelf ? onSelfRemove?.(full) : onRemove?.(full))}
             >
               <IconTrash size={14} style={{ color: "var(--color-danger)" }} />

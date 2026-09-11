@@ -6,7 +6,7 @@ import {
   TournamentEvent, TournamentShift, TournamentTrack,
 } from "@/lib/api";
 import { formatTimeOfDay, toTimeInput } from "@/lib/timeFormat";
-import { useTournament } from "@/lib/useTournament";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
@@ -52,7 +52,7 @@ export default function ShiftsPage() {
   const isOwner = !!membership?.is_owner;
   const canManageEvents = isAdmin || isOwner || hasPermission("manage_events");
 
-  const { isArchived } = useTournament();
+  const { isArchived, archivedReason } = useArchiveLock();
   const [shifts, setShifts] = useState<TournamentShift[] | null>(null);
   // Only competition days can hold shifts — a cosmetic track has no range to
   // validate against, so it never appears in the filter or the panel.
@@ -341,7 +341,9 @@ export default function ShiftsPage() {
     );
   }
 
-  const canEdit = canManageEvents && !isArchived;
+  // Permission alone decides whether write controls render; archiving only
+  // locks them (see useArchiveLock).
+  const canEdit = canManageEvents;
   // Blocked while the panel is dirty and clears whatever else is open —
   // otherwise this silently replaces an in-progress edit with a blank draft.
   const addShift = () => startExternalFlow(() => {
@@ -397,12 +399,15 @@ export default function ShiftsPage() {
             <Button
               type="button" variant={selectMode ? "primary" : "secondary"} size="md"
               onClick={toggleSelectMode}
-              disabled={panelDirty}
-              title={panelDirty ? "Save or discard your changes first" : undefined}
+              disabled={panelDirty || isArchived}
+              title={archivedReason ?? (panelDirty ? "Save or discard your changes first" : undefined)}
             >
               Select
             </Button>
-            <Button type="button" variant="primary" size="md" onClick={addShift}>
+            <Button
+              type="button" variant="primary" size="md" onClick={addShift}
+              disabled={isArchived} title={archivedReason}
+            >
               <IconPlus size={14} /> Add shift
             </Button>
           </div>
@@ -416,7 +421,10 @@ export default function ShiftsPage() {
             title={shifts.length === 0 ? "No shifts yet" : "No shifts on this track"}
             description="Shifts are time windows you can attach to events, like &ldquo;Morning — 8am to noon&rdquo;. Each one belongs to a competition day."
             action={canEdit ? (
-              <Button type="button" variant="primary" size="sm" onClick={addShift}>
+              <Button
+                type="button" variant="primary" size="sm" onClick={addShift}
+                disabled={isArchived} title={archivedReason}
+              >
                 <IconPlus size={12} /> Add shift
               </Button>
             ) : undefined}
@@ -461,6 +469,7 @@ export default function ShiftsPage() {
               isLast={i === visibleShifts.length - 1}
               focused={focusedId === shift.id}
               canEdit={canEdit}
+              deleteLockedReason={archivedReason}
               onClick={() => focusItem(shift.id)}
               onDelete={() => setDeleteTargets([shift])}
               selectMode={selectMode}
@@ -512,7 +521,7 @@ export default function ShiftsPage() {
 // both previews and edits meant two ways to change the same thing, and only
 // one of them could show a shift's events.
 function ShiftRow({
-  shift, track, isLast, focused, canEdit, onClick, onDelete,
+  shift, track, isLast, focused, canEdit, deleteLockedReason, onClick, onDelete,
   selectMode, selected, selectionLocked, onToggleSelect,
 }: {
   shift: TournamentShift;
@@ -521,6 +530,7 @@ function ShiftRow({
   isLast: boolean;
   focused: boolean;
   canEdit: boolean;
+  deleteLockedReason?: string;
   onClick: () => void;
   onDelete: () => void;
   selectMode: boolean;
@@ -588,7 +598,10 @@ function ShiftRow({
           <IconEdit size={13} />
         </Button>
         {canEdit && (
-          <Button type="button" variant="secondary" size="sm" iconOnly title="Delete shift" onClick={onDelete}>
+          <Button
+            type="button" variant="secondary" size="sm" iconOnly onClick={onDelete}
+            disabled={!!deleteLockedReason} title={deleteLockedReason ?? "Delete shift"}
+          >
             <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
           </Button>
         )}

@@ -4,13 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
-from app.core.tournament.audit import (
-    OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED, log_action,
-)
+from app.core.tournament.archive import archive_tournament as apply_archive
+from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIVED, log_action
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
 from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
-from app.core.join_codes import deactivate_tournament_join_codes
 from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership, is_declined
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
@@ -222,14 +220,7 @@ def archive_tournament(
             detail="Only the tournament owner can archive this tournament",
         )
 
-    tournament.is_archived = True
-    tournament.archive_override_at = None
-    deactivate_tournament_join_codes(db, tournament_id)
-
-    log_action(
-        db, tournament_id, current_user.id, TOURNAMENT_ARCHIVED,
-        target_type="tournament", target_id=tournament.id,
-    )
+    apply_archive(db, tournament, current_user.id)
 
     db.commit()
     db.refresh(tournament)
@@ -306,6 +297,8 @@ def transfer_ownership(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only the current owner can transfer ownership",
         )
+
+    require_not_archived(tournament)
 
     new_owner_membership = (
         db.query(TournamentMembership)

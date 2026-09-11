@@ -335,6 +335,21 @@ def test_sync_inactive_config(client, td_user, td_tournament, mock_sheets_servic
     ).status_code == 400
 
 
+def test_config_writes_rejected_on_archived_tournament(client, td_user, td_tournament, db, mock_sheets_service):
+    """Sync would pull new responses into a frozen tournament."""
+    login(client, "td@test.com", "tdpass")
+    mock_sheets_service.extract_spreadsheet_id.return_value = "fake123"
+    created = _make_config(client, td_tournament.id).json()
+    td_tournament.is_archived = True
+    db.commit()
+
+    base = f"/tournaments/{td_tournament.id}/sheets/configs/{created['id']}/"
+    assert _make_config(client, td_tournament.id).status_code == 403
+    assert client.patch(base, json={"label": "Renamed"}).status_code == 403
+    assert client.post(f"{base}sync/").status_code == 403
+    assert client.delete(base).status_code == 403
+
+
 def test_sync_config_not_found(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     assert client.post(

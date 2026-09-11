@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_TOURNAMENT, require_permission
 from app.db.session import get_db
 from app.models.models import SheetConfig, Tournament, User
@@ -138,6 +139,7 @@ def create_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    require_not_archived(get_tournament(tournament_id, db))
     raw_mappings = [m.model_dump() for m in payload.column_mappings]
     warnings = _validate_or_422(raw_mappings)
 
@@ -179,6 +181,7 @@ def update_sheet_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    require_not_archived(get_tournament(tournament_id, db))
     config = _get_config_or_404(config_id, tournament_id, db)
 
     if payload.label is not None:
@@ -221,6 +224,7 @@ def delete_sheet_config(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    require_not_archived(get_tournament(tournament_id, db))
     config = _get_config_or_404(config_id, tournament_id, db)
     db.delete(config)
     db.commit()
@@ -237,6 +241,7 @@ def sync_sheet_config(
     svc: SheetsService = Depends(get_sheets_service),
     current_user: User = Depends(require_permission(MANAGE_TOURNAMENT)),
 ):
+    require_not_archived(get_tournament(tournament_id, db))
     config = _get_config_or_404(config_id, tournament_id, db)
 
     if not config.is_active:

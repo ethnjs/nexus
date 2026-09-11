@@ -6,10 +6,10 @@ from app.api.routes.forms import _to_list_read
 from app.core.auth import get_current_user
 from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.memberships import get_membership_by_user, is_declined, resolve_person_refs
-from app.core.tournament.onboarding import advance_onboarding_progress
+from app.core.tournament.onboarding import advance_onboarding_progress, recompute_onboarding
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentForm, TournamentMembership, User
+from app.models.models import TournamentForm, User
 from app.schemas.tournament.onboarding import (
     OnboardingFormAdd,
     OnboardingFormRead,
@@ -82,9 +82,9 @@ def list_onboarding_forms(
 # alongside the Form itself, see create_tournament_form in forms.py) — this
 # never inserts a new row, only flips one.
 #
-# Clears onboarded_at tournament-wide: adding a new onboarding form expands
-# what "onboarded" requires, so anyone already past the old bar goes back to
-# pending until they clear the new one too. See TournamentMembership.onboarded_at.
+# Recomputes onboarded_at tournament-wide: adding a step expands what
+# "onboarded" requires, so anyone who hasn't answered it goes back to pending —
+# but someone who already did (it was a standalone form first) stays onboarded.
 # ---------------------------------------------------------------------------
 @router.post("/", response_model=OnboardingFormRead, status_code=status.HTTP_201_CREATED)
 def add_onboarding_form(
@@ -122,11 +122,7 @@ def add_onboarding_form(
     )
     tf.is_onboarding = True
     tf.order = (max_order[0] if max_order else 0) + 1
-
-    db.query(TournamentMembership).filter(
-        TournamentMembership.tournament_id == tournament_id,
-        TournamentMembership.onboarded_at.isnot(None),
-    ).update({TournamentMembership.onboarded_at: None})
+    recompute_onboarding(db, tournament_id)
 
     db.commit()
     db.refresh(tf)
@@ -189,9 +185,8 @@ def reorder_onboarding_forms(
 # TournamentForm row itself is never deleted (see model docstring) — the
 # underlying Form is untouched and can be archived separately afterward.
 #
-# No onboarded_at reset here — a shrinking requirement can only complete
-# stragglers waiting on this form, never un-onboard someone already done.
-# Remaining onboarding rows are renumbered contiguously.
+# Remaining onboarding rows are renumbered contiguously, then onboarded_at is
+# recomputed so stragglers who were only waiting on this form finish now.
 # ---------------------------------------------------------------------------
 @router.delete("/{form_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def remove_onboarding_form(
@@ -223,5 +218,6 @@ def remove_onboarding_form(
     )
     for index, row in enumerate(remaining, start=1):
         row.order = index
+    recompute_onboarding(db, tournament_id)
 
     db.commit()
