@@ -93,6 +93,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:3001",
         "https://nexus.socalscioly.org",
+        "https://docs.ethanshih.com",
     ],
     allow_origin_regex=r"https://nexus-.*\.ethanshih\.vercel\.app",
     allow_credentials=True,
