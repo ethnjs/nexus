@@ -1,4 +1,3 @@
-import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -33,12 +32,11 @@ settings = get_settings()
 
 
 def _read_app_version() -> str:
-    # frontend/package.json is the version source of truth (bumped by release-please).
-    # Fallback keeps startup alive if a deploy only ships backend/.
-    package_json = Path(__file__).resolve().parents[2] / "frontend" / "package.json"
+    # backend/VERSION is written by release-please; lives in backend/ so backend-only deploys ship it.
+    version_file = Path(__file__).resolve().parents[1] / "VERSION"
     try:
-        return json.loads(package_json.read_text(encoding="utf-8"))["version"]
-    except (OSError, KeyError, ValueError):
+        return version_file.read_text(encoding="utf-8").strip()
+    except OSError:
         return "0.0.0-unknown"
 
 
