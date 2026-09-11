@@ -958,32 +958,3 @@ class TestAssignmentCardSurface:
 
         assert row["user"]["first_name"]
         assert row["id"]
-
-
-class TestAudit:
-    def test_the_auto_grant_is_recorded(self, client, db, td_user, td_tournament, other_user):
-        """A permission change no role_updated entry would otherwise capture."""
-        from app.models.models import AuditLogEntry
-
-        membership = TournamentMembership(
-            user_id=other_user.id, tournament_id=td_tournament.id, source="manual",
-        )
-        db.add(membership)
-        db.commit()
-        event = _make_event(db, td_tournament)
-        login(client, "td@test.com", "tdpass")
-
-        _post(
-            client, db, td_tournament, tournament_event_id=event.id,
-            membership_id=membership.id,
-            role_id=_role_id(db, td_tournament, "Test Writer"),
-        )
-
-        entry = (
-            db.query(AuditLogEntry)
-            .filter_by(tournament_id=td_tournament.id, action="assignment_created")
-            .one()
-        )
-        assert entry.target_type == "assignment"
-        assert entry.extra_data["role_granted"] is True
-        assert entry.extra_data["shift_id"] is None

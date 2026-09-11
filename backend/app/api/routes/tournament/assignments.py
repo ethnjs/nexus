@@ -7,9 +7,6 @@ from app.core.tournament import get_scoped_or_404, get_tournament, require_not_a
 from app.core.tournament.assignments import (
     resolve_assignment_track, resolve_membership_role, validate_shift_on_event,
 )
-from app.core.tournament.audit import (
-    ASSIGNMENT_CREATED, ASSIGNMENT_DELETED, ASSIGNMENT_UPDATED, log_action,
-)
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, MANAGE_MEMBERS, require_any_permission, require_permission,
 )
@@ -52,7 +49,7 @@ def _flush_or_conflict(db: Session) -> None:
     is an ordinary thing for a TD to do, not a server fault.
 
     Guards the flush, not the commit: the INSERT is what trips the index, and
-    it is emitted at flush time so log_action can reference the new row's id.
+    it is emitted at flush time.
     """
     try:
         db.flush()
@@ -62,17 +59,6 @@ def _flush_or_conflict(db: Session) -> None:
             status_code=status.HTTP_409_CONFLICT,
             detail="This member is already assigned to that event in that role and shift",
         )
-
-
-def _audit_data(assignment: TournamentEventAssignment, role_granted: bool = False) -> dict:
-    return {
-        "event_id": assignment.tournament_event_id,
-        "membership_id": assignment.membership_id,
-        "role_id": assignment.membership_role.role_id,
-        "shift_id": assignment.tournament_shift_id,
-        "track_id": assignment.tournament_track_id,
-        "role_granted": role_granted,
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +131,6 @@ def create_assignment(
         db, shift, payload.tournament_track_id, tournament_id,
     )
 
-    held_before = {mr.role_id for mr in membership.roles}
     membership_role = resolve_membership_role(db, tournament, membership, role, current_user)
 
     assignment = TournamentEventAssignment(
@@ -157,12 +142,6 @@ def create_assignment(
     )
     db.add(assignment)
     _flush_or_conflict(db)
-
-    log_action(
-        db, tournament_id, current_user.id, ASSIGNMENT_CREATED,
-        target_type="assignment", target_id=assignment.id,
-        extra_data=_audit_data(assignment, role_granted=role.id not in held_before),
-    )
     db.commit()
 
     return AssignmentRead.from_row(
@@ -190,17 +169,13 @@ def update_assignment(
     require_not_archived(tournament)
 
     assignment = _scoped_assignment(db, assignment_id, tournament_id)
-    role_granted = False
 
     if payload.role_id is not None:
         role = get_scoped_or_404(db, TournamentRole, payload.role_id, tournament_id, "Role")
-        membership = assignment.membership
-        held_before = {mr.role_id for mr in membership.roles}
         membership_role = resolve_membership_role(
-            db, tournament, membership, role, current_user,
+            db, tournament, assignment.membership, role, current_user,
         )
         assignment.membership_role_id = membership_role.id
-        role_granted = role.id not in held_before
 
     if "tournament_shift_id" in payload.model_fields_set:
         shift = validate_shift_on_event(
@@ -224,11 +199,6 @@ def update_assignment(
         )
 
     _flush_or_conflict(db)
-    log_action(
-        db, tournament_id, current_user.id, ASSIGNMENT_UPDATED,
-        target_type="assignment", target_id=assignment.id,
-        extra_data=_audit_data(assignment, role_granted=role_granted),
-    )
     db.commit()
 
     return AssignmentRead.from_row(
@@ -254,12 +224,6 @@ def delete_assignment(
     require_not_archived(tournament)
 
     assignment = _scoped_assignment(db, assignment_id, tournament_id)
-
-    log_action(
-        db, tournament_id, current_user.id, ASSIGNMENT_DELETED,
-        target_type="assignment", target_id=assignment.id,
-        extra_data=_audit_data(assignment),
-    )
     db.delete(assignment)
     db.commit()
 
