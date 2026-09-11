@@ -1,15 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { formsApi, Form, FormStatus, ApiError } from "@/lib/api";
+import { formsApi, Form, ApiError } from "@/lib/api";
 import { SplitButton, SplitButtonOption } from "@/components/ui/SplitButton";
-import { IconArchive, IconTrash } from "@/components/ui/Icons";
-
-const PRIMARY_LABEL: Record<FormStatus, string> = {
-  draft: "Publish",
-  published: "Unpublish",
-  archived: "Restore to draft",
-};
+import { FormActionIcon } from "@/components/forms/FormActionIcon";
+import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
 
 export function StatusControl({ form, onUpdated, onDeleted }: {
   form: Form;
@@ -19,84 +14,50 @@ export function StatusControl({ form, onUpdated, onDeleted }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
 
-  async function publish() {
-    setBusy(true); setError(undefined);
-    try {
-      onUpdated(await formsApi.update(form.id, { status: "published" }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to publish form.");
-    } finally {
-      setBusy(false);
-    }
-  }
+  // The rules for which moves exist live in formStatusActions, shared with
+  // the forms table; this only runs them.
+  const [primary, ...rest] = formStatusActions(form);
 
-  async function archive() {
-    setBusy(true); setError(undefined);
-    try {
-      onUpdated(await formsApi.update(form.id, { status: "archived" }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to archive form.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function unpublish() {
-    setBusy(true); setError(undefined);
-    try {
-      onUpdated(await formsApi.update(form.id, { status: "draft" }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to unpublish form.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function restore() {
-    setBusy(true); setError(undefined);
-    try {
-      onUpdated(await formsApi.update(form.id, { status: "draft" }));
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to restore form.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteForm() {
+  async function run(option: FormActionOption) {
     setError(undefined);
+    if (option.action === "delete") {
+      try {
+        await formsApi.delete(form.id);
+        onDeleted();
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : "Failed to delete form.");
+      }
+      return;
+    }
+    setBusy(true);
     try {
-      await formsApi.delete(form.id);
-      onDeleted();
+      onUpdated(await formsApi.update(form.id, { status: option.target }));
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to delete form.");
+      setError(err instanceof ApiError ? err.message : `Failed to ${option.label.toLowerCase()}.`);
+    } finally {
+      setBusy(false);
     }
   }
 
-  const options: SplitButtonOption[] = [
-    ...(form.status !== "archived"
-      ? [{ label: "Archive", subtitle: "Stop accepting responses", icon: <IconArchive size={14} />, action: archive }]
-      : []),
-    {
-      label: "Delete",
-      subtitle: "Permanently remove this form",
-      icon: <IconTrash size={14} />,
-      danger: true,
-      disabled: form.response_count > 0,
-      disabledReason: form.response_count > 0 ? "Archive instead — this form already has responses" : undefined,
-      action: deleteForm,
-    },
-  ];
+  const options: SplitButtonOption[] = rest.map((option) => ({
+    label: option.label,
+    subtitle: option.subtitle,
+    icon: <FormActionIcon action={option.action} />,
+    danger: option.danger,
+    disabled: !!option.disabledReason,
+    disabledReason: option.disabledReason,
+    action: () => run(option),
+  }));
 
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
       <SplitButton
-        label={PRIMARY_LABEL[form.status]}
+        label={primary.label}
         variant="primary"
         size="md"
         loading={busy}
         primaryDisabled={false}
-        onClick={form.status === "draft" ? publish : form.status === "published" ? unpublish : restore}
+        onClick={() => run(primary)}
         options={options}
       />
       {error && (

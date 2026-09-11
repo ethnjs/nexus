@@ -7,7 +7,7 @@ import { ApiError } from "@/lib/api";
 
 /** Confirm-and-delete for one row or a whole selection. Deletes run in
  *  parallel; on a partial failure the modal stays open saying how many failed. */
-export function BulkDeleteModal<T extends { id: number }>({
+export function BulkDeleteModal<T extends { id: number | string }>({
   items, noun, description, onDelete, onClose, onDeleted,
 }: {
   items: T[];
@@ -17,7 +17,7 @@ export function BulkDeleteModal<T extends { id: number }>({
   onDelete: (item: T) => Promise<unknown>;
   onClose: () => void;
   /** The ids that actually went. */
-  onDeleted: (ids: number[]) => void;
+  onDeleted: (ids: T["id"][]) => void;
 }) {
   const [error, setError] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
