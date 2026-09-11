@@ -13,13 +13,13 @@ from app.core.tournament.member_filters import (
     apply_member_filters, apply_member_search, build_filter_options, filter_age_flags,
 )
 from app.core.tournament.field_groups import (
-    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ROLES, TRACKS,
+    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ONBOARDING, ROLES, TRACKS,
     dump_exclude, field_selection, loader_options, resolve_fields, wants,
 )
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
     delete_tournament_form_responses, enrich_built_groups, gate_age_flags,
-    get_custom_form_answers, get_membership_by_user, resolve_person_refs,
+    get_custom_form_answers, get_membership_by_user, onboarding_reads, resolve_person_refs,
 )
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
@@ -351,6 +351,8 @@ def get_membership(
         resp.track_statuses = build_track_statuses(db, m)
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, [m], [resp])
+    if wants(requested, ONBOARDING):
+        resp.onboarding = onboarding_reads(db, tournament_id, [m])[0]
     data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
     data = apply_display_config(config, surface, data, tournament)
     return JSONResponse(data)

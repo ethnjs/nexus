@@ -66,6 +66,7 @@ COLUMN_JOINED = "joined"
 COLUMN_METHOD = "method"
 COLUMN_AGE = "age"
 COLUMN_SHIRT_SIZE = "shirt_size"
+COLUMN_ONBOARDING = "onboarding"
 
 FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_EMAIL, "Email"),
@@ -75,6 +76,7 @@ FIXED_COLUMNS: tuple[tuple[str, str], ...] = (
     (COLUMN_METHOD, "Join method"),
     (COLUMN_AGE, "Age"),
     (COLUMN_SHIRT_SIZE, "Shirt size"),
+    (COLUMN_ONBOARDING, "Onboarding"),
 )
 
 # What a tournament with no saved column config shows — roughly today's table,
@@ -206,6 +208,7 @@ PANEL_SECTIONS: tuple[tuple[str, str, tuple[tuple[str, str], ...]], ...] = (
         ("join_method", "Join method"),
         ("roles", "Roles"),
         ("age", "Age"),
+        ("onboarding", "Onboarding"),
     )),
     ("availability", "Availability", ()),
     # The member's own staffing, laid out as a timeline per competition day.
@@ -640,6 +643,7 @@ _COLUMN_GROUPS: dict[str, tuple[str, ...]] = {
     COLUMN_METHOD: ("membership",),
     COLUMN_AGE: ("age",),
     COLUMN_SHIRT_SIZE: ("profile",),
+    COLUMN_ONBOARDING: ("onboarding",),
 }
 
 _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
@@ -654,7 +658,7 @@ _NAMESPACE_GROUPS: tuple[tuple[str, str], ...] = (
 # holding several kinds of thing pulls several groups — Membership shows join
 # provenance, roles, age flags and track statuses in one block.
 _SECTION_GROUPS: dict[str, tuple[str, ...]] = {
-    "membership": ("membership", "roles", "age", "tracks"),
+    "membership": ("membership", "roles", "age", "tracks", "onboarding"),
     "availability": ("availability",),
     # Availability rides along for the shading behind the timeline, which is
     # a field of this section rather than a section of its own.

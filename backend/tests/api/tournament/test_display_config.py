@@ -319,7 +319,7 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert body["custom_fields"] == []
     # Fixed columns exist regardless of tournament data; each track adds one.
     assert [c["key"] for c in body["columns"]] == [
-        "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
+        "email", "phone", "account_age", "joined", "method", "age", "shirt_size", "onboarding",
         f"track:{main.id}",
     ]
     # Custom Responses is no longer built in — it's seeded as a deletable
@@ -328,7 +328,7 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert "custom_responses" not in [s["id"] for s in body["sections"]]
     # Membership offers its static fields plus one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
-        "joined", "join_method", "roles", "age", f"track:{main.id}",
+        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}",
     ]
 
 
@@ -679,7 +679,7 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
 
     main = next(t for t in td_tournament.tracks if t.name == "Main")
     assert [f["key"] for f in sections["membership"]["fields"]] == [
-        "joined", "join_method", "roles", "age", f"track:{main.id}", f"track:{track.id}",
+        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}", f"track:{track.id}",
     ]
     assert [f["key"] for f in sections["lunch"]["fields"]] == [
         "dietary_restriction", f"lunch:{primary_track_id(db, td_tournament.id)}:entree",

@@ -218,10 +218,11 @@ def test_unwanted_relationships_are_noloaded_not_lazy():
 def test_built_groups_are_the_ones_needing_a_builder_pass():
     """`built` means the raw ORM rows aren't the final value. Those builders
     mostly still read the relationship, so this is not the same as "has no
-    relationship" — custom is the only group with neither."""
+    relationship" — custom and onboarding are the only groups with neither."""
     built = {name for name, group in GROUPS.items() if group.built}
-    assert built == {"lunch", "event_prefs", "custom"}
+    assert built == {"lunch", "event_prefs", "custom", "onboarding"}
     assert GROUPS["custom"].relationships == ()
+    assert GROUPS["onboarding"].relationships == ()
     # The other two need their rows loaded for the builder to read.
     assert GROUPS["lunch"].relationships == ("lunch_selections",)
     assert GROUPS["event_prefs"].relationships == ("event_preferences",)

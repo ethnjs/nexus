@@ -325,6 +325,12 @@ class MembershipBaseResponse(BaseModel):
         return v
 
 
+class MembershipOnboardingRead(BaseModel):
+    """Live onboarding steps answered, out of the live total."""
+    completed: int
+    total: int
+
+
 class MembershipFullResponse(MembershipBaseResponse):
     """Manager-facing view of one membership. The roster row and the detail
     panel are the same shape, narrowed by the `fields` query parameter rather
@@ -348,6 +354,9 @@ class MembershipFullResponse(MembershipBaseResponse):
     # base on purpose: members do not see their own assignments yet, and the
     # base is what /members/me returns.
     assignments: list[AssignmentRead] = []
+    # Null when the tournament has no live onboarding steps — there's no
+    # progress to report, which "0/0" would misstate as complete or not.
+    onboarding: MembershipOnboardingRead | None = None
 
     # Sections the surface's display config emptied out — set by
     # apply_display_config, never by the ORM. The panel renders a section even

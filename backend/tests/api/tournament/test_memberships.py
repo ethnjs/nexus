@@ -136,6 +136,47 @@ def test_fields_narrows_to_the_named_groups(client, td_user, td_tournament, db):
         assert key not in row["user"]
 
 
+def test_onboarding_group_counts_live_steps_answered(client, td_user, td_tournament, db):
+    """A skipped (archived) step counts toward neither side of the fraction."""
+    from app.models.models import Form, FormResponse, TournamentForm
+
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    steps = []
+    for order, status in enumerate(("published", "published", "archived"), start=1):
+        form = Form(
+            owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
+            name=f"Step {order}", status=status, created_by=td_user.id,
+        )
+        db.add(form)
+        db.flush()
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=order))
+        steps.append(form)
+    db.add_all([
+        FormResponse(form_id=steps[0].id, user_id=u["id"]),
+        FormResponse(form_id=steps[2].id, user_id=u["id"]),
+    ])
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
+    row = next(r for r in rows if r["user"]["id"] == u["id"])
+    assert row["onboarding"] == {"completed": 1, "total": 2}
+    detail = client.get(f"/tournaments/{td_tournament.id}/members/{row['id']}/?fields=onboarding").json()
+    assert detail["onboarding"] == {"completed": 1, "total": 2}
+
+
+def test_onboarding_group_is_null_without_live_steps(client, td_user, td_tournament, db):
+    """No sequence means no progress to report — not a misleading 0/0."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
+    row = next(r for r in rows if r["user"]["id"] == u["id"])
+    assert row["onboarding"] is None
+
+
 def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
     """Distinct from omitting the param: an explicit empty value is a caller
     saying it needs nothing but the row's identity."""

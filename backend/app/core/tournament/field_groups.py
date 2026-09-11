@@ -76,7 +76,8 @@ class FieldGroup:
     builders still read the relationship (and so still need it loaded) —
     build_event_preferences reverses one-row-per-event back into the option
     the member actually picked, build_lunch resolves each row's
-    question_type. custom is the one built group with no relationship at all.
+    question_type. custom and onboarding are the built groups with no
+    relationship at all — both are queried from form responses.
     """
     name: str
     keys: frozenset[str] = frozenset()
@@ -98,6 +99,7 @@ CUSTOM = "custom"
 NOTES = "notes"
 AGE = "age"
 ASSIGNMENTS = "assignments"
+ONBOARDING = "onboarding"
 
 GROUPS: dict[str, FieldGroup] = {
     CONTACT: FieldGroup(
@@ -182,6 +184,13 @@ GROUPS: dict[str, FieldGroup] = {
         name=ASSIGNMENTS,
         keys=frozenset({"assignments"}),
         relationships=("assignments",),
+    ),
+    # How far through the live onboarding sequence this member is. Built from
+    # form responses (no relationship), and manager-only like assignments.
+    ONBOARDING: FieldGroup(
+        name=ONBOARDING,
+        keys=frozenset({"onboarding"}),
+        built=True,
     ),
 }
 

@@ -76,6 +76,23 @@ def recompute_onboarding(db: Session, tournament_id: int) -> None:
             membership.onboarded_at = None
 
 
+def onboarding_progress_bulk(
+    db: Session, tournament_id: int, user_ids: list[int],
+) -> tuple[int, dict[int, int]]:
+    """(total live steps, completed count per user) for a whole roster in two
+    queries. Counts responses, not onboarded_at, so a step republished after
+    someone finished shows as the gap it is."""
+    required = {step.form_id for step in _live_steps(db, tournament_id)}
+    completed: dict[int, int] = {}
+    if required and user_ids:
+        for user_id, _form_id in (
+            db.query(FormResponse.user_id, FormResponse.form_id)
+            .filter(FormResponse.form_id.in_(required), FormResponse.user_id.in_(user_ids))
+        ):
+            completed[user_id] = completed.get(user_id, 0) + 1
+    return len(required), completed
+
+
 def next_required_onboarding_form_id(
     db: Session,
     membership: TournamentMembership,

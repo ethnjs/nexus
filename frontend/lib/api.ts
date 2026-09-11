@@ -916,7 +916,14 @@ export interface MembershipJoinCodeInfo {
 export type MembershipField =
   | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
   | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age'
-  | 'assignments';
+  | 'assignments' | 'onboarding';
+
+// Live onboarding steps answered out of the live total — skipped (draft or
+// archived) steps count toward neither.
+export interface MembershipOnboarding {
+  completed: number
+  total:     number
+}
 
 // Matches MembershipBaseResponse — the membership data the member themselves
 // owns: what they answered, what they were assigned, what they're available
@@ -970,6 +977,8 @@ export interface MembershipFull extends MembershipBase {
   // members don't see their own assignments, and the base is what /members/me
   // returns. Optional like every other group — absent unless asked for.
   assignments?:      Assignment[]
+  // null when the tournament has no live onboarding steps — nothing to report.
+  onboarding?:       MembershipOnboarding | null
   // Sections this surface's display config emptied out. A section renders
   // even with no data ("No info yet"), so an empty list no longer means
   // "hidden" — this is what says so. Reports display_config removals only:
@@ -992,7 +1001,7 @@ export type MembershipView =
     created_at: string
     updated_at: string
     user:       UserFull
-  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments">>;
+  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments" | "onboarding">>;
 
 /** A MembershipMe as the member sections can render it, or null when the
  *  caller holds no membership in this tournament — nothing to show. */

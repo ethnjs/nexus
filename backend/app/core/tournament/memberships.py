@@ -495,6 +495,21 @@ def get_custom_form_answers_bulk(
     return by_user
 
 
+def onboarding_reads(db: Session, tournament_id: int, memberships: list) -> list:
+    """One MembershipOnboardingRead (or None) per membership, in order —
+    shared by the roster and the detail route so both count the same way."""
+    from app.core.tournament.onboarding import onboarding_progress_bulk
+    from app.schemas.tournament.membership import MembershipOnboardingRead
+
+    total, completed = onboarding_progress_bulk(db, tournament_id, [m.user_id for m in memberships])
+    if not total:
+        return [None] * len(memberships)
+    return [
+        MembershipOnboardingRead(completed=completed.get(m.user_id, 0), total=total)
+        for m in memberships
+    ]
+
+
 def enrich_built_groups(db: Session, tournament, requested, memberships: list, responses: list) -> None:
     """Fills the roster's *built* field groups — the ones whose final value
     can't come off the ORM rows alone (see field_groups.FieldGroup.built).
@@ -509,10 +524,14 @@ def enrich_built_groups(db: Session, tournament, requested, memberships: list, r
     the whole page in one query and then handed out — never per membership.
     Mutates `responses` in place, positionally paired with `memberships`.
     """
-    from app.core.tournament.field_groups import CUSTOM, EVENT_PREFS, LUNCH, wants
+    from app.core.tournament.field_groups import CUSTOM, EVENT_PREFS, LUNCH, ONBOARDING, wants
 
     if not memberships:
         return
+
+    if wants(requested, ONBOARDING):
+        for response, progress in zip(responses, onboarding_reads(db, tournament.id, memberships)):
+            response.onboarding = progress
 
     if wants(requested, LUNCH):
         # The rows are already loaded (loader_options selectinloads them when

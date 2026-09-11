@@ -9,6 +9,7 @@ import { PanelField, FieldValue, FieldList, FieldGrid } from "@/components/profi
 import { RolesCell } from "@/components/tournament/RolesCell";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
+import { OnboardingProgress } from "@/components/tournament/OnboardingProgress";
 
 interface MembershipSectionProps {
   tournamentId: number;
@@ -21,7 +22,7 @@ interface MembershipSectionProps {
   onRolesUpdated: (updated: MembershipFull) => void;
   /**
    * Field ids the TD turned off for this section — "joined", "join_method",
-   * "roles", "age". Individual tracks aren't here: they're entities filtered
+   * "roles", "age", "onboarding". Individual tracks aren't here: they're entities filtered
    * server-side by the surface's hidden list.
    */
   hiddenFields: Set<string>;
@@ -44,10 +45,13 @@ export function MembershipSection({
   const showTracks = (membership.track_statuses ?? []).length > 0;
   const showRoles = shows("roles");
   const showAge = shows("age") && (collectIsOver18 || collectIsOver21);
+  // null means the tournament has no live onboarding steps — nothing to show,
+  // same as age when the tournament doesn't collect it.
+  const showOnboarding = shows("onboarding") && !!membership.onboarding;
 
   // Every field off leaves an empty card, which reads as a rendering fault
   // rather than a deliberate choice — hide the section instead.
-  if (!showJoined && !showMethod && !showTracks && !showRoles && !showAge) return null;
+  if (!showJoined && !showMethod && !showTracks && !showRoles && !showAge && !showOnboarding) return null;
 
   return (
     <ProfileCard>
@@ -112,16 +116,23 @@ export function MembershipSection({
             </FieldGrid>
           )}
 
-          {showAge && (
+          {(showAge || showOnboarding) && (
             <FieldGrid>
-              <PanelField label="Age">
-                <AgeFlagsBadges
-                  isOver18={membership.is_over_18}
-                  isOver21={membership.is_over_21}
-                  collectIsOver18={collectIsOver18}
-                  collectIsOver21={collectIsOver21}
-                />
-              </PanelField>
+              {showAge && (
+                <PanelField label="Age">
+                  <AgeFlagsBadges
+                    isOver18={membership.is_over_18}
+                    isOver21={membership.is_over_21}
+                    collectIsOver18={collectIsOver18}
+                    collectIsOver21={collectIsOver21}
+                  />
+                </PanelField>
+              )}
+              {showOnboarding && (
+                <PanelField label="Onboarding">
+                  <OnboardingProgress progress={membership.onboarding} />
+                </PanelField>
+              )}
             </FieldGrid>
           )}
         </div>
