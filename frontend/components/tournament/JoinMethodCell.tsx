@@ -40,7 +40,7 @@ export function JoinMethodCell({ membership, style }: { membership: MembershipVi
         </>
       }
     >
-      <Badge variant="default" copyValue={jc.code}>{jc.code}</Badge>
+      <Badge variant="default">{jc.code}</Badge>
     </HoverCard>
   );
 }

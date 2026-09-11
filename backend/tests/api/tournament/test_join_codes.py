@@ -49,6 +49,20 @@ def test_list_join_codes_non_member_gets_404(client, td_user, other_tournament):
     assert client.get(f"/tournaments/{other_tournament.id}/join-codes/").status_code == 404
 
 
+def test_list_join_codes_hides_expired(client, td_user, td_tournament, db):
+    """An expired code can't be redeemed, so the list doesn't offer it —
+    this feeds both the invites page and the staff invite picker."""
+    now = datetime.now(timezone.utc)
+    live = make_join_code(db, td_tournament.id, td_user.id, code="LIVE1234", expires_at=now + timedelta(hours=1))
+    make_join_code(db, td_tournament.id, td_user.id, code="GONE1234", expires_at=now - timedelta(hours=1))
+    forever = make_join_code(db, td_tournament.id, td_user.id, code="FORE1234")
+    login(client, "td@test.com", "tdpass")
+
+    ids = {c["id"] for c in client.get(f"/tournaments/{td_tournament.id}/join-codes/").json()}
+
+    assert ids == {live.id, forever.id}
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/{tournament_id}/join-codes/ — manage_invites
 # ---------------------------------------------------------------------------
