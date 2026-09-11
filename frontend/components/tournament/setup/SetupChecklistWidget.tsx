@@ -47,7 +47,9 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
   if (!canSee || !checklist) return null;
 
   return (
-    <Card radius="lg" style={{ maxWidth: "900px", padding: "20px 24px" }}>
+    // data-min-width: the item grid plus the 250px ring — the overview's grid
+    // spans as many columns as that takes.
+    <Card radius="lg" data-min-width={820} style={{ padding: "20px 24px" }}>
       <div style={{ marginBottom: "16px" }}>
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
           Setup progress

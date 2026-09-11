@@ -57,15 +57,14 @@ export default function OverviewPage() {
     <div>
       <PageHeader heading={heading} metadata={metadata} />
 
-      {/* The checklist is too wide for a masonry column, so it sits above the grid. */}
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <SetupChecklistWidget tournamentId={tournamentId} />
         {formsError && (
           <p style={{ margin: 0, fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)" }}>
             {formsError}
           </p>
         )}
         <MasonryGrid>
+          <SetupChecklistWidget tournamentId={tournamentId} />
           {forms === null ? (
             <div style={{ padding: "20px" }}><Spinner size="sm" /></div>
           ) : forms.length > 0 ? (
