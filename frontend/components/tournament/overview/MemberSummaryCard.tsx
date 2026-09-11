@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import { MemberSummary, MemberSummaryAvailabilityOption, MemberSummaryTrack, membersApi } from "@/lib/api";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { OverviewCard, OVERVIEW_CARD_PADDING } from "@/components/tournament/overview/OverviewCard";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 // Narrowest a track's column gets — what four status tiles need side by side.
 const TRACK_MIN_WIDTH = 420;
 const TRACK_GAP = 24;
-const CARD_PADDING = 16;
 // Past this many tracks the card grows down instead of across.
 const MAX_TRACKS_ACROSS = 3;
 
@@ -45,28 +44,22 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
   // Tells the overview's mosaic how many columns to span, so the card grows
   // across before it grows down.
   const across = Math.min(summary.tracks.length, MAX_TRACKS_ACROSS);
-  const minWidth = across * TRACK_MIN_WIDTH + (across - 1) * TRACK_GAP + CARD_PADDING * 2;
+  const minWidth = across * TRACK_MIN_WIDTH + (across - 1) * TRACK_GAP + OVERVIEW_CARD_PADDING * 2;
 
   return (
-    <Card
-      radius="lg"
+    <OverviewCard
+      title="Members"
+      meta={memberCount}
+      action={
+        <Button
+          type="button" variant="ghost" size="sm"
+          onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
+        >
+          View roster
+        </Button>
+      }
       data-min-width={across > 0 ? minWidth : undefined}
-      style={{ padding: `${CARD_PADDING}px`, display: "flex", flexDirection: "column", gap: "20px" }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600 }}>Members</span>
-        <span style={{ fontFamily: "var(--font-mono)", fontSize: "13px", color: "var(--color-text-tertiary)" }}>
-          {memberCount}
-        </span>
-        <div style={{ marginLeft: "auto" }}>
-          <Button
-            type="button" variant="ghost" size="sm"
-            onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/members`)}
-          >
-            View roster
-          </Button>
-        </div>
-      </div>
 
       {onboarding && (
         <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
@@ -92,7 +85,7 @@ export function MemberSummaryCard({ tournamentId }: { tournamentId: number }) {
       }}>
         {summary.tracks.map((track) => <TrackColumn key={track.track_id} track={track} />)}
       </div>
-    </Card>
+    </OverviewCard>
   );
 }
 

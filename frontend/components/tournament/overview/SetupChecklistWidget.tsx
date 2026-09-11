@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { setupChecklistApi, SetupChecklistResponse } from "@/lib/api";
-import { Card } from "@/components/ui/Card";
+import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { ChecklistProgressRing } from "./ChecklistProgressRing";
 import { ChecklistCard } from "./ChecklistCard";
@@ -49,12 +49,7 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
   return (
     // data-min-width: the item grid plus the 250px ring — the overview's grid
     // spans as many columns as that takes.
-    <Card radius="lg" data-min-width={820} style={{ padding: "20px 24px" }}>
-      <div style={{ marginBottom: "16px" }}>
-        <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-          Setup progress
-        </span>
-      </div>
+    <OverviewCard title="Setup progress" data-min-width={820}>
       <div style={{ display: "flex", gap: "20px", alignItems: "stretch" }}>
         <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
           {checklist.items.map((item) => {
@@ -79,6 +74,6 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
           onSent={refetchChecklist}
         />
       )}
-    </Card>
+    </OverviewCard>
   );
 }

@@ -5,13 +5,13 @@ import { useParams } from "next/navigation";
 import { useTournament } from "@/lib/useTournament";
 import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { ApiError, formsApi, MemberForm } from "@/lib/api";
-import { SetupChecklistWidget } from "@/components/tournament/setup/SetupChecklistWidget";
+import { SetupChecklistWidget } from "@/components/tournament/overview/SetupChecklistWidget";
 import { MySignupCards } from "@/components/tournament/overview/MySignupCards";
 import { MemberSummaryCard } from "@/components/tournament/overview/MemberSummaryCard";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
@@ -70,10 +70,7 @@ export default function OverviewPage() {
           {forms === null ? (
             <div style={{ padding: "20px" }}><Spinner size="sm" /></div>
           ) : forms.length > 0 ? (
-            <Card radius="lg" style={{ padding: "12px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "4px 4px 10px" }}>
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600 }}>Forms</span>
-              </div>
+            <OverviewCard title="Forms">
               <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
                 {forms.map((form, index) => (
                   <div
@@ -112,7 +109,7 @@ export default function OverviewPage() {
                   </div>
                 ))}
               </div>
-            </Card>
+            </OverviewCard>
           ) : null}
           <MySignupCards tournamentId={Number(tournamentId)} />
         </MasonryGrid>

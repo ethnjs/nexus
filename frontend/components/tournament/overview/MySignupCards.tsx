@@ -11,7 +11,7 @@ import { eventNameWithDivision } from "@/lib/eventDisplay";
 import { formatTime } from "@/lib/timeFormat";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { PanelField, FieldValue, FieldList } from "@/components/profile/PanelField";
 import { LunchCategoryRows } from "@/components/tournament/sections/LunchSection";
 
@@ -81,19 +81,7 @@ function TrackSignupCard({
   const slots = [...availability].sort((a, b) => a.start.localeCompare(b.start));
 
   return (
-    <Card
-      radius="lg"
-      style={{ padding: "16px", display: "flex", flexDirection: "column", gap: "16px" }}
-    >
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px" }}>
-        <span style={{
-          minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-          fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600,
-        }}>
-          {track.name}
-        </span>
-        <Badge variant={track.status}>{track.status}</Badge>
-      </div>
+    <OverviewCard title={track.name} action={<Badge variant={track.status}>{track.status}</Badge>}>
 
       {summary ? (
         <FieldValue muted>{summary}</FieldValue>
@@ -136,7 +124,7 @@ function TrackSignupCard({
           {pending ? "Answer" : "Edit"}
         </Button>
       </div>
-    </Card>
+    </OverviewCard>
   );
 }
 
