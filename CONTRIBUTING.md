@@ -101,7 +101,7 @@ fix(db): enable pool_pre_ping to survive Railway's idle connection drops
 feat(api)!: rename /tournaments/{id}/members to /memberships
 ```
 
-The `type` matters: release-please reads commit messages on `main` to pick the next version and write the changelog.
+The `type` matters: release-please reads commit messages on `main` to pick the next version and build the GitHub release's commit list.
 
 | Type | Use for | Version bump |
 |---|---|---|
@@ -125,6 +125,16 @@ Pick the type by what the change *does for users*, not by what files it touches 
 - SemVer. `.release-please-manifest.json` tracks the released version; release-please writes it to `frontend/package.json` and `backend/VERSION` (the API's OpenAPI version reads from the latter).
 - During the pilot year, every release carries a flat `-beta` suffix, not an incrementing `beta.N`. The core number still moves normally: `v1.0.0-beta` → `v1.1.0-beta` on a `feat`, → `v1.0.1-beta` on a `fix`.
 - Versions are never bumped by hand — release-please opens a release PR, and merging it tags the release.
+- Two separate records, two audiences:
+  - **Changelog** — the commit list release-please generates on the GitHub release. For us. Nothing to write, and no `CHANGELOG.md` is committed.
+  - **Release notes** — a hand-written page per release in `docs/release-notes/`, synced to the docs site. For the people using NEXUS.
+
+### Cutting a release
+
+1. **Write the release notes.** Copy `.github/RELEASE_NOTES_TEMPLATE.mdx` to `docs/release-notes/<tag>.mdx` — the tag is in the open release PR's title. Plain language for tournament directors and volunteers; screenshots and videos welcome.
+2. **One page per release.** Several PRs usually ship together and share the page — add to the pending page rather than starting a second one.
+3. **Merge it before the release PR** — a normal PR into `main`, so it's there when the release publishes.
+4. **Merge the release PR.** That tags the release, GitHub shows the generated commit list, and the docs site syncs the release notes page.
 
 ### Before opening a PR
 
@@ -144,9 +154,9 @@ Cover, briefly:
 
 ## Docs content
 
-`docs/` holds the NEXUS pages for the docs site ([docs.ethanshih.com](https://docs.ethanshih.com)). On each release it's synced into the docs site under `/nexus`. It holds content only — the docs site owns the folder name, sidebar config (`meta.json`), and the changelog landing page.
+`docs/` holds the NEXUS pages for the docs site ([docs.ethanshih.com](https://docs.ethanshih.com)). On each release it's synced into the docs site under `/nexus`. It holds content only — the docs site owns the folder name, sidebar config (`meta.json`), and the release notes landing page.
 
 - **Pages** — `.mdx` files. Every `.md`/`.mdx` file becomes a live page, so don't leave READMEs or notes in `docs/`.
 - **Images** — next to the page that uses them, imported relatively (`![Setup](./setup.png)`).
 - **Videos** — in `docs/public/`, referenced from the site root (`/nexus/demo.mp4`).
-- **Changelog** — `docs/changelog/`, one manually written page per release, named after the release tag (`v1.0.0-beta.mdx`). Frontmatter: `title` is the tag, `date` is the release date and time in ISO 8601 with a UTC offset (`2026-09-15T14:30:00-07:00`) — the docs site orders releases by it.
+- **Release notes** — `docs/release-notes/`, one manually written page per release, named after the release tag (`v1.0.0-beta.mdx`), started from `.github/RELEASE_NOTES_TEMPLATE.mdx`. Frontmatter: `title` is the tag, `description` a one-line summary, `date` the release date and time in ISO 8601 with a UTC offset (`2026-09-15T14:30:00-07:00`) — the docs site orders releases by it.
