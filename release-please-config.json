@@ -9,7 +9,6 @@
       "skip-changelog": true,
       "versioning": "default",
       "prerelease": true,
-      "release-as": "1.0.0-beta",
       "extra-files": [
         {
           "type": "json",
