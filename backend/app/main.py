@@ -1,4 +1,6 @@
 from contextlib import asynccontextmanager
+from pathlib import Path
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from scalar_fastapi import get_scalar_api_reference
@@ -29,6 +31,16 @@ from app.api.routes.chapter import memberships as chapter_memberships
 from app.api.routes.chapter import join_codes as chapter_join_codes
 
 settings = get_settings()
+DEV_DOCS = settings.app_env in ("development", "preview")
+
+
+def _read_app_version() -> str:
+    # backend/VERSION is written by release-please; lives in backend/ so backend-only deploys ship it.
+    version_file = Path(__file__).resolve().parents[1] / "VERSION"
+    try:
+        return version_file.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "0.0.0-unknown"
 
 
 @asynccontextmanager
@@ -69,9 +81,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="NEXUS",
     description="Backend API for NEXUS — Science Olympiad tournament management",
-    version="0.2.0",
+    version=_read_app_version(),
     lifespan=lifespan,
     redirect_slashes=False,
+    # Docs UIs are dev-only; in prod the docs site renders the reference from /openapi.json.
+    docs_url="/docs" if DEV_DOCS else None,
+    redoc_url=None,
 )
 
 app.add_middleware(
@@ -80,6 +95,7 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:3001",
         "https://nexus.socalscioly.org",
+        "https://docs.ethanshih.com",
     ],
     allow_origin_regex=r"https://nexus-.*\.ethanshih\.vercel\.app",
     allow_credentials=True,
@@ -128,9 +144,11 @@ def health_check():
     return {"status": "ok", "env": settings.app_env}
 
 
-@app.get("/reference", include_in_schema=False)
-async def scalar_reference():
-    return get_scalar_api_reference(
-        openapi_url="/openapi.json",
-        title="NEXUS API Reference",
-    )
+if DEV_DOCS:
+    @app.get("/reference", include_in_schema=False)
+    async def scalar_reference():
+        return get_scalar_api_reference(
+            openapi_url="/openapi.json",
+            title="NEXUS API Reference",
+        )
+

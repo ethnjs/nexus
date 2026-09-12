@@ -33,6 +33,8 @@ Swagger UI: [http://localhost:8001/docs](http://localhost:8001/docs)
 
 API reference (Scalar): [http://localhost:8001/reference](http://localhost:8001/reference)
 
+Both UIs are served only when `APP_ENV` is `development` or `preview`. In production the API serves just the spec at `/openapi.json`, which the docs site renders.
+
 Dev seed accounts (created automatically on startup):
 - `admin@nexus.dev` / `admin1234` — admin
 - `user1@nexus.dev` .. `user15@nexus.dev` / `user1234` — regular users, no tournament seeded
@@ -91,12 +93,48 @@ Match the existing convention:
 
 ### Commit messages
 
-`type(scope): summary` — one line, no bullet body. `type` is `feat`/`fix`/`refactor`/`docs`/`style`/`test`/`chore`; `scope` is the area touched (`forms`, `tournament`, `ui`, `db`, etc).
+[Conventional Commits](https://www.conventionalcommits.org/): `type(scope): summary` — one line, no bullet body. `scope` is optional and names the area touched (`forms`, `tournament`, `ui`, `db`, etc).
 
 ```
 feat(forms): add branching validation for single/multi-select
 fix(db): enable pool_pre_ping to survive Railway's idle connection drops
+feat(api)!: rename /tournaments/{id}/members to /memberships
 ```
+
+The `type` matters: release-please reads commit messages on `main` to pick the next version and build the GitHub release's commit list.
+
+| Type | Use for | Version bump |
+|---|---|---|
+| `feat` | New user-facing functionality | minor |
+| `fix` | Bug fix | patch |
+| `perf` | Performance improvement, no behavior change | patch |
+| `refactor` | Code change, no behavior change | none |
+| `docs` | Docs only | none |
+| `style` | Formatting only | none |
+| `test` | Tests only | none |
+| `build` | Dependencies, build tooling, release config | none |
+| `ci` | GitHub Actions workflows | none |
+| `chore` | Anything else that doesn't ship | none |
+
+**Breaking changes** bump major. Mark them with `!` after the type/scope (`feat!:`, `fix(api)!:`) — this keeps the message single-line. A `BREAKING CHANGE: <description>` footer is also recognized, but prefer `!`.
+
+Pick the type by what the change *does for users*, not by what files it touches — a `fix` that's mislabeled `chore` never gets released.
+
+### Versioning
+
+- SemVer. `.release-please-manifest.json` tracks the released version; release-please writes it to `frontend/package.json` and `backend/VERSION` (the API's OpenAPI version reads from the latter).
+- During the pilot year, every release carries a flat `-beta` suffix, not an incrementing `beta.N`. The core number still moves normally: `v1.0.0-beta` → `v1.1.0-beta` on a `feat`, → `v1.0.1-beta` on a `fix`.
+- Versions are never bumped by hand — release-please opens a release PR, and merging it tags the release.
+- Two separate records, two audiences:
+  - **Changelog** — the commit list release-please generates on the GitHub release. For us. Nothing to write, and no `CHANGELOG.md` is committed.
+  - **Release notes** — a hand-written page per release in `docs/release-notes/`, synced to the docs site. For the people using NEXUS.
+
+### Cutting a release
+
+1. **Write the release notes.** Copy `.github/RELEASE_NOTES_TEMPLATE.mdx` to `docs/release-notes/<tag>.mdx` — the tag is in the open release PR's title. Plain language for tournament directors and volunteers; screenshots and videos welcome.
+2. **One page per release.** Several PRs usually ship together and share the page — add to the pending page rather than starting a second one.
+3. **Merge it before the release PR** — a normal PR into `main`, so it's there when the release publishes.
+4. **Merge the release PR.** That tags the release, GitHub shows the generated commit list, and the docs site syncs the release notes page.
 
 ### Before opening a PR
 
@@ -106,8 +144,24 @@ fix(db): enable pool_pre_ping to survive Railway's idle connection drops
 
 ### PR description
 
-Cover, briefly:
-- **Summary** — what this does and why.
-- **What changed** — grouped by area (backend/frontend, or by subsystem) if it's more than a couple files.
+`.github/pull_request_template.md` fills the description in automatically. Keep its sections and delete the comments as you go:
+
+- **Summary** — what this does and why, in 1–3 sentences.
+- **What changed** — backend (models and migrations → schemas and routes → logic) then frontend.
 - **Out of scope** — anything the linked issue implied but this PR deliberately doesn't do.
-- **Test plan** — what you ran, what you checked by hand.
+- **Test plan** — the gate checklist, then what's covered by tests and what you clicked by hand.
+
+**One line per bullet.** A bullet that needs a second sentence is two changes — split it, or move it to the Summary. Lead with what changed, not why; add a reason only when the change reads as wrong without one. The point of the description is that a reviewer can skim it and know where to look — a wall of prose makes them read the diff instead, which is what the description was supposed to save them.
+
+Delete a subsection that genuinely has nothing in it rather than writing "N/A" — but an empty **Models and migrations** on a PR that touched `models/` means you forgot the migration. Describe migrations by what they do to the data. Keep the revision hash, but in trailing parens rather than leading the bullet — it stays greppable for whoever goes looking, without being the first thing a human reads. Lead anything that drops rows or columns with **Destroys data:** — that's the one line in a PR description a reviewer must not skim past.
+
+---
+
+## Docs content
+
+`docs/` holds the NEXUS pages for the docs site ([docs.ethanshih.com](https://docs.ethanshih.com)). On each release it's synced into the docs site under `/nexus`. It holds content only — the docs site owns the folder name, sidebar config (`meta.json`), and the release notes landing page.
+
+- **Pages** — `.mdx` files. Every `.md`/`.mdx` file becomes a live page, so don't leave READMEs or notes in `docs/`.
+- **Images** — next to the page that uses them, imported relatively (`![Setup](./setup.png)`).
+- **Videos** — in `docs/public/`, referenced from the site root (`/nexus/demo.mp4`).
+- **Release notes** — `docs/release-notes/`, one manually written page per release, named after the release tag (`v1.0.0-beta.mdx`), started from `.github/RELEASE_NOTES_TEMPLATE.mdx`. Frontmatter: `title` is the tag, `description` a one-line summary, `date` the release date and time in ISO 8601 with a UTC offset (`2026-09-15T14:30:00-07:00`) — the docs site orders releases by it.
