@@ -144,11 +144,16 @@ Pick the type by what the change *does for users*, not by what files it touches 
 
 ### PR description
 
-Cover, briefly:
-- **Summary** — what this does and why.
-- **What changed** — grouped by area (backend/frontend, or by subsystem) if it's more than a couple files.
+`.github/pull_request_template.md` fills the description in automatically. Keep its sections and delete the comments as you go:
+
+- **Summary** — what this does and why, in 1–3 sentences.
+- **What changed** — backend (models and migrations → schemas and routes → logic) then frontend.
 - **Out of scope** — anything the linked issue implied but this PR deliberately doesn't do.
-- **Test plan** — what you ran, what you checked by hand.
+- **Test plan** — the gate checklist, then what's covered by tests and what you clicked by hand.
+
+**One line per bullet.** A bullet that needs a second sentence is two changes — split it, or move it to the Summary. Lead with what changed, not why; add a reason only when the change reads as wrong without one. The point of the description is that a reviewer can skim it and know where to look — a wall of prose makes them read the diff instead, which is what the description was supposed to save them.
+
+Delete a subsection that genuinely has nothing in it rather than writing "N/A" — but an empty **Models and migrations** on a PR that touched `models/` means you forgot the migration. Describe migrations by what they do to the data. Keep the revision hash, but in trailing parens rather than leading the bullet — it stays greppable for whoever goes looking, without being the first thing a human reads. Lead anything that drops rows or columns with **Destroys data:** — that's the one line in a PR description a reviewer must not skim past.
 
 ---
 
