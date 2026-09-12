@@ -1,0 +1,29 @@
+name: Sync Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+
+permissions: {}
+
+# One sync at a time; the docs site serializes on its side too.
+concurrency:
+  group: sync-docs
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Docs changes reach the site without waiting for a release. Releases use the
+      # repository_dispatch in release-please.yml instead, which syncs at the tag.
+      - name: Trigger the docs site sync
+        env:
+          GH_TOKEN: ${{ secrets.DOCS_SITE_DISPATCH_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run sync-project-docs.yml -R ethnjs/docs \
+            -f repo="$REPO" -f ref=main
