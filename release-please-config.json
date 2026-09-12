@@ -3,6 +3,7 @@
   "bootstrap-sha": "c75de038e71fa2cc3950ca487b9586be29f5be71",
   "include-component-in-tag": false,
   "pull-request-title-pattern": "chore: release ${version}",
+  "pull-request-footer": "User-facing release notes: https://docs.ethanshih.com/docs/nexus/release-notes — add this release's page before merging.\n\nThis PR was generated with [Release Please](https://github.com/googleapis/release-please). See [documentation](https://github.com/googleapis/release-please#release-please).",
   "packages": {
     ".": {
       "release-type": "simple",
