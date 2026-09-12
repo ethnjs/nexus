@@ -32,6 +32,8 @@ interface AvailabilityTimelineProps {
    */
   hoveredId: number | null;
   onHover: (id: number | null) => void;
+  /** Fill the parent's width instead of sitting beside something at 220px — for stacked layouts. */
+  fullWidth?: boolean;
 }
 
 const HOUR_MS = 3600000;
@@ -58,15 +60,29 @@ function mergeSpans(spans: Span[]): Span[] {
   return merged;
 }
 
-const GREEN = "color-mix(in srgb, var(--color-success) 28%, transparent)";
-const GREEN_HOVER = "color-mix(in srgb, var(--color-success) 60%, transparent)";
-const RED = "color-mix(in srgb, var(--color-danger) 12%, transparent)";
+// The one definition of "available" and "not", exported because the member
+// panel's assignments section shades its own timeline with them — the same
+// green has to mean the same thing at the same weight wherever a member's
+// availability is drawn.
+//
+// Light, because in both places the colour sits *under* something: chips and
+// role pills there, the shift blocks and their labels here. It reads as a
+// ground rather than as a mark.
+export const AVAILABILITY_GREEN = "color-mix(in srgb, var(--color-success) 13%, transparent)";
+export const AVAILABILITY_RED = "color-mix(in srgb, var(--color-danger) 6%, transparent)";
+
+const GREEN = AVAILABILITY_GREEN;
+// Hover is the one place the green is the mark rather than the ground: it
+// answers "which block is this badge?", so it stays well clear of the resting
+// fill instead of scaling with it.
+const GREEN_HOVER = "color-mix(in srgb, var(--color-success) 34%, transparent)";
+const RED = AVAILABILITY_RED;
 
 function timeRange(span: Span): string {
   return `${formatTime(new Date(span.start).toISOString())}–${formatTime(new Date(span.end).toISOString())}`;
 }
 
-export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover }: AvailabilityTimelineProps) {
+export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHover, fullWidth }: AvailabilityTimelineProps) {
   const total = dayEnd - dayStart;
   if (total <= 0) return null;
 
@@ -81,7 +97,9 @@ export function AvailabilityTimeline({ dayStart, dayEnd, shifts, hoveredId, onHo
 
   return (
     <div style={{
-      position: "relative", flex: "0 0 220px", alignSelf: "stretch",
+      position: "relative", alignSelf: "stretch",
+      // A flex-basis would size the height in a column, so stacked callers get a width.
+      ...(fullWidth ? { width: "100%" } : { flex: "0 0 220px" }),
       display: "flex", flexDirection: "column", justifyContent: "center", gap: "3px",
     }}>
       {/* Hour ruler — every other line is labelled, so a dense window stays

@@ -1,6 +1,10 @@
 'use client'
 
-import { forwardRef, InputHTMLAttributes, ChangeEvent, ReactNode, useId } from 'react'
+import {
+  forwardRef, InputHTMLAttributes, ChangeEvent, ReactNode, useId, useImperativeHandle, useRef,
+} from 'react'
+
+import { IconX } from '@/components/ui/Icons'
 
 type InputFont  = 'sans' | 'mono' | 'serif'
 type InputSize  = 'xs' | 'sm' | 'md' | 'lg'
@@ -22,6 +26,12 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   charset?:   InputCharset
   /** Leading icon (e.g. a search glyph) rendered inside the field's left edge. */
   icon?:      ReactNode
+  /** Given, the field grows a trailing "x" while it has a value. Takes a
+   *  callback rather than clearing itself: the value is the caller's state,
+   *  and firing onChange with a hand-built event would hand every listener a
+   *  fake target. Focus returns to the field after a clear, since clearing a
+   *  search is nearly always followed by typing a different one. */
+  onClear?:   () => void
 }
 
 const FONT_MAP: Record<InputFont, string> = {
@@ -52,11 +62,51 @@ const CHARSET_PATTERNS: Record<InputCharset, RegExp> = {
   alphanumeric: /[^a-zA-Z0-9\s]/g,
 }
 
+/** The trailing "x". A native button, not Button: the smallest Button is
+ *  28px with a border, which cannot sit inside a 26px field. onMouseDown is
+ *  prevented so the click doesn't blur the input first — the focus we hand
+ *  back afterwards would otherwise be a visible flicker. */
+function ClearButton({ right, onClear }: { right: string; onClear: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label="Clear"
+      title="Clear"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClear}
+      style={{
+        position: 'absolute', right, top: '50%', transform: 'translateY(-50%)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0, width: '14px', height: '14px',
+        border: 'none', background: 'transparent', borderRadius: 'var(--radius-sm)',
+        color: 'var(--color-text-tertiary)', cursor: 'pointer',
+        transition: 'color 120ms ease',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--color-text-primary)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--color-text-tertiary)' }}
+    >
+      <IconX size={12} />
+    </button>
+  )
+}
+
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, labelExtra, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onChange, inputMode, max, onFocus, onBlur, ...props }, ref) => {
+  ({ label, labelExtra, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onClear, onChange, inputMode, max, onFocus, onBlur, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
+    // Both this component and the caller need the node: the caller for its
+    // own focus/scroll, this for the focus that follows a clear.
+    const innerRef = useRef<HTMLInputElement>(null)
+    useImperativeHandle(ref, () => innerRef.current as HTMLInputElement)
+
+    const clearable = !!onClear && !locked && !disabled
+    const showClear = clearable && String(value ?? '').length > 0
+
+    function handleClear() {
+      onClear?.()
+      innerRef.current?.focus()
+    }
 
     function handleChange(e: ChangeEvent<HTMLInputElement>) {
       if (charset) {
@@ -97,7 +147,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             </span>
           )}
           <input
-            ref={ref}
+            ref={innerRef}
             id={inputId}
             disabled={locked || disabled}
             inputMode={inputMode ?? (charset === 'numeric' ? 'numeric' : undefined)}
@@ -112,7 +162,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             style={{
               height: sizing.height,
               paddingLeft: icon ? `calc(${sizing.paddingX} * 2 + 14px)` : sizing.paddingX,
-              paddingRight: sizing.paddingX,
+              paddingRight: clearable ? `calc(${sizing.paddingX} * 2 + 12px)` : sizing.paddingX,
               fontFamily: FONT_MAP[font],
               fontSize: sizing.fontSize,
               background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
@@ -136,6 +186,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             value={value ?? ''}
             {...props}
           />
+          {showClear && <ClearButton right={sizing.paddingX} onClear={handleClear} />}
         </div>
         {error && (
           <p style={{ fontFamily: 'var(--font-sans)', fontSize: '13px', color: 'var(--color-danger)' }}>

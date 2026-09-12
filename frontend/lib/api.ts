@@ -386,6 +386,10 @@ export interface TournamentTrack {
   is_archived:   boolean
   /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
   allow_confirm: boolean
+  // The role the assignments board grants a member placed on this track with
+  // no role picked yet. Every track can carry one, cosmetic or not — Test
+  // Writing's is often Test Writer.
+  default_role_id: number | null
   created_at:    string
   updated_at:    string
 }
@@ -402,6 +406,7 @@ export interface TournamentTrackCreate {
   location?:      string | null
   division?:      TournamentDivision[] | null
   allow_confirm?: boolean
+  default_role_id?: number | null
 }
 
 export type TournamentTrackUpdate = Partial<TournamentTrackCreate>
@@ -519,7 +524,9 @@ export const adminTournamentsApi = {
 // Tournament Shifts — nested under /tournaments/{id}/shifts/, and attached
 // to events via /tournaments/{id}/events/{eventId}/shifts/{shiftId}/
 // -------------------------------------------------------------------------
-export interface TournamentShift {
+/** A shift reduced to when and where it is — what a reader that only needs to
+ *  name a shift gets (a member-facing event, an assignment). */
+export interface TournamentShiftBase {
   id:            number
   tournament_id: number
   // The primary track whose day this shift falls on. Required — a shift with
@@ -528,8 +535,12 @@ export interface TournamentShift {
   label:         string
   start:         string
   end:           string
+}
+
+export interface TournamentShift extends TournamentShiftBase {
   // How many TournamentEvents this shift is currently attached to — drives
-  // the "attached to N events" delete-confirm warning.
+  // the "attached to N events" delete-confirm warning. Absent from the base:
+  // it costs a join per shift and means nothing outside the shift catalog.
   event_count:   number
   created_at:    string
   updated_at:    string
@@ -551,6 +562,8 @@ export const tournamentShiftsApi = {
     api.get<TournamentShift[]>(
       `/tournaments/${tournamentId}/shifts/${opts.trackId ? `?track_id=${opts.trackId}` : ""}`,
     ),
+  get: (tournamentId: number, id: number) =>
+    api.get<TournamentShift>(`/tournaments/${tournamentId}/shifts/${id}/`),
   create: (tournamentId: number, body: TournamentShiftInput) =>
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
@@ -618,15 +631,66 @@ export interface EventLoadDefaultsResponse {
   skipped: EventLoadDefaultsSkipped[]
 }
 
+/** Which field groups an event read returns. Omit for everything; pass [] for
+ *  identity only. There is no 'assignments' group — an event nesting its
+ *  assignments, each nesting that same event, is circular; fetch them from
+ *  assignmentsApi and join by event id. */
+export type EventField = 'shifts' | 'tracks' | 'location';
+
+export interface AssignmentInput {
+  tournament_event_id: number
+  membership_id: number
+  // The role to place them in. If they don't hold it, the server grants it
+  // first (rank-bound) rather than making the caller do it separately.
+  role_id: number
+  tournament_shift_id?: number | null
+  /** Required when there's no shift, ignored when there is — a shift already
+   *  names its track and the server takes that as the answer. Naming one that
+   *  contradicts the shift is a 422, not a silent correction. */
+  tournament_track_id?: number | null
+}
+
+export const assignmentsApi = {
+  // Both filters optional and composable: no args reads the whole tournament
+  // (what the board wants), eventId reads one event's staffing, membershipId
+  // reads one person's.
+  list: (tournamentId: number, opts: { eventId?: number; membershipId?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.eventId !== undefined) params.set("event_id", String(opts.eventId));
+    if (opts.membershipId !== undefined) params.set("membership_id", String(opts.membershipId));
+    const query = params.toString();
+    return api.get<Assignment[]>(
+      `/tournaments/${tournamentId}/assignments/${query ? `?${query}` : ""}`,
+    );
+  },
+  create: (tournamentId: number, body: AssignmentInput) =>
+    api.post<Assignment>(`/tournaments/${tournamentId}/assignments/`, body),
+  // Omitting tournament_shift_id leaves the shift alone; sending an explicit
+  // null clears it. Those are different requests — don't collapse them.
+  update: (
+    tournamentId: number,
+    id: number,
+    body: { role_id?: number; tournament_shift_id?: number | null; tournament_track_id?: number | null },
+  ) => api.patch<Assignment>(`/tournaments/${tournamentId}/assignments/${id}/`, body),
+  // Unassigning never revokes the role the assignment used — that grant is a
+  // fact about the member, not a detail of this placement.
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/assignments/${id}/`),
+};
+
 export const tournamentEventsApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
+  list: (tournamentId: number, fields?: EventField[]) => {
+    const query = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/${query}`);
+  },
   // The one catalog whose member shape differs — no room assignment, no
-  // staffing target, no times.
+  // staffing target.
   listPublic: (tournamentId: number) =>
     api.get<TournamentEventMember[]>(`/tournaments/${tournamentId}/events/?public=true`),
-  get:    (tournamentId: number, id: number) =>
-    api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
+  get:    (tournamentId: number, id: number, fields?: EventField[]) => {
+    const query = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/${query}`);
+  },
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
     api.post<TournamentEvent>(`/tournaments/${tournamentId}/events/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentEventInput>) =>
@@ -817,16 +881,24 @@ export interface PersonRole {
 }
 
 /**
- * How the backend credits an action: a join code's creator, an audit actor, a
- * form's author. Name and roles only — see PersonRefResponse for why it isn't
- * the whole membership.
+ * Who someone is, with no claim about what they do here. Used where the
+ * surrounding row already establishes their role — an assignment names its
+ * own, so the member's whole role list would be noise.
  */
-export interface PersonRef {
+export interface PersonNameRef {
   user_id: number
   /** null when they hold no membership in this tournament/chapter. */
   membership_id: number | null
   first_name: string | null
   last_name: string | null
+}
+
+/**
+ * How the backend credits an action: a join code's creator, an audit actor, a
+ * form's author. Name and roles only — see PersonRefResponse for why it isn't
+ * the whole membership.
+ */
+export interface PersonRef extends PersonNameRef {
   /** null = no membership here; [] = a member with no roles; absent = the viewer isn't entitled to them. */
   roles?: PersonRole[] | null
 }
@@ -843,7 +915,15 @@ export interface MembershipJoinCodeInfo {
 // these select membership *data*.
 export type MembershipField =
   | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
-  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age';
+  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age'
+  | 'assignments' | 'onboarding';
+
+// Live onboarding steps answered out of the live total — skipped (draft or
+// archived) steps count toward neither.
+export interface MembershipOnboarding {
+  completed: number
+  total:     number
+}
 
 // Matches MembershipBaseResponse — the membership data the member themselves
 // owns: what they answered, what they were assigned, what they're available
@@ -893,6 +973,12 @@ export interface MembershipFull extends MembershipBase {
   // tell declined members apart from active ones.
   age_disclosure?:   'consented' | 'declined' | null
   notes?:            string | null
+  // What this member is staffing. On MembershipFull, not MembershipBase:
+  // members don't see their own assignments, and the base is what /members/me
+  // returns. Optional like every other group — absent unless asked for.
+  assignments?:      Assignment[]
+  // null when the tournament has no live onboarding steps — nothing to report.
+  onboarding?:       MembershipOnboarding | null
   // Sections this surface's display config emptied out. A section renders
   // even with no data ("No info yet"), so an empty list no longer means
   // "hidden" — this is what says so. Reports display_config removals only:
@@ -915,7 +1001,7 @@ export type MembershipView =
     created_at: string
     updated_at: string
     user:       UserFull
-  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections">>;
+  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections" | "assignments" | "onboarding">>;
 
 /** A MembershipMe as the member sections can render it, or null when the
  *  caller holds no membership in this tournament — nothing to show. */
@@ -941,6 +1027,34 @@ export interface MembershipMe extends MembershipBase {
   // hasn't answered yet — drives the blocking consent modal. False once
   // answered either way (consented or declined), not just while consented.
   needs_age_consent: boolean
+}
+
+// Matches MemberSummaryResponse — GET /members/summary/, manage_members.
+// Counts only; the roster is where the people are.
+export interface MemberSummaryAvailabilityOption {
+  option_id:  string
+  label:      string
+  confirmed:  number
+  interested: number
+}
+
+export interface MemberSummaryTrack {
+  track_id:     number
+  name:         string
+  confirmed:    number
+  interested:   number
+  declined:     number
+  pending:      number
+  // Each member counts once, under the largest option their shifts fully
+  // cover — an all-day volunteer isn't also counted as morning.
+  availability: MemberSummaryAvailabilityOption[]
+}
+
+export interface MemberSummary {
+  member_count: number
+  // null when the tournament has no live onboarding steps.
+  onboarding:   { steps: number; completed: number; started: number } | null
+  tracks:       MemberSummaryTrack[]
 }
 
 // Matches build_filter_options — every value is a {value,label} pair whose
@@ -1020,6 +1134,8 @@ export const membersApi = {
   // tournament actually holds.
   filterOptions: (tournamentId: number) =>
     api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/members/filter-options/`),
+  summary: (tournamentId: number) =>
+    api.get<MemberSummary>(`/tournaments/${tournamentId}/members/summary/`),
   // surface applies display_config's hidden-item filtering server-side for
   // that UI location — omit it to get the unfiltered response.
   get: (tournamentId: number, id: number, surface?: string, fields?: MembershipField[]) => {
@@ -1639,11 +1755,42 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
-/** The member-facing event shape (?public=true) — only what names an event. */
+/** The member-facing event shape (?public=true), and what any response embeds
+ *  when it needs to name an event — an assignment, say. Still not the staff
+ *  shape: no building/room/floor, no volunteers_needed. */
 export interface TournamentEventMember {
   id: number
   name: string | null
   division: string | null
+  event_type: string
+  shifts: TournamentShiftBase[]
+}
+
+/** One member staffing one event in one role, optionally within one shift.
+ *  The same shape from the assignments collection, from a write, and nested
+ *  on a membership under `fields=assignments`. */
+export interface Assignment {
+  id: number
+  event: TournamentEventMember
+  member: PersonNameRef
+  /** PersonRole, not the full role: permissions and rank are the tournament's
+   *  authorization model and have no business on a staffing chip. */
+  role: PersonRole
+  /** Null means genuinely unpinned — test writing has no shifts at all. */
+  shift: TournamentShiftBase | null
+  /** Never null, unlike the shift: every row is for a track. A pinned row
+   *  repeats what its shift says; an unpinned one carries the only record of
+   *  which of an event's workstreams it belongs to. */
+  track: TournamentTrackRef
+  created_at: string
+  updated_at: string
+}
+
+/** A track reduced to naming it — mirrors TournamentTrackRef on the server. */
+export interface TournamentTrackRef {
+  id: number
+  name: string
+  is_primary: boolean
 }
 
 export interface MemberForm {
@@ -1672,6 +1819,8 @@ export interface Form {
   response_count:  number
   prerequisites:   TournamentFormPrerequisites | null
   fields:          FormField[]
+  /** null for a chapter form — there's no tournament to be archived. */
+  tournament_is_archived: boolean | null
 }
 
 // Matches ChapterMemberResponse — no chapter dashboard exists yet, so this
@@ -1913,16 +2062,19 @@ export interface DisplayConfigSort {
 // sort rather than overwriting each other.
 export interface DisplayConfigSurface {
   hidden: string[]
-  // Members table: visible columns in display order. null means "use the
-  // defaults" — an empty array means "no data columns", so they differ.
+  // Either table: visible columns in display order. null means "use that
+  // table's defaults" — an empty array means "no data columns", so they
+  // differ. Which keys are legal depends on the surface.
   columns?: string[] | null
   // Member panel: section order and per-section visibility. null means the
   // default order with everything shown.
   sections?: DisplayConfigSection[] | null
-  // Members table: committed filters, keyed by the roster query param each
-  // set belongs to. Sets don't survive JSON, so the wire shape is arrays.
+  // Either table: committed filters, keyed by that table's own filter
+  // vocabulary — the roster stores query params it will send back, the
+  // events table stores the values it excludes client-side. Sets don't
+  // survive JSON, so the wire shape is arrays.
   filters?: Record<string, string[]> | null
-  // Members table: the viewer's sort. null means the page's own default.
+  // Either table: the viewer's sort. null means the page's own default.
   sort?: DisplayConfigSort | null
 }
 
@@ -1941,6 +2093,8 @@ export interface DisplayConfigCatalog {
   custom_fields: DisplayConfigCatalogItem[]
   // Members table: every column that can be turned on, fixed ones first.
   columns: DisplayConfigCatalogItem[]
+  // Events table: its own column universe, sharing no keys with `columns`.
+  event_columns: DisplayConfigCatalogItem[]
   // Member panel: built-in sections and their individually hideable fields.
   sections: DisplayConfigSectionCatalogItem[]
 }

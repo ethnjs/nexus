@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { IconChevronDown, IconRestore, IconTrash } from "@/components/ui/Icons";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { ApiError, FormField, formsApi } from "@/lib/api";
 import { QUESTION_TYPE_OPTIONS } from "@/lib/forms/fieldTypes";
 
@@ -19,9 +20,11 @@ const TYPE_LABELS = Object.fromEntries(QUESTION_TYPE_OPTIONS.map((o) => [o.value
 // Two actions, deliberately unequal in weight:
 //   Unarchive — puts the question back, answers and all. Reversible.
 //   Delete    — erases the question and every answer to it. Permanent.
-export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted }: {
+export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted, locked = false }: {
   formId: string;
   fields: FormField[];
+  /** Archived tournament — the list stays browsable, both actions lock. */
+  locked?: boolean;
   /** Hands the field to the builder, which unarchives it on the next Save —
       it isn't its own request, it's part of the target field list. */
   onUnarchive: (field: FormField) => void;
@@ -87,12 +90,16 @@ export function ArchivedFieldsSection({ formId, fields, onUnarchive, onDeleted }
                 </div>
               </div>
               <div style={{ display: "flex", gap: "4px", flexShrink: 0 }}>
-                <Button type="button" variant="secondary" size="xs" onClick={() => onUnarchive(field)}>
+                <Button
+                  type="button" variant="secondary" size="xs" onClick={() => onUnarchive(field)}
+                  disabled={locked} title={locked ? ARCHIVED_REASON : undefined}
+                >
                   <IconRestore size={12} /> Unarchive
                 </Button>
                 <Button
                   type="button" variant="ghost" size="xs" iconOnly
-                  title="Delete permanently"
+                  disabled={locked}
+                  title={locked ? ARCHIVED_REASON : "Delete permanently"}
                   onClick={() => { setError(undefined); setConfirming(field); }}
                   style={{ color: "var(--color-danger)" }}
                 >

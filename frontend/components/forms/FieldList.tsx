@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   DndContext, DragEndEvent, DragOverlay, DragStartEvent, MeasuringStrategy, PointerSensor, closestCenter,
   useSensor, useSensors,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
@@ -25,12 +26,19 @@ import {
   EditableField, withOptionClientKeys, newField, toFieldInput, deriveBranchingEnabled, deriveCustomValuesEnabled,
 } from "@/lib/forms/editableField";
 import { DISPLAY_STYLE_TYPES } from "@/lib/forms/fieldTypes";
+import { SuspendCardScrollContext } from "@/lib/forms/cardScroll";
 
 
 // How long a scroll-into-view keeps following a card that's still growing
 // (see scrollCardIntoView) — long enough to cover a shifts/events fetch on
 // a slow connection, short enough that it can't surprise you later.
 const SETTLE_MS = 2000;
+
+// How long a suspendCardScroll() call keeps the viewport still. Has to
+// outlast the card's own height animation (useCardHeight, 220ms) plus the
+// ResizeObserver bursts that trail it, and stay short enough that the next
+// thing you click still gets followed normally.
+const SCROLL_MUTE_MS = 600;
 
 // Strict accordion — expanding a card collapses whatever was previously
 // expanded; only one card is ever in edit mode at a time, and (unlike a
@@ -42,7 +50,9 @@ const SETTLE_MS = 2000;
 // snapshot of what was last loaded/saved — FloatingSaveBar shows whenever
 // that diff is non-empty, and Save PUTs the whole field list in one batch
 // (see the Edit Lifecycle notes on formsApi.putFields).
-export function FieldList({ form }: { form: Form }) {
+/** `locked` (archived tournament) keeps every card a read-only preview — none
+ *  can expand, so the toolbar and save bar never appear either. */
+export function FieldList({ form, locked = false }: { form: Form; locked?: boolean }) {
   const [fields, setFields] = useState<EditableField[]>(() =>
     form.fields
       .filter((f) => !f.is_archived)
@@ -179,13 +189,34 @@ export function FieldList({ form }: { form: Form }) {
   // land short. The watch ends at the first sign of the user scrolling
   // themselves (our own smooth scroll doesn't fire these events, so it can't
   // cancel itself), or after SETTLE_MS if the fetch never resolves.
+  // Set by suspendCardScroll below — a timestamp, not a boolean, so nothing
+  // has to remember to switch it back off.
+  const scrollMutedUntilRef = useRef(0);
+
+  // Cancels the in-flight watch *and* ignores whatever would have re-armed it
+  // over the next beat: the click that deletes an option has already fired
+  // focusin on the × (arming a watch) before React removes the row, so
+  // cancelling alone would leave the shrink to re-trigger a scroll.
+  const suspendCardScroll = useCallback(() => {
+    settleRef.current?.();
+    scrollMutedUntilRef.current = Date.now() + SCROLL_MUTE_MS;
+  }, []);
+
   function scrollCardIntoView(clientKey: string) {
+    if (Date.now() < scrollMutedUntilRef.current) return;
     settleRef.current?.();
     const card = listRef.current?.querySelector<HTMLElement>(`[data-field-card="${clientKey}"]`);
     if (!card) return;
 
-    const focused = document.activeElement;
-    const focusedInCard = focused instanceof HTMLElement && card.contains(focused) ? focused : null;
+    // Re-read on every apply() rather than captured once: the element that
+    // triggered the scroll can be gone by the time the ResizeObserver fires
+    // (deleting an option unmounts the × that focusin fired from), and a
+    // detached node's getBoundingClientRect is all zeros — which reads as
+    // "target is above the viewport" and yanks the page to the top.
+    const focusedInCard = () => {
+      const focused = document.activeElement;
+      return focused instanceof HTMLElement && focused.isConnected && card.contains(focused) ? focused : null;
+    };
 
     let frame = 0;
     const apply = () => {
@@ -210,7 +241,7 @@ export function FieldList({ form }: { form: Form }) {
       // an edit near its bottom; with nothing focused (e.g. after Cancel)
       // there's no better answer than the card, and the guard below then
       // leaves the scroll alone entirely.
-      const target = cardRect.height <= band ? card : focusedInCard ?? card;
+      const target = cardRect.height <= band ? card : focusedInCard() ?? card;
       const rect = target === card ? cardRect : target.getBoundingClientRect();
       if (rect.top >= safeTop && rect.bottom <= safeBottom) return;
       if (rect.height > band && rect.bottom > safeTop && rect.top < safeBottom) return;
@@ -540,6 +571,7 @@ export function FieldList({ form }: { form: Form }) {
   }
 
   return (
+    <SuspendCardScrollContext.Provider value={suspendCardScroll}>
     <div
       ref={listRef}
       style={{
@@ -562,7 +594,10 @@ export function FieldList({ form }: { form: Form }) {
             title="No fields yet"
             description="Add a field to start building this form."
             action={
-              <Button type="button" variant="primary" size="sm" onClick={() => addField()}>
+              <Button
+                type="button" variant="primary" size="sm" onClick={() => addField()}
+                disabled={locked} title={locked ? ARCHIVED_REASON : undefined}
+              >
                 <IconPlus size={14} /> Add field
               </Button>
             }
@@ -607,6 +642,7 @@ export function FieldList({ form }: { form: Form }) {
                 onRequireTrack={() => setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })}
                 errors={validation.errorsFor(field.clientKey)}
                 allowArchive={hasResponses}
+                locked={locked}
               />
             ))}
           </SortableContext>
@@ -631,6 +667,7 @@ export function FieldList({ form }: { form: Form }) {
       <ArchivedFieldsSection
         formId={form.id}
         fields={archivedFields}
+        locked={locked}
         onUnarchive={unarchiveField}
         onDeleted={(fieldId) => {
           setArchivedFields((prev) => prev.filter((f) => f.id !== fieldId));
@@ -685,5 +722,6 @@ export function FieldList({ form }: { form: Form }) {
         />
       )}
     </div>
+    </SuspendCardScrollContext.Provider>
   );
 }

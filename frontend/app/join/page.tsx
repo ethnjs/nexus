@@ -15,12 +15,12 @@ import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 // TD who only cares about 21+ shouldn't see 18+ language.
 function ageDisclosureCopy(preview: JoinPreviewTournament): string {
   if (preview.collect_is_over_18 && preview.collect_is_over_21) {
-    return "This tournament asks whether members are 18 or older and 21 or older.";
+    return "This tournament asks which age group members are in: under 18, 18–20, or 21+.";
   }
   if (preview.collect_is_over_21) {
-    return "This tournament asks whether members are 21 or older.";
+    return "This tournament asks which age group members are in: under 21 or 21+.";
   }
-  return "This tournament asks whether members are 18 or older.";
+  return "This tournament asks which age group members are in: under 18 or 18+.";
 }
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -214,7 +214,7 @@ function JoinPageContent() {
               </span>
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
                 {ageDisclosureCopy(preview)} I consent to sharing this with the tournament.
-                The tournament only sees whether I meet the threshold — my date of birth is never shared.
+                My date of birth is never shared.
               </span>
             </label>
           )}

@@ -136,6 +136,47 @@ def test_fields_narrows_to_the_named_groups(client, td_user, td_tournament, db):
         assert key not in row["user"]
 
 
+def test_onboarding_group_counts_live_steps_answered(client, td_user, td_tournament, db):
+    """A skipped (archived) step counts toward neither side of the fraction."""
+    from app.models.models import Form, FormResponse, TournamentForm
+
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    steps = []
+    for order, status in enumerate(("published", "published", "archived"), start=1):
+        form = Form(
+            owner_type="tournament", tournament_id=td_tournament.id, chapter_id=None,
+            name=f"Step {order}", status=status, created_by=td_user.id,
+        )
+        db.add(form)
+        db.flush()
+        db.add(TournamentForm(form_id=form.id, tournament_id=td_tournament.id, is_onboarding=True, order=order))
+        steps.append(form)
+    db.add_all([
+        FormResponse(form_id=steps[0].id, user_id=u["id"]),
+        FormResponse(form_id=steps[2].id, user_id=u["id"]),
+    ])
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
+    row = next(r for r in rows if r["user"]["id"] == u["id"])
+    assert row["onboarding"] == {"completed": 1, "total": 2}
+    detail = client.get(f"/tournaments/{td_tournament.id}/members/{row['id']}/?fields=onboarding").json()
+    assert detail["onboarding"] == {"completed": 1, "total": 2}
+
+
+def test_onboarding_group_is_null_without_live_steps(client, td_user, td_tournament, db):
+    """No sequence means no progress to report — not a misleading 0/0."""
+    u = _make_user(db, "alice@example.com")
+    _make_membership(db, td_tournament.id, u["id"])
+    login(client, "td@test.com", "tdpass")
+
+    rows = client.get(f"/tournaments/{td_tournament.id}/members/?fields=onboarding").json()
+    row = next(r for r in rows if r["user"]["id"] == u["id"])
+    assert row["onboarding"] is None
+
+
 def test_empty_fields_returns_identity_only(client, td_user, td_tournament, db):
     """Distinct from omitting the param: an explicit empty value is a caller
     saying it needs nothing but the row's identity."""
@@ -528,6 +569,103 @@ class TestRosterFilters:
         assert entree["label"] == "Entree"
         assert [o["value"] for o in entree["options"]] == ["pizza"]
         assert body["collect_is_over_18"] is False
+
+    def test_event_preference_options_name_the_division_without_parentheses(
+        self, client, db, td_user, td_tournament,
+    ):
+        """"Chess C", not "Chess (C)" — the division identifies which of the
+        two same-named events a row is, so it reads as part of the name."""
+        from app.models.models import (
+            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+        )
+
+        track_id = primary_track_id(db, td_tournament.id)
+        chess_c = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        chess_b = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="B")
+        no_division = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy")
+        db.add_all([chess_c, chess_b, no_division])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        # On the track, since a group only offers that track's events.
+        db.add_all([
+            TournamentEventTrack(tournament_event_id=e.id, track_id=track_id)
+            for e in (chess_c, chess_b, no_division)
+        ])
+        # A stored answer is what puts the track in event_preferences at all.
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=track_id, tournament_event_id=chess_c.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        group = next(g for g in body["event_preferences"] if g["value"] == str(track_id))
+        labels = [o["label"] for o in group["options"]]
+        assert "Chess C" in labels
+        # An event with no division is named by itself, with no trailing space.
+        assert "Anatomy" in labels
+        # Sorted by name then division, so the two Chess rows keep a fixed order.
+        assert labels.index("Chess B") < labels.index("Chess C")
+
+    def test_event_preference_options_only_offer_that_tracks_events(
+        self, client, db, td_user, td_tournament,
+    ):
+        """A track's group offers that track's events, like the question
+        itself — plus anything already ranked there."""
+        from app.models.models import (
+            TournamentEvent, TournamentEventTrack, TournamentMembershipEventPreference,
+        )
+
+        track_id = primary_track_id(db, td_tournament.id)
+        on_track = TournamentEvent(tournament_id=td_tournament.id, name="Anatomy", division="C")
+        off_track = TournamentEvent(tournament_id=td_tournament.id, name="Boomilever", division="C")
+        ranked = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        db.add_all([on_track, off_track, ranked])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        db.add(TournamentEventTrack(tournament_event_id=on_track.id, track_id=track_id))
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=track_id, tournament_event_id=ranked.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        group = next(g for g in body["event_preferences"] if g["value"] == str(track_id))
+        labels = [o["label"] for o in group["options"]]
+        assert "Anatomy C" in labels
+        assert "Chess C" in labels
+        assert "Boomilever C" not in labels
+
+    def test_pending_delete_tracks_are_not_filter_groups(
+        self, client, db, td_user, td_tournament,
+    ):
+        """A pending-delete track is on its way out — no availability or
+        event-preference group for it, even while rows still point at it."""
+        from datetime import datetime, timedelta, timezone
+        from app.models.models import (
+            TournamentEvent, TournamentMembershipEventPreference, TournamentShift, TournamentTrack,
+        )
+
+        archived = TournamentTrack(tournament_id=td_tournament.id, name="Retired", is_archived=True)
+        event = TournamentEvent(tournament_id=td_tournament.id, name="Chess", division="C")
+        db.add_all([archived, event])
+        m = _make_membership(db, td_tournament.id, _db_user_for_filter(db, "alice@example.com").id)
+        db.flush()
+        start = datetime.now(timezone.utc)
+        db.add(TournamentShift(
+            tournament_id=td_tournament.id, track_id=archived.id, label="Old",
+            start=start, end=start + timedelta(hours=2),
+        ))
+        db.add(TournamentMembershipEventPreference(
+            membership_id=m.id, track_id=archived.id, tournament_event_id=event.id, rank=1,
+        ))
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        body = client.get(f"/tournaments/{td_tournament.id}/members/filter-options/").json()
+        assert str(archived.id) not in [g["value"] for g in body["shift_days"]]
+        assert str(archived.id) not in [g["value"] for g in body["event_preferences"]]
 
     def test_lunch_options_come_from_the_question_not_the_answers(self, client, db, td_user, td_tournament):
         """A choice nobody picked is still offerable — that's how a TD finds
@@ -2481,6 +2619,15 @@ def test_age_flags_gate_applies_to_my_membership_too(client, td_tournament, othe
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/members/me/ — leave a tournament
 # ---------------------------------------------------------------------------
+
+def test_leave_tournament_rejected_on_archived_tournament(client, td_user, other_tournament, db):
+    grant_role(db, other_tournament, td_user, "Volunteer")
+    other_tournament.is_archived = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 403
+
 
 def test_leave_tournament_member_can_leave(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")

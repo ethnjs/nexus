@@ -76,7 +76,8 @@ class FieldGroup:
     builders still read the relationship (and so still need it loaded) —
     build_event_preferences reverses one-row-per-event back into the option
     the member actually picked, build_lunch resolves each row's
-    question_type. custom is the one built group with no relationship at all.
+    question_type. custom and onboarding are the built groups with no
+    relationship at all — both are queried from form responses.
     """
     name: str
     keys: frozenset[str] = frozenset()
@@ -97,6 +98,8 @@ EVENT_PREFS = "event_prefs"
 CUSTOM = "custom"
 NOTES = "notes"
 AGE = "age"
+ASSIGNMENTS = "assignments"
+ONBOARDING = "onboarding"
 
 GROUPS: dict[str, FieldGroup] = {
     CONTACT: FieldGroup(
@@ -173,6 +176,21 @@ GROUPS: dict[str, FieldGroup] = {
     AGE: FieldGroup(
         name=AGE,
         keys=frozenset({"is_over_18", "is_over_21"}),
+    ),
+    # What this member is staffing. Declared on MembershipFullResponse only —
+    # the Me response doesn't carry it, so asking for this group on /members/me
+    # narrows nothing rather than leaking assignments to the member.
+    ASSIGNMENTS: FieldGroup(
+        name=ASSIGNMENTS,
+        keys=frozenset({"assignments"}),
+        relationships=("assignments",),
+    ),
+    # How far through the live onboarding sequence this member is. Built from
+    # form responses (no relationship), and manager-only like assignments.
+    ONBOARDING: FieldGroup(
+        name=ONBOARDING,
+        keys=frozenset({"onboarding"}),
+        built=True,
     ),
 }
 
@@ -255,15 +273,24 @@ def loader_options(requested: frozenset[str] | None) -> list:
     varies with `fields`.
     """
     from app.models.models import (
-        TournamentMembership, TournamentMembershipAvailability,
-        TournamentMembershipRole, User,
+        TournamentEvent, TournamentEventAssignment, TournamentMembership,
+        TournamentMembershipAvailability, TournamentMembershipRole, User,
     )
 
-    # Relationships needing a further hop to be usable: the role behind a
-    # membership-role join row, the shift behind an availability row.
+    # Relationships needing further hops to be usable: the role behind a
+    # membership-role join row, the shift behind an availability row, and the
+    # four an AssignmentRead flattens. Tuples, since one relationship can need
+    # several.
     NESTED = {
-        "roles": joinedload(TournamentMembershipRole.role),
-        "availability_shifts": joinedload(TournamentMembershipAvailability.tournament_shift),
+        "roles": (joinedload(TournamentMembershipRole.role),),
+        "availability_shifts": (joinedload(TournamentMembershipAvailability.tournament_shift),),
+        "assignments": (
+            joinedload(TournamentEventAssignment.tournament_event).joinedload(TournamentEvent.event),
+            joinedload(TournamentEventAssignment.tournament_event).selectinload(TournamentEvent.shifts),
+            joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
+            joinedload(TournamentEventAssignment.tournament_shift),
+            joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
+        ),
     }
 
     options = []
@@ -276,7 +303,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)
-            options.append(option.options(nested) if nested is not None else option)
+            options.append(option.options(*nested) if nested is not None else option)
 
         for rel in group.user_relationships:
             attr = getattr(User, rel)

@@ -14,7 +14,7 @@ interface LayoutPanelSetters {
 }
 
 // Split into two contexts on purpose: the *setters* value is stable, so a
-// descendant that only registers content (EventsTab) doesn't re-render every
+// descendant that only registers content (the events page) doesn't re-render every
 // time the content changes. Sharing one context would mean setPanel ->
 // re-render -> new callbacks -> setPanel, i.e. an update loop.
 const LayoutPanelContentContext = createContext<LayoutPanel | null>(null);

@@ -14,7 +14,7 @@ import { IconPlus } from "@/components/ui/Icons";
 // One key per query param the roster accepts — the names are the params.
 export const MEMBERS_FILTER_KEYS = [
   "role", "track", "lunch", "event_pref",
-  "competition_event", "volunteer_event", "age", "shift",
+  "competition_event", "volunteer_event", "age", "shift", "assigned",
 ] as const;
 type MembersFilterKey = (typeof MEMBERS_FILTER_KEYS)[number];
 
@@ -32,7 +32,7 @@ export function isMembersFilterActive(filters: MembersFilterState): boolean {
 // the pair is from an older release (availability used to persist bare shift
 // ids) — the server ignores it, so the modal has to as well, or a chip would
 // sit there claiming to narrow a roster it isn't touching.
-const PAIRED_KEYS: readonly MembersFilterKey[] = ["track", "lunch", "event_pref", "shift"];
+const PAIRED_KEYS: readonly MembersFilterKey[] = ["track", "lunch", "event_pref", "shift", "assigned"];
 
 function usableValues(key: string, values: Set<string>): string[] {
   const list = [...values];
@@ -54,6 +54,16 @@ export function membersFilterFromStored(
     }
   }
   return state;
+}
+
+/** The committed filters as the stored wire shape, empty keys dropped.
+ *  Unpaired values are kept as saved; they are ignored on read. */
+export function membersFilterToStored(filters: MembersFilterState): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(filters)
+      .map(([key, values]): [string, string[]] => [key, [...values]])
+      .filter(([, values]) => values.length > 0),
+  );
 }
 
 /** The committed filters as repeatable query params, empty keys dropped. */
@@ -91,6 +101,12 @@ const TRACK_STATUS_OPTIONS: FilterOptionItem[] = [
 // "2 selected" has no single colour to be.
 const TRACK_STATUS_TONES: Record<string, PillTone> = { confirmed: "success", declined: "danger" };
 
+// Per track, like track status: "who's unassigned for Day 1".
+const ASSIGNMENT_STATUS_OPTIONS: FilterOptionItem[] = [
+  { value: "assigned", label: "Assigned" },
+  { value: "unassigned", label: "Unassigned" },
+];
+
 // Above this many rows a picker is faster to type into than to scroll.
 const SEARCHABLE_ABOVE = 8;
 
@@ -99,6 +115,11 @@ interface MembersFilterModalProps {
   /** From the page, which already holds the tournament's role list. */
   roleOptions: FilterOptionItem[];
   filters: MembersFilterState;
+  /** Pre-resolved options, for a caller that already holds them or isn't
+      backed by a real tournament (the assignments sketch). Given, the modal
+      skips its own fetch — so it never sits on a spinner waiting for a
+      request that will not answer. */
+  options?: MemberFilterOptions;
   /** Fires on Apply only — the modal closes itself afterwards. */
   onApply: (filters: MembersFilterState) => void;
   onClose: () => void;
@@ -366,19 +387,31 @@ function PairedChipFilter({ title, groups, selected, onChange, anyLabel, addLabe
 }
 
 export function MembersFilterModal({
-  tournamentId, roleOptions, filters, onApply, onClose,
+  tournamentId, roleOptions, filters, options: suppliedOptions, onApply, onClose,
 }: MembersFilterModalProps) {
-  const [options, setOptions] = useState<MemberFilterOptions | null>(null);
+  const [fetched, setFetched] = useState<MemberFilterOptions | null>(null);
+  const options = suppliedOptions ?? fetched;
   // Draft until Apply, so closing with Cancel leaves the roster as it was.
-  const [draft, setDraft] = useState<MembersFilterState>(
-    () => Object.fromEntries(
-      Object.entries(filters).map(([key, values]) => [key, new Set(values)]),
-    ) as MembersFilterState,
-  );
+  //
+  // Seeded from the full key set and then overlaid, rather than copied from
+  // `filters` outright: every section below reads its key's `.size`
+  // unguarded, so a caller whose state predates a newly-added filter would
+  // crash the modal. That state is easy to come by — a config saved before
+  // the filter existed, a hand-built one (the assignments sketch), or a Fast
+  // Refresh that keeps the page's state across the edit adding it.
+  const [draft, setDraft] = useState<MembersFilterState>(() => {
+    const seeded = emptyMembersFilter();
+    for (const key of MEMBERS_FILTER_KEYS) {
+      const values = filters[key];
+      if (values) seeded[key] = new Set(values);
+    }
+    return seeded;
+  });
 
   useEffect(() => {
-    membersApi.filterOptions(tournamentId).then(setOptions).catch(() => setOptions(null));
-  }, [tournamentId]);
+    if (suppliedOptions) return;
+    membersApi.filterOptions(tournamentId).then(setFetched).catch(() => setFetched(null));
+  }, [tournamentId, suppliedOptions]);
 
   function set(key: MembersFilterKey, values: Set<string>) {
     setDraft((prev) => ({ ...prev, [key]: values }));
@@ -399,22 +432,33 @@ export function MembersFilterModal({
     ...track, options: TRACK_STATUS_OPTIONS,
   }));
 
+  const assignmentGroups: FilterOptionGroup[] = (options?.tracks ?? []).map((track) => ({
+    ...track, options: ASSIGNMENT_STATUS_OPTIONS,
+  }));
+
   const ageOptions: FilterOptionItem[] = [
     ...(options?.collect_is_over_18 ? [{ value: "over_18", label: "18+" }] : []),
     ...(options?.collect_is_over_21 ? [{ value: "over_21", label: "21+" }] : []),
   ];
 
   return (
-    <Modal title="Filter members" onClose={onClose} width={640}>
+    <Modal title="Filter members" onClose={onClose} width={760}>
       {options === null ? (
         <div style={{ display: "flex", justifyContent: "center", padding: "40px 0" }}>
           <Spinner size="lg" />
         </div>
       ) : (
-        <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "4px" }}>
+        <div style={{ maxHeight: "calc(100vh - 220px)", overflowY: "auto", paddingRight: "4px" }}>
+          {/* Fills the viewport minus the title and footer, so it only scrolls on a short window. */}
           <ChipFilter
             title="Roles" options={roleOptions} selected={draft.role}
             onToggle={(v) => toggle("role", v)} onClear={() => set("role", new Set())}
+          />
+          <PairedChipFilter
+            title="Assignments" groups={assignmentGroups} selected={draft.assigned}
+            onChange={(next) => set("assigned", next)}
+            anyLabel="Any" addLabel="Filter by track"
+            emptyMessage="No active tracks."
           />
           <PairedChipFilter
             title="Track status" groups={trackGroups} selected={draft.track}

@@ -63,6 +63,25 @@ def test_create_shift(client, td_user, td_tournament):
     assert data["tournament_id"] == td_tournament.id
 
 
+def test_get_shift_returns_the_row_with_its_event_count(client, td_user, td_tournament):
+    """The shift panel reads its own row fresh on open."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    event = _make_event(client, td_tournament.id)
+    _set_shifts(client, td_tournament.id, event["id"], [shift["id"]])
+
+    response = client.get(f"/tournaments/{td_tournament.id}/shifts/{shift['id']}/")
+
+    assert response.status_code == 200
+    assert response.json()["label"] == "Shift 1"
+    assert response.json()["event_count"] == 1
+
+
+def test_get_unknown_shift_is_404(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    assert client.get(f"/tournaments/{td_tournament.id}/shifts/999999/").status_code == 404
+
+
 def test_create_shift_end_before_start_rejected(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = _make_shift(client, td_tournament.id, start=EVENT_DATE + "T12:00:00Z", end=EVENT_DATE + "T08:00:00Z")

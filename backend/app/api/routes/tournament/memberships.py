@@ -13,14 +13,15 @@ from app.core.tournament.member_filters import (
     apply_member_filters, apply_member_search, build_filter_options, filter_age_flags,
 )
 from app.core.tournament.field_groups import (
-    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ROLES, TRACKS,
+    AVAILABILITY, CUSTOM, EVENT_PREFS, LUNCH, MEMBERSHIP, ONBOARDING, ROLES, TRACKS,
     dump_exclude, field_selection, loader_options, resolve_fields, wants,
 )
 from app.core.tournament.memberships import (
     ACTIVE_MEMBERSHIP_CLAUSE, build_event_preferences, build_lunch, build_track_statuses,
     delete_tournament_form_responses, enrich_built_groups, gate_age_flags,
-    get_custom_form_answers, get_membership_by_user, resolve_person_refs,
+    get_custom_form_answers, get_membership_by_user, onboarding_reads, resolve_person_refs,
 )
+from app.core.tournament.member_summary import build_member_summary
 from app.core.tournament.permissions import (
     MANAGE_MEMBERS, get_user_permissions, require_permission,
 )
@@ -50,6 +51,7 @@ from app.schemas.tournament.membership import (
     MembershipLunchRead,
     MembershipLunchUpdate, MembershipMeResponse, MembershipTrackStatusUpdate,
 )
+from app.schemas.tournament.member_summary import MemberSummaryResponse
 from app.schemas.tournament.track import MembershipTrackStatusRead
 
 
@@ -155,6 +157,8 @@ def list_memberships(
     volunteer_event: list[int] = Query(default=[]),
     age: list[str] = Query(default=[]),
     shift: list[str] = Query(default=[]),
+    # "trackId:assigned|unassigned" — staffed on that track or not.
+    assigned: list[str] = Query(default=[]),
     # Identity/authority narrowing — what the role-assignment pickers ask for.
     # A picker is this roster with a name search and a role bound on it, not a
     # different kind of read, so it is the same route.
@@ -187,7 +191,7 @@ def list_memberships(
         tournament=tournament,
         roles=role, tracks=track, lunch=lunch, event_preferences=event_pref,
         competition_events=competition_event, volunteer_events=volunteer_event,
-        age_flags=age, shifts=shift,
+        age_flags=age, shifts=shift, assigned=assigned,
     )
     query = apply_member_search(
         query, db,
@@ -228,6 +232,22 @@ def get_member_filter_options(
 ):
     tournament = get_tournament(tournament_id, db)
     return build_filter_options(db, tournament)
+
+
+# ---------------------------------------------------------------------------
+# GET /tournaments/{tournament_id}/members/summary/ — manage_members
+# The overview's members widget. Its own route rather than a roster param:
+# it returns counts, not memberships, so it shares no shape with GET /members/.
+# Registered before "/{membership_id}/" so the literal path wins.
+# ---------------------------------------------------------------------------
+@router.get("/summary/", response_model=MemberSummaryResponse)
+def get_member_summary(
+    tournament_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
+):
+    tournament = get_tournament(tournament_id, db)
+    return build_member_summary(db, tournament)
 
 
 # ---------------------------------------------------------------------------
@@ -349,6 +369,8 @@ def get_membership(
         resp.track_statuses = build_track_statuses(db, m)
     if wants(requested, MEMBERSHIP):
         _resolve_join_code_creators(db, tournament_id, [m], [resp])
+    if wants(requested, ONBOARDING):
+        resp.onboarding = onboarding_reads(db, tournament_id, [m])[0]
     data = gate_age_flags(m, resp.model_dump(mode="json", exclude=dump_exclude(requested)))
     data = apply_display_config(config, surface, data, tournament)
     return JSONResponse(data)
@@ -727,6 +749,7 @@ def leave_tournament(
     current_user: User = Depends(get_current_user),
 ):
     tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
 
     if tournament.owner_id == current_user.id:
         raise HTTPException(

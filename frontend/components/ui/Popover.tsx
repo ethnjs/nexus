@@ -99,13 +99,14 @@ export function Popover<T>({
       : { top: r.bottom + PANEL_GAP, left });
   }
 
+  // Positioned once per opening, not on scroll: a chip input's add button
+  // moves as chips are added, and a panel chasing it pulls the rows out from
+  // under the cursor mid-selection. Resize still repositions to stay on screen.
   useEffect(() => {
     if (!open) { setPanelPos(null); setHoverTip(null); setQuery(""); return; }
     updatePanelPos();
-    window.addEventListener("scroll", updatePanelPos, true);
     window.addEventListener("resize", updatePanelPos);
     return () => {
-      window.removeEventListener("scroll", updatePanelPos, true);
       window.removeEventListener("resize", updatePanelPos);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps

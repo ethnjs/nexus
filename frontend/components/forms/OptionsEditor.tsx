@@ -9,6 +9,7 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { FormFieldOption, FormQuestionType } from '@/lib/api'
+import { useSuspendCardScroll } from '@/lib/forms/cardScroll'
 import { Input } from '@/components/ui/Input'
 import { Button } from '@/components/ui/Button'
 import { Dropdown, DropdownOption } from '@/components/ui/Dropdown'
@@ -209,6 +210,11 @@ export function OptionsEditor({
   // `options` carries archived entries too, but they're not part of the list
   // a respondent sees — they're listed separately below so they don't join
   // drag ordering or take up a bullet number.
+  // Taking a row out shrinks the card, and FieldList reads a height change as
+  // a reason to reposition the viewport — which mid-cleanup of a long option
+  // list just throws away your place. Every remove/archive path below says
+  // "hold still" first.
+  const suspendCardScroll = useSuspendCardScroll()
   const liveOptions = options.filter((o) => !o.is_archived)
   const archivedOptions = options.filter((o) => o.is_archived)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
@@ -265,6 +271,7 @@ export function OptionsEditor({
   // Archived rows don't count toward that: none of them can be picked.
   function removeOption(clientKey: string) {
     if (liveOptions.length <= 1) return
+    suspendCardScroll()
     onChange(options.filter((o) => o.clientKey !== clientKey))
   }
 
@@ -272,6 +279,7 @@ export function OptionsEditor({
   // asks nobody to re-answer — "we ran out", not "this was never valid".
   // Removing it outright is the other verb, and does flag whoever picked it.
   function setArchived(clientKey: string, is_archived: boolean) {
+    suspendCardScroll()
     onChange(options.map((o) => (o.clientKey === clientKey ? { ...o, is_archived } : o)))
   }
 
@@ -342,7 +350,10 @@ export function OptionsEditor({
       <ArchivedOptions
         options={archivedOptions}
         onUnarchive={(clientKey) => setArchived(clientKey, false)}
-        onRemove={(clientKey) => onChange(options.filter((o) => o.clientKey !== clientKey))}
+        onRemove={(clientKey) => {
+          suspendCardScroll()
+          onChange(options.filter((o) => o.clientKey !== clientKey))
+        }}
       />
     </div>
   )

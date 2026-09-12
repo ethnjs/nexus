@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  ApiError, TournamentTrack, TournamentTrackDeleteResult, University,
-  tournamentTracksApi, universitiesApi,
+  ApiError, Role, TournamentTrack, TournamentTrackDeleteResult, University,
+  rolesApi, tournamentTracksApi, universitiesApi,
 } from "@/lib/api";
 import { formatTrackDates, placeOf } from "@/lib/tournamentDisplay";
 import {
@@ -28,6 +28,7 @@ export interface TrackEditor {
   tracks:       TournamentTrack[] | null;
   newRows:      NewTrackRow[];
   universities: University[];
+  roles:        Role[];
   loadError:    string | undefined;
   drafts:       Record<number, TrackDraft>;
   errors:       Record<number, Record<string, string>>;
@@ -56,6 +57,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
   const [tracks, setTracks] = useState<TournamentTrack[] | null>(null);
   const [newRows, setNewRows] = useState<NewTrackRow[]>([]);
   const [universities, setUniversities] = useState<University[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | undefined>();
   const [drafts, setDrafts] = useState<Record<number, TrackDraft>>({});
   const [errors, setErrors] = useState<Record<number, Record<string, string>>>({});
@@ -75,6 +77,7 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
   }, [tournamentId]);
 
   useEffect(() => { universitiesApi.list().then(setUniversities).catch(() => {}); }, []);
+  useEffect(() => { rolesApi.list(tournamentId).then(setRoles).catch(() => {}); }, [tournamentId]);
 
   const isDirty = useMemo(
     () => newRows.length > 0
@@ -173,13 +176,13 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
   }, [onChanged]);
 
   return {
-    tracks, newRows, universities, loadError, drafts, errors, isDirty,
+    tracks, newRows, universities, roles, loadError, drafts, errors, isDirty,
     setDraft, addRow, discardRow, reset, save, onReplaced, onDeleted,
   };
 }
 
 export function TracksSection({ editor, locked }: { editor: TrackEditor; locked: boolean }) {
-  const { tracks, newRows, universities, loadError, drafts, errors } = editor;
+  const { tracks, newRows, universities, roles, loadError, drafts, errors } = editor;
   const [expandedKey, setExpandedKey] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<TournamentTrack | null>(null);
 
@@ -206,9 +209,10 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
     <SettingsSection title="Tracks">
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "24px", padding: "16px 0 20px" }}>
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", margin: 0, maxWidth: "62ch", lineHeight: 1.55 }}>
-          A track is a part of the tournament members sign up for separately. A competition day carries
-          its own dates, venue and divisions, and the tournament&rsquo;s are the union of them. Anything
-          else — test writing, review — is a track with none of those, and no shifts.
+          A tournament is more than one thing: each competition day, plus prep like test writing. Tracks
+          keep them under one tournament, so someone who writes tests in October and supervises in
+          February stays one member with one set of data. Competition days carry a date, venue and
+          divisions, and are the only tracks with shifts.
         </p>
         <Button
           type="button" variant="primary" size="md" disabled={locked}
@@ -236,6 +240,7 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
               draft={drafts[row.key] ?? EMPTY_TRACK_DRAFT}
               errors={errors[row.key] ?? {}}
               universities={universities}
+              roles={roles}
               locked={locked}
               // The backend refuses to leave a tournament with no live
               // primary track; greying the control says so before the 409.
@@ -270,13 +275,14 @@ export function TracksSection({ editor, locked }: { editor: TrackEditor; locked:
  * opening the delete modal.
  */
 function TrackRow({
-  track, draft, errors, universities, locked, isOnlyPrimary, isLast,
+  track, draft, errors, universities, roles, locked, isOnlyPrimary, isLast,
   expanded, scrollIntoView, onToggleExpanded, onDraftChange, onRestored, onDelete,
 }: {
   track: TournamentTrack | null;
   draft: TrackDraft;
   errors: Record<string, string>;
   universities: University[];
+  roles: Role[];
   locked: boolean;
   isOnlyPrimary: boolean;
   isLast: boolean;
@@ -390,6 +396,7 @@ function TrackRow({
             draft={draft}
             errors={errors}
             universities={universities}
+            roles={roles}
             locked={readOnly}
             onChange={onDraftChange}
           />

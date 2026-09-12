@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   IconHome,
+  IconAssignments,
   IconEvents,
   IconForms,
   IconMembers,
@@ -18,15 +19,15 @@ import { useMyMembership } from "@/lib/useMyMembership";
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
 
-// Sheets is deprecated and Assignments isn't built yet — both dropped from
-// nav rather than left as dead links. Neither route was deleted, just the
-// sidebar entry pointing at it.
+// Sheets is deprecated — dropped from nav rather than left as a dead link.
+// The route wasn't deleted, just the sidebar entry pointing at it.
 const NAV_ITEMS = [
-  { segment: "overview", icon: <IconHome />,  label: "Overview" },
-  { segment: "events",   icon: <IconEvents />, label: "Events" },
-  { segment: "shifts",   icon: <IconCalendar size={17} />, label: "Shifts" },
-  { segment: "forms",    icon: <IconForms />,  label: "Forms" },
-  { segment: "members",  icon: <IconMembers />, label: "Members" },
+  { segment: "overview",     icon: <IconHome />,  label: "Overview" },
+  { segment: "events",       icon: <IconEvents />, label: "Events" },
+  { segment: "shifts",       icon: <IconCalendar size={17} />, label: "Shifts" },
+  { segment: "assignments",  icon: <IconAssignments />, label: "Assignments" },
+  { segment: "forms",        icon: <IconForms />,  label: "Forms" },
+  { segment: "members",      icon: <IconMembers />, label: "Members" },
 ];
 
 const SETTINGS_SUBITEMS = [
@@ -68,6 +69,9 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
       (segment !== "members" || canManageMembers) &&
       (segment !== "events" || canManageEvents) &&
       (segment !== "shifts" || canManageEvents) &&
+      // Matches the page's own view gate: staffing is part of reading the
+      // event (manage_events) or deciding who does it (manage_members).
+      (segment !== "assignments" || canManageEvents || canManageMembers) &&
       (segment !== "forms" || canManageForms)
   );
   // Locked open on settings routes — the sub-nav labels need to stay

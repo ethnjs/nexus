@@ -1,7 +1,7 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import { TournamentDivision, University, TOURNAMENT_DIVISIONS } from "@/lib/api";
+import { Role, TournamentDivision, University, TOURNAMENT_DIVISIONS } from "@/lib/api";
 import { TrackDraft } from "@/lib/trackDraft";
 import { todayLocalDateString } from "@/lib/date";
 import { formatDayRange } from "@/lib/tournamentDisplay";
@@ -9,19 +9,28 @@ import { Badge } from "@/components/ui/Badge";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Combobox } from "@/components/ui/Combobox";
+import { Dropdown } from "@/components/ui/Dropdown";
 import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
 
+// Dropdown's value is a string; a track's default_role_id is nullable, so
+// "no default" needs a sentinel rather than an empty string collapsing into
+// the placeholder for every unrelated reason a value could be blank.
+const NO_DEFAULT_ROLE = "__none__";
+
 /**
  * The primary/cosmetic fields, shared by every row. The when/where/what only
  * renders for a competition day — that is what keeps the "only a primary
- * track can have..." 422 unreachable from this UI.
+ * track can have..." 422 unreachable from this UI. Default role is the one
+ * field every track carries regardless: a cosmetic track like Test Writing
+ * wants its own default just as much as a competition day does.
  */
-export function TrackFields({ draft, errors, universities, locked, onChange }: {
+export function TrackFields({ draft, errors, universities, roles, locked, onChange }: {
   draft: TrackDraft;
   errors: Record<string, string>;
   universities: University[];
+  roles: Role[];
   locked: boolean;
   onChange: (updates: Partial<TrackDraft>) => void;
 }) {
@@ -34,7 +43,7 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <FieldRow label="Competition day" helper="Carries dates, a venue and divisions. Only these hold shifts.">
+      <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
         <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
       </FieldRow>
 
@@ -129,6 +138,20 @@ export function TrackFields({ draft, errors, universities, locked, onChange }: {
         helper="Turn on when confirmations open. Until then members can only say they're interested, or decline."
       >
         <Toggle checked={draft.allow_confirm} onChange={(v) => onChange({ allow_confirm: v })} locked={locked} />
+      </FieldRow>
+
+      <FieldRow
+        label="Default role"
+        helper="The role the assignments board grants when someone is placed on this track with no role picked yet."
+      >
+        <Dropdown
+          value={draft.default_role_id === null ? NO_DEFAULT_ROLE : String(draft.default_role_id)}
+          onChange={(v) => onChange({ default_role_id: v === NO_DEFAULT_ROLE ? null : Number(v) })}
+          options={[{ value: NO_DEFAULT_ROLE, label: "None" }, ...roles.map((r) => ({ value: String(r.id), label: r.label }))]}
+          locked={locked}
+          size="sm"
+          width={180}
+        />
       </FieldRow>
     </div>
   );

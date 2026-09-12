@@ -10,14 +10,16 @@ import { Dropdown } from '@/components/ui/Dropdown'
 import { ButtonGroup } from '@/components/ui/ButtonGroup'
 import { Checkbox } from '@/components/ui/Checkbox'
 import { EmptyState } from '@/components/ui/EmptyState'
-import { FilterModal, FilterOption, FilterSectionConfig, FilterState, emptyFilterState, isFilterActive } from '@/components/ui/FilterModal'
+import { FilterModal, FilterOption, FilterSectionConfig, FilterState, emptyFilterState, filterAllows, isFilterActive } from '@/components/ui/FilterModal'
 import { IconSearch, IconArrowDown, IconFilter, IconX } from '@/components/ui/Icons'
 import { EditableOption } from '@/components/forms/OptionsEditor'
+import {
+  EVENT_FILTER_UNSET, eventCategoryKey, eventCategoryOptions,
+} from '@/components/tournament/events/EventsFilterModal'
 
 const PICKER_FILTER_KEYS = ['division', 'type', 'category'] as const
 type PickerFilterKey = (typeof PICKER_FILTER_KEYS)[number]
 
-const UNSET = '__unset__'
 const UNCATEGORIZED = '__uncategorized__'
 
 type SortField = 'name' | 'division' | 'day'
@@ -40,10 +42,6 @@ const TYPE_OPTIONS = [
   { value: 'standard', label: 'Standard' },
   { value: 'trial', label: 'Trial' },
 ]
-
-function categoryKey(e: TournamentEvent): string {
-  return e.event?.category.name ?? UNSET
-}
 
 function sortValue(e: TournamentEvent, field: SortField): string | number {
   switch (field) {
@@ -122,7 +120,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
   const [search, setSearch] = useState('')
   // Local draft only, reset every time this modal opens — this is a "what am
   // I browsing right now" filter, not a standing view, so persisting it
-  // (like EventsTab's usePersistedFilter) would silently carry over into
+  // (as the events page's display config does) would silently carry over into
   // the next bulk-add session with no visible reason why.
   const [filters, setFilters] = useState<FilterState<PickerFilterKey>>(() => emptyFilterState(PICKER_FILTER_KEYS))
   const [showFilterModal, setShowFilterModal] = useState(false)
@@ -140,22 +138,18 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
   const divisionOptions = useMemo(() => {
     const divisions = new Set(browsableEvents.map((e) => e.division).filter((d): d is TournamentDivision => d != null))
     const opts = [...divisions].sort().map((d) => ({ value: d, label: `Division ${d}` }))
-    return browsableEvents.some((e) => e.division === null) ? [...opts, { value: UNSET, label: 'No division' }] : opts
+    return browsableEvents.some((e) => e.division === null) ? [...opts, { value: EVENT_FILTER_UNSET, label: 'No division' }] : opts
   }, [browsableEvents])
 
-  const categoryOptions = useMemo(() => {
-    const names = new Set(browsableEvents.filter((e) => e.event).map((e) => e.event!.category.name))
-    const opts = [...names].sort((a, b) => a.localeCompare(b)).map((name) => ({ value: name, label: name }))
-    return browsableEvents.some((e) => !e.event) ? [...opts, { value: UNSET, label: 'No category' }] : opts
-  }, [browsableEvents])
+  const categoryOptions = useMemo(() => eventCategoryOptions(browsableEvents), [browsableEvents])
 
   const visibleEvents = useMemo(() => {
     const q = search.trim().toLowerCase()
     const filtered = browsableEvents.filter((e) => {
       if (q && !eventName(e).toLowerCase().includes(q)) return false
-      if (filters.division.has(e.division ?? UNSET)) return false
-      if (filters.type.has(e.event_type)) return false
-      if (filters.category.has(categoryKey(e))) return false
+      if (!filterAllows(filters.division, e.division ?? EVENT_FILTER_UNSET)) return false
+      if (!filterAllows(filters.type, e.event_type)) return false
+      if (!filterAllows(filters.category, eventCategoryKey(e))) return false
       return true
     })
     return [...filtered].sort((a, b) => {
@@ -213,6 +207,7 @@ export function EventOptionsPickerModal({ events, existingEventIds, onClose, onC
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch('')}
             placeholder="Search event name"
             icon={<IconSearch size={14} />}
             font="sans"

@@ -4,6 +4,8 @@ import { use, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formsApi, Form, ApiError } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
+import { Banner } from "@/components/ui/Banner";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { SubHeader, CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
 import { TitleCard } from "@/components/forms/TitleCard";
 import { FieldList } from "@/components/forms/FieldList";
@@ -47,12 +49,21 @@ export default function FormEditPage({ params }: { params: Promise<{ formId: str
     );
   }
 
+  // This page lives outside the tournament layout, so the archive flag rides
+  // on the form itself rather than coming from useTournament.
+  const locked = !!form.tournament_is_archived;
+
   return (
     <div>
-      <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} />
+      <SubHeader form={form} onUpdated={setForm} onDeleted={handleDeleted} locked={locked} />
       <div style={{ maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px" }}>
-        <TitleCard form={form} onUpdated={setForm} />
-        <FieldList form={form} />
+        {locked && (
+          <div style={{ marginBottom: "16px" }}>
+            <Banner variant="warning" message={ARCHIVED_REASON} />
+          </div>
+        )}
+        <TitleCard form={form} onUpdated={setForm} locked={locked} />
+        <FieldList form={form} locked={locked} />
       </div>
     </div>
   );

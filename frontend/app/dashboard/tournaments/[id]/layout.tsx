@@ -13,6 +13,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
 import { tournamentsApi, ApiError } from "@/lib/api";
+import { BoardDndProvider } from "@/components/assignments/BoardDnd";
 
 function TournamentNotFound() {
   const router = useRouter();
@@ -46,7 +47,7 @@ function TournamentNotFound() {
 // mounted lags behind panel on close (stays mounted through the collapse
 // transition instead of vanishing instantly); expanded flips a frame after
 // mount so there's an actual 0 -> full-width transition to animate rather
-// than appearing already-open. Same technique as ShiftsTab's own split-view
+// than appearing already-open. Same technique as the shifts page's split-view
 // panel (panelMountedId/panelExpanded there).
 function LayoutPanelSlot() {
   const panel = useLayoutPanelContent();
@@ -190,9 +191,15 @@ export default function TournamentLayout({
             page (e.g. the roles editor) registers. */}
         <UnsavedChangesProvider>
           <LayoutPanelProvider>
-            <TournamentShell tournamentId={tournamentId}>
-              {children}
-            </TournamentShell>
+            {/* Above the shell so the assignments board's drag context
+                reaches both <main> and the panel slot — its member belt is
+                rendered into the latter, a sibling of <main> rather than a
+                descendant of it. Inert on every other tab. */}
+            <BoardDndProvider>
+              <TournamentShell tournamentId={tournamentId}>
+                {children}
+              </TournamentShell>
+            </BoardDndProvider>
           </LayoutPanelProvider>
         </UnsavedChangesProvider>
       </MyMembershipProvider>

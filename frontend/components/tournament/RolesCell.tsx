@@ -92,8 +92,7 @@ export function RolesCell({
       }}
       fullWidth
       addButton={
-        !inert && (
-          <Popover
+        <Popover
             trigger={
               <Button
                 type="button" variant="secondary" size="sm" iconOnly
@@ -111,9 +110,8 @@ export function RolesCell({
             isDisabled={(role) => !canTouchRole(role)}
             disabledReason={rankLockReason}
             onSelect={(role) => (heldIds.has(role.id) ? handleRemove(role) : handleAdd(role))}
-            emptyMessage="No roles yet"
-          />
-        )
+          emptyMessage="No roles yet"
+        />
       }
     />
   );

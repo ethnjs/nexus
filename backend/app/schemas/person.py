@@ -24,15 +24,17 @@ class PersonRoleRead(BaseModel):
     label: str
 
 
-class PersonRefResponse(BaseModel):
-    """Who someone is, for the purpose of crediting an action: their name and
-    what they do here. Nothing else.
+class PersonNameRef(BaseModel):
+    """Who someone is, with no claim about what they do here.
 
-    This replaced a `MembershipSlim | UserSlim` union that embedded the whole
-    roster row — email, phone, pronouns, age flags, lunch choices and custom
-    form answers — everywhere a creator or actor appeared. One type rather
-    than a union because narrowing was the union's only purpose: `roles` now
-    carries the "no membership here" signal the bare-user branch used to.
+    Split out of PersonRefResponse for readers that name a person in a context
+    where their role is already established by the surrounding row — an event
+    assignment names its own role, so carrying the member's whole role list
+    beside it is noise.
+
+    It is a separate type rather than PersonRefResponse-with-roles-nulled
+    because `roles: null` is not nothing: it specifically means "holds no
+    membership here", which on an assignment would be false.
     """
     # The *user* id, not the membership's — audit-log filtering keys off it,
     # and a field named `id` next to `membership_id` invites picking wrong.
@@ -42,6 +44,29 @@ class PersonRefResponse(BaseModel):
     membership_id: int | None = None
     first_name: str | None = None
     last_name: str | None = None
+
+    @classmethod
+    def from_membership(cls, membership) -> "PersonNameRef":
+        """Built from a TournamentMembership, whose name lives one hop away on
+        the joined user."""
+        return cls(
+            user_id=membership.user_id,
+            membership_id=membership.id,
+            first_name=membership.user.first_name,
+            last_name=membership.user.last_name,
+        )
+
+
+class PersonRefResponse(PersonNameRef):
+    """A person plus what they do here — for the purpose of crediting an
+    action.
+
+    This replaced a `MembershipSlim | UserSlim` union that embedded the whole
+    roster row — email, phone, pronouns, age flags, lunch choices and custom
+    form answers — everywhere a creator or actor appeared. One type rather
+    than a union because narrowing was the union's only purpose: `roles` now
+    carries the "no membership here" signal the bare-user branch used to.
+    """
     # Three distinct states, all meaningful:
     #   null     no membership here at all
     #   []       a member holding no roles

@@ -14,9 +14,18 @@ import { IconForms, IconLock, IconEdit, IconEye, IconPlus } from "@/components/u
 import { formatRelativeTime } from "@/lib/timeFormat";
 import { CreatorHoverCard } from "@/components/tournament/CreatorHoverCard";
 import { NewFormModal } from "@/components/tournament/forms/NewFormModal";
+import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
+import { FormActionIcon } from "@/components/forms/FormActionIcon";
+import { FormActionOption, formStatusActions } from "@/lib/forms/formStatusActions";
+import { useToast } from "@/lib/useToast";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 
-// Name / Status / Creator / Responses / Updated / Actions
-const FORM_ROW_COLUMNS = "1.4fr 110px 0.275fr 100px 110px 76px";
+// Name / Status / Creator / Responses / Updated / Actions. Name and Creator
+// share the free space (Name used to take ~5x Creator's share). Actions is
+// fixed, not auto: each row is its own grid, so a width that followed the
+// button count would misalign rows. 170px fits the most a row ever shows —
+// edit, preview, a status move, archive, delete.
+const FORM_ROW_COLUMNS = "minmax(0, 1.2fr) 100px minmax(0, 1fr) 90px 100px 170px";
 
 const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "removed"> = {
   draft: "default",
@@ -24,11 +33,20 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-function FormRow({ form, isLast }: {
+function FormRow({ form, isLast, onAction, lockedReason }: {
   form: FormListItem;
   isLast: boolean;
+  onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  lockedReason?: string;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function act(option: FormActionOption) {
+    setBusy(true);
+    await onAction(form, option);
+    setBusy(false);
+  }
 
   return (
     <div
@@ -66,7 +84,22 @@ function FormRow({ form, isLast }: {
       <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
         {formatRelativeTime(form.updated_at)}
       </span>
-      <div style={{ display: "flex", justifyContent: "center", gap: "6px" }}>
+      {/* stopPropagation on the whole strip, so a click in a gap doesn't open the builder. */}
+      <div style={{ display: "flex", justifyContent: "flex-end", gap: "6px" }} onClick={(e) => e.stopPropagation()}>
+        {/* Which moves exist depends on the status and on whether anyone has
+            responded — the same rules the builder's status menu uses. */}
+        {formStatusActions(form, lockedReason).map((option) => (
+          <Button
+            key={option.action}
+            type="button" variant="secondary" size="sm" iconOnly
+            title={option.disabledReason ?? option.label}
+            disabled={!!option.disabledReason || busy}
+            onClick={() => act(option)}
+            style={option.danger ? { color: "var(--color-danger)" } : undefined}
+          >
+            <FormActionIcon action={option.action} />
+          </Button>
+        ))}
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           title="Edit"
@@ -86,7 +119,11 @@ function FormRow({ form, isLast }: {
   );
 }
 
-function FormTable({ forms }: { forms: FormListItem[] }) {
+function FormTable({ forms, onAction, lockedReason }: {
+  forms: FormListItem[];
+  onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
+  lockedReason?: string;
+}) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
       <div style={{
@@ -104,7 +141,7 @@ function FormTable({ forms }: { forms: FormListItem[] }) {
       </div>
 
       {forms.map((form, i) => (
-        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} />
+        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} onAction={onAction} lockedReason={lockedReason} />
       ))}
     </Card>
   );
@@ -117,10 +154,13 @@ export default function FormsPage() {
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
   const canManageForms = currentUser?.role === "admin" || !!membership?.is_owner || hasPermission("manage_forms");
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [forms, setForms] = useState<FormListItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<FormListItem | null>(null);
+  const { show } = useToast();
 
   useEffect(() => {
     if (!canManageForms) return;
@@ -157,6 +197,24 @@ export default function FormsPage() {
     );
   }
 
+  // Delete confirms first; every other move is one PATCH. The server's
+  // message is the one worth showing on failure — publishing validates the
+  // form, and an onboarding form refuses to archive.
+  async function handleAction(form: FormListItem, option: FormActionOption) {
+    if (option.action === "delete") {
+      setDeleteTarget(form);
+      return;
+    }
+    try {
+      const updated = await formsApi.update(form.id, { status: option.target });
+      setForms((prev) => prev && prev.map((f) => (
+        f.id === updated.id ? { ...f, status: updated.status, updated_at: updated.updated_at } : f
+      )));
+    } catch (err) {
+      show(err instanceof ApiError ? err.message : `Failed to ${option.label.toLowerCase()}.`, "error");
+    }
+  }
+
   // Submit -> POST -> builder in a new tab. title/description are set later,
   // inside the builder — not part of this modal.
   function handleCreated(form: Form) {
@@ -170,7 +228,10 @@ export default function FormsPage() {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
-        <Button type="button" variant="primary" size="md" onClick={() => setCreating(true)}>
+        <Button
+          type="button" variant="primary" size="md" onClick={() => setCreating(true)}
+          disabled={isArchived} title={archivedReason}
+        >
           <IconPlus size={14} /> New Form
         </Button>
       </div>
@@ -188,14 +249,28 @@ export default function FormsPage() {
             title="No forms yet"
             description="Create a form to start collecting responses from members."
             action={
-              <Button type="button" variant="primary" size="sm" onClick={() => setCreating(true)}>
+              <Button
+                type="button" variant="primary" size="sm" onClick={() => setCreating(true)}
+                disabled={isArchived} title={archivedReason}
+              >
                 <IconPlus size={14} /> New Form
               </Button>
             }
           />
         </Card>
       ) : (
-        <FormTable forms={forms} />
+        <FormTable forms={forms} onAction={handleAction} lockedReason={archivedReason} />
+      )}
+
+      {deleteTarget && (
+        <BulkDeleteModal
+          items={[deleteTarget]}
+          noun="form"
+          description={<>Delete <strong>{deleteTarget.name}</strong>? It has no responses, so nothing else is lost. This can&rsquo;t be undone.</>}
+          onDelete={(form) => formsApi.delete(form.id)}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={(ids) => setForms((prev) => prev && prev.filter((f) => !ids.includes(f.id)))}
+        />
       )}
 
       {creating && (

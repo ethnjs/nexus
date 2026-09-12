@@ -3,16 +3,19 @@
 import { startTransition, useEffect, useState } from "react";
 import {
   ApiError, DisplayConfigSection, MembershipFull, Role,
-  TournamentShift, displayConfigApi, membersApi, tournamentShiftsApi,
+  TournamentShift, TournamentTrack, displayConfigApi, membersApi, tournamentShiftsApi,
+  tournamentTracksApi,
 } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { MemberSections } from "@/components/tournament/sections/MemberSections";
 import { MEMBERS_PANEL } from "@/lib/displayConfigSurfaces";
-import { PanelSectionsModal } from "@/components/tournament/PanelSectionsModal";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
+import { MemberPanelConfigModal } from "@/components/tournament/MemberPanelConfigModal";
 import { Button } from "@/components/ui/Button";
 import { IconExpand, IconEye, IconTrash } from "@/components/ui/Icons";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -37,6 +40,10 @@ interface MemberPanelProps {
   onClose: () => void;
   /** Bubbles role changes up so the caller's list stays in sync. */
   onUpdated?: (updated: MembershipFull) => void;
+  /** Fires after the assignments section writes, so a board beside this panel can re-read. */
+  onAssignmentsChanged?: () => void;
+  /** Bumped by the caller after it writes this member's assignments elsewhere — re-reads the member. */
+  assignmentsVersion?: number;
   /** Prev/next through the table's current filtered/sorted order — omit both to hide the controls (e.g. while this panel is showing one member of a multi-select). */
   onPrev?: () => void;
   onNext?: () => void;
@@ -52,7 +59,7 @@ interface MemberPanelProps {
 // "expand" action.
 export function MemberPanel({
   tournamentId, membershipId, allRoles, canTouchRole, canEditMember,
-  collectIsOver18, collectIsOver21, onClose, onUpdated,
+  collectIsOver18, collectIsOver21, onClose, onUpdated, onAssignmentsChanged, assignmentsVersion,
   isArchived, isSelf, onRemove, onSelfRemove,
   onPrev, onNext, hasPrev, hasNext,
 }: MemberPanelProps) {
@@ -60,6 +67,12 @@ export function MemberPanel({
   // Sets the availability timeline's window — without it the bar can only
   // show gaps between the member's own shifts, never hours they declined.
   const [shifts, setShifts] = useState<TournamentShift[]>([]);
+  // The assignments section draws one timeline per competition day, so it
+  // needs the tracks themselves — a shift names its track by id only.
+  const [tracks, setTracks] = useState<TournamentTrack[]>([]);
+  // Which tracks this viewer turned off, read from the same surface config
+  // the section list comes from.
+  const [hiddenItems, setHiddenItems] = useState<string[]>([]);
   // Section order, per-section visibility, and the TD's custom sections.
   const [sectionConfig, setSectionConfig] = useState<DisplayConfigSection[] | null>(null);
   const [showSectionsModal, setShowSectionsModal] = useState(false);
@@ -68,6 +81,11 @@ export function MemberPanel({
   // server-side (see apply_display_config), so a track turned back on in the
   // modal isn't in the payload this panel is already holding.
   const [reloadKey, setReloadKey] = useState(0);
+  // Bumped after this panel's own assignment writes — re-reads only the member.
+  const [memberVersion, setMemberVersion] = useState(0);
+  // Bumped when the browser tab regains focus, so collaborators' edits show up.
+  const [focusVersion, setFocusVersion] = useState(0);
+  useRefetchOnFocus(() => setFocusVersion((v) => v + 1));
   const [error, setError] = useState<string | null>(null);
 
   // These usually resolve inside the ~220ms the panel spends sliding open,
@@ -76,14 +94,34 @@ export function MemberPanel({
   // that render blocks the frame and visibly stutters the slide; marked as a
   // transition, React can slice it across frames and let the animation win.
   useEffect(() => {
+    // Superseded responses are dropped: back-to-back writes each trigger a
+    // re-read, and an older one landing last would show stale assignments.
+    let current = true;
     membersApi.get(tournamentId, membershipId, MEMBERS_PANEL)
-      .then((data) => startTransition(() => setFull(data)))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Failed to load member."));
+      .then((data) => { if (current) startTransition(() => setFull(data)); })
+      .catch((e) => { if (current) setError(e instanceof ApiError ? e.message : "Failed to load member."); });
+    return () => { current = false; };
+  }, [tournamentId, membershipId, reloadKey, memberVersion, assignmentsVersion, focusVersion]);
+
+  useEffect(() => {
     tournamentShiftsApi.list(tournamentId).then((data) => startTransition(() => setShifts(data))).catch(() => {});
+    tournamentTracksApi.list(tournamentId).then((data) => startTransition(() => setTracks(data))).catch(() => {});
     displayConfigApi.get(tournamentId)
-      .then((config) => startTransition(() => setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null)))
+      .then((config) => startTransition(() => {
+        setSectionConfig(config?.[MEMBERS_PANEL]?.sections ?? null);
+        setHiddenItems(config?.[MEMBERS_PANEL]?.hidden ?? []);
+      }))
       .catch(() => {});
   }, [tournamentId, membershipId, reloadKey]);
+
+  // "track:3" is the panel surface's own vocabulary for a hidden track — the
+  // same keys the config modal writes.
+  const hiddenTrackIds = new Set(
+    hiddenItems
+      .filter((item) => item.startsWith("track:"))
+      .map((item) => Number(item.slice("track:".length)))
+      .filter((id) => Number.isInteger(id)),
+  );
 
   function handleRolesUpdated(updated: MembershipFull) {
     setFull((f) => (f ? { ...f, roles: updated.roles } : f));
@@ -101,15 +139,15 @@ export function MemberPanel({
       headerActions={
         <>
           {/* The table's Actions column collapses while this panel is open, so
-              Remove lives here instead. Same gate the row used: archived hides
-              it, outranked/owner disables it, and your own row redirects to the
-              leave flow. Waits for `full` — the lock can't be judged without
-              the member it applies to. */}
-          {full && !isArchived && (onRemove || onSelfRemove) && (
+              Remove lives here instead. Same gate the row used: archived or
+              outranked/owner locks it, and your own row redirects to the leave
+              flow. Waits for `full` — the lock can't be judged without the
+              member it applies to. */}
+          {full && (onRemove || onSelfRemove) && (
             <Button
               type="button" variant="secondary" size="sm" iconOnly
-              title={isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
-              disabled={!isSelf && !canEditMember(full)}
+              title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : !canEditMember(full) ? "You can't remove this member." : "Remove member"}
+              disabled={isArchived || (!isSelf && !canEditMember(full))}
               onClick={() => (isSelf ? onSelfRemove?.(full) : onRemove?.(full))}
             >
               <IconTrash size={14} style={{ color: "var(--color-danger)" }} />
@@ -153,6 +191,13 @@ export function MemberPanel({
               membership={full}
               sectionConfig={sectionConfig}
               shifts={shifts}
+              tracks={tracks}
+              hiddenTrackIds={hiddenTrackIds}
+              membershipId={membershipId}
+              onAssignmentsChanged={() => {
+                setMemberVersion((v) => v + 1);
+                onAssignmentsChanged?.();
+              }}
               allRoles={allRoles}
               canTouchRole={canTouchRole}
               rolesLocked={!canEditMember(full)}
@@ -164,7 +209,7 @@ export function MemberPanel({
         )}
       </div>
       {showSectionsModal && (
-        <PanelSectionsModal
+        <MemberPanelConfigModal
           tournamentId={tournamentId}
           onSaved={() => setReloadKey((key) => key + 1)}
           onClose={() => setShowSectionsModal(false)}

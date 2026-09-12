@@ -42,6 +42,16 @@ def test_verify_tournament_admin_can_set(client, admin_user, td_tournament, db):
     assert td_tournament.is_verified is True
 
 
+def test_verify_tournament_rejected_on_archived_tournament(client, admin_user, td_tournament, db):
+    td_tournament.is_archived = True
+    db.commit()
+    login(client, "admin@test.com", "adminpass")
+    response = client.patch(
+        f"/admin/tournaments/{td_tournament.id}/verify/", json={"is_verified": True}
+    )
+    assert response.status_code == 403
+
+
 def test_verify_tournament_admin_can_unset(client, admin_user, td_tournament, db):
     td_tournament.is_verified = True
     db.commit()

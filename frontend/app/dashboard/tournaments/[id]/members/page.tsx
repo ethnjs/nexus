@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   membersApi, rolesApi, displayConfigApi, MembershipFull, Role, ApiError,
   DisplayConfig, DisplayConfigCatalogItem, DisplayConfigSurface,
@@ -9,8 +9,10 @@ import {
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMemberRoleLock } from "@/lib/roles/useMemberRoleLock";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
+import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -28,11 +30,12 @@ import { SelfRemoveRedirectModal } from "@/components/tournament/SelfRemoveRedir
 import { SelectionBar } from "@/components/ui/SelectionBar";
 import {
   MembersFilterModal, MembersFilterState, isMembersFilterActive, membersFilterParams,
-  membersFilterFromStored, emptyMembersFilter,
+  membersFilterFromStored, membersFilterToStored, emptyMembersFilter,
 } from "@/components/tournament/MembersFilterModal";
 import { TableColumnsModal } from "@/components/tournament/TableColumnsModal";
 import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth } from "@/components/tournament/memberColumns";
 import styles from "@/components/tournament/MembersTable.module.css";
+import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
 import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
 
@@ -215,16 +218,14 @@ const MemberRow = memo(function MemberRow({
         style={{ display: "flex", justifyContent: "center", gap: "4px" }}
         onClick={(e) => e.stopPropagation()}
       >
-        {!isArchived && (
-          <Button
-            type="button" variant="secondary" size="sm" iconOnly
-            title={isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
-            disabled={!isSelf && locked}
-            onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
-          >
-            <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
-          </Button>
-        )}
+        <Button
+          type="button" variant="secondary" size="sm" iconOnly
+          title={isArchived ? ARCHIVED_REASON : isSelf ? "Leave tournament" : locked ? "You can't remove this member." : "Remove member"}
+          disabled={isArchived || (!isSelf && locked)}
+          onClick={() => (isSelf ? onSelfRemove(membership) : onRemove(membership))}
+        >
+          <IconTrash size={13} style={{ color: "var(--color-danger)" }} />
+        </Button>
         <Button
           type="button" variant="secondary" size="sm" iconOnly
           disabled={selectionLocked}
@@ -240,16 +241,11 @@ const MemberRow = memo(function MemberRow({
 
 export default function MembersPage() {
   const params = useParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const tournamentId = Number(params.id);
 
-  // Read once, on the first render only: from here on the URL follows the
-  // page's state, not the other way round, so re-reading it would fight the
-  // router.replace below. Filters aren't here — they're saved server-side in
-  // this viewer's display config, which already survives a refresh.
-  const [initialMemberId] = useState(() => Number(searchParams.get("member")) || null);
+  // Filters aren't in the URL — they're saved server-side in this viewer's
+  // display config, which already survives a refresh.
+  const initialMemberId = useInitialPanelId("member");
 
   const { user: currentUser } = useAuth();
   const { selectedTournament } = useTournament();
@@ -259,6 +255,12 @@ export default function MembersPage() {
   const [allRoles, setAllRoles] = useState<Role[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
+  // Unfiltered roster size. `members` is already server-filtered, so it
+  // can't supply the "of N" half of the count.
+  const [totalMembers, setTotalMembers] = useState<number | null>(null);
+  // Bumped when the browser tab regains focus, so collaborators' changes show up.
+  const [refreshKey, setRefreshKey] = useState(0);
+  useRefetchOnFocus(() => setRefreshKey((k) => k + 1));
   const [search, setSearch] = useState("");
   // Committed filters only — the modal keeps its own draft until Apply.
   // Filters, sort and columns are all this viewer's own display config now,
@@ -294,14 +296,7 @@ export default function MembersPage() {
     openMassPanel, clearFocus, clearSelection, forgetItem, getPrevNext,
   } = usePanelSelection({ initialFocusedId: initialMemberId });
 
-  // The URL mirrors whichever member's panel is open, so a refresh comes
-  // back to it. replace, not push: this is where you already are, and every
-  // row you click would otherwise cost a Back press to undo.
-  useEffect(() => {
-    const search = focusedId !== null ? `?member=${focusedId}` : "";
-    if (search === window.location.search) return;
-    router.replace(`${pathname}${search}`, { scroll: false });
-  }, [focusedId, pathname, router]);
+  usePanelUrlSync("member", focusedId);
 
   // useMemberRoleLock hands back fresh closures every render, which would
   // re-register the docked panel in a loop if they went straight into the
@@ -337,7 +332,17 @@ export default function MembersPage() {
       .catch((e) => { if (current) setLoadError(e instanceof ApiError ? e.message : "Failed to load members."); });
     rolesApi.list(tournamentId).then((roles) => { if (current) setAllRoles(roles); }).catch(() => setAllRoles([]));
     return () => { current = false; };
-  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters]);
+  }, [tournamentId, canManageMembers, viewReady, displayConfigVersion, filters, refreshKey]);
+
+  // Identity-only (fields: []) since only the length is used.
+  useEffect(() => {
+    if (!canManageMembers) return;
+    let current = true;
+    membersApi.list(tournamentId, { fields: [] })
+      .then((rows) => { if (current) setTotalMembers(rows.length); })
+      .catch(() => {});
+    return () => { current = false; };
+  }, [tournamentId, canManageMembers, refreshKey]);
 
   // This viewer's saved view of the table — columns, filters and sort — plus
   // the catalog that names each column key. Both halves are needed before a
@@ -385,7 +390,10 @@ export default function MembersPage() {
 
   const applyFilters = useCallback((next: MembersFilterState) => {
     setFilters(next);
-    persistView({ filters: membersFilterParams(next) });
+    // Not membersFilterParams: that drops `assigned`, which the roster query
+    // sends as its own bool param — saved state has no such split, and
+    // persisting the query shape lost the Assigned filter on every reload.
+    persistView({ filters: membersFilterToStored(next) });
   }, [persistView]);
 
   const applySort = useCallback((field: SortField, direction: SortDir) => {
@@ -430,8 +438,10 @@ export default function MembersPage() {
     [allRoles]
   );
 
+  // Roles only — every caller is a roles PATCH, whose response carries none of
+  // the built groups; swapping the whole row would blank the row's columns.
   const handleMemberUpdated = useCallback((updated: MembershipFull) => {
-    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? updated : m)));
+    setMembers((prev) => prev && prev.map((m) => (m.id === updated.id ? { ...m, roles: updated.roles } : m)));
   }, []);
 
   // Either flow narrows the table for a docked panel — drop the Roles
@@ -595,7 +605,7 @@ export default function MembersPage() {
     );
   }
 
-  const isFiltered = search.trim() !== "" || isMembersFilterActive(filters);
+  const total = totalMembers ?? members.length;
 
   return (
     <div>
@@ -607,7 +617,7 @@ export default function MembersPage() {
         </p>
       )}
 
-      {members.length === 0 ? (
+      {total === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconMembers size={28} />}
@@ -623,6 +633,7 @@ export default function MembersPage() {
                 label="Search"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
                 placeholder="Search name or email"
                 icon={<IconSearch size={14} />}
                 font="sans"
@@ -667,12 +678,12 @@ export default function MembersPage() {
             >
               <IconArrowDown size={18} style={{ transition: "transform 150ms ease", transform: sortDir === "asc" ? "rotate(180deg)" : "rotate(0deg)" }} />
             </Button>
-            {canManageMembers && !isArchived && (
+            {canManageMembers && (
               <Button
                 type="button" variant={selectMode ? "primary" : "secondary"} size="md"
                 onClick={toggleSelectMode}
-                disabled={panelDirty}
-                title={panelDirty ? DIRTY_TITLE : undefined}
+                disabled={panelDirty || isArchived}
+                title={isArchived ? ARCHIVED_REASON : panelDirty ? DIRTY_TITLE : undefined}
               >
                 Select
               </Button>
@@ -702,7 +713,7 @@ export default function MembersPage() {
                     onChange={(checked) => toggleSelectAll(visibleMembers.map((m) => m.id), checked)}
                   />
                 </span>
-                <span>Members — {isFiltered ? `${visibleMembers.length} of ${members.length}` : members.length}</span>
+                <span>Members — {visibleMembers.length}/{total}</span>
                 {tableColumns.map((column) => (
                   <span
                     key={column.key}
@@ -796,6 +807,7 @@ export default function MembersPage() {
           onClose={() => setRemoveTarget(null)}
           onRemoved={() => {
             setMembers((prev) => prev && prev.filter((m) => m.id !== removeTarget.id));
+            setTotalMembers((n) => (n === null ? n : n - 1));
             // Otherwise a removed-but-still-selected/focused row would keep a
             // panel open against a member who no longer exists.
             forgetItem(removeTarget.id);

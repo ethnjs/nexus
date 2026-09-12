@@ -25,12 +25,8 @@ export function IconHome({ size = 18, ...props }: IconProps) {
 
 export function IconAssignments({ size = 18, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <rect x="2" y="3" width="16" height="2" rx="1" fill="currentColor" />
-      <rect x="2" y="9" width="10" height="2" rx="1" fill="currentColor" />
-      <rect x="2" y="15" width="12" height="2" rx="1" fill="currentColor" />
-      <circle cx="16" cy="14" r="3" stroke="currentColor" strokeWidth="1.5" />
-      <path d="M14.5 14l1 1 2-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M256 128C256 110.3 270.3 96 288 96L352 96C369.7 96 384 110.3 384 128L384 192C384 209.7 369.7 224 352 224L344 224L344 288L464 288C503.8 288 536 320.2 536 360L536 416L544 416C561.7 416 576 430.3 576 448L576 512C576 529.7 561.7 544 544 544L480 544C462.3 544 448 529.7 448 512L448 448C448 430.3 462.3 416 480 416L488 416L488 360C488 346.7 477.3 336 464 336L344 336L344 416L352 416C369.7 416 384 430.3 384 448L384 512C384 529.7 369.7 544 352 544L288 544C270.3 544 256 529.7 256 512L256 448C256 430.3 270.3 416 288 416L296 416L296 336L176 336C162.7 336 152 346.7 152 360L152 416L160 416C177.7 416 192 430.3 192 448L192 512C192 529.7 177.7 544 160 544L96 544C78.3 544 64 529.7 64 512L64 448C64 430.3 78.3 416 96 416L104 416L104 360C104 320.2 136.2 288 176 288L296 288L296 224L288 224C270.3 224 256 209.7 256 192L256 128z" />
     </svg>
   );
 }
@@ -270,6 +266,34 @@ export function IconCopy({ size = 14, ...props }: IconProps) {
   );
 }
 
+// Font Awesome Free "rocket", shrunk up-right to make room for a hand-drawn
+// exhaust flame (a teardrop tipped 45° down-left) — publishing a form.
+export function IconRocket({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <g transform="translate(320 320) scale(1.24) translate(-360 -280)">
+        <g transform="translate(138 19) scale(0.73)">
+          <path d="M192 384L88.5 384C63.6 384 48.3 356.9 61.1 335.5L114 247.3C122.7 232.8 138.3 224 155.2 224L250.2 224C326.3 95.1 439.8 88.6 515.7 99.7C528.5 101.6 538.5 111.6 540.3 124.3C551.4 200.2 544.9 313.7 416 389.8L416 484.8C416 501.7 407.2 517.3 392.7 526L304.5 578.9C283.2 591.7 256 576.3 256 551.5L256 448C256 412.7 227.3 384 192 384L191.9 384zM464 224C464 197.5 442.5 176 416 176C389.5 176 368 197.5 368 224C368 250.5 389.5 272 416 272C442.5 272 464 250.5 464 224z" />
+        </g>
+        {/* Centred on the rocket's own axis (x + y = 640 in its path, 624.2
+            after the shrink above), so the tip lines up with nose and window. */}
+        <g transform="translate(243.6 380.6) rotate(45)">
+          <path fillRule="evenodd" d="M0 105C20 90 48 55 48 0A48 48 0 1 0 -48 0C-48 55 -20 90 0 105Z M0 36C6 32 14 22 14 6A14 14 0 1 0 -14 6C-14 22 -6 32 0 36Z" />
+        </g>
+      </g>
+    </svg>
+  );
+}
+
+// Font Awesome Free "ban" — unpublishing a form.
+export function IconBan({ size = 14, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M431.2 476.5L163.5 208.8C141.1 240.2 128 278.6 128 320C128 426 214 512 320 512C361.5 512 399.9 498.9 431.2 476.5zM476.5 431.2C498.9 399.8 512 361.4 512 320C512 214 426 128 320 128C278.5 128 240.1 141.1 208.8 163.5L476.5 431.2zM64 320C64 178.6 178.6 64 320 64C461.4 64 576 178.6 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320z" />
+    </svg>
+  );
+}
+
 export function IconBranch({ size = 14, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
@@ -490,6 +514,15 @@ export function IconCalendar({ size = 13, ...props }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
       <path d="M224 64C206.3 64 192 78.3 192 96L192 128L160 128C124.7 128 96 156.7 96 192L96 240L544 240L544 192C544 156.7 515.3 128 480 128L448 128L448 96C448 78.3 433.7 64 416 64C398.3 64 384 78.3 384 96L384 128L256 128L256 96C256 78.3 241.7 64 224 64zM96 288L96 480C96 515.3 124.7 544 160 544L480 544C515.3 544 544 515.3 544 480L544 288L96 288z" />
+    </svg>
+  );
+}
+
+
+export function IconClock({ size = 13, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" fill="currentColor" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path d="M320 64C178.6 64 64 178.6 64 320C64 461.4 178.6 576 320 576C461.4 576 576 461.4 576 320C576 178.6 461.4 64 320 64zM296 168C296 154.7 306.7 144 320 144C333.3 144 344 154.7 344 168L344 304L440 304C453.3 304 464 314.7 464 328C464 341.3 453.3 352 440 352L320 352C306.7 352 296 341.3 296 328L296 168z" />
     </svg>
   );
 }

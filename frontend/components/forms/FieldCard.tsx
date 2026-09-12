@@ -15,7 +15,7 @@ import {
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { useCardHeight } from "@/lib/forms/useCardHeight";
 import { BranchTarget, newEntityOption, newOption } from "@/components/forms/OptionsEditor";
-import { EditableField } from "@/lib/forms/editableField";
+import { EditableField, cleanOption } from "@/lib/forms/editableField";
 import { activePresetKind, effectiveFieldKey, isEntityBackedPreset, PRESETS, isFieldKeyError, isPresetError } from "@/lib/forms/fieldKeyPresets";
 import { QUESTION_TYPE_OPTIONS, OPTION_BEARING_TYPES, sanitizeConfigForType } from "@/lib/forms/fieldTypes";
 import { issuesFor } from "@/lib/forms/useFormValidation";
@@ -117,7 +117,7 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
   field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, usedFieldKeys, errors,
-  allowArchive = false, onRequireTrack,
+  allowArchive = false, onRequireTrack, locked = false,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -151,6 +151,8 @@ export function FieldCard({
   onRequireTrack?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
+  /** Archived tournament — stays a read-only preview: no expanding, no dragging. */
+  locked?: boolean;
 }) {
   const [hovered, setHovered] = useState(false);
   const presetKind = activePresetKind(field.field_key);
@@ -209,7 +211,7 @@ export function FieldCard({
   // Field-level reordering — separate DndContext from OptionsEditor's own
   // (scoped to a single field's option rows), so dragging a card doesn't
   // interfere with dragging an option within it.
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey });
+  const { attributes, listeners, setNodeRef, transform, isDragging } = useSortable({ id: field.clientKey, disabled: locked });
   // Translate, not Transform: dnd-kit's transforms carry scaleX/scaleY (the
   // ratio of another card's rect to this one's), so CSS.Transform would
   // squish/stretch cards to match whatever they pass over.
@@ -265,6 +267,9 @@ export function FieldCard({
   // to fill in via the picker), everything else gets the plain freeform one.
   function handleQuestionTypeChange(questionType: FormQuestionType) {
     const config = sanitizeConfigForType(field.config, questionType);
+    // Per-option keys too — sanitizeConfigForType only knows config-level
+    // ones, and a radio's branch keys on a checkbox option 422 the save.
+    if (config.options) config.options = config.options.map((option) => cleanOption(option, questionType));
     const needsStarterOption = OPTION_BEARING_TYPES.includes(questionType) && !config.options?.length;
     const starterOption = isEntityBackedPreset(presetKind) ? newEntityOption() : newOption();
     onFieldChange({
@@ -368,15 +373,15 @@ export function FieldCard({
           <Card
             radius="lg"
             variant={hasCardError ? "danger" : "normal"}
-            style={{ padding: "20px 24px", cursor: "pointer", position: "relative" }}
-            onClick={handleCollapsedClick}
+            style={{ padding: "20px 24px", cursor: locked ? "default" : "pointer", position: "relative" }}
+            onClick={locked ? undefined : handleCollapsedClick}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
           >
             <div {...gripProps} style={{
               position: "absolute", top: "6px", left: "50%", transform: "translateX(-50%)",
               display: "flex", color: "var(--color-text-tertiary)", cursor: "grab", touchAction: "none",
-              opacity: hovered ? 1 : 0,
+              opacity: hovered && !locked ? 1 : 0,
             }}>
               <IconGripVertical size={14} style={{ transform: "rotate(90deg)" }} />
             </div>

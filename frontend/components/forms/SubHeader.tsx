@@ -9,6 +9,7 @@ import { EditableText } from "@/components/ui/EditableText";
 import { IconArrowLeft, IconEye } from "@/components/ui/Icons";
 import { StatusControl } from "@/components/forms/StatusControl";
 import { FormActionsMenu } from "@/components/forms/FormActionsMenu";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 
 // Matches the centered content column (title card, field list) below it —
 // the sub-header's content is constrained the same way, Google-Forms-style,
@@ -21,10 +22,12 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-export function SubHeader({ form, onUpdated, onDeleted }: {
+export function SubHeader({ form, onUpdated, onDeleted, locked = false }: {
   form: Form;
   onUpdated: (form: Form) => void;
   onDeleted: () => void;
+  /** Archived tournament — name and status are frozen. */
+  locked?: boolean;
 }) {
   const router = useRouter();
   const backHref = form.owner_type === "tournament" ? `/dashboard/tournaments/${form.tournament_id}/forms` : null;
@@ -47,7 +50,8 @@ export function SubHeader({ form, onUpdated, onDeleted }: {
             value={form.name}
             onSave={async (name) => onUpdated(await formsApi.update(form.id, { name }))}
             textStyle={{ fontSize: "15px", fontWeight: 600 }}
-            title="Click to edit name"
+            title={locked ? ARCHIVED_REASON : "Click to edit name"}
+            locked={locked}
           />
           <Badge variant={STATUS_BADGE_VARIANT[form.status]}>{form.status}</Badge>
         </div>
@@ -55,7 +59,10 @@ export function SubHeader({ form, onUpdated, onDeleted }: {
           <Button type="button" variant="secondary" size="md" onClick={() => window.open(`/forms/${form.id}/preview`, "_blank")}>
             <IconEye size={14} /> Preview
           </Button>
-          <StatusControl form={form} onUpdated={onUpdated} onDeleted={onDeleted} />
+          <StatusControl
+            form={form} onUpdated={onUpdated} onDeleted={onDeleted}
+            lockedReason={locked ? ARCHIVED_REASON : undefined}
+          />
           <FormActionsMenu formId={form.id} />
         </div>
       </Card>

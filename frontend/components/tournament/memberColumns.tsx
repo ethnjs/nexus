@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Tooltip } from "@/components/ui/Tooltip";
 import { JoinMethodCell } from "@/components/tournament/JoinMethodCell";
 import { AgeFlagsBadges } from "@/components/tournament/sections/AgeFlagsBadges";
+import { OnboardingProgress } from "@/components/tournament/OnboardingProgress";
 
 // Namespaces shared with the backend's display_config — a column key means
 // the same thing here as it does on the panel.
@@ -45,6 +46,8 @@ const WIDTHS = {
   method: "100px",
   age: "124px",
   shirtSize: "64px",
+  // A 16px ring, a gap and "10/10" — the widest count a real sequence reaches.
+  onboarding: "96px",
   track: "104px",
   availabilityDay: "minmax(110px, 0.7fr)",
   lunchCategory: "minmax(90px, 0.8fr)",
@@ -147,6 +150,15 @@ function fixedColumn(key: string, collectIsOver18: boolean, collectIsOver21: boo
       return {
         key, label: "Shirt", width: WIDTHS.shirtSize,
         render: (m) => <span style={TEXT_CELL}>{m.user.shirt_size ?? "—"}</span>,
+      };
+    case "onboarding":
+      return {
+        key, label: "Onboarding", width: WIDTHS.onboarding,
+        render: (m) => (
+          <span style={{ display: "flex", justifyContent: "center", minWidth: 0 }}>
+            <OnboardingProgress progress={m.onboarding} />
+          </span>
+        ),
       };
     default:
       return null;

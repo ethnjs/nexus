@@ -34,17 +34,28 @@ class TournamentShiftUpdate(BaseModel):
         return self
 
 
-class TournamentShiftRead(BaseModel):
+class TournamentShiftBase(BaseModel):
+    """A shift reduced to when and where it is.
+
+    Split out for readers that only need to name a shift — an event
+    assignment, say. `event_count` is deliberately absent: it exists for the
+    shift catalog's delete-confirm warning, it means nothing beside a single
+    assignment, and reading it costs a join per shift to count events nobody
+    asked about.
+    """
     id: int
     tournament_id: int
     track_id: int
     label: str
     start: datetime
     end: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TournamentShiftRead(TournamentShiftBase):
     # How many TournamentEvents this shift is currently attached to — drives
     # the "attached to N events" delete-confirm warning.
     event_count: int
     created_at: datetime
     updated_at: datetime
-
-    model_config = {"from_attributes": True}

@@ -2,6 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -43,9 +44,15 @@ def list_join_codes(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_INVITES)),
 ):
+    # Expired codes are dead — they can't be redeemed, so neither the invites
+    # page nor the staff invite picker should offer them.
     join_codes = (
         db.query(JoinCode)
-        .filter(JoinCode.tournament_id == tournament_id, JoinCode.is_active == True)
+        .filter(
+            JoinCode.tournament_id == tournament_id,
+            JoinCode.is_active == True,
+            or_(JoinCode.expires_at.is_(None), JoinCode.expires_at > datetime.now(timezone.utc)),
+        )
         .order_by(JoinCode.created_at.desc())
         .all()
     )

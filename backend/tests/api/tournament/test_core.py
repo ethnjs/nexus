@@ -6,7 +6,7 @@ from app.core.tournament.audit import (
     OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED,
 )
 from app.models.models import (
-    AuditLogEntry, JoinCode, TournamentMembership, TournamentMembershipRole,
+    AuditLogEntry, Form, JoinCode, TournamentMembership, TournamentMembershipRole,
     TournamentRole, University,
 )
 
@@ -591,6 +591,40 @@ def test_archive_tournament_deactivates_join_codes(client, td_user, td_tournamen
     assert join_code.is_active is False
 
 
+def _make_tournament_form(db, tournament, created_by, status):
+    form = Form(
+        owner_type="tournament", tournament_id=tournament.id, chapter_id=None,
+        name=f"{status} form", status=status, created_by=created_by,
+    )
+    db.add(form)
+    db.commit()
+    return form
+
+
+def test_archive_tournament_archives_every_form(client, td_user, td_tournament, db):
+    """Drafts too — an archived tournament's form statuses are frozen."""
+    draft = _make_tournament_form(db, td_tournament, td_user.id, "draft")
+    published = _make_tournament_form(db, td_tournament, td_user.id, "published")
+    login(client, "td@test.com", "tdpass")
+    assert client.post(f"/tournaments/{td_tournament.id}/archive/").status_code == 200
+
+    db.refresh(draft)
+    db.refresh(published)
+    assert draft.status == "archived"
+    assert published.status == "archived"
+
+
+def test_unarchive_tournament_leaves_forms_archived(client, td_user, td_tournament, db):
+    """The TD republishes deliberately rather than everything reopening at once."""
+    form = _make_tournament_form(db, td_tournament, td_user.id, "published")
+    login(client, "td@test.com", "tdpass")
+    client.post(f"/tournaments/{td_tournament.id}/archive/")
+    assert client.post(f"/tournaments/{td_tournament.id}/unarchive/").status_code == 200
+
+    db.refresh(form)
+    assert form.status == "archived"
+
+
 def test_archive_tournament_writes_audit_entry(client, td_user, td_tournament, db):
     login(client, "td@test.com", "tdpass")
     client.post(f"/tournaments/{td_tournament.id}/archive/")
@@ -747,6 +781,19 @@ def test_transfer_ownership_owner_can_transfer(client, td_user, td_tournament, o
     )
     assert response.status_code == 200
     assert response.json()["owner_id"] == other_user.id
+
+
+def test_transfer_ownership_rejected_on_archived_tournament(client, td_user, td_tournament, other_user, db):
+    grant_role(db, td_tournament, other_user, "Volunteer")
+    td_tournament.is_archived = True
+    db.commit()
+    login(client, "td@test.com", "tdpass")
+
+    response = client.post(
+        f"/tournaments/{td_tournament.id}/transfer-ownership/",
+        json={"new_owner_id": other_user.id},
+    )
+    assert response.status_code == 403
 
 
 def test_transfer_ownership_requires_new_owner_membership(client, td_user, td_tournament, other_user):

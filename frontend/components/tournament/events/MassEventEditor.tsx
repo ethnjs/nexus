@@ -16,6 +16,7 @@ import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
+import { MassResultsCard } from "@/components/ui/MassResultsCard";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 
 // Only fields shared and safe to blanket-apply across arbitrary events —
@@ -37,34 +38,6 @@ interface MassEventDraft {
 interface EventResult {
   event: TournamentEvent;
   error?: string;
-}
-
-function ResultsCard({ results }: { results: EventResult[] }) {
-  const failureCount = results.filter((r) => r.error).length;
-  const successCount = results.length - failureCount;
-  return (
-    <Card radius="lg" style={{ padding: "16px 20px", marginBottom: "24px" }}>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        letterSpacing: "0.06em", textTransform: "uppercase", color: "var(--color-text-tertiary)",
-        marginBottom: "10px",
-      }}>
-        {successCount} saved, {failureCount} failed
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-        {results.map((r) => (
-          <p key={r.event.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
-            <span style={{ fontWeight: 500 }}>{eventNameWithDivision(r.event)}</span>{" "}
-            {r.error ? (
-              <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
-            ) : (
-              <span style={{ color: "var(--color-success)" }}>— saved</span>
-            )}
-          </p>
-        ))}
-      </div>
-    </Card>
-  );
 }
 
 // A pending add/remove, shown git-diff style before Save is pressed —
@@ -395,7 +368,11 @@ export function MassEventEditor({ tournamentId, events, onClose, onSaved, onDirt
           </div>
         </SettingsSection>
 
-        {results && <ResultsCard results={results} />}
+        {results && (
+          <MassResultsCard
+            results={results.map((r) => ({ key: r.event.id, label: eventNameWithDivision(r.event), error: r.error }))}
+          />
+        )}
       </div>
     </DockedPanel>
   );

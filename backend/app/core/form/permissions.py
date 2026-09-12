@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
 from app.core.chapters import require_officer_or_lead
+from app.core.tournament import require_not_archived
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, has_any_membership
 from app.core.tournament.onboarding import next_required_onboarding_form_id
@@ -22,6 +23,14 @@ def _load_form_or_404(form_id: str, db: Session) -> Form:
     if not form:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Form not found")
     return form
+
+
+def require_form_not_archived(form: Form) -> None:
+    """Call in every form write route, after the access dependency. Not baked
+    into the dependencies because they also gate reads, and an archived
+    tournament's forms stay readable. Chapter forms have nothing to freeze with."""
+    if form.owner_type == "tournament":
+        require_not_archived(form.tournament)
 
 
 def require_form_manage_access(

@@ -1,60 +1,87 @@
 "use client";
 
-import { Children, ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useLayoutEffect, useRef } from "react";
 
 interface MasonryGridProps {
   children: ReactNode;
-  /** Columns are as wide as they need to be to fit this many px. */
+  /** Narrowest a column may get before the grid drops to fewer columns. */
   minColumnWidth?: number;
   gap?: number;
 }
 
 /**
- * A masonry layout that keeps its children in reading order.
+ * A gapless mosaic: each card only as tall as its content, dropped into the
+ * earliest hole it fits. A child too wide for one column sets
+ * `data-min-width` and spans as many columns as that takes.
  *
- * Each item is as tall as its own content — a card listing four tracks is
- * legitimately taller than a single-day one, and a CSS grid would either
- * stretch every card to the tallest or leave a ragged bottom row.
- *
- * The obvious implementation is CSS multi-column, but that fills each column
- * top to bottom before starting the next, so items 1-2-3 stack down the left
- * instead of running across the top. Callers here render deliberately ordered
- * lists (newest first), so instead the items are dealt round-robin across the
- * columns: item n goes to column n % count, and left-to-right order survives.
- * The tradeoff is that column heights balance less evenly than CSS columns
- * manage — acceptable when the items are of broadly similar size.
+ * Rows are 1px and each child spans its own height in rows; `dense` lets a
+ * later card backfill a hole an earlier, wider one left.
  */
-export function MasonryGrid({ children, minColumnWidth = 280, gap = 16 }: MasonryGridProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [columnCount, setColumnCount] = useState(1);
+export function MasonryGrid({ children, minColumnWidth = 340, gap = 16 }: MasonryGridProps) {
+  const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
+  useLayoutEffect(() => {
+    const grid = ref.current;
+    if (!grid) return;
 
-    // n columns need n widths plus (n-1) gaps, so solving for n gives the
-    // +gap on both sides of the division.
-    function measure(width: number) {
-      setColumnCount(Math.max(1, Math.floor((width + gap) / (minColumnWidth + gap))));
-    }
+    const spanColumns = (node: HTMLElement) => {
+      const minWidth = Number(node.dataset.minWidth);
+      if (!minWidth) return;
+      // Resolved track sizes, e.g. "352px 352px 352px".
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(" ");
+      const columnWidth = parseFloat(columns[0]);
+      node.style.gridColumn = `span ${Math.min(columns.length, Math.ceil((minWidth + gap) / (columnWidth + gap)))}`;
+    };
 
-    measure(element.clientWidth);
-    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect.width));
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [minColumnWidth, gap]);
+    // Span is set before measuring: width decides how tall the content wraps.
+    const fit = (el: Element) => {
+      const node = el as HTMLElement;
+      spanColumns(node);
+      // Trailing rows past the card's height are the vertical gap.
+      node.style.gridRowEnd = `span ${Math.ceil(node.getBoundingClientRect().height) + gap}`;
+    };
+    const fitAll = () => Array.from(grid.children).forEach(fit);
 
-  const items = Children.toArray(children);
-  const columns: ReactNode[][] = Array.from({ length: columnCount }, () => []);
-  items.forEach((item, i) => columns[i % columnCount].push(item));
+    // The grid itself is watched too: a column count change re-spans the wide
+    // children even when nothing inside them resized.
+    const resize = new ResizeObserver((entries) => {
+      if (entries.some((entry) => entry.target === grid)) fitAll();
+      else entries.forEach((entry) => fit(entry.target));
+    });
+
+    // DOM children, not React children: a component rendering several cards
+    // (or none, until its fetch lands) still lays out card by card.
+    const observeAll = () => {
+      resize.disconnect();
+      resize.observe(grid);
+      for (const child of Array.from(grid.children)) resize.observe(child);
+      fitAll();
+    };
+    observeAll();
+    const mutations = new MutationObserver(observeAll);
+    mutations.observe(grid, { childList: true });
+
+    return () => {
+      resize.disconnect();
+      mutations.disconnect();
+    };
+  }, [gap]);
 
   return (
-    <div ref={containerRef} style={{ display: "flex", alignItems: "flex-start", gap: `${gap}px` }}>
-      {columns.map((column, i) => (
-        <div key={i} style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: `${gap}px` }}>
-          {column}
-        </div>
-      ))}
+    <div
+      ref={ref}
+      style={{
+        display: "grid",
+        gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${minColumnWidth}px), 1fr))`,
+        gridAutoRows: "1px",
+        gridAutoFlow: "row dense",
+        columnGap: `${gap}px`,
+        // Cards keep their content height instead of stretching to their span,
+        // which is what makes the measurement stable.
+        alignItems: "start",
+      }}
+    >
+      {children}
     </div>
   );
 }

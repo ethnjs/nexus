@@ -1,9 +1,11 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
+from app.core.tournament.assignments import detach_shifts_from_assignments
+from app.core.tournament.event_fields import dump_exclude, field_selection, loader_options
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, require_catalog_read, require_permission,
 )
@@ -73,6 +75,12 @@ def _apply_shifts_and_tracks(
                 detail=f"Unknown shift {sorted(missing)[0]}",
             )
         _validate_no_overlap(shifts)
+        # Assignments that named a shift being dropped are unpinned, not
+        # deleted — see detach_shifts_from_assignments. Done before the set is
+        # replaced, while the outgoing ids are still readable.
+        detach_shifts_from_assignments(
+            db, event.id, {s.id for s in event.shifts} - {s.id for s in shifts},
+        )
         event.shifts = shifts
 
     resolved: list[TournamentTrack] = list(event.tracks)
@@ -139,31 +147,35 @@ def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
 # with ?public=true
 #
 # The one catalog whose two audiences get different shapes: the member view
-# is EventMemberRead (id/name/division), which drops the room assignment and
-# staffing numbers. That's why there's no static response_model here —
-# FastAPI resolves one per route, and returning the models directly still
-# serializes correctly; the cost is a looser OpenAPI schema for this route.
+# is EventMemberRead, which drops the room assignment and staffing numbers.
+# That's why there's no static response_model here — FastAPI resolves one per
+# route, and returning the models directly still serializes correctly; the
+# cost is a looser OpenAPI schema for this route.
+#
+# `public` and `fields` are different axes and both apply: `public` picks the
+# audience (which shape), `fields` narrows within the staff shape (how much of
+# it). A member read is already minimal, so `fields` is ignored there rather
+# than given a second meaning.
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=None)
 def list_events(
     tournament_id: int,
     public: bool = Query(False),
+    requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_catalog_read(MANAGE_EVENTS)),
-) -> list[EventRead] | list[EventMemberRead]:
+) -> list[EventRead] | list[EventMemberRead] | list[dict]:
     """List all events for a tournament, ordered by division then name."""
     get_tournament(tournament_id, db)
 
     query = db.query(TournamentEvent).options(joinedload(TournamentEvent.event))
-    if not public:
-        # Only the staff shape carries shifts and tracks; loading them for a
-        # member read would be joins nobody looks at.
-        query = query.options(
-            joinedload(TournamentEvent.shifts).joinedload(TournamentShift.tournament_events),
-            # TournamentTrackRead embeds the university, so load it here too —
-            # otherwise serializing the tracks is a query per event.
-            joinedload(TournamentEvent.tracks).joinedload(TournamentTrack.university),
-        )
+    if public:
+        # The member shape carries shifts now (see EventMemberRead), but not
+        # their event_count — so a plain load, without the extra hop the staff
+        # shape needs to compute it.
+        query = query.options(selectinload(TournamentEvent.shifts))
+    else:
+        query = query.options(*loader_options(requested))
     events = (
         query
         .filter(TournamentEvent.tournament_id == tournament_id)
@@ -172,20 +184,37 @@ def list_events(
     )
     if public:
         return [EventMemberRead.from_row(event) for event in events]
-    return [EventRead.model_validate(event) for event in events]
+    return _dump(events, requested)
+
+
+def _dump(events: list[TournamentEvent], requested: frozenset[str] | None):
+    """Serialize the staff shape, dropping the groups nobody asked for.
+
+    Returns plain dicts rather than EventRead when narrowing, because an
+    unrequested group must be *absent* from the JSON — a pydantic model
+    always carries every declared field, so excluding at dump time is the
+    only way to express "you didn't ask" as distinct from "no value".
+    """
+    exclude = dump_exclude(requested)
+    reads = [EventRead.model_validate(event) for event in events]
+    if exclude is None:
+        return reads
+    return [read.model_dump(exclude=exclude) for read in reads]
 
 
 # ---------------------------------------------------------------------------
 # GET /tournaments/{tournament_id}/events/{event_id} — manage_events
 # ---------------------------------------------------------------------------
-@router.get("/{event_id}/", response_model=EventRead)
+@router.get("/{event_id}/", response_model=None)
 def get_event(
     tournament_id: int,
     event_id: int,
+    requested: frozenset[str] | None = Depends(field_selection),
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_EVENTS)),
 ):
-    return get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
+    event = get_scoped_or_404(db, TournamentEvent, event_id, tournament_id, "Event")
+    return _dump([event], requested)[0]
 
 
 # ---------------------------------------------------------------------------

@@ -14,16 +14,17 @@ import {
   RichMappingRow,
   makeRichRow,
   SheetConfigMappingTable,
-} from "@/components/ui/SheetConfigMappingTable";
+} from "@/components/tournament/sheets/SheetConfigMappingTable";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
-import { ImportSummaryModal } from "@/components/ui/ImportSummaryModal";
+import { ImportSummaryModal } from "@/components/tournament/sheets/ImportSummaryModal";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { IconArrowLeft, IconCheckCircle } from "@/components/ui/Icons";
 import { StatCard } from "@/components/ui/StatCard";
 import { useSheetValidation } from "@/lib/useSheetValidation";
-import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/ui/SheetMappingValidationModals";
+import { useArchiveLock } from "@/lib/useArchiveLock";
+import { SheetMappingValidationWarningsModal, SheetMappingValidationErrorsModal } from "@/components/tournament/sheets/SheetMappingValidationModals";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -76,6 +77,7 @@ export default function EditSheetPage() {
   const params       = useParams();
   const tournamentId = Number(params.id);
   const configId     = Number(params.configId);
+  const { isArchived, archivedReason } = useArchiveLock();
 
   // Config + form fields
   const [config,        setConfig]        = useState<SheetConfig | null>(null);
@@ -558,8 +560,8 @@ export default function EditSheetPage() {
           )}
           <div style={{ display: "flex", gap: "10px" }}>
             <Button variant="secondary" size="md" onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/${configId}`)}>Cancel</Button>
-            <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave}>Save</Button>
-            <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync}>Save &amp; Sync</Button>
+            <Button variant="secondary" size="md" loading={saveLoading} onClick={handleSave} disabled={isArchived} title={archivedReason}>Save</Button>
+            <Button variant="primary" size="md" loading={syncLoading} onClick={handleSaveAndSync} disabled={isArchived} title={archivedReason}>Save &amp; Sync</Button>
           </div>
         </div>
 

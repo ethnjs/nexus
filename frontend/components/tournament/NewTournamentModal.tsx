@@ -201,11 +201,14 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
     // Advanced widens the modal rather than lengthening it: details on the
     // left, the track list on the right, so a four-track regional doesn't
     // become a page-tall form.
-    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 880 : 440}>
+    <Modal title="New Tournament" onClose={onClose} closeOnOverlayClick={false} width={advanced ? 1000 : 440}>
       <form onSubmit={handleSubmit} noValidate style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
         <div style={{
           display: advanced ? 'grid' : 'flex',
-          gridTemplateColumns: advanced ? 'minmax(0, 1fr) minmax(0, 1fr)' : undefined,
+          // The left column holds four short inputs and stops; the right holds
+          // the track editor, whose labels and helper text wrap badly at half
+          // width. Fixed left, elastic right.
+          gridTemplateColumns: advanced ? '300px minmax(0, 1fr)' : undefined,
           flexDirection: 'column', alignItems: 'start', gap: advanced ? '24px' : '14px',
         }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', width: '100%' }}>
@@ -216,7 +219,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
           value={name}
           onChange={(e) => { setName(e.target.value); setErrors(({ name, ...rest }) => rest) }}
           error={errors.name}
-          placeholder="e.g. USC Invitational"
+          placeholder="e.g. Caltech Invitational"
           fullWidth
           autoFocus
         />
@@ -241,7 +244,7 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
               value={locationText}
               onChange={(text, matched) => { setLocationText(text); setMatchedUniversity(matched); setErrors(({ location, ...rest }) => rest) }}
               error={errors.location}
-              placeholder="e.g. USC, Los Angeles CA"
+              placeholder="e.g. Caltech, Pasadena CA"
             />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: spansDays ? '1fr 1fr' : '1fr', gap: '12px' }}>
@@ -371,8 +374,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                 Tracks<span style={{ color: 'var(--color-danger)' }}> *</span>
               </div>
               <p style={{ fontFamily: 'var(--font-sans)', fontSize: '12px', color: 'var(--color-text-tertiary)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                One per competition day, plus anything undated — test writing, review — that members sign
-                up for separately. The tournament&rsquo;s dates, venue and divisions come from these.{' '}
+                Add a track for each competition day, plus the prep leading up to it like test writing.
+                Keeping them here instead of in separate tournaments means everyone stays one member
+                with one set of data. Competition days set the tournament&rsquo;s dates, venue and
+                divisions.{' '}
                 <button
                   type="button"
                   onClick={disableAdvanced}
@@ -438,6 +443,10 @@ export function NewTournamentModal({ onClose, onCreated }: NewTournamentModalPro
                           draft={row.draft}
                           errors={trackErrors[row.key] ?? {}}
                           universities={universities}
+                          // No tournament exists yet to hold a role catalog —
+                          // the dropdown just offers "None" until one is set
+                          // up after creation, in tournament settings.
+                          roles={[]}
                           locked={false}
                           onChange={(updates) => updateTrackRow(row.key, updates)}
                         />

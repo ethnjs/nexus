@@ -39,6 +39,9 @@ class _TrackFields(BaseModel):
     university_id: int | None = None
     location: str | None = None
     division: list[str] | None = None
+    # Not part of the primary/cosmetic invariant below — every track, cosmetic
+    # or not, can carry a default role (Test Writing's is often Test Writer).
+    default_role_id: int | None = None
 
     @field_validator("division")
     @classmethod
@@ -122,6 +125,7 @@ class TournamentTrackUpdate(BaseModel):
     university_id: int | None = None
     location: str | None = None
     division: list[str] | None = None
+    default_role_id: int | None = None
 
     @field_validator("name")
     @classmethod
@@ -134,6 +138,21 @@ class TournamentTrackUpdate(BaseModel):
         return _validate_division(value) if value is not None else value
 
 
+class TournamentTrackRef(BaseModel):
+    """A track reduced to naming it — for a reader that has to say which track
+    something is on without the catalog row's dates, venue and divisions. Same
+    split, and the same reason, as TournamentShiftBase.
+
+    `is_primary` rides along because it is what tells a competition day from a
+    workstream, and every renderer of one of these branches on that.
+    """
+    id: int
+    name: str
+    is_primary: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TournamentTrackRead(BaseModel):
     id: int
     tournament_id: int
@@ -144,6 +163,7 @@ class TournamentTrackRead(BaseModel):
     university: UniversityResponse | None = None
     location: str | None = None
     division: list[str] | None = None
+    default_role_id: int | None = None
     # Pending delete — see the model. Only ever true in the tournament
     # settings listing; every other audience filters these out.
     is_archived: bool

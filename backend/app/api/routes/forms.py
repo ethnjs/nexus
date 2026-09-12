@@ -19,7 +19,9 @@ from app.core.form import (
 )
 from app.core.form import changes
 from app.core.form.branching import duplicate_ranked_choice_field_keys, missing_required_field_keys
-from app.core.form.permissions import require_form_manage_access, require_form_view_access
+from app.core.form.permissions import (
+    require_form_manage_access, require_form_not_archived, require_form_view_access,
+)
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
@@ -53,9 +55,10 @@ from app.core.form.write_through import (
     sync_lunch,
     sync_track_statuses,
 )
+from app.core.tournament import get_tournament, require_not_archived
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
 from app.core.tournament.memberships import get_membership_by_user, is_declined
-from app.core.tournament.onboarding import next_required_onboarding_form_id
+from app.core.tournament.onboarding import next_required_onboarding_form_id, recompute_onboarding
 from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
@@ -111,6 +114,7 @@ def create_tournament_form(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="owner_type must be 'tournament' and tournament_id must match the path",
         )
+    require_not_archived(get_tournament(tournament_id, db))
 
     form = Form(
         name=payload.name,
@@ -378,6 +382,7 @@ def update_tournament_form_prerequisites(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_permission(MANAGE_FORMS)),
 ):
+    require_not_archived(get_tournament(tournament_id, db))
     form = (
         db.query(Form)
         .filter(
@@ -567,14 +572,12 @@ def update_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    require_form_not_archived(form)
     if payload.status == "published" and form.status == "archived":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="An archived form must be unarchived to draft and reviewed before it can be republished",
         )
-
-    if payload.status in {"draft", "archived"}:
-        _reject_if_onboarding(db, form)
 
     if payload.status == "published":
         try:
@@ -588,8 +591,13 @@ def update_form(
         form.title = payload.title
     if payload.description is not None:
         form.description = payload.description
+    status_changed = payload.status is not None and payload.status != form.status
     if payload.status is not None:
         form.status = payload.status
+    # An onboarding step going in or out of "published" changes what
+    # onboarded means — skipped steps don't count.
+    if status_changed and form.tournament_form is not None and form.tournament_form.is_onboarding:
+        recompute_onboarding(db, form.tournament_id)
 
     db.commit()
     db.refresh(form)
@@ -599,15 +607,16 @@ def update_form(
 # ---------------------------------------------------------------------------
 # One deliberate exception to Onboarding never being referenced by Forms
 # (Onboarding depends on Forms, never the reverse — see the TournamentForm
-# model docstring): a form still flagged is_onboarding can't be archived out
-# from under the sequence it's part of. Remove it from onboarding first.
+# model docstring): a form still flagged is_onboarding can't be deleted out
+# from under the sequence it's part of. Archiving is fine — onboarding skips
+# any step that isn't published.
 # ---------------------------------------------------------------------------
 def _reject_if_onboarding(db: Session, form: Form) -> None:
     tf = db.query(TournamentForm).filter(TournamentForm.form_id == form.id).first()
     if tf is not None and tf.is_onboarding:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="This form is part of the onboarding sequence — remove it from onboarding before archiving",
+            detail="This form is part of the onboarding sequence — remove it from onboarding before deleting",
         )
 
 
@@ -622,6 +631,7 @@ def delete_form(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    require_form_not_archived(form)
     has_responses = db.query(FormResponse).filter(FormResponse.form_id == form.id).first() is not None
     if has_responses:
         raise HTTPException(
@@ -661,6 +671,7 @@ def bulk_update_fields(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    require_form_not_archived(form)
     is_history_preserving = _is_history_preserving(db, form)
 
     # Archived fields are addressable here too: naming one in the payload
@@ -949,6 +960,7 @@ def submit_form_response(
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
+    require_form_not_archived(form)
     _require_published(form)
 
     existing = (
@@ -1018,6 +1030,7 @@ def patch_form_response(
     form: Form = Depends(require_form_view_access),
     current_user: User = Depends(get_current_user),
 ):
+    require_form_not_archived(form)
     _require_published(form)
 
     response = (
@@ -1259,6 +1272,7 @@ def invalidate_form_field(
     db: Session = Depends(get_db),
     form: Form = Depends(require_form_manage_access),
 ):
+    require_form_not_archived(form)
     field = (
         db.query(FormField)
         .filter(FormField.form_id == form.id, FormField.id == field_id)

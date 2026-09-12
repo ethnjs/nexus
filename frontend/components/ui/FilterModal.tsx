@@ -3,18 +3,26 @@
 import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
-import { Checkbox } from "@/components/ui/Checkbox";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
+import { Checkbox } from "@/components/ui/Checkbox";
+import { ChipInput } from "@/components/ui/ChipInput";
+import { IconPlus } from "@/components/ui/Icons";
+import { Popover } from "@/components/ui/Popover";
 
 export interface FilterOption {
   value: string;
   label: string;
 }
 
-// Values excluded per field — empty means that field applies no filtering,
-// which keeps newly-appearing options (e.g. a category from a just-loaded
-// event) shown by default instead of needing to be synced into an
-// "everything selected" baseline.
+// Values *selected* per field — empty means that field applies no filtering,
+// so a fresh modal opens with nothing lit rather than with every option lit
+// and no filter actually applied, which read as a filter that wasn't one.
+//
+// Storing what's excluded instead makes "no filter" and "everything ticked"
+// two different states that look identical, and needs an "everything
+// selected" baseline kept in sync as options appear. Empty-means-all keeps a
+// newly-appearing option (a category from a just-loaded event) shown by
+// default under either model; this one just says so honestly.
 export type FilterState<K extends string> = Record<K, Set<string>>;
 
 export function emptyFilterState<K extends string>(keys: readonly K[]): FilterState<K> {
@@ -22,7 +30,13 @@ export function emptyFilterState<K extends string>(keys: readonly K[]): FilterSt
 }
 
 export function isFilterActive(filters: FilterState<string>): boolean {
-  return Object.values(filters).some((excluded) => excluded.size > 0);
+  return Object.values(filters).some((selected) => selected.size > 0);
+}
+
+/** Whether `value` passes one field's filter. Empty selection = no narrowing,
+ *  which is the rule every caller's predicate needs and none should re-derive. */
+export function filterAllows(selected: Set<string>, value: string): boolean {
+  return selected.size === 0 || selected.has(value);
 }
 
 export interface FilterSectionConfig<K extends string> {
@@ -30,22 +44,25 @@ export interface FilterSectionConfig<K extends string> {
   key: K;
   title: string;
   options: FilterOption[];
-  /** "buttons" for a handful of fixed values, "checkbox" for open-ended lists. */
-  control: "buttons" | "checkbox";
+  /** "buttons" for a handful of fixed values, "checkbox" for open-ended
+   *  lists, "chips" for a long list where only the picked few are worth the
+   *  space (see ChipFilterSection). */
+  control: "buttons" | "checkbox" | "chips";
 }
 
-interface SectionHeaderProps {
+interface FilterSectionProps {
   title: string;
   options: FilterOption[];
-  excluded: Set<string>;
-  onChange: (excluded: Set<string>) => void;
+  /** Values the result set is narrowed to — empty means "everything shown". */
+  selected: Set<string>;
+  onChange: (selected: Set<string>) => void;
 }
 
-// Just one toggle button, not both at once: "Deselect all" only makes sense
-// while something is still selected, and vice versa.
-function SectionHeader({ title, options, excluded, onChange }: SectionHeaderProps) {
-  const allSelected = excluded.size === 0;
-
+// Only "Clear", and only while there's something to clear. "Select all" was
+// the old model's counterpart to "Deselect all"; under empty-means-all it
+// would write out every option to mean exactly what an empty set already
+// means, and would then quietly exclude any option added afterwards.
+function SectionHeader({ title, selected, onChange }: Omit<FilterSectionProps, "options">) {
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "8px" }}>
       <span style={{
@@ -54,41 +71,29 @@ function SectionHeader({ title, options, excluded, onChange }: SectionHeaderProp
       }}>
         {title}
       </span>
-      {allSelected ? (
-        <Button type="button" variant="ghost" size="sm" onClick={() => onChange(new Set(options.map((o) => o.value)))}>
-          Deselect all
-        </Button>
-      ) : (
+      {selected.size > 0 && (
         <Button type="button" variant="ghost" size="sm" onClick={() => onChange(new Set())}>
-          Select all
+          Clear
         </Button>
       )}
     </div>
   );
 }
 
-interface FilterSectionProps {
-  title: string;
-  options: FilterOption[];
-  /** Values excluded from the result set — empty means "everything shown". */
-  excluded: Set<string>;
-  onChange: (excluded: Set<string>) => void;
+function toggled(selected: Set<string>, value: string): Set<string> {
+  const next = new Set(selected);
+  if (!next.delete(value)) next.add(value);
+  return next;
 }
 
-export function CheckboxFilterSection({ title, options, excluded, onChange }: FilterSectionProps) {
-  function toggle(value: string) {
-    const next = new Set(excluded);
-    next.has(value) ? next.delete(value) : next.add(value);
-    onChange(next);
-  }
-
+export function CheckboxFilterSection({ title, options, selected, onChange }: FilterSectionProps) {
   return (
     <div style={{ marginBottom: "20px" }}>
-      <SectionHeader title={title} options={options} excluded={excluded} onChange={onChange} />
+      <SectionHeader title={title} selected={selected} onChange={onChange} />
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {options.map((opt) => (
           <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-            <Checkbox checked={!excluded.has(opt.value)} onChange={() => toggle(opt.value)} />
+            <Checkbox checked={selected.has(opt.value)} onChange={() => onChange(toggled(selected, opt.value))} />
             <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
               {opt.label}
             </span>
@@ -99,24 +104,82 @@ export function CheckboxFilterSection({ title, options, excluded, onChange }: Fi
   );
 }
 
-export function ButtonGroupFilterSection({ title, options, excluded, onChange }: FilterSectionProps) {
-  function toggle(value: string) {
-    const next = new Set(excluded);
-    next.has(value) ? next.delete(value) : next.add(value);
-    onChange(next);
-  }
-
+export function ButtonGroupFilterSection({ title, options, selected, onChange }: FilterSectionProps) {
   return (
     <div style={{ marginBottom: "20px" }}>
-      <SectionHeader title={title} options={options} excluded={excluded} onChange={onChange} />
+      <SectionHeader title={title} selected={selected} onChange={onChange} />
       <ButtonGroup
         options={options}
-        value={options.filter((o) => !excluded.has(o.value)).map((o) => o.value)}
-        onChange={toggle}
+        value={[...selected]}
+        onChange={(value) => onChange(toggled(selected, value))}
       />
     </div>
   );
 }
+
+// Above this many rows a picker is faster to type into than to scroll.
+const SEARCHABLE_ABOVE = 8;
+
+/**
+ * Chips plus a checklist picker, for a section whose options are too many for
+ * a button row to hold without wrapping into a wall — tracks, roles. Only the
+ * picked values take space, so the section stays one line tall until it's
+ * actually used.
+ */
+export function ChipFilterSection({ title, options, selected, onChange }: FilterSectionProps) {
+  if (options.length === 0) return null;
+  const labelFor = new Map(options.map((o) => [o.value, o.label]));
+
+  return (
+    <div style={{ marginBottom: "20px" }}>
+      <SectionHeader title={title} selected={selected} onChange={onChange} />
+      <ChipInput
+        // Chips carry labels while the state carries values, so a removed
+        // chip is matched back by label rather than parsed out of its text.
+        value={[...selected].map((value) => labelFor.get(value) ?? value)}
+        onChange={(labels) => {
+          const removed = [...selected].find((value) => !labels.includes(labelFor.get(value) ?? value));
+          if (removed) onChange(toggled(selected, removed));
+        }}
+        variant="transparent"
+        size="sm"
+        disableInput
+        fullWidth
+        placeholder="Any"
+        addButton={
+          <Popover
+            trigger={
+              <Button
+                type="button" variant="secondary" size="sm" iconOnly
+                title={`Filter by ${title.toLowerCase()}`}
+                style={{ padding: 0, flexShrink: 0 }}
+              >
+                <IconPlus size={13} />
+              </Button>
+            }
+            items={options}
+            getKey={(option) => option.value}
+            renderLabel={(option) => option.label}
+            getSearchText={(option) => option.label}
+            searchable={options.length > SEARCHABLE_ABOVE}
+            checklist
+            isSelected={(option) => selected.has(option.value)}
+            onSelect={(option) => onChange(toggled(selected, option.value))}
+            emptyMessage="Nothing to filter by"
+            width={300}
+            align="left"
+          />
+        }
+      />
+    </div>
+  );
+}
+
+const SECTION_CONTROLS = {
+  buttons: ButtonGroupFilterSection,
+  checkbox: CheckboxFilterSection,
+  chips: ChipFilterSection,
+} as const;
 
 interface FilterModalProps<K extends string> {
   title: string;
@@ -137,21 +200,26 @@ interface FilterModalProps<K extends string> {
 export function FilterModal<K extends string>({ title, sections, filters, onApply, onClose, width = 380 }: FilterModalProps<K>) {
   const [draft, setDraft] = useState<FilterState<K>>(filters);
 
-  function setField(key: K, excluded: Set<string>) {
-    setDraft((prev) => ({ ...prev, [key]: excluded }));
+  function setField(key: K, selected: Set<string>) {
+    setDraft((prev) => ({ ...prev, [key]: selected }));
   }
 
   return (
     <Modal title={title} onClose={onClose} width={width}>
       {sections.map((section) => {
-        const Section = section.control === "checkbox" ? CheckboxFilterSection : ButtonGroupFilterSection;
+        const Section = SECTION_CONTROLS[section.control];
+        // Falls back rather than indexing blind: the sections are the
+        // caller's, so a key its filter state doesn't carry yet — one added
+        // after a stored config was written — would otherwise reach the
+        // section as undefined and crash on `.size`.
+        const selected = draft[section.key] ?? new Set<string>();
         return (
           <Section
             key={section.key}
             title={section.title}
             options={section.options}
-            excluded={draft[section.key]}
-            onChange={(excluded) => setField(section.key, excluded)}
+            selected={selected}
+            onChange={(next) => setField(section.key, next)}
           />
         );
       })}

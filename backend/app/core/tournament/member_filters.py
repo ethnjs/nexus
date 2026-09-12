@@ -20,9 +20,10 @@ from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentMembership, TournamentMembershipAvailability, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentMembershipRole, TournamentMembershipTrackStatus,
-    TournamentRole, User, UserCompetitionExperience, UserVolunteerExperience,
+    TournamentEventAssignment, TournamentMembership, TournamentMembershipAvailability,
+    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentMembershipRole,
+    TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
+    UserVolunteerExperience,
 )
 
 # Sentinel accepted in the `role` filter for members holding no roles at all.
@@ -113,6 +114,7 @@ def apply_member_filters(
     volunteer_events: list[int] | None = None,
     age_flags: list[str] | None = None,
     shifts: list[str] | None = None,
+    assigned: list[str] | None = None,
 ) -> Query:
     """Narrows a TournamentMembership query by the roster's filter params.
 
@@ -213,6 +215,27 @@ def apply_member_filters(
                 & TournamentMembershipAvailability.tournament_shift_id.in_(shift_ids)
             ))
 
+    if assigned:
+        # "trackId:assigned|unassigned", per track like track status — "who's
+        # unassigned for Day 1" is the question. ANY (an unnarrowed chip) and
+        # both values on one track narrow nothing.
+        clauses = []
+        for track_id, value in _split_pairs(assigned):
+            if not track_id.isdigit():
+                continue
+            staffed = exists().where(
+                (TournamentEventAssignment.membership_id == TournamentMembership.id)
+                & (TournamentEventAssignment.tournament_track_id == int(track_id))
+            )
+            if value == "assigned":
+                clauses.append(staffed)
+            elif value == "unassigned":
+                clauses.append(~staffed)
+            elif value == ANY:
+                clauses.append(true())
+        if clauses:
+            query = query.filter(or_(*clauses))
+
     return query
 
 
@@ -272,6 +295,7 @@ def build_filter_options(db, tournament) -> dict:
     )
     from app.core.tournament import tournament_local_date
     from app.core.tournament.display_config import unslug
+    from app.core.tournament.tracks import track_event_ids
     from app.models.models import (
         Event, Form, FormField, TournamentEvent, TournamentShift, TournamentTrack,
     )
@@ -311,9 +335,13 @@ def build_filter_options(db, tournament) -> dict:
         .order_by(TournamentShift.start)
     ):
         key = str(shift.track_id)
+        # track_names holds live tracks only — a pending-delete one is not
+        # something to filter by.
+        if key not in track_names:
+            continue
         group = shift_days.setdefault(
             key,
-            {"value": key, "label": track_names.get(key, "Unknown track"), "options": []},
+            {"value": key, "label": track_names[key], "options": []},
         )
         group["options"].append({
             "value": str(shift.id),
@@ -326,10 +354,14 @@ def build_filter_options(db, tournament) -> dict:
 
     # Every tournament event, not just the ones somebody ranked — the filter
     # is as often used to find who *didn't* pick an event.
+    # "Boomilever C", not "Boomilever (C)" — the division is part of the
+    # event's name here rather than an aside about it, the same way the
+    # client's eventNameWithDivision reads it. Name alone can't identify a
+    # row: the same event usually runs in two divisions.
     event_options = [
         {
             "value": str(event_id),
-            "label": f"{name or 'Unknown event'}{f' ({division})' if division else ''}",
+            "label": f"{name or 'Unknown event'}{f' {division}' if division else ''}",
         }
         # func.coalesce is the SQL form of TournamentEvent.display_name:
         # `name` is only set on custom events, so a catalog-linked one takes
@@ -339,7 +371,9 @@ def build_filter_options(db, tournament) -> dict:
         )
         .outerjoin(Event, TournamentEvent.event_id == Event.id)
         .filter(TournamentEvent.tournament_id == tournament.id)
-        .order_by(func.coalesce(TournamentEvent.name, Event.name))
+        # By division too, now that it ends the label: the two Chess rows
+        # would otherwise sit in whatever order the rows came back in.
+        .order_by(func.coalesce(TournamentEvent.name, Event.name), TournamentEvent.division)
     ]
     pref_track_ids = {
         match.group(1)
@@ -348,15 +382,32 @@ def build_filter_options(db, tournament) -> dict:
     }
     # A question can be deleted after members answered it; the answers stay
     # filterable, so the stored tracks are unioned in rather than lost.
-    pref_track_ids |= {
-        str(track_id) for (track_id,) in scoped(TournamentMembershipEventPreference)
-        .with_entities(TournamentMembershipEventPreference.track_id).distinct()
-    }
+    stored_prefs = (
+        scoped(TournamentMembershipEventPreference)
+        .with_entities(
+            TournamentMembershipEventPreference.track_id,
+            TournamentMembershipEventPreference.tournament_event_id,
+        )
+        .distinct()
+        .all()
+    )
+    pref_track_ids |= {str(track_id) for track_id, _ in stored_prefs}
+    # Live tracks only, like every other group here.
+    pref_track_ids &= set(track_names)
+
+    def events_on(track_id: str) -> list[dict]:
+        # The question's own rule (validate_event_preference_options), plus
+        # anything already ranked there, so an answer outlives its event
+        # leaving the track.
+        allowed = {str(e) for e in track_event_ids(db, int(track_id))} if track_id.isdigit() else set()
+        allowed |= {str(e) for t, e in stored_prefs if str(t) == track_id}
+        return [option for option in event_options if option["value"] in allowed]
+
     event_preferences = [
         {
             "value": track_id,
             "label": track_names.get(track_id, "Unknown track"),
-            "options": event_options,
+            "options": events_on(track_id),
         }
         for track_id in sorted(pref_track_ids, key=lambda t: track_names.get(t, ""))
     ]

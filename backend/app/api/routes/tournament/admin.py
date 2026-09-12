@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import require_admin
 from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
-from app.core.tournament import get_tournament
+from app.core.tournament import get_tournament, require_not_archived
 from app.db.session import get_db
 from app.models.models import Tournament, User
 from app.schemas.tournament import TournamentRead
@@ -44,6 +44,7 @@ def set_tournament_verified(
     current_user: User = Depends(require_admin),
 ):
     tournament = get_tournament(tournament_id, db)
+    require_not_archived(tournament)
     tournament.is_verified = payload.is_verified
 
     log_action(

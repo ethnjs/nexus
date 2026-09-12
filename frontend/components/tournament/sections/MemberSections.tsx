@@ -3,12 +3,14 @@
 import { ReactNode } from "react";
 import {
   DisplayConfigSection, MembershipFull, MembershipView, Role, TournamentShift,
+  TournamentTrack,
 } from "@/lib/api";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
 import { CompetitionExperienceSection } from "@/components/profile/sections/CompetitionExperienceSection";
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
+import { AssignmentsSection } from "@/components/tournament/sections/AssignmentsSection";
 import { AvailabilitySection } from "@/components/tournament/sections/AvailabilitySection";
 import { LunchSection } from "@/components/tournament/sections/LunchSection";
 import { EventPreferencesSection } from "@/components/tournament/sections/EventPreferencesSection";
@@ -27,6 +29,16 @@ export interface MemberSectionsProps {
   sectionConfig: DisplayConfigSection[] | null;
   /** Every shift the tournament offers — sets the availability timeline's window. */
   shifts: TournamentShift[];
+  /** Every track, for the assignments section's per-day timelines. */
+  tracks: TournamentTrack[];
+  /** Tracks the viewer turned off in the panel config ("track:3" in the
+   *  surface's hidden list). Server-side filtering already drops the member's
+   *  own rows for them; this is what keeps their empty timelines away too. */
+  hiddenTrackIds: Set<number>;
+  /** Membership id — the assignments section writes against it. */
+  membershipId: number;
+  /** Re-read the member after this section writes. */
+  onAssignmentsChanged?: () => void;
   allRoles: Role[];
   canTouchRole: (role: Role) => boolean;
   /** Role editing off. Not the same as "can't act on this member": someone
@@ -101,6 +113,23 @@ const RENDERERS: Record<
     />
   ),
   availability: (p) => <AvailabilitySection availability={p.membership.availability ?? []} allShifts={p.shifts} />,
+  // hiddenFields carries this section's one static field: the shading behind
+  // the timeline, which is off by naming it here rather than by a flag of
+  // its own.
+  assignments: (p, hiddenFields) => (
+    <AssignmentsSection
+      tournamentId={p.tournamentId}
+      membershipId={p.membershipId}
+      member={p.membership}
+      allShifts={p.shifts}
+      tracks={p.tracks}
+      roleCatalog={p.allRoles}
+      hiddenTrackIds={p.hiddenTrackIds}
+      showAvailability={!hiddenFields.has("availability")}
+      locked={p.rolesLocked}
+      onChanged={p.onAssignmentsChanged}
+    />
+  ),
   // Lunch rows are filtered per category server-side; only the dietary
   // restriction is a static field of this section.
   lunch: (p, hiddenFields) => (

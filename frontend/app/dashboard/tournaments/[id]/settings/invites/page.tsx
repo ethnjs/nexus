@@ -212,6 +212,12 @@ export default function InvitesSettingsPage() {
     );
   }
 
+  // The route already drops expired codes; this catches one whose countdown
+  // runs out while the page is open.
+  const liveInvites = invites.filter(
+    (i) => i.expires_at === null || new Date(i.expires_at).getTime() > now,
+  );
+
   function handleUpdated(updated: Invite) {
     setInvites((prev) => prev && prev.map((i) => (i.id === updated.id ? updated : i)));
   }
@@ -246,7 +252,7 @@ export default function InvitesSettingsPage() {
             description="Archiving deactivated every invite. Unarchive the tournament to create new ones."
           />
         </Card>
-      ) : invites.length === 0 ? (
+      ) : liveInvites.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
           <EmptyState
             icon={<IconInvite size={28} />}
@@ -261,7 +267,7 @@ export default function InvitesSettingsPage() {
         </Card>
       ) : (
         <InviteTable
-          invites={invites}
+          invites={liveInvites}
           tournamentId={tournamentId}
           now={now}
           onUpdated={handleUpdated}

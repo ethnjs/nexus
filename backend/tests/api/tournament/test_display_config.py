@@ -3,7 +3,8 @@
 from datetime import date, datetime, timezone
 from app.models.models import (
     Form, FormField, TournamentMembership, TournamentMembershipEventPreference,
-    TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentTrack,
+    TournamentMembershipLunch, TournamentMembershipTrackStatus, TournamentRole,
+    TournamentTrack,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
@@ -110,6 +111,20 @@ def test_put_display_config_saves_filters_and_sort(client, td_user, td_tournamen
     assert saved["members_table"]["sort"] == {"field": "last_name", "direction": "desc"}
 
 
+def test_put_display_config_saves_assigned_filter(client, td_user, td_tournament):
+    """Every roster query param has to be storable, or the filter applies but
+    silently fails to persist — the write is fire-and-forget, so a rejected
+    key is invisible to the coordinator who set it."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"filters": {"assigned": ["unassigned"]}}},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["members_table"]["filters"] == {"assigned": ["unassigned"]}
+
+
 def test_put_display_config_rejects_unknown_filter(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
@@ -166,6 +181,85 @@ def test_put_display_config_rejects_unknown_namespace(client, td_user, td_tourna
     assert response.status_code == 422
 
 
+# ---------------------------------------------------------------------------
+# The assignments board's two surfaces — event rows and the belt card
+# ---------------------------------------------------------------------------
+
+def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    payload = {
+        "assignments_events": {
+            "hidden": [],
+            "columns": ["division", "time"],
+            "filters": {"staffing": ["staffed"], "track": ["3"]},
+        },
+        "assignment_card": {
+            "hidden": ["card_field:availability", "card_track:event_preferences:7"],
+            "filters": {"assigned": ["unassigned"], "age": ["over_18"]},
+        },
+    }
+    response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["assignments_events"]["columns"] == ["division", "time"]
+    assert body["assignment_card"]["hidden"] == [
+        "card_field:availability", "card_track:event_preferences:7",
+    ]
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json() == body
+
+
+def test_put_assignments_events_rejects_foreign_column(client, td_user, td_tournament):
+    """A column the events *table* has but a board row doesn't — surfaces
+    don't fall through to each other's vocabularies."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": [], "columns": ["volunteers_needed"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignments_events_hides_tracks(client, td_user, td_tournament):
+    """A row's hideable items are its tracks — hiding one drops its shifts
+    from the timeline, or its column from the no-shift area."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": ["track:3"]}},
+    )
+    assert response.status_code == 200
+    assert response.json()["assignments_events"]["hidden"] == ["track:3"]
+
+
+def test_put_assignments_events_rejects_non_track_hidden_items(client, td_user, td_tournament):
+    """Only tracks. A row has no lunch categories or form fields to hide."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"hidden": ["lunch:3:entree"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignment_card_rejects_unknown_field(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card": {"hidden": ["card_field:email"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignment_card_rejects_track_slice_of_scalar_field(client, td_user, td_tournament):
+    """`age` is one value, not a per-track list, so it has no track slices."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignment_card": {"hidden": ["card_track:age:3"]}},
+    )
+    assert response.status_code == 422
+
+
 def test_put_display_config_requires_manage_members(client, td_user, other_tournament, db):
     grant_role(db, other_tournament, td_user, "Volunteer")
     login(client, "td@test.com", "tdpass")
@@ -176,7 +270,8 @@ def test_put_display_config_requires_manage_members(client, td_user, other_tourn
     assert response.status_code == 403
 
 
-def test_put_display_config_rejects_archived_tournament(client, td_user, td_tournament, db):
+def test_put_display_config_allowed_on_archived_tournament(client, td_user, td_tournament, db):
+    """Cosmetic and per viewer — archiving freezes data, not how you view it."""
     td_tournament.is_archived = True
     db.commit()
     login(client, "td@test.com", "tdpass")
@@ -184,7 +279,7 @@ def test_put_display_config_rejects_archived_tournament(client, td_user, td_tour
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"members_panel": {"hidden": []}},
     )
-    assert response.status_code == 403
+    assert response.status_code == 200
 
 
 # ---------------------------------------------------------------------------
@@ -224,7 +319,7 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert body["custom_fields"] == []
     # Fixed columns exist regardless of tournament data; each track adds one.
     assert [c["key"] for c in body["columns"]] == [
-        "email", "phone", "account_age", "joined", "method", "age", "shirt_size",
+        "email", "phone", "account_age", "joined", "method", "age", "shirt_size", "onboarding",
         f"track:{main.id}",
     ]
     # Custom Responses is no longer built in — it's seeded as a deletable
@@ -233,7 +328,7 @@ def test_get_display_config_catalog_bare_tournament(client, td_user, td_tourname
     assert "custom_responses" not in [s["id"] for s in body["sections"]]
     # Membership offers its static fields plus one entry per track.
     assert [f["key"] for f in body["sections"][0]["fields"]] == [
-        "joined", "join_method", "roles", "age", f"track:{main.id}",
+        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}",
     ]
 
 
@@ -248,7 +343,8 @@ def test_get_display_config_catalog_includes_tracks(client, td_user, td_tourname
     assert response.status_code == 200
     tracks = response.json()["tracks"]
     assert {"key": f"track:{track.id}", "label": "Test Writing"} in tracks
-    assert {"key": f"track:{archived.id}", "label": "Retired Track (archived)"} in tracks
+    # A pending-delete track is on its way out — nothing to configure.
+    assert all(item["key"] != f"track:{archived.id}" for item in tracks)
 
 
 def test_get_display_config_catalog_includes_lunch_categories_deduped(client, td_user, td_tournament, db):
@@ -404,6 +500,42 @@ def test_hidden_track_stays_hidden_even_when_pending(client, td_user, td_tournam
     assert [t["name"] for t in response.json()["track_statuses"]] == ["Main", "Shown Track"]
 
 
+def test_panel_surface_carries_contact(client, td_user, td_tournament, db):
+    """The panel's header shows email and phone, so its surface has to ask for
+    them — no section maps to contact, and deriving the payload from the
+    section list alone left the header rendering fields that weren't there."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    for surface in ("members_panel", "member_page"):
+        body = client.get(
+            f"/tournaments/{td_tournament.id}/members/{m.id}/?surface={surface}"
+        ).json()
+        assert body["user"]["email"] == u.email, surface
+        assert "phone" in body["user"], surface
+
+
+def test_panel_contact_survives_hiding_every_section(client, td_user, td_tournament, db):
+    """Contact is the header, not a section — hiding all of them empties the
+    body without taking the name and email above it."""
+    u = _make_user(db)
+    m = _make_membership(db, td_tournament.id, u.id)
+    db.commit()
+
+    login(client, "td@test.com", "tdpass")
+    assert client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"hidden": [], "sections": []}},
+    ).status_code == 200
+
+    body = client.get(
+        f"/tournaments/{td_tournament.id}/members/{m.id}/?surface=members_panel"
+    ).json()
+    assert body["user"]["email"] == u.email
+
+
 def test_hidden_sections_reports_only_what_filtering_emptied(client, td_user, td_tournament, db):
     """The panel renders a section even when a member has no data for it, so
     an empty list no longer means "hidden" — hidden_sections is what says a
@@ -547,8 +679,145 @@ def test_section_fields_include_one_entry_per_entity(client, td_user, td_tournam
 
     main = next(t for t in td_tournament.tracks if t.name == "Main")
     assert [f["key"] for f in sections["membership"]["fields"]] == [
-        "joined", "join_method", "roles", "age", f"track:{main.id}", f"track:{track.id}",
+        "joined", "join_method", "roles", "age", "onboarding", f"track:{main.id}", f"track:{track.id}",
     ]
     assert [f["key"] for f in sections["lunch"]["fields"]] == [
         "dietary_restriction", f"lunch:{primary_track_id(db, td_tournament.id)}:entree",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Events table surface
+#
+# The second table configured through this route. Its point is that the two
+# vocabularies are separate: the same key is legal on one surface and a 422
+# on the other, so these tests assert both directions rather than just that
+# the events keys are accepted.
+# ---------------------------------------------------------------------------
+
+def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {
+            "columns": ["division", "category", "building", "volunteers_needed"],
+            "filters": {"division": ["A"], "category": ["Life Science"]},
+            "sort": {"field": "day", "direction": "asc"},
+        }},
+    )
+    assert response.status_code == 200
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["events_table"]
+    assert saved["columns"] == ["division", "category", "building", "volunteers_needed"]
+    assert saved["filters"] == {"division": ["A"], "category": ["Life Science"]}
+    assert saved["sort"] == {"field": "day", "direction": "asc"}
+
+
+def test_events_table_and_members_table_are_saved_independently(client, td_user, td_tournament):
+    """One PUT carries both tables; neither validates against the other's
+    vocabulary, and both survive the round trip."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "members_table": {"columns": ["email"], "sort": {"field": "last_name", "direction": "asc"}},
+            "events_table": {"columns": ["division"], "sort": {"field": "name", "direction": "asc"}},
+        },
+    )
+    assert response.status_code == 200
+    saved = response.json()
+    assert saved["members_table"]["columns"] == ["email"]
+    assert saved["events_table"]["columns"] == ["division"]
+
+
+def test_put_rejects_members_column_on_events_table(client, td_user, td_tournament):
+    """"email" is a real column — just not one an event has."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"columns": ["email"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_events_column_on_members_table(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table": {"columns": ["division"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_roster_filter_on_events_table(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"filters": {"role": ["3"]}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_roster_sort_field_on_events_table(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"sort": {"field": "last_name", "direction": "asc"}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_filters_on_a_surface_that_has_none(client, td_user, td_tournament):
+    """The panel is not a table — a filter saved against it would be weight
+    nothing ever reads."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_panel": {"filters": {"role": ["3"]}}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_keeps_unresolvable_events_filter_values(client, td_user, td_tournament):
+    """Same opacity rule as the roster: a category that no longer exists is
+    inert on the events table, not a 422 on every later save."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"filters": {"category": ["A Category Since Renamed"]}}},
+    )
+    assert response.status_code == 200
+
+
+def test_catalog_serves_event_columns(client, td_user, td_tournament):
+    """Static — an events column is a scalar on the event, so it doesn't vary
+    with what the tournament holds."""
+    login(client, "td@test.com", "tdpass")
+    body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
+    assert [c["key"] for c in body["event_columns"]] == [
+        "division", "type", "category", "tracks", "shifts",
+        "building", "room", "floor", "volunteers_needed",
+    ]
+    # Separate universes: no events column leaks into the roster's list.
+    assert "division" not in [c["key"] for c in body["columns"]]
+
+
+def test_manage_events_alone_can_read_and_write_display_config(
+    client, td_tournament, other_user, db,
+):
+    """The events table is configured by people who may hold no roster
+    permission at all, so either permission opens this route."""
+    db.add(TournamentRole(
+        tournament_id=td_tournament.id, label="Schedule Only",
+        permissions=["manage_events"], rank=25,
+    ))
+    db.commit()
+    grant_role(db, td_tournament, other_user, "Schedule Only")
+    login(client, "other@test.com", "otherpass")
+
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/").status_code == 200
+    assert client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").status_code == 200
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"events_table": {"columns": ["division"]}},
+    )
+    assert response.status_code == 200

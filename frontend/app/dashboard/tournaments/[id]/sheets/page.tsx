@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Modal } from "@/components/ui/Modal";
+import { useArchiveLock } from "@/lib/useArchiveLock";
 import { IconPlus, IconSheets, IconSync, IconWarning, IconDotsVertical, IconEdit, IconTrash, IconExport } from "@/components/ui/Icons";
 
 const SHEET_TYPE_LABELS: Record<string, string> = {
@@ -136,10 +137,12 @@ function CardMenu({
   cfg,
   tournamentId,
   onDelete,
+  lockedReason,
 }: {
   cfg: SheetConfig;
   tournamentId: string;
   onDelete: () => void;
+  lockedReason?: string;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -157,7 +160,7 @@ function CardMenu({
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const menuItems: { label: string; icon: React.ReactNode; action: () => void; danger?: boolean }[] = [
+  const menuItems: MenuItem[] = [
     {
       label: "Export JSON",
       icon: <IconExport size={16} />,
@@ -167,12 +170,14 @@ function CardMenu({
       label: "Edit",
       icon: <IconEdit size={16} />,
       action: () => { router.push(`/dashboard/tournaments/${tournamentId}/sheets/${cfg.id}/edit`); setOpen(false); },
+      disabledReason: lockedReason,
     },
     {
       label: "Delete",
       icon: <IconTrash size={16} />,
       action: () => { onDelete(); setOpen(false); },
       danger: true,
+      disabledReason: lockedReason,
     },
   ];
 
@@ -228,23 +233,32 @@ function CardMenu({
   );
 }
 
-function MenuRow({
-  item,
-}: {
-  item: { label: string; icon: React.ReactNode; action: () => void; danger?: boolean };
-}) {
+interface MenuItem {
+  label: string;
+  icon: React.ReactNode;
+  action: () => void;
+  danger?: boolean;
+  /** Set when the row stays visible but can't run (archived tournament). */
+  disabledReason?: string;
+}
+
+function MenuRow({ item }: { item: MenuItem }) {
   const [hovered, setHovered] = useState(false);
+  const disabled = !!item.disabledReason;
   return (
     <button
       onClick={item.action}
+      disabled={disabled}
+      title={item.disabledReason}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: "flex", alignItems: "center", gap: "8px",
         width: "100%", padding: "7px 12px",
-        background: hovered ? "var(--color-bg)" : "transparent",
+        background: hovered && !disabled ? "var(--color-bg)" : "transparent",
         border: "none",
-        cursor: "pointer",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
         color: item.danger ? "var(--color-danger)" : "var(--color-text-primary)",
         fontFamily: "var(--font-sans)", fontSize: "13px",
         textAlign: "left",
@@ -264,11 +278,14 @@ function ConfigCard({
   tournamentId,
   duplicates,
   onDeleted,
+  lockedReason,
 }: {
   cfg: SheetConfig;
   tournamentId: string;
   duplicates: SheetConfig[];
   onDeleted: (id: number) => void;
+  /** Archived tournament — sync, edit and delete lock; export stays. */
+  lockedReason?: string;
 }) {
   const router = useRouter();
   const [syncing, setSyncing] = useState(false);
@@ -409,6 +426,8 @@ function ConfigCard({
                 size="sm"
                 onClick={handleSyncClick}
                 loading={syncing}
+                disabled={!!lockedReason}
+                title={lockedReason}
               >
                 {!syncing && <IconSync />}
                 {syncing ? "Syncing…" : "Sync"}
@@ -419,6 +438,7 @@ function ConfigCard({
               cfg={cfg}
               tournamentId={tournamentId}
               onDelete={() => setShowDeleteModal(true)}
+              lockedReason={lockedReason}
             />
           </div>
         </div>
@@ -451,6 +471,7 @@ export default function SheetsPage() {
   const router = useRouter();
   const params = useParams();
   const tournamentId = params.id as string;
+  const { isArchived, archivedReason } = useArchiveLock();
 
   const [configs, setConfigs] = useState<SheetConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -477,6 +498,8 @@ export default function SheetsPage() {
             variant="primary"
             size="sm"
             onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/new`)}
+            disabled={isArchived}
+            title={archivedReason}
           >
             <IconPlus />
             Add Sheet
@@ -508,6 +531,8 @@ export default function SheetsPage() {
               variant="secondary"
               size="sm"
               onClick={() => router.push(`/dashboard/tournaments/${tournamentId}/sheets/new`)}
+            disabled={isArchived}
+            title={archivedReason}
             >
               <IconPlus />
               Add your first sheet
@@ -523,6 +548,7 @@ export default function SheetsPage() {
               tournamentId={tournamentId}
               duplicates={getDuplicates(cfg, configs)}
               onDeleted={handleDeleted}
+              lockedReason={archivedReason}
             />
           ))}
         </div>

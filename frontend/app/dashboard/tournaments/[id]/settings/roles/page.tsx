@@ -7,6 +7,7 @@ import { rolesApi, Role, RoleWithMemberCount, ApiError } from "@/lib/api";
 import { groupByRank } from "@/lib/roles/roleReorder";
 import { useRoleReorder, useRoleRowDrag } from "@/lib/roles/useRoleReorder";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
+import { ARCHIVED_REASON } from "@/lib/useArchiveLock";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
@@ -132,10 +133,16 @@ export default function RolesSettingsPage() {
             action={
               canManageRoles ? (
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <Button type="button" variant="primary" size="sm" loading={applying} onClick={handleApplyTemplate}>
+                  <Button
+                    type="button" variant="primary" size="sm" loading={applying} onClick={handleApplyTemplate}
+                    disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                  >
                     Apply default template
                   </Button>
-                  <Button type="button" variant="secondary" size="sm" onClick={handleCreateRole}>
+                  <Button
+                    type="button" variant="secondary" size="sm" onClick={handleCreateRole}
+                    disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
+                  >
                     Create role
                   </Button>
                 </div>
@@ -150,6 +157,7 @@ export default function RolesSettingsPage() {
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
+                onClear={() => setSearch("")}
                 placeholder="Search roles"
                 icon={<IconSearch size={14} />}
                 font="sans"
@@ -158,10 +166,11 @@ export default function RolesSettingsPage() {
                 fullWidth
               />
             </div>
-            {canCreateRoles && (
+            {canManageRoles && (
               <Button
                 type="button" variant="primary" size="md"
                 onClick={handleCreateRole}
+                disabled={!canCreateRoles} title={!canCreateRoles ? ARCHIVED_REASON : undefined}
               >
                 <IconPlus size={14} /> Create Role
               </Button>

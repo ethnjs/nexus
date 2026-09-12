@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { ApiError, MyTrackOptions, formsApi, membersApi } from "@/lib/api";
 import { useMyMembership } from "@/lib/useMyMembership";
+import { ARCHIVED_REASON, useArchiveLock } from "@/lib/useArchiveLock";
+import { Banner } from "@/components/ui/Banner";
 import { MemberEditDraft, TrackDraft, editableTracks, saveDraft, toDraft } from "@/lib/memberEdit";
 import { TrackEditSection } from "@/components/tournament/edit/TrackEditSection";
 import { Button } from "@/components/ui/Button";
@@ -30,6 +32,7 @@ export default function MemberEditPage() {
 
   const { membership: me, loading: membershipLoading } = useMyMembership();
   const isSelf = me?.id === membershipId;
+  const { isArchived } = useArchiveLock();
 
   const [tracks, setTracks] = useState<MyTrackOptions[] | null>(null);
   const [baseline, setBaseline] = useState<MemberEditDraft>({});
@@ -129,6 +132,14 @@ export default function MemberEditPage() {
         </p>
       )}
 
+      {/* Inputs can't carry a tooltip the way a button does, so the reason
+          sits above them once. */}
+      {isArchived && (
+        <div style={{ marginBottom: "16px" }}>
+          <Banner variant="warning" message={ARCHIVED_REASON} />
+        </div>
+      )}
+
       <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
         {tracks?.length === 0 && !loadError && (
           <Card radius="lg" style={{ padding: "8px" }}>
@@ -141,6 +152,7 @@ export default function MemberEditPage() {
             track={track}
             draft={draft[track.track_id]}
             onChange={(updates) => patchTrack(track.track_id, updates)}
+            locked={isArchived}
           />
         ))}
       </div>

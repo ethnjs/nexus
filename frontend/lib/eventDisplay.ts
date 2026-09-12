@@ -1,6 +1,15 @@
 import { TournamentEvent } from "@/lib/api";
 
-export function eventName(e: TournamentEvent): string {
+/** The minimum an event has to carry to be named. Stated structurally rather
+ *  than as TournamentEvent so the slimmer refs nested on other responses
+ *  — TournamentEventMember on an Assignment — can be named by the same
+ *  helper instead of re-deriving the convention at each call site. */
+type NameableEvent = {
+  name: string | null;
+  event?: { name: string | null } | null;
+};
+
+export function eventName(e: NameableEvent): string {
   return e.event?.name ?? e.name ?? "—";
 }
 
@@ -8,7 +17,7 @@ export function eventName(e: TournamentEvent): string {
 // division) — pair it with the division so a results report unambiguously
 // identifies which row it's talking about. No separator: reads as one label
 // ("Chess A"), not name-then-division.
-export function eventNameWithDivision(e: TournamentEvent): string {
+export function eventNameWithDivision(e: NameableEvent & { division: string | null }): string {
   return e.division ? `${eventName(e)} ${e.division}` : eventName(e);
 }
 

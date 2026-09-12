@@ -549,6 +549,50 @@ def _simple_entry(**overrides):
     return entry
 
 
+class TestArchivedTournamentFreezesForms:
+    """Forms are set up published here, bypassing the archive cascade, so each
+    route's own guard is what's under test."""
+
+    def _frozen_form(self, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(db, form)
+        td_tournament.is_archived = True
+        db.commit()
+        return form, field
+
+    def test_manage_writes_rejected(self, client, db, td_user, td_tournament):
+        form, field = self._frozen_form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+
+        assert client.patch(f"/forms/{form.id}/", json={"status": "draft"}).status_code == 403
+        assert client.put(f"/forms/{form.id}/fields/", json={"fields": []}).status_code == 403
+        assert client.delete(f"/forms/{form.id}/fields/{field.id}/").status_code == 403
+        assert client.delete(f"/forms/{form.id}/").status_code == 403
+        created = client.post(
+            f"/tournaments/{td_tournament.id}/forms/",
+            json={"name": "New", "owner_type": "tournament", "tournament_id": td_tournament.id},
+        )
+        assert created.status_code == 403
+
+    def test_responses_rejected(self, client, db, td_user, td_tournament):
+        form, field = self._frozen_form(db, td_user, td_tournament)
+        login(client, "td@test.com", "tdpass")
+        answers = {"answers": [{"field_id": field.id, "value": ["opt_1"]}]}
+
+        assert client.post(f"/forms/{form.id}/responses/", json=answers).status_code == 403
+        assert client.patch(f"/forms/{form.id}/responses/me/", json=answers).status_code == 403
+
+    def test_read_reports_tournament_archive(self, client, db, td_user, td_tournament):
+        form = _make_form(db, td_user, td_tournament, status="published")
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        assert client.get(f"/forms/{form.id}/").json()["tournament_is_archived"] is False
+
+        td_tournament.is_archived = True
+        db.commit()
+        assert client.get(f"/forms/{form.id}/").json()["tournament_is_archived"] is True
+
+
 class TestBulkUpdateFieldsDraft:
     def test_create_update_delete_apply_directly(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)  # draft by default

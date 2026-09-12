@@ -76,6 +76,7 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            onClear={() => setSearch("")}
             placeholder="Search members"
             icon={<IconSearch size={14} />}
             font="sans"
