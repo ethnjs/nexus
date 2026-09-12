@@ -9,7 +9,6 @@ import {
   SortableContext, verticalListSortingStrategy, arrayMove,
 } from "@dnd-kit/sortable";
 import { ApiError, formsApi, tournamentsApi, tournamentShiftsApi, FieldChange, Form, FormField, Tournament, TournamentShift } from "@/lib/api";
-import { enumerateDates } from "@/lib/date";
 import { useFormValidation } from "@/lib/forms/useFormValidation";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -18,7 +17,7 @@ import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconForms, IconPlus } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { FieldCard, FieldCardDragPreview, FocusIntent } from "@/components/forms/FieldCard";
-import { FieldToolbar } from "@/components/forms/FieldToolbar";
+import { ActivePopover, FieldToolbar } from "@/components/forms/FieldToolbar";
 import { ArchivedFieldsSection } from "@/components/forms/ArchivedFieldsSection";
 import { NotifyRespondersModal } from "@/components/forms/NotifyRespondersModal";
 import { EditableOption } from "@/components/forms/OptionsEditor";
@@ -51,6 +50,7 @@ export function FieldList({ form }: { form: Form }) {
       .map((f) => ({
         ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
         branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+        originalFieldKey: f.field_key,
       }))
   );
   const [expandedKey, setExpandedKey] = useState<string | null>(() => fields[0]?.clientKey ?? null);
@@ -61,10 +61,16 @@ export function FieldList({ form }: { form: Form }) {
   // is_multi_day, ...) rather than threading the individual fields each
   // consumer happens to need through every layer between here and them.
   // null until loaded (or permanently, on a chapter-owned form with no
-  // tournament). tournamentDates below is just its derived day list, for
-  // PresetPopover's date pickers.
+  // tournament). `tracks` is what PresetPopover binds a preset to.
   const [tournament, setTournament] = useState<Tournament | null>(null);
-  const tournamentDates = tournament ? enumerateDates(tournament.start_date, tournament.end_date) : [];
+  // Which toolbar popover is open, and on which field. A card's entity
+  // picker can set this to "preset" — using one before the question has a
+  // track sends the TD to the Track field, which is where that error is
+  // reported and fixed.
+  const [popoverFor, setPopoverFor] = useState<
+    { key: string; popover: ActivePopover; demandComplete?: boolean } | null
+  >(null);
+  const tracks = (tournament?.tracks ?? []).filter((track) => !track.is_archived);
   // Fetched once here (not per-card) so every collapsed availability-preset
   // card's preview can show its option's time range without each one
   // re-fetching the same list — EntityOptionsEditor fetches its own copy
@@ -320,6 +326,7 @@ export function FieldList({ form }: { form: Form }) {
       showDescription: !!field.description,
       branchingEnabled: deriveBranchingEnabled(field),
       customValuesEnabled: deriveCustomValuesEnabled(field),
+      originalFieldKey: field.field_key,
     };
     setFields((prev) => [...prev, restored]);
     setExpandedKey(restored.clientKey);
@@ -335,6 +342,7 @@ export function FieldList({ form }: { form: Form }) {
       clientKey: crypto.randomUUID(),
       id: null,
       field_key: "",
+      originalFieldKey: "",
       config: source.config?.options
         ? { ...source.config, options: (source.config.options as EditableOption[]).map((o) => ({ ...o, clientKey: crypto.randomUUID(), option_id: "" })) }
         : source.config,
@@ -441,6 +449,7 @@ export function FieldList({ form }: { form: Form }) {
         .map((f) => ({
           ...withOptionClientKeys(f), clientKey: String(f.id), showDescription: !!f.description,
           branchingEnabled: deriveBranchingEnabled(f), customValuesEnabled: deriveCustomValuesEnabled(f),
+          originalFieldKey: f.field_key,
         }));
       setFields(next);
       setExpandedKey(next[expandedIndex]?.clientKey ?? next[0]?.clientKey ?? null);
@@ -463,7 +472,16 @@ export function FieldList({ form }: { form: Form }) {
           `${lost.map((f) => f.label.trim() || "A question").join(", ")} was deleted elsewhere and has been removed. Save again to apply your other changes.`
         );
       } else {
-        validation.handle422(err);
+        const issues = validation.handle422(err, fields);
+        if (issues.length > 0) {
+          // Same "expand, scroll, flag the popover" treatment a client-caught
+          // issue gets on Save — see handleSave above. A server-caught
+          // collision only ever produces the one issue handle422 already
+          // resolved to a real field, so issues[0] is it.
+          setExpandedKey(issues[0].clientKey);
+          setPendingScrollKey(issues[0].clientKey);
+          setSaveAttempt((n) => n + 1);
+        }
       }
     } finally {
       notifyRef.current = {};
@@ -585,6 +603,8 @@ export function FieldList({ form }: { form: Form }) {
                 tournament={tournament}
                 shifts={shifts}
                 allFields={fields}
+                usedFieldKeys={usedFieldKeys}
+                onRequireTrack={() => setPopoverFor({ key: field.clientKey, popover: "preset", demandComplete: true })}
                 errors={validation.errorsFor(field.clientKey)}
                 allowArchive={hasResponses}
               />
@@ -634,19 +654,21 @@ export function FieldList({ form }: { form: Form }) {
           floating beside it would just be in the way of the drop. */}
       {expandedField && !draggingKey && (
         <FieldToolbar
-          // Remounts (resetting FieldToolbar's own activePopover state, so
-          // a key/preset popover left open doesn't silently follow you to
-          // whatever field you switch to next) whenever the expanded field
-          // changes.
+          // Remounts whenever the expanded field changes. The open popover
+          // is keyed to its field (see popoverFor), so one left open doesn't
+          // silently follow you to whatever field you switch to next.
           key={expandedField.clientKey}
           boxRef={toolbarRef}
           field={expandedField}
           onFieldChange={(updates) => updateField(expandedField.clientKey, updates)}
           usedFieldKeys={usedFieldKeys}
           allFields={fields}
-          tournamentDates={tournamentDates}
+          tracks={tracks}
           presetsEnabled={form.tournament_id != null}
           onOpenPresets={loadTournament}
+          activePopover={popoverFor?.key === expandedField.clientKey ? popoverFor.popover : null}
+          demandPresetComplete={popoverFor?.key === expandedField.clientKey && !!popoverFor.demandComplete}
+          onActivePopoverChange={(popover) => setPopoverFor({ key: expandedField.clientKey, popover })}
           errors={validation.errorsFor(expandedField.clientKey)}
           saveAttempt={saveAttempt}
           showDescription={expandedField.showDescription}

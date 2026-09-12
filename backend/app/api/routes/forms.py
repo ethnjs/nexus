@@ -2,7 +2,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.auth import get_current_user
@@ -24,8 +24,11 @@ from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
     EVENT_PREFERENCE_FIELD_KEY_PATTERN,
     LUNCH_FIELD_KEY_PATTERN,
+    LUNCH_FREE_TEXT_QUESTION_TYPES,
     FormFieldValidationError,
-    availability_field_date,
+    availability_field_track_id,
+    event_preference_field_track_id,
+    validate_preset_track,
     collect_active_field_errors,
     option_shift_ids,
     option_track_assignments,
@@ -42,16 +45,18 @@ from app.core.form.write_through import (
     parse_availability_field_key,
     parse_event_preference_field_key,
     parse_lunch_field_key,
-    shift_ids_on_dates,
+    shift_ids_on_tracks,
+    lunch_values_from_answer,
+    event_preference_items_from_answer,
     sync_availability,
     sync_event_preferences,
     sync_lunch,
     sync_track_statuses,
 )
 from app.core.tournament.form_prerequisites import member_meets_form_prerequisites
-from app.core.tournament.memberships import get_membership_by_user
+from app.core.tournament.memberships import get_membership_by_user, is_declined
 from app.core.tournament.onboarding import next_required_onboarding_form_id
-from app.core.tournament.memberships import resolve_memberships_or_users
+from app.core.tournament.memberships import resolve_person_refs
 from app.core.tournament.permissions import MANAGE_FORMS, require_permission
 from app.db.session import get_db
 from app.models.models import (
@@ -68,7 +73,6 @@ from app.models.models import (
     User,
     utcnow,
 )
-from app.schemas.chapter.membership import ChapterMemberResponse
 from app.schemas.form import (
     BulkFieldsUpdate,
     FieldChangeRead,
@@ -82,8 +86,7 @@ from app.schemas.form import (
     FormUpdate,
     TournamentFormPrerequisitesUpdate,
 )
-from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.user import UserSlimResponse
+from app.schemas.person import PersonRefResponse, PersonRoleRead
 
 router = APIRouter(tags=["forms"])
 
@@ -190,7 +193,7 @@ def list_tournament_forms(
         .order_by(Form.updated_at.desc())
         .all()
     )
-    creators = resolve_memberships_or_users(db, tournament_id, {f.created_by for f in forms})
+    creators = resolve_person_refs(db, tournament_id, {f.created_by for f in forms})
     return [_to_list_read(f, creators[f.created_by]) for f in forms]
 
 
@@ -209,7 +212,7 @@ def list_my_tournament_forms(
     current_user: User = Depends(get_current_user),
 ):
     membership = get_membership_by_user(db, tournament_id, current_user.id)
-    if membership is None:
+    if membership is None or is_declined(membership):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament membership not found")
 
     rows = (
@@ -306,28 +309,41 @@ def list_chapter_forms(
 
 def _resolve_chapter_creators(
     db: Session, chapter_id: int, user_ids: set[int],
-) -> dict[int, ChapterMemberResponse | UserSlimResponse]:
-    """Same fallback pattern as resolve_memberships_or_users (tournament side)
-    — resolve to the creator's ChapterMembership in this chapter, falling
-    back to the bare User for ids with no membership row. No shared helper
-    exists for chapters yet (resolve_memberships_or_users is tournament-only),
-    so this mirrors it locally rather than generalizing prematurely."""
+) -> dict[int, PersonRefResponse]:
+    """The chapter-side twin of resolve_person_refs — same shape out, so a
+    form's creator reads identically whoever owns the form.
+
+    A chapter role is a plain string on the membership rather than a row, so
+    it becomes a single PersonRoleRead with no id. That still distinguishes
+    "a member here, holding this role" from "not a member" (roles None),
+    which is the difference CreatorHoverCard renders."""
     memberships = (
         db.query(ChapterMembership)
+        .options(selectinload(ChapterMembership.user))
         .filter(ChapterMembership.chapter_id == chapter_id, ChapterMembership.user_id.in_(user_ids))
         .all()
     )
-    resolved: dict[int, ChapterMemberResponse | UserSlimResponse] = {
-        m.user_id: ChapterMemberResponse.model_validate(m) for m in memberships
+    resolved: dict[int, PersonRefResponse] = {
+        m.user_id: PersonRefResponse(
+            user_id=m.user_id,
+            membership_id=m.id,
+            first_name=m.user.first_name,
+            last_name=m.user.last_name,
+            roles=[PersonRoleRead(label=m.role)],
+        )
+        for m in memberships
     }
     missing_ids = user_ids - resolved.keys()
     if missing_ids:
         users = db.query(User).filter(User.id.in_(missing_ids)).all()
-        resolved.update({u.id: UserSlimResponse.model_validate(u) for u in users})
+        resolved.update({
+            u.id: PersonRefResponse(user_id=u.id, first_name=u.first_name, last_name=u.last_name)
+            for u in users
+        })
     return resolved
 
 
-def _to_list_read(form: Form, creator: MembershipSlimResponse | ChapterMemberResponse | UserSlimResponse) -> FormListRead:
+def _to_list_read(form: Form, creator: PersonRefResponse) -> FormListRead:
     return FormListRead(
         id=form.id,
         name=form.name,
@@ -704,7 +720,7 @@ def bulk_update_fields(
             validate_tournament_preset(field_key, form.tournament_id)
             if AVAILABILITY_FIELD_KEY_PATTERN.match(field_key):
                 validate_availability_options(
-                    db, form.tournament_id, normalized, availability_field_date(field_key),
+                    db, form.tournament_id, normalized, availability_field_track_id(field_key),
                 )
             if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key):
                 validate_event_preference_options(db, form.tournament_id, question_type, normalized)
@@ -716,6 +732,8 @@ def bulk_update_fields(
     # (field, reasons, removed_option_ids) — resolved into rows after the
     # flush, so a rolled-back batch leaves no flags behind.
     pending_flags: list[tuple[FormField, set[str], list[str]]] = []
+    # Fields whose key just became a lunch key — see _backfill_lunch_write_through.
+    lunch_backfills: list[FormField] = []
 
     order = 1
     for entry in payload.fields:
@@ -764,6 +782,17 @@ def bulk_update_fields(
                 )
                 if reasons:
                     pending_flags.append((field, reasons, removed_option_ids))
+            # A field that only now became a lunch question: its existing
+            # answers never reached TournamentMembershipLunch, and never will
+            # on their own — write-through only runs on submit. Backfilled
+            # after the loop, once the new key and config are saved.
+            became_lunch = (
+                is_history_preserving
+                and form.owner_type == "tournament"
+                and bool(LUNCH_FIELD_KEY_PATTERN.match(new_field_key))
+                and not LUNCH_FIELD_KEY_PATTERN.match(field.field_key)
+            )
+
             field.is_archived = False
             field.order = order
             field.label = entry.label
@@ -772,6 +801,8 @@ def bulk_update_fields(
             field.field_key = new_field_key
             field.config = normalized_config
             flag_modified(field, "config")
+            if became_lunch:
+                lunch_backfills.append(field)
         else:
             field_key = slugify(entry.field_key or "")
             _check_field_key_available(field_key)
@@ -808,6 +839,9 @@ def bulk_update_fields(
 
     for field, reasons, removed_option_ids in pending_flags:
         flag_pending_updates(db, field, reasons, removed_option_ids)
+
+    for field in lunch_backfills:
+        _backfill_lunch_write_through(db, form, field)
 
     # Editing a FormField never touches the Form row itself, so its
     # onupdate=utcnow wouldn't otherwise fire — bump it explicitly so
@@ -1127,7 +1161,7 @@ def _write_through_reserved_fields(
         )
 
     availability_shift_ids: set[int] = set()
-    availability_dates: set[date] = set()
+    availability_track_ids: set[int] = set()
     # track_id -> {"status", "field_id"}. Later fields overwrite earlier ones,
     # so document order decides which question wins when two name the same
     # track — hence _active_fields' order_by. Whether that intent actually
@@ -1143,8 +1177,14 @@ def _write_through_reserved_fields(
         # into track statuses, so it feeds both this and the shift pool.
         in_track_scope = track_scope_field_ids is None or field.id in track_scope_field_ids
         if in_track_scope and track_status_enabled(field.field_key, field.config or {}):
+            # An availability field's option carries a bare status; the track
+            # comes from its own key. A track_status_* field names no track,
+            # so its options carry the ids themselves and this is None.
+            own_track_id = availability_field_track_id(field.field_key)
             for option_id in selected:
-                for assignment in option_track_assignments(options_by_id.get(option_id) or {}):
+                for assignment in option_track_assignments(
+                    options_by_id.get(option_id) or {}, own_track_id,
+                ):
                     intended_track_statuses[assignment["id"]] = {
                         "status": assignment["status"], "field_id": field.id,
                     }
@@ -1159,65 +1199,36 @@ def _write_through_reserved_fields(
             # a `shift_ids` key.
             for option_id in selected:
                 availability_shift_ids.update(option_shift_ids(options_by_id.get(option_id) or {}))
-            # The day is what this question governs, independent of which
+            # The track is what this question governs, independent of which
             # shifts its options currently name — so regrouping an option
             # can't strand a shift the member should have lost.
-            availability_dates.add(parse_availability_field_key(field.field_key))
+            availability_track_ids.add(parse_availability_field_key(field.field_key))
             continue
 
         if LUNCH_FIELD_KEY_PATTERN.match(field.field_key):
-            lunch_date, category = parse_lunch_field_key(field.field_key)
-            # `selected` is now option_id(s) (see branching.py's matching and
-            # PlainOption/BranchingOption's option_id) — resolve each back to
-            # its stored value/label snapshot before write-through.
-            values = [
-                {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
-                for v in selected
-                if v in options_by_id
-            ]
-            sync_lunch(db, membership.id, lunch_date, category, values)
+            lunch_track_id, category = parse_lunch_field_key(field.field_key)
+            sync_lunch(
+                db, membership.id, lunch_track_id, category,
+                lunch_values_from_answer(field, value),
+            )
             continue
 
         if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key):
-            suffix = parse_event_preference_field_key(field.field_key)
-            items: list[dict] = []
-            if field.question_type == "ranked_choice":
-                # `value` here is a rank -> option_id dict (see the raw
-                # payload shape and _stored_answer_option_ids' ranked_choice
-                # exception), not the flattened `selected` list every other
-                # branch reads — ranked_choice never matches any other
-                # reserved pattern, so this is the only place it needs one.
-                for rank, option_id in (value if isinstance(value, dict) else {}).items():
-                    option = options_by_id.get(option_id)
-                    if option is None:
-                        continue
-                    for event_id in option.get("value") or []:
-                        items.append({"tournament_event_id": event_id, "rank": int(rank)})
-            else:
-                # single_select_dropdown: one option at rank 1.
-                # multi_select_checkbox: every selected option, unranked —
-                # options are mutually exclusive by event (see
-                # validate_event_preference_options), so no event can
-                # collide across two selected options here.
-                rank = 1 if field.question_type == "single_select_dropdown" else None
-                for option_id in selected:
-                    option = options_by_id.get(option_id)
-                    if option is None:
-                        continue
-                    for event_id in option.get("value") or []:
-                        items.append({"tournament_event_id": event_id, "rank": rank})
-            # A suffix is one field's exclusive key (unlike availability's
-            # shared day pool), so this can sync straight from this field's
-            # answer with no cross-field union needed.
-            sync_event_preferences(db, membership.id, suffix, items)
+            # A track has exactly one preference question (unlike
+            # availability's shared per-track pool), so this can sync straight
+            # from this field's answer with no cross-field union needed.
+            sync_event_preferences(
+                db, membership.id, parse_event_preference_field_key(field.field_key),
+                event_preference_items_from_answer(field, value),
+            )
             continue
 
-    if availability_dates:
+    if availability_track_ids:
         sync_availability(
             db,
             membership.id,
             availability_shift_ids,
-            shift_ids_on_dates(db, form.tournament_id, availability_dates),
+            shift_ids_on_tracks(db, form.tournament_id, availability_track_ids),
         )
 
     sync_track_statuses(db, membership.id, intended_track_statuses, response.id)
@@ -1257,8 +1268,8 @@ def invalidate_form_field(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found on this form")
 
     if LUNCH_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
-        lunch_date, category = parse_lunch_field_key(field.field_key)
-        _clear_lunch_write_through(db, form, field, lunch_date, category)
+        lunch_track_id, category = parse_lunch_field_key(field.field_key)
+        _clear_lunch_write_through(db, form, field, lunch_track_id, category)
 
     if EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field.field_key) and form.owner_type == "tournament":
         _clear_event_preference_write_through(db, form, field)
@@ -1284,9 +1295,61 @@ def invalidate_form_field(
     db.commit()
 
 
-def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_date, category) -> None:
+def _backfill_lunch_write_through(db: Session, form: Form, field: FormField) -> None:
+    """Replays every existing answer to `field` through sync_lunch, for a
+    question that only just became a lunch question.
+
+    Write-through runs at submit time, so answers given while the key was
+    still a plain one produced no TournamentMembershipLunch rows — and after
+    the change they're excluded from custom responses too (which filter out
+    reserved keys), leaving them in neither panel section until each member
+    resubmits.
+
+    **Lunch only, deliberately.** The same replay is unsafe for the other
+    presets:
+      - availability shares one storage pool across every question covering a
+        day (two fields can, via availability_{date}_{suffix}), and
+        sync_availability deletes anything on that track it wasn't handed — so
+        a per-field replay would erase the shifts a sibling question
+        contributed.
+      - track_status upserts without deleting, but replaying a stale answer can
+        still overwrite a status a newer form set (every transition except a
+        demotion to "interested" is permitted).
+      - event_preference is scope-safe, but switching to it blanks each
+        option's entity ids, so there'd be nothing to replay.
+    Lunch is the one case where a field exclusively owns its rows *and* its
+    options survive the key change (they're freeform text, not entity ids).
+    """
+    lunch_track_id, category = parse_lunch_field_key(field.field_key)
+
+    rows = (
+        db.query(FormAnswer.value, TournamentMembership.id)
+        .join(FormResponse, FormAnswer.response_id == FormResponse.id)
+        .join(TournamentMembership, TournamentMembership.user_id == FormResponse.user_id)
+        .filter(
+            FormAnswer.field_id == field.id,
+            TournamentMembership.tournament_id == form.tournament_id,
+        )
+        .all()
+    )
+
+    for value, membership_id in rows:
+        # Stored select answers hold {option_id, value, label} snapshots rather
+        # than bare ids — unwrap to ids first, the same way
+        # _stored_answer_option_ids does when replaying from storage, since
+        # lunch_values_from_answer expects the id form a live submission sends.
+        if field.question_type not in LUNCH_FREE_TEXT_QUESTION_TYPES:
+            items = value if isinstance(value, list) else ([value] if value else [])
+            value = [i.get("option_id") if isinstance(i, dict) else i for i in items]
+        sync_lunch(
+            db, membership_id, lunch_track_id, category,
+            lunch_values_from_answer(field, value),
+        )
+
+
+def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_track_id, category) -> None:
     """Drops the lunch rows this field produced, for every member who answered
-    it. Keyed by (membership, date, category), so no other question can be
+    it. Keyed by (membership, track, category), so no other question can be
     contributing the same rows."""
     user_ids = {
         user_id
@@ -1305,14 +1368,14 @@ def _clear_lunch_write_through(db: Session, form: Form, field: FormField, lunch_
         )
     }
     for membership_id in membership_ids:
-        sync_lunch(db, membership_id, lunch_date, category, [])
+        sync_lunch(db, membership_id, lunch_track_id, category, [])
 
 
 def _clear_event_preference_write_through(db: Session, form: Form, field: FormField) -> None:
     """Drops the event preference rows this field produced, for every member
-    who answered it. Keyed by (membership, suffix), and a suffix is one
-    field's exclusive key, so no other question can be contributing the same
-    rows — same reasoning as lunch's (membership, date, category)."""
+    who answered it. Keyed by (membership, track), and a track has exactly one
+    preference question, so no other question can be contributing the same
+    rows — same reasoning as lunch's (membership, track, category)."""
     user_ids = {
         user_id
         for (user_id,) in db.query(FormResponse.user_id)
@@ -1329,9 +1392,9 @@ def _clear_event_preference_write_through(db: Session, form: Form, field: FormFi
             TournamentMembership.user_id.in_(user_ids),
         )
     }
-    suffix = parse_event_preference_field_key(field.field_key)
+    pref_track_id = parse_event_preference_field_key(field.field_key)
     for membership_id in membership_ids:
-        sync_event_preferences(db, membership_id, suffix, [])
+        sync_event_preferences(db, membership_id, pref_track_id, [])
 
 
 # ---------------------------------------------------------------------------

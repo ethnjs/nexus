@@ -1,3 +1,6 @@
+import { SectionHeading } from "@/components/profile/SectionHeading";
+import { FieldGrid, TextField } from "@/components/profile/PanelField";
+
 interface EducationCareerUser {
   student_status: "Undergraduate" | "Graduate" | "Non-Student" | null;
   university: { name: string } | null;
@@ -16,51 +19,30 @@ function formatYearLevel(year: number | null): string | null {
   return `${year}${suffix} Year`;
 }
 
-function Field({ label, value }: { label: string; value: string | null }) {
-  return (
-    <div>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "11px", fontWeight: 600,
-        textTransform: "uppercase", letterSpacing: "0.06em",
-        color: "var(--color-text-tertiary)", marginBottom: "3px",
-      }}>
-        {label}
-      </div>
-      <div style={{
-        fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 500,
-        color: value !== null ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-      }}>
-        {value !== null ? value : "No info yet"}
-      </div>
-    </div>
-  );
-}
-
-export function EducationCareerSection({ user }: { user: EducationCareerUser }) {
+export function EducationCareerSection({ user, hiddenFields }: {
+  user: EducationCareerUser;
+  /** Field ids the TD turned off — matches the backend's PANEL_SECTIONS entry for "education". */
+  hiddenFields?: Set<string>;
+}) {
+  const shows = (field: string) => !hiddenFields?.has(field);
   const isCareer = user.student_status === "Non-Student";
-  const title = isCareer ? "Career" : "Education";
 
   return (
-    <div>
-      <h3 style={{
-        fontFamily: "var(--font-sans)", fontSize: "15px", fontWeight: 700,
-        color: "var(--color-text-primary)", marginBottom: "16px",
-      }}>
-        {title}
-      </h3>
-
+    <SectionHeading title={isCareer ? "Career" : "Education"}>
       {user.student_status === null ? (
-        <Field label="Status" value={null} />
+        <TextField label="Status" value={null} />
       ) : isCareer ? (
-        <Field label="Employer" value={user.employer} />
+        shows("employer") ? <TextField label="Employer" value={user.employer} /> : null
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
-          <Field label="University" value={user.university?.name ?? null} />
-          <Field label="Major" value={user.major} />
-          <Field label="Year Level" value={formatYearLevel(user.year_level)} />
-          <Field label="Graduation Year" value={user.graduation_year !== null ? String(user.graduation_year) : null} />
-        </div>
+        <FieldGrid>
+          {shows("university") && <TextField label="University" value={user.university?.name ?? null} />}
+          {shows("major") && <TextField label="Major" value={user.major} />}
+          {shows("year_level") && <TextField label="Year Level" value={formatYearLevel(user.year_level)} />}
+          {shows("graduation_year") && (
+            <TextField label="Graduation Year" value={user.graduation_year !== null ? String(user.graduation_year) : null} />
+          )}
+        </FieldGrid>
       )}
-    </div>
+    </SectionHeading>
   );
 }

@@ -3,12 +3,25 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { joinApi, membershipsApi, JoinPreviewTournament, ApiError } from "@/lib/api";
-import { parseLocalDate } from "@/lib/date";
+import { joinApi, membersApi, JoinPreviewTournament, ApiError } from "@/lib/api";
+import { tournamentFactRows, tournamentYear } from "@/lib/tournamentDisplay";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { Checkbox } from "@/components/ui/Checkbox";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
+
+// Copy varies by which threshold(s) this tournament actually collects — a
+// TD who only cares about 21+ shouldn't see 18+ language.
+function ageDisclosureCopy(preview: JoinPreviewTournament): string {
+  if (preview.collect_is_over_18 && preview.collect_is_over_21) {
+    return "This tournament asks whether members are 18 or older and 21 or older.";
+  }
+  if (preview.collect_is_over_21) {
+    return "This tournament asks whether members are 21 or older.";
+  }
+  return "This tournament asks whether members are 18 or older.";
+}
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -28,15 +41,8 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
-  const fmt = (d: string) =>
-    parseLocalDate(d).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
-
-  const dateRange = preview.end_date !== preview.start_date
-    ? `${fmt(preview.start_date)} – ${fmt(preview.end_date)}`
-    : fmt(preview.start_date);
-
-  const place = preview.university?.name ?? preview.location;
-  const year = parseLocalDate(preview.start_date).getFullYear();
+  const rows = tournamentFactRows(preview, "long");
+  const year = tournamentYear(preview);
 
   return (
     <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
@@ -48,14 +54,13 @@ function TournamentFacts({ preview }: { preview: JoinPreviewTournament }) {
       </h2>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "center", marginTop: "6px" }}>
-        {place && (
-          <span style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-            <IconLocation />{place}
+        {rows.map((row) => (
+          <span key={row.key} style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
+            {row.name && <span style={{ fontWeight: 600, color: "var(--color-text-tertiary)" }}>{row.name}</span>}
+            {row.place && <><IconLocation />{row.place}</>}
+            {row.dates && <><IconCalendar />{row.dates}</>}
           </span>
-        )}
-        <span style={{ display: "flex", alignItems: "center", gap: "6px", fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-          <IconCalendar />{dateRange}
-        </span>
+        ))}
       </div>
 
       <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap", marginTop: "6px" }}>
@@ -103,6 +108,10 @@ function JoinPageContent() {
   const [joining, setJoining] = useState(false);
   const [joinError, setJoinError] = useState<string | undefined>(undefined);
 
+  // Explicit opt-in — never pre-checked, and reset whenever the invite
+  // itself changes so a stale "yes" can't carry over to a different code.
+  const [ageConsent, setAgeConsent] = useState(false);
+
   useEffect(() => {
     if (!code) { setPreviewError(true); return; }
     joinApi.preview(code)
@@ -113,8 +122,8 @@ function JoinPageContent() {
   useEffect(() => {
     if (authLoading || !user || !user.is_onboarding_complete) return;
     if (!preview || preview === "chapter") return;
-    membershipsApi.getMe(preview.target_id)
-      .then((me) => setAlreadyMember(me.membership_id !== null))
+    membersApi.getMe(preview.target_id, [])
+      .then((me) => setAlreadyMember(me.id !== null))
       .catch(() => setAlreadyMember(false))
       .finally(() => setMembershipChecked(true));
   }, [authLoading, user, preview]);
@@ -123,7 +132,7 @@ function JoinPageContent() {
     setJoining(true);
     setJoinError(undefined);
     try {
-      const result = await joinApi.redeem(code);
+      const result = await joinApi.redeem(code, ageConsent);
       router.replace(`/tournaments/${result.target_id}/onboarding`);
     } catch (err: unknown) {
       setJoinError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
@@ -194,9 +203,35 @@ function JoinPageContent() {
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)", textAlign: "center" }}>
             Joining as {user.first_name ? `${user.first_name} ${user.last_name ?? ""}`.trim() : user.email}
           </p>
-          <Button fullWidth loading={joining} onClick={handleJoin}>
+
+          {(preview.collect_is_over_18 || preview.collect_is_over_21) && (
+            <label style={{
+              display: "flex", alignItems: "flex-start", gap: "8px", width: "100%",
+              padding: "12px", borderRadius: "8px", background: "var(--color-bg)", cursor: "pointer",
+            }}>
+              <span style={{ marginTop: "2px" }}>
+                <Checkbox checked={ageConsent} onChange={setAgeConsent} />
+              </span>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)", lineHeight: 1.5 }}>
+                {ageDisclosureCopy(preview)} I consent to sharing this with the tournament.
+                The tournament only sees whether I meet the threshold — my date of birth is never shared.
+              </span>
+            </label>
+          )}
+
+          <Button
+            fullWidth
+            loading={joining}
+            disabled={(preview.collect_is_over_18 || preview.collect_is_over_21) && !ageConsent}
+            onClick={handleJoin}
+          >
             Confirm &amp; Join
           </Button>
+          {(preview.collect_is_over_18 || preview.collect_is_over_21) && !ageConsent && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+              You must consent to age disclosure to join this tournament.
+            </p>
+          )}
           {joinError && (
             <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", textAlign: "center" }}>
               {joinError}

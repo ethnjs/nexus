@@ -249,6 +249,35 @@ input, textarea, select {
 }
 
 /* -------------------------------------------------------------------------
+   Cursor
+   -------------------------------------------------------------------------
+   The I-beam advertises "you can type here", so static copy — labels, table
+   cells, headings, badges — showing one is a lie about what a click does.
+   Default the whole page to the arrow and hand the I-beam back only to the
+   things that actually take text. Selection still works everywhere; only the
+   cursor changes. Elements that declare their own cursor (button's pointer,
+   EditableText's inline 'text', row-level pointers) are unaffected, since any
+   declared value beats an inherited one. */
+body {
+  cursor: default;
+}
+
+/* Excludes the input types that are really controls, not text fields — they
+   keep the arrow like any other widget. */
+input:not([type="checkbox"], [type="radio"], [type="range"], [type="color"],
+           [type="file"], [type="button"], [type="submit"], [type="reset"]),
+textarea,
+[contenteditable]:not([contenteditable="false"]) {
+  cursor: text;
+}
+
+/* Belt-and-braces: browsers set this in their own stylesheet, but stating it
+   here means a link can never inherit body's arrow if that ever changes. */
+a[href] {
+  cursor: pointer;
+}
+
+/* -------------------------------------------------------------------------
    Scrollbar
    ------------------------------------------------------------------------- */
 ::-webkit-scrollbar        { width: 6px; height: 6px; }

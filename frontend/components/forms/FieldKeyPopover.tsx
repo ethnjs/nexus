@@ -48,7 +48,10 @@ export function FieldKeyPopover({ field, onFieldChange, usedFieldKeys, allFields
   }, [field.field_key]);
 
   useEffect(() => {
-    if (saveAttempt === 0) return;
+    // A preset field's key isn't editable here (see the locked-input branch
+    // below) — a key error on it is PresetPopover's to show and open, not
+    // this popover's.
+    if (saveAttempt === 0 || presetKind) return;
     const keyError = errors.find(isFieldKeyError);
     if (keyError) { onOpenChange(true); setLocalError(keyError); }
     // eslint-disable-next-line react-hooks/exhaustive-deps

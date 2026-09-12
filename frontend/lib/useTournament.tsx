@@ -11,26 +11,14 @@ import {
 } from "react";
 import { tournamentsApi, Tournament, TournamentSummary } from "./api";
 
-// Every calendar day between start_date/end_date, inclusive — internal to
-// deriving `days` below; nothing else needs a tournament's day list.
-function tournamentDays(startDate: string, endDate: string): string[] {
-  const days: string[] = [];
-  const pad = (n: number) => String(n).padStart(2, "0");
-  let cur = new Date(`${startDate}T00:00:00`);
-  const end = new Date(`${endDate}T00:00:00`);
-  while (cur <= end) {
-    days.push(`${cur.getFullYear()}-${pad(cur.getMonth() + 1)}-${pad(cur.getDate())}`);
-    cur = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
-  }
-  return days;
-}
-
 interface TournamentContextValue {
   tournaments: TournamentSummary[];
   selectedTournament: Tournament | null;
   setSelectedTournament: (t: Tournament | null) => void;
   isArchived: boolean;
-  /** Every calendar day the tournament spans, inclusive — [] before a tournament is selected. */
+  /** Every day the tournament actually runs — [] before one is selected.
+   *  Not a span: a tournament with Day 1 on Feb 13 and Day 2 on Feb 20 has
+   *  two days here, not eight. Comes straight from the API. */
   days: string[];
   /** days.length > 1 — whether a day picker is actually meaningful, or should just lock to the one day. */
   isMultiDay: boolean;
@@ -71,10 +59,7 @@ export function TournamentProvider({ children }: { children: ReactNode }) {
     refresh();
   }, [refresh]);
 
-  const days = useMemo(
-    () => (selectedTournament ? tournamentDays(selectedTournament.start_date, selectedTournament.end_date) : []),
-    [selectedTournament]
-  );
+  const days = useMemo(() => selectedTournament?.dates ?? [], [selectedTournament]);
 
   return (
     <TournamentContext.Provider

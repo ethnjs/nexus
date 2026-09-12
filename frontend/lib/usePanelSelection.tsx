@@ -67,10 +67,16 @@ export interface PanelSelectionOptions {
    * no such flow, so it omits this.
    */
   onClearExternal?: () => void;
+  /**
+   * Which row's panel is open on first render — for a page that keeps the
+   * open panel in its URL, so a refresh comes back to it. Read once; the
+   * hook owns it from then on.
+   */
+  initialFocusedId?: number | null;
 }
 
 export function usePanelSelection(options: PanelSelectionOptions = {}): PanelSelection {
-  const [focusedId, setFocusedId] = useState<number | null>(null);
+  const [focusedId, setFocusedId] = useState<number | null>(options.initialFocusedId ?? null);
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [massPanelOpen, setMassPanelOpen] = useState(false);

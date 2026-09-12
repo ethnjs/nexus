@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from tests.conftest import grant_role
+from tests.conftest import grant_role, primary_track_id
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 
 from datetime import datetime, timedelta, timezone
@@ -100,7 +100,7 @@ def _chapter_lead(db, chapter, email="chapterlead@test.com", password="LeadPass1
 
 
 def _make_shift(db, tournament, label, start, end):
-    shift = TournamentShift(tournament_id=tournament.id, label=label, start=start, end=end)
+    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id), label=label, start=start, end=end)
     db.add(shift)
     db.flush()
     return shift
@@ -220,15 +220,46 @@ class TestResolveAvailabilityOptions:
         end = datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc)
         shift = _make_shift(db, td_tournament, "Saturday", start, end)
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
             config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": False}]},
         )
         db.commit()
 
         options = resolve_field_options(db, field)
         assert options == [
-            {"option_id": "opt_1", "label": "Saturday", "value": [{"id": shift.id, "label": "Saturday", "start": start, "end": end}]}
+            {
+                "option_id": "opt_1", "label": "Saturday",
+                "value": [{"id": shift.id, "label": "Saturday", "start": start, "end": end}],
+                "next_field_id": None, "action": None,
+            }
         ]
+
+    def test_branching_survives_resolution(self, db, td_user, td_tournament):
+        # Regression: the three reserved-key branches used to hand-roll a
+        # bare {option_id, label, value} dict, silently dropping
+        # next_field_id/action from the respondent-facing render even though
+        # they're stored and round-trip fine through the builder (which
+        # reads raw=true, skipping this resolver entirely).
+        form = _make_form(db, td_user, td_tournament)
+        shift = _make_shift(
+            db, td_tournament, "Saturday",
+            datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
+        )
+        other = _make_field(db, form, field_key="favorite_color", order=2)
+        field = _make_field(
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
+            config={"options": [
+                {"option_id": "opt_1", "value": [shift.id], "label": "Yes", "is_archived": False, "next_field_id": other.id},
+                {"option_id": "opt_2", "value": [shift.id], "label": "No", "is_archived": False, "action": "submit_form"},
+            ]},
+        )
+        db.commit()
+
+        options = resolve_field_options(db, field)
+        assert options[0]["next_field_id"] == other.id
+        assert options[0]["action"] is None
+        assert options[1]["next_field_id"] is None
+        assert options[1]["action"] == "submit_form"
 
     def test_grouped_shifts_resolve_to_one_entry_each(self, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament)
@@ -239,7 +270,7 @@ class TestResolveAvailabilityOptions:
         morning = _make_shift(db, td_tournament, "Morning", morning_start, morning_end)
         afternoon = _make_shift(db, td_tournament, "Afternoon", afternoon_start, afternoon_end)
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={
                 "options": [
                     {"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day", "is_archived": False},
@@ -257,6 +288,7 @@ class TestResolveAvailabilityOptions:
                     {"id": morning.id, "label": "Morning", "start": morning_start, "end": morning_end},
                     {"id": afternoon.id, "label": "Afternoon", "start": afternoon_start, "end": afternoon_end},
                 ],
+                "next_field_id": None, "action": None,
             }
         ]
 
@@ -267,7 +299,7 @@ class TestResolveAvailabilityOptions:
             datetime(2027, 2, 13, 7, 0, tzinfo=timezone.utc), datetime(2027, 2, 13, 16, 0, tzinfo=timezone.utc),
         )
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
             config={"options": [{"option_id": "opt_1", "value": [shift.id], "label": "Saturday", "is_archived": True}]},
         )
         db.commit()
@@ -285,7 +317,7 @@ class TestResolveAvailabilityOptions:
         db.add(track)
         db.flush()
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
             config={"options": [{
                 "option_id": "opt_1",
                 "value": {"shift_ids": [shift.id], "track_statuses": [{"id": track.id, "status": "interested"}]},
@@ -301,6 +333,7 @@ class TestResolveAvailabilityOptions:
                 "shifts": [{"id": shift.id, "label": "Saturday", "start": shift.start, "end": shift.end}],
                 "track_statuses": [{"id": track.id, "name": "Day 1", "status": "interested"}],
             },
+            "next_field_id": None, "action": None,
         }]
 
     def test_non_availability_field_returns_raw_options(self, db, td_user, td_tournament):
@@ -345,6 +378,7 @@ class TestResolveTrackStatusOptions:
                 {"id": test_writing.id, "name": "Test Writing", "status": "confirmed"},
                 {"id": day_one.id, "name": "Day 1", "status": "interested"},
             ],
+            "next_field_id": None, "action": None,
         }]
 
 
@@ -354,7 +388,8 @@ class TestResolveEventPreferenceOptions:
         anat = _make_event(db, td_tournament, "Anatomy and Physiology", division="B")
         disease = _make_event(db, td_tournament, "Disease Detectives", division="C")
         field = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             config={
                 "options": [
                     {"option_id": "opt_life_science", "value": [anat.id, disease.id], "label": "Life Science", "is_archived": False},
@@ -372,6 +407,7 @@ class TestResolveEventPreferenceOptions:
                     {"id": anat.id, "name": "Anatomy and Physiology", "division": "B"},
                     {"id": disease.id, "name": "Disease Detectives", "division": "C"},
                 ],
+                "next_field_id": None, "action": None,
             }
         ]
 
@@ -379,7 +415,8 @@ class TestResolveEventPreferenceOptions:
         form = _make_form(db, td_user, td_tournament)
         event = _make_event(db, td_tournament, "Anatomy and Physiology")
         field = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             config={"options": [{"option_id": "opt_1", "value": str(event.id), "label": "Anatomy and Physiology", "is_archived": False}]},
         )
         db.commit()
@@ -391,7 +428,8 @@ class TestResolveEventPreferenceOptions:
         form = _make_form(db, td_user, td_tournament)
         event = _make_event(db, td_tournament, "Anatomy and Physiology")
         field = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}",
+            question_type="multi_select_checkbox",
             config={"options": [{"option_id": "opt_1", "value": [event.id], "label": "Anatomy and Physiology", "is_archived": True}]},
         )
         db.commit()

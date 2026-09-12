@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { membershipsApi, ApiError } from "@/lib/api";
+import { membersApi, ApiError } from "@/lib/api";
 
 const CONFIRM_PHRASE = "LEAVE";
 
@@ -27,7 +27,7 @@ export function LeaveTournamentModal({ tournamentId, tournamentName, onClose, on
     setError(undefined);
     setLoading(true);
     try {
-      await membershipsApi.leaveMe(tournamentId);
+      await membersApi.leaveMe(tournamentId);
       onLeft();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");

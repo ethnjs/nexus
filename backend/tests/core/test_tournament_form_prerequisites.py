@@ -11,6 +11,7 @@ from app.models.models import (
     TournamentShift,
     utcnow,
 )
+from tests.conftest import primary_track_id
 
 
 def _standard_form(db, user, tournament, prerequisites=None):
@@ -48,7 +49,7 @@ def _role(db, tournament, label, rank):
 
 def _shift(db, tournament, label):
     start = utcnow()
-    shift = TournamentShift(tournament_id=tournament.id, label=label, start=start, end=start + timedelta(hours=2))
+    shift = TournamentShift(tournament_id=tournament.id, track_id=primary_track_id(db, tournament.id), label=label, start=start, end=start + timedelta(hours=2))
     db.add(shift)
     db.commit()
     return shift

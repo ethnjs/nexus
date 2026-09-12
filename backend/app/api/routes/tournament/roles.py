@@ -12,6 +12,7 @@ from app.core.tournament.permissions import (
     DEFAULT_ROLES,
     MANAGE_MEMBERS,
     MANAGE_ROLES,
+    require_any_permission,
     require_membership,
     require_permission,
 )
@@ -22,7 +23,7 @@ from app.models.models import TournamentMembership, TournamentMembershipRole, To
 from app.schemas.tournament.role import (
     RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
 )
-from app.schemas.tournament.membership import MembershipSlimResponse
+from app.schemas.tournament.membership import MembershipFullResponse
 
 # Routes are nested: /tournaments/{tournament_id}/roles/...
 # tournament_id is always present in the path, which drives the permission check.
@@ -133,13 +134,21 @@ def reorder_roles_bulk(
 
 
 # ---------------------------------------------------------------------------
-# GET /tournaments/{tournament_id}/roles/ — any member can read
+# GET /tournaments/{tournament_id}/roles/ — manage_members or manage_roles
+#
+# The catalog is staff-facing: it carries every role's rank, permissions and
+# member count, which is org structure a rank-and-file member has no reason
+# to enumerate — their own roles already come back on their membership.
+#
+# Two permissions, because the two jobs that need it are separate and neither
+# implies the other: manage_members assigns roles to people, manage_roles
+# defines them (see the settings/roles page, which is gated on the latter).
 # ---------------------------------------------------------------------------
 @router.get("/", response_model=list[RoleWithMemberCount])
 def list_roles(
     tournament_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_membership()),
+    current_user: User = Depends(require_any_permission(MANAGE_MEMBERS, MANAGE_ROLES)),
 ):
     roles = (
         db.query(TournamentRole)
@@ -292,20 +301,20 @@ def delete_role(
 
 # ---------------------------------------------------------------------------
 # Membership role assignment — a sub-resource of memberships, so nested under
-# /tournaments/{tournament_id}/memberships/{membership_id}/roles/. Gated on
+# /tournaments/{tournament_id}/members/{membership_id}/roles/. Gated on
 # MANAGE_MEMBERS (assigning a role to a member is member data, not a
 # role-definition edit — see core/tournament/permissions.py), but kept in
 # this module rather than memberships.py since it shares get_scoped_or_404
 # usage and rank-bound logic with the role CRUD routes above.
 # ---------------------------------------------------------------------------
 membership_roles_router = APIRouter(
-    prefix="/tournaments/{tournament_id}/memberships/{membership_id}/roles",
+    prefix="/tournaments/{tournament_id}/members/{membership_id}/roles",
     tags=["tournaments"],
 )
 
 
 # ---------------------------------------------------------------------------
-# PATCH /tournaments/{tournament_id}/memberships/{membership_id}/roles/
+# PATCH /tournaments/{tournament_id}/members/{membership_id}/roles/
 # manage_members, rank-bound (see validate_role_action in core/tournament/roles.py)
 #
 # Assigning/removing a role on a member is member data (this member's role
@@ -325,7 +334,7 @@ membership_roles_router = APIRouter(
 # Rank-bound validation still runs against every role_id in the request,
 # add or remove, whether or not it ends up being a no-op.
 # ---------------------------------------------------------------------------
-@membership_roles_router.patch("/", response_model=MembershipSlimResponse)
+@membership_roles_router.patch("/", response_model=MembershipFullResponse)
 def update_membership_roles(
     tournament_id: int,
     membership_id: int,
@@ -366,4 +375,4 @@ def update_membership_roles(
 
     db.commit()
     db.refresh(m)
-    return MembershipSlimResponse.model_validate(m)
+    return MembershipFullResponse.model_validate(m)

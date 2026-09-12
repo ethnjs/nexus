@@ -144,8 +144,8 @@ def _parse_day_string(day_str: str, tournament: Tournament) -> str | None:
     # permissions rebuild's old-system cutover — block-based date matching
     # goes away with it. Falls back to guessing the year from start_date,
     # same as it always did when no block matched.
-    if tournament.start_date:
-        year = tournament.start_date.year
+    if tournament.first_day:
+        year = tournament.first_day.year
         try:
             return f"{year}-{month:02d}-{day:02d}"
         except Exception:

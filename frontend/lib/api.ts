@@ -365,20 +365,83 @@ export const TOURNAMENT_STATES = [
 ] as const
 export type TournamentState = typeof TOURNAMENT_STATES[number]
 
+// A track is a tournament's unit of when/where/what. A *primary* track is a
+// real competition day and carries all of start_date/end_date/division plus
+// exactly one of university/location; a *cosmetic* one (e.g. "Test Writing")
+// carries none of them. The tournament derives its own dates/location/division
+// from its primary tracks — see Tournament below.
+export interface TournamentTrack {
+  id:            number
+  tournament_id: number
+  name:          string
+  is_primary:    boolean
+  start_date:    string | null
+  end_date:      string | null
+  university:    University | null
+  location:      string | null
+  division:      TournamentDivision[] | null
+  // Pending delete, NOT a TD-facing archive: set by DELETE /tracks/ when
+  // something still references the track, cleared by POST .../restore/.
+  // Never PATCH-able, and only ever visible in the settings listing.
+  is_archived:   boolean
+  /** TD-controlled: members may confirm themselves on this track. Declining never consults it. */
+  allow_confirm: boolean
+  created_at:    string
+  updated_at:    string
+}
+
+// Sent on POST /tournaments/ and POST /tracks/. The primary/cosmetic
+// invariant is enforced server-side (422), so a form that lets a user set
+// dates without is_primary will be rejected rather than silently dropped.
+export interface TournamentTrackCreate {
+  name:           string
+  is_primary?:    boolean
+  start_date?:    string | null
+  end_date?:      string | null
+  university_id?: number | null
+  location?:      string | null
+  division?:      TournamentDivision[] | null
+  allow_confirm?: boolean
+}
+
+export type TournamentTrackUpdate = Partial<TournamentTrackCreate>
+
+// What DELETE /tracks/{id}/ actually did — 200 with a body, not 204.
+// purged: false means the track is now pending-delete and `blocked_by`
+// names the TD-authored references holding it there.
+export interface TournamentTrackDeleteResult {
+  purged:              boolean
+  blocked_by:          string[]
+  member_rows_deleted: number
+}
+
 // Shared fields — mirrors backend TournamentPublic, the base for
 // Tournament, TournamentSummary (dashboard list), and JoinPreviewTournament
 // (public join preview).
 export interface TournamentPublic {
   name:        string
   short_name:  string | null
-  start_date:  string
-  end_date:    string
+  // Every day the tournament actually runs — a list, never a range. Day 1 on
+  // Feb 13 and Day 2 on Feb 20 means those two days, not the eight between
+  // them. Derived from the primary tracks; there is no start_date/end_date.
+  dates:       string[]
+  // Resolve only when there is exactly one primary track — two venues have
+  // no single answer, and a caller renders `tracks` per row instead.
   university:  University | null
   location:    string | null
   state:       TournamentState
   level:       TournamentLevel
+  // Union across the primary tracks.
   division:    TournamentDivision[]
+  // Live tracks only — pending-delete ones are excluded everywhere except
+  // the settings listing (tournamentTracksApi.list without `public`).
+  tracks:      TournamentTrack[]
   is_verified: boolean
+  // TD opt-in to collecting each age threshold — surfaced here (not just on
+  // Tournament) so the join flow can decide whether to show the consent
+  // step before the visitor even signs in.
+  collect_is_over_18: boolean
+  collect_is_over_21: boolean
 }
 
 export interface Tournament extends TournamentPublic {
@@ -404,34 +467,28 @@ export interface TournamentSummary extends TournamentPublic {
   updated_at:      string
 }
 
-// location xor university_id — exactly one required, matches backend TournamentCreate
-export type TournamentCreate = {
+// No dates/venue/divisions here — those belong to tracks, and at least one
+// track must be primary. Both Create and Update are extra="forbid" on the
+// backend: sending the old flat fields is a 422, not a silent drop.
+export interface TournamentCreate {
   name:        string
   short_name?: string | null
-  start_date:  string
-  end_date:    string
   state:       TournamentState
   level:       TournamentLevel
-  division:    TournamentDivision[]
+  tracks:      TournamentTrackCreate[]
   // IANA name — set once from the creator's browser timezone, no update path.
   timezone:    string
   is_public?:  boolean
-} & (
-  | { location: string; university_id?: never }
-  | { university_id: number; location?: never }
-)
+}
 
 export interface TournamentUpdate {
   name?:          string
   short_name?:    string | null
-  start_date?:    string
-  end_date?:      string
-  university_id?: number | null
-  location?:      string | null
   state?:         TournamentState
   level?:         TournamentLevel
-  division?:      TournamentDivision[]
   is_public?:     boolean
+  collect_is_over_18?: boolean
+  collect_is_over_21?: boolean
 }
 
 export const tournamentsApi = {
@@ -465,6 +522,9 @@ export const adminTournamentsApi = {
 export interface TournamentShift {
   id:            number
   tournament_id: number
+  // The primary track whose day this shift falls on. Required — a shift with
+  // no track has no date range to validate against.
+  track_id:      number
   label:         string
   start:         string
   end:           string
@@ -476,14 +536,21 @@ export interface TournamentShift {
 }
 
 export interface TournamentShiftInput {
-  label: string
-  start: string
-  end:   string
+  track_id: number
+  label:    string
+  start:    string
+  end:      string
 }
 
+// Reading the shift catalog is membership-gated, not manage_events — the
+// member edit page needs it, and TournamentShift carries nothing
+// confidential. Writes still require manage_events, so there is no `public`
+// variant of this one.
 export const tournamentShiftsApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentShift[]>(`/tournaments/${tournamentId}/shifts/`),
+  list: (tournamentId: number, opts: { trackId?: number } = {}) =>
+    api.get<TournamentShift[]>(
+      `/tournaments/${tournamentId}/shifts/${opts.trackId ? `?track_id=${opts.trackId}` : ""}`,
+    ),
   create: (tournamentId: number, body: TournamentShiftInput) =>
     api.post<TournamentShift>(`/tournaments/${tournamentId}/shifts/`, body),
   update: (tournamentId: number, id: number, body: Partial<TournamentShiftInput>) =>
@@ -491,12 +558,6 @@ export const tournamentShiftsApi = {
   // Cascades — detaches from any events it was attached to, no confirmation guard.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/shifts/${id}/`),
-  // 409 on either bounds violation (outside the event's start/end) or
-  // overlap with another shift already attached to the same event.
-  attach: (tournamentId: number, eventId: number, shiftId: number) =>
-    api.post<TournamentShift>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`, {}),
-  detach: (tournamentId: number, eventId: number, shiftId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/events/${eventId}/shifts/${shiftId}/`),
 }
 
 // -------------------------------------------------------------------------
@@ -518,11 +579,12 @@ export interface TournamentEvent {
   room:              string | null
   floor:             string | null
   volunteers_needed: number | null
-  // Nullable — a tournament's event schedule isn't known at planning time.
-  // Warn in the UI on unset times rather than blocking on them.
-  start_time:        string | null
-  end_time:          string | null
   shifts:            TournamentShift[]
+  // The tracks this event belongs to, in schedule order. Not derived from
+  // shifts: a cosmetic track has none, so the link is stated outright. Full
+  // objects, not ids — readers want the name and dates too. Written back as
+  // track_ids (see TournamentEventInput).
+  tracks:            TournamentTrack[]
   created_at:        string
   updated_at:        string
 }
@@ -536,8 +598,12 @@ export interface TournamentEventInput {
   room?:              string | null
   floor?:             string | null
   volunteers_needed?: number | null
-  start_time?:        string | null
-  end_time?:          string | null
+  // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
+  // rather than adding to them. Omit either to leave it alone. Setting
+  // shift_ids also adds those shifts' tracks to track_ids; clearing a shift
+  // never removes a track.
+  shift_ids?:         number[]
+  track_ids?:         number[]
 }
 
 export interface EventLoadDefaultsSkipped {
@@ -555,6 +621,10 @@ export interface EventLoadDefaultsResponse {
 export const tournamentEventsApi = {
   list: (tournamentId: number) =>
     api.get<TournamentEvent[]>(`/tournaments/${tournamentId}/events/`),
+  // The one catalog whose member shape differs — no room assignment, no
+  // staffing target, no times.
+  listPublic: (tournamentId: number) =>
+    api.get<TournamentEventMember[]>(`/tournaments/${tournamentId}/events/?public=true`),
   get:    (tournamentId: number, id: number) =>
     api.get<TournamentEvent>(`/tournaments/${tournamentId}/events/${id}/`),
   create: (tournamentId: number, body: TournamentEventInput & { tournament_id: number }) =>
@@ -617,8 +687,15 @@ export interface MembershipTrackStatus {
   track_id:    number
   name:        string
   is_archived: boolean
-  status:      TrackStatus
-  updated_at:  string
+  // "pending" is read-only — a track the member has no row for at all. It is
+  // never writable, hence TrackStatus (the write-side union) not carrying it.
+  status:      TrackStatus | "pending"
+  // Whether the member may confirm themselves on this track. Carried here
+  // because GET /tracks/ is manage_tournament-gated, so a member page has no
+  // other way to learn it.
+  allow_confirm: boolean
+  // Null on a pending entry: no row, so nothing has been updated.
+  updated_at:  string | null
 }
 
 // How a membership was created. "manual" covers staff-add, owner-on-create,
@@ -630,6 +707,86 @@ export interface AvailabilitySlot {
   date:  string
   start: string
   end:   string
+}
+
+// Matches MembershipAvailabilityRead — a shift a member marked themselves
+// available for, resolved to its label/start/end (the row itself only
+// carries the shift id).
+export interface MembershipAvailability {
+  shift_id: number
+  // What availability is scoped to. Two sites running the same Saturday are
+  // separate tracks, so the members table keys its columns off this, not off
+  // `day` — which stays only for display grouping.
+  track_id: number
+  label:    string
+  start:    string
+  end:      string
+  // The tournament-local calendar date the shift falls on, resolved
+  // server-side. Never derive this from `start` here: that's an instant and
+  // the viewer's timezone need not match the tournament's, so a local
+  // conversion drifts a day near midnight. Display grouping only — the
+  // members table's availability columns key off `track_id`.
+  day:      string
+}
+
+// Matches MembershipLunchRead
+export interface MembershipLunch {
+  track_id:   number
+  // Rides along so a renderer never needs a second catalog request.
+  track_name: string
+  category: string
+  // The short canonical form ("Sofritas"), not the form's full option text
+  // ("Sofritas (Vegan)") — see MembershipLunchRead.
+  value:    string
+  // The source question's type — the only thing distinguishing a typed
+  // answer from a picked option, since both land in `value`. Null when the
+  // field is gone.
+  question_type?: string | null
+}
+
+// Matches MembershipEventPreferenceEventRead
+export interface MembershipEventPreferenceEvent {
+  id:       number
+  name:     string | null
+  division: string | null
+  rank:     number | null
+}
+
+// Matches MembershipEventPreferenceOptionRead — one option the member picked,
+// with the events it groups nested inside. The API returns the picked option
+// rather than the flat event rows because one option can group 20+ events.
+export interface MembershipEventPreferenceOption {
+  option_id:   string | null
+  label:       string
+  rank:        number | null
+  // The option (or its field) was archived, or no option matched at all —
+  // i.e. the form changed after this answer was given.
+  is_archived: boolean
+  events:      MembershipEventPreferenceEvent[]
+}
+
+// Matches MembershipEventPreferenceRead — one event_preference_{track_id}
+// question's answer, grouped by track then by the option picked. Each track
+// is its own axis: a member ranks Day 1's events separately from Test
+// Writing's, so the response is a list.
+export interface MembershipEventPreference {
+  track_id:   number
+  track_name: string
+  options:    MembershipEventPreferenceOption[]
+}
+
+// Matches MembershipCustomAnswerRead — one answer to a form field that
+// isn't availability/lunch/track_status/event_preference.
+export interface MembershipCustomAnswer {
+  form_title:    string
+  field_label:   string
+  // Slug key, not the question's full sentence — what the panel labels by.
+  field_key:     string
+  question_type: string
+  value:         unknown
+  // Stable id behind the display-config "form_field:{id}" key — the label and
+  // key are both TD-editable, this isn't.
+  field_id:      string
 }
 
 // Matches RoleRead
@@ -653,99 +810,305 @@ export interface RoleWithMemberCount extends Role {
 // membership response (code/label + who created it). Only present when
 // source === "join_code". Codes are never hard-deleted, so this is always
 // populated for a join_code-sourced membership.
+/** One role on a person reference — label and id only, never permissions or rank. */
+export interface PersonRole {
+  id: number | null
+  label: string
+}
+
+/**
+ * How the backend credits an action: a join code's creator, an audit actor, a
+ * form's author. Name and roles only — see PersonRefResponse for why it isn't
+ * the whole membership.
+ */
+export interface PersonRef {
+  user_id: number
+  /** null when they hold no membership in this tournament/chapter. */
+  membership_id: number | null
+  first_name: string | null
+  last_name: string | null
+  /** null = no membership here; [] = a member with no roles; absent = the viewer isn't entitled to them. */
+  roles?: PersonRole[] | null
+}
+
 export interface MembershipJoinCodeInfo {
+  id:      number
   code:    string
   label:   string | null
-  creator: MembershipSlim | UserSlim
+  creator: PersonRef
 }
 
-// Matches MembershipSlimResponse — members-page roster row. No onboarding/
-// logistics fields; those live behind the per-member expand panel (MembershipFull).
-export interface MembershipSlim {
-  id:         number
-  source:     MembershipSource
-  join_code:  MembershipJoinCodeInfo | null
+// The `fields` vocabulary — mirrors field_groups.GROUPS. Identity (id,
+// created_at, the member's name) is never in a group and always comes back;
+// these select membership *data*.
+export type MembershipField =
+  | 'contact' | 'profile' | 'roles' | 'membership' | 'tracks'
+  | 'availability' | 'lunch' | 'event_prefs' | 'custom' | 'notes' | 'age';
+
+// Matches MembershipBaseResponse — the membership data the member themselves
+// owns: what they answered, what they were assigned, what they're available
+// for. MembershipFull and MembershipMe both extend it, and it is what a
+// component wanting "a membership" should take.
+//
+// Every group is optional because `fields` decides what a response carries:
+// an absent key means the caller didn't ask for that group. `null`/`[]` keep
+// their ordinary meanings — no value, and no rows — so never treat a missing
+// key as empty. Omit `fields` entirely to get everything.
+export interface MembershipBase {
+  /** null on GET /members/me/ only, for a caller with no membership row. */
+  id:         number | null
   // When they joined THIS tournament — distinct from user.created_at
   // (their NEXUS account age).
-  created_at: string
-  updated_at: string
-  roles:      Role[]
-  user:       UserSlim
+  created_at: string | null
+  updated_at: string | null
+  user:       UserFull | null
+
+  roles?:            Role[]
+  track_statuses?:   MembershipTrackStatus[]
+  // Omitted (not null) unless the tournament collects the flag and the member
+  // has consented — see gate_age_flags. Never treat `undefined` as `false`.
+  is_over_18?:       boolean | null
+  is_over_21?:       boolean | null
+  availability?:     MembershipAvailability[]
+  lunch?:            MembershipLunch[]
+  event_preferences?: MembershipEventPreference[]
+  custom_responses?: MembershipCustomAnswer[]
 }
 
-// Matches MembershipFullResponse — the expanded side panel for a single member.
-export interface MembershipFull {
+// Matches MembershipFullResponse — GET /members/ and /members/{id}/, both
+// manage_members. The roster row and the detail panel are the same type;
+// what differs between them is the `fields` each asks for.
+export interface MembershipFull extends MembershipBase {
+  // Always present here: a row that couldn't say who it was about would be
+  // meaningless. MembershipBase widens these for the no-membership /me case.
   id:                number
-  tournament_id:     number
-  role_preference:   string[] | null
-  event_preference:  string[] | null
-  availability:      AvailabilitySlot[] | null
-  lunch_order:       Record<string, unknown> | string | null
-  notes:             string | null
-  extra_data:        Record<string, unknown> | null
-  source:            MembershipSource
-  join_code:         MembershipJoinCodeInfo | null
-  is_over_18:        boolean | null
-  is_over_21:        boolean | null
   created_at:        string
   updated_at:        string
-  track_statuses:    MembershipTrackStatus[]
-  roles:             Role[]
   user:              UserFull
+
+  tournament_id:     number
+  source?:           MembershipSource
+  join_code?:        MembershipJoinCodeInfo | null
+  // null/"consented"/"declined" — lets a fetch with include_declined=true
+  // tell declined members apart from active ones.
+  age_disclosure?:   'consented' | 'declined' | null
+  notes?:            string | null
+  // Sections this surface's display config emptied out. A section renders
+  // even with no data ("No info yet"), so an empty list no longer means
+  // "hidden" — this is what says so. Reports display_config removals only:
+  // a group never requested via `fields` is absent, which is not the same.
+  hidden_sections?:  string[]
 }
 
-// PATCH .../memberships/me/ — self-service, onboarding responses only
-export interface MembershipMeUpdate {
-  role_preference?:  string[] | null
-  event_preference?: string[] | null
-  availability?:     AvailabilitySlot[] | null
-  lunch_order?:      Record<string, unknown> | string | null
+// What a component rendering "a member's record" can take: the shared
+// membership data, plus the staff-side fields when the caller happened to
+// have them. Both MembershipFull (a manager's read) and MembershipMe (your
+// own) satisfy it, which is what lets the member page render the same
+// sections whichever route it fetched from.
+export type MembershipView =
+  Omit<MembershipBase, "id" | "created_at" | "updated_at" | "user"> & {
+    // Narrowed from MembershipBase: a view of a membership implies there is
+    // one. MembershipBase widens these for the one case that has none — a
+    // GET /members/me/ by someone who never joined — and asMembershipView
+    // is where that case gets ruled out.
+    id:         number
+    created_at: string
+    updated_at: string
+    user:       UserFull
+  } & Partial<Pick<MembershipFull, "source" | "join_code" | "hidden_sections">>;
+
+/** A MembershipMe as the member sections can render it, or null when the
+ *  caller holds no membership in this tournament — nothing to show. */
+export function asMembershipView(me: MembershipMe): MembershipView | null {
+  if (me.id === null || me.created_at === null || me.updated_at === null || me.user === null) {
+    return null;
+  }
+  return { ...me, id: me.id, created_at: me.created_at, updated_at: me.updated_at, user: me.user };
 }
 
-// PATCH .../memberships/{id}/ — manage_members override, day-of logistics only
+// PATCH .../members/{id}/ — manage_members override, day-of logistics only
 export interface MembershipCoordinatorUpdate {
   notes?: string | null
 }
 
-// GET .../memberships/me/ — current user's membership + effective permissions
-export interface MembershipMe {
-  membership_id: number | null
-  is_owner:       boolean
-  roles:          Role[]
-  permissions:    Permission[]
-  track_statuses: MembershipTrackStatus[]
+// Matches MembershipMeResponse — GET /members/me/, the caller's own row plus
+// what they may do here. The membership data is identical to what
+// manage_members reads about someone else; only the extras below differ.
+export interface MembershipMe extends MembershipBase {
+  is_owner:          boolean
+  permissions:       Permission[]
+  // True only while the tournament collects an age flag and this member
+  // hasn't answered yet — drives the blocking consent modal. False once
+  // answered either way (consented or declined), not just while consented.
+  needs_age_consent: boolean
 }
 
-export const membershipsApi = {
-  list: (tournamentId: number) =>
-    api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`),
-  get: (tournamentId: number, id: number) =>
-    api.get<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  getMe: (tournamentId: number) =>
-    api.get<MembershipMe>(`/tournaments/${tournamentId}/memberships/me/`),
-  leaveMe: (tournamentId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/memberships/me/`),
-  updateMe: (tournamentId: number, body: Partial<MembershipMeUpdate>) =>
-    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/me/`, body),
-  update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
-    api.patch<MembershipFull>(`/tournaments/${tournamentId}/memberships/${id}/`, body),
-  delete: (tournamentId: number, id: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/memberships/${id}/`),
-  updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
-    api.patch<MembershipSlim>(`/tournaments/${tournamentId}/memberships/${membershipId}/roles/`, body),
-  // role_id narrows to members holding that role; exclude_role_id drops
-  // members who already hold it — independent filters, combinable with q.
-  // max_rank drops members whose highest-authority role ties or outranks
-  // that rank (lower rank number = more authority) — callers pass their own
-  // rank so a search never surfaces someone they couldn't actually assign.
-  search: (tournamentId: number, params: { q?: string; role_id?: number; exclude_role_id?: number; max_rank?: number }) => {
-    const qs = new URLSearchParams();
-    if (params.q) qs.set('q', params.q)
-    if (params.role_id !== undefined) qs.set('role_id', String(params.role_id))
-    if (params.exclude_role_id !== undefined) qs.set('exclude_role_id', String(params.exclude_role_id))
-    if (params.max_rank !== undefined) qs.set('max_rank', String(params.max_rank))
-    return api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/search/?${qs.toString()}`)
+// Matches build_filter_options — every value is a {value,label} pair whose
+// `value` is exactly what the matching query param takes.
+export interface MemberFilterOptions {
+  tracks:             FilterOptionItem[]
+  // Shifts grouped by their track — the param value is "{trackId}:{shiftId}"
+  // (or ":__any__"). Named for the group, not the day, since two sites can
+  // run the same Saturday.
+  shift_days:         FilterOptionGroup[]
+  lunch_categories:   FilterOptionGroup[]
+  event_preferences:  FilterOptionGroup[]
+  competition_events: FilterOptionItem[]
+  volunteer_events:   FilterOptionItem[]
+  collect_is_over_18: boolean
+  collect_is_over_21: boolean
+}
+
+export interface FilterOptionItem {
+  value: string
+  label: string
+}
+
+// A paired filter's left half (a day, a lunch category, an event-preference
+// question) carrying the right halves it can be narrowed to. The query param
+// takes them joined: "{group}:{option}", or "{group}:__any__" for a group
+// added but not yet narrowed.
+export interface FilterOptionGroup {
+  value:   string
+  label:   string
+  options: FilterOptionItem[]
+}
+
+export const membersApi = {
+  // include_declined defaults to false server-side — a declined membership
+  // is excluded from the roster unless a TD explicitly opts in.
+  // An options object rather than positional args: the roster now takes a
+  // surface plus eight repeatable filter params, and `list(id, false, undefined,
+  // ...)` at the call site says nothing about what's being asked for.
+  //
+  // `surface` filters hidden items and, when `fields` is not given, decides
+  // which field groups the rows carry (see fields_for_surface). `filters`
+  // maps a param name to the values to include — omitted or empty means that
+  // filter doesn't apply.
+  list: (tournamentId: number, opts: {
+    includeDeclined?: boolean;
+    surface?: string;
+    // Which field groups to return. Omit for everything; pass [] for
+    // identity only. `surface` fills in when this is omitted, so the members
+    // table doesn't have to restate what its saved columns need.
+    fields?: MembershipField[];
+    filters?: Record<string, string[]>;
+    // Identity/authority narrowing — what the role pickers ask for. A picker
+    // is this roster with a name search and a role bound on it, which is why
+    // there is no separate search endpoint any more.
+    q?: string;
+    roleId?: number;
+    excludeRoleId?: number;
+    maxRank?: number;
+  } = {}) => {
+    const params = new URLSearchParams({ include_declined: String(opts.includeDeclined ?? false) });
+    if (opts.surface) params.set("surface", opts.surface);
+    if (opts.fields) params.set("fields", opts.fields.join(","));
+    if (opts.q) params.set("q", opts.q);
+    if (opts.roleId !== undefined) params.set("role_id", String(opts.roleId));
+    if (opts.excludeRoleId !== undefined) params.set("exclude_role_id", String(opts.excludeRoleId));
+    if (opts.maxRank !== undefined) params.set("max_rank", String(opts.maxRank));
+    for (const [key, values] of Object.entries(opts.filters ?? {})) {
+      // Repeated rather than comma-joined: a lunch value can legitimately
+      // contain a comma ("Rice, beans").
+      for (const value of values) params.append(key, value);
+    }
+    return api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?${params}`);
   },
+
+  // What the roster's filter modal can offer, derived from what the
+  // tournament actually holds.
+  filterOptions: (tournamentId: number) =>
+    api.get<MemberFilterOptions>(`/tournaments/${tournamentId}/members/filter-options/`),
+  // surface applies display_config's hidden-item filtering server-side for
+  // that UI location — omit it to get the unfiltered response.
+  get: (tournamentId: number, id: number, surface?: string, fields?: MembershipField[]) => {
+    const qs = new URLSearchParams();
+    if (surface) qs.set("surface", surface);
+    if (fields) qs.set("fields", fields.join(","));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api.get<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/${suffix}`);
+  },
+  getMe: (tournamentId: number, fields?: MembershipField[]) => {
+    const suffix = fields ? `?fields=${fields.join(",")}` : "";
+    return api.get<MembershipMe>(`/tournaments/${tournamentId}/members/me/${suffix}`);
+  },
+  // consent=false is a soft decline — the row and all its data survive;
+  // re-calling with consent=true flips straight back to active.
+  setAgeDisclosure: (tournamentId: number, consent: boolean) =>
+    api.post<MembershipMe>(`/tournaments/${tournamentId}/members/me/age-disclosure/`, { consent }),
+  leaveMe: (tournamentId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/members/me/`),
+  update: (tournamentId: number, id: number, body: Partial<MembershipCoordinatorUpdate>) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/members/${id}/`),
+  updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
+    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
+
+  // ---- Self-service: what the member may change about themselves --------
+  // One request backs the whole member edit page.
+  getMyOptions: (tournamentId: number) =>
+    api.get<MyOptionsResponse>(`/tournaments/${tournamentId}/members/me/options/`),
+  // Whole-set within the track — anything left out is a withdrawal. `status`
+  // travels with the shifts because the two move together: "Not available"
+  // is `{ shift_ids: [], status: "declined" }` in one call, so a member can
+  // never be left declined with shifts still selected.
+  updateMyAvailability: (tournamentId: number, trackId: number, body: { shift_ids: number[]; status?: TrackStatus }) =>
+    api.put<MembershipAvailability[]>(
+      `/tournaments/${tournamentId}/members/me/availability/${trackId}/`, body,
+    ),
+  // Send `option_ids` for a question with options, `text` for a free-text
+  // one — the question's type decides, and the wrong one is a 422.
+  updateMyLunch: (tournamentId: number, trackId: number, category: string, body: { option_ids?: string[]; text?: string | null }) =>
+    api.put<MembershipLunch[]>(
+      `/tournaments/${tournamentId}/members/me/lunch/${trackId}/${encodeURIComponent(category)}/`, body,
+    ),
+  // Whole-set for the track. Ranks are required and must be contiguous from
+  // 1 on ranked_choice, and omitted on every other question type.
+  updateMyEventPreferences: (tournamentId: number, trackId: number, selections: MyEventPreferenceSelection[]) =>
+    api.put<MembershipEventPreference[]>(
+      `/tournaments/${tournamentId}/members/me/event-preferences/${trackId}/`, { selections },
+    ),
+  // See backend/track-status-rules.md: `declined` always; `confirmed` only
+  // with the track's allow_confirm; `interested` only without it.
+  updateMyTrackStatus: (tournamentId: number, trackId: number, status: TrackStatus) =>
+    api.put<MembershipTrackStatus>(
+      `/tournaments/${tournamentId}/members/me/track-statuses/${trackId}/`, { status },
+    ),
+}
+
+// GET /members/me/options/ — everything the member edit page needs, grouped
+// the way the page is laid out: one section per live track. A track with no
+// questions still appears, since its status is always the member's to set.
+export interface MyTrackOptions {
+  track_id:      number
+  track_name:    string
+  is_primary:    boolean
+  allow_confirm: boolean
+  // Null when the member has no row for this track at all.
+  status:        TrackStatus | null
+  // Fields come back in get_form_for_rendering shape with config.options
+  // already resolved, which is what lets the page reuse QuestionRenderer
+  // instead of growing a second set of answer widgets.
+  availability:  FormField[]
+  // This member's currently-selected shifts *on this track* — the whole-set
+  // that a PUT to this track replaces.
+  selected_shift_ids: number[]
+  lunch:              (FormField & { category: string })[]
+  lunch_selections:   { category: string; value: string; label: string }[]
+  // At most one preference question per track, by construction.
+  event_preferences:            FormField | null
+  event_preference_selections:  { tournament_event_id: number; rank: number | null }[]
+}
+
+export interface MyOptionsResponse {
+  tracks: MyTrackOptions[]
+}
+
+export interface MyEventPreferenceSelection {
+  option_id: string
+  rank?:     number | null
 }
 
 // -------------------------------------------------------------------------
@@ -830,7 +1193,7 @@ export interface Invite {
   expires_at: string | null
   created_at: string
   use_count:  number
-  creator:    MembershipSlim | UserSlim
+  creator: PersonRef
 }
 
 export interface InviteCreate {
@@ -892,7 +1255,7 @@ export interface AuditLogEntry {
   created_at:    string
   // The actor's membership in this tournament — falls back to the bare user
   // when they have none (e.g. a site admin acting without ever joining).
-  actor:         MembershipSlim | UserSlim
+  actor: PersonRef
   // Current role state — populated only when target_type === "role" and the
   // role still exists (null for role_deleted, and for role_updated's
   // bulk-reorder variant, which has no single target_id).
@@ -905,7 +1268,7 @@ export interface AuditLogPage {
 }
 
 export interface AuditLogActor {
-  actor: MembershipSlim | UserSlim
+  actor: PersonRef
   // Total entries this actor has in this tournament's log — sorted
   // most-active first by the backend, feeds the "Filter by User" dropdown.
   count: number
@@ -983,8 +1346,10 @@ export interface JoinPreviewChapter {
 export type JoinPreviewResponse = JoinPreviewTournament | JoinPreviewChapter
 
 export const joinApi = {
-  redeem: (code: string) =>
-    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {}),
+  redeem: (code: string, ageDisclosureConsent = false) =>
+    api.post<JoinRedeemResponse>(`/join/?code=${encodeURIComponent(code)}`, {
+      age_disclosure_consent: ageDisclosureConsent,
+    }),
   preview: (code: string) =>
     api.get<JoinPreviewResponse>(`/join/preview/?code=${encodeURIComponent(code)}`),
 }
@@ -1143,7 +1508,7 @@ export const sheetsApi = {
   sync:         (tournamentId: number, configId: number) =>
     api.post<SyncResult>(`/tournaments/${tournamentId}/sheets/configs/${configId}/sync/`, {}),
   getEmailsForNuclearDelete: async (tournamentId: number): Promise<string[]> => {
-    const memberships = await api.get<MembershipSlim[]>(`/tournaments/${tournamentId}/memberships/`)
+    const memberships = await api.get<MembershipFull[]>(`/tournaments/${tournamentId}/members/?fields=contact`)
     return memberships.map((m) => m.user.email)
   },
 }
@@ -1186,7 +1551,10 @@ export interface ResolvedTrackStatusAssignment extends TrackStatusAssignment { n
 export interface AvailabilityTrackStatusValue {
   shift_ids?: number[]
   shifts?: ResolvedShiftOption[]
-  track_statuses: TrackStatusAssignment[] | ResolvedTrackStatusAssignment[]
+  /** The status this option sets on the field's own track — "" until the TD
+   *  picks one. Not a list: availability_{track_id} names exactly one track,
+   *  which is what track_status_* fields can't do. */
+  track_status: TrackStatus | ""
 }
 
 // value shape after GET-time resolution for availability/event_preference —
@@ -1271,13 +1639,11 @@ export interface TournamentFormPrerequisites {
   availability?: AvailabilityPrerequisite | null
 }
 
-export interface TournamentTrack {
+/** The member-facing event shape (?public=true) — only what names an event. */
+export interface TournamentEventMember {
   id: number
-  tournament_id: number
-  name: string
-  is_archived: boolean
-  created_at: string
-  updated_at: string
+  name: string | null
+  division: string | null
 }
 
 export interface MemberForm {
@@ -1328,7 +1694,7 @@ export interface FormListItem {
   owner_type:      FormOwnerType
   tournament_id:   number | null
   chapter_id:      number | null
-  creator:         MembershipSlim | ChapterMember | UserSlim
+  creator: PersonRef
   created_at:      string
   updated_at:      string
   response_count:  number
@@ -1503,13 +1869,94 @@ export const tournamentOnboardingApi = {
     api.post<TournamentOnboardingProgress>(`/tournaments/${tournamentId}/onboarding/progress/`, {}),
 }
 
+// `public: true` is the member-facing read: same rows, membership alone is
+// the gate. Both listings include pending-delete tracks, flagged by
+// `is_archived` — filter them out wherever a picker offers a *new* link,
+// since the backend refuses one.
 export const tournamentTracksApi = {
-  list: (tournamentId: number) =>
-    api.get<TournamentTrack[]>(`/tournaments/${tournamentId}/tracks/`),
-  create: (tournamentId: number, name: string) =>
-    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, { name }),
-  update: (tournamentId: number, trackId: number, body: { name?: string; is_archived?: boolean }) =>
+  list: (tournamentId: number, opts: { public?: boolean } = {}) =>
+    api.get<TournamentTrack[]>(
+      `/tournaments/${tournamentId}/tracks/${opts.public ? "?public=true" : ""}`,
+    ),
+  create: (tournamentId: number, body: TournamentTrackCreate) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/`, body),
+  update: (tournamentId: number, trackId: number, body: TournamentTrackUpdate) =>
     api.patch<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/`, body),
+  // 200 with a body, not 204 — `purged: false` means it went pending-delete
+  // instead, and `blocked_by` says what the TD has to repoint first.
   delete: (tournamentId: number, trackId: number) =>
-    api.delete<void>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
+    api.delete<TournamentTrackDeleteResult>(`/tournaments/${tournamentId}/tracks/${trackId}/`),
+  restore: (tournamentId: number, trackId: number) =>
+    api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
+}
+
+// Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
+// "form_field:{id}" — see backend/app/core/tournament/display_config.py.
+// One panel section, in the order the TD arranged them. Built-in sections
+// carry only `id` plus what's off inside; a TD-created "custom:{uuid}" one
+// also carries a title and the custom fields assigned to it.
+export interface DisplayConfigSection {
+  id: string
+  hidden?: boolean
+  hidden_fields?: string[]
+  title?: string | null
+  fields?: string[]
+}
+
+export interface DisplayConfigSort {
+  field: string
+  direction: 'asc' | 'desc'
+}
+
+// One surface's config for the *current viewer*. Every field is per member:
+// two coordinators on the same roster keep their own columns, filters and
+// sort rather than overwriting each other.
+export interface DisplayConfigSurface {
+  hidden: string[]
+  // Members table: visible columns in display order. null means "use the
+  // defaults" — an empty array means "no data columns", so they differ.
+  columns?: string[] | null
+  // Member panel: section order and per-section visibility. null means the
+  // default order with everything shown.
+  sections?: DisplayConfigSection[] | null
+  // Members table: committed filters, keyed by the roster query param each
+  // set belongs to. Sets don't survive JSON, so the wire shape is arrays.
+  filters?: Record<string, string[]> | null
+  // Members table: the viewer's sort. null means the page's own default.
+  sort?: DisplayConfigSort | null
+}
+
+export type DisplayConfig = Record<string, DisplayConfigSurface>
+
+export interface DisplayConfigCatalogItem {
+  key: string
+  label: string
+}
+
+export interface DisplayConfigCatalog {
+  tracks: DisplayConfigCatalogItem[]
+  lunch_categories: DisplayConfigCatalogItem[]
+  availability: DisplayConfigCatalogItem[]
+  event_preferences: DisplayConfigCatalogItem[]
+  custom_fields: DisplayConfigCatalogItem[]
+  // Members table: every column that can be turned on, fixed ones first.
+  columns: DisplayConfigCatalogItem[]
+  // Member panel: built-in sections and their individually hideable fields.
+  sections: DisplayConfigSectionCatalogItem[]
+}
+
+export interface DisplayConfigSectionCatalogItem {
+  id: string
+  label: string
+  fields: DisplayConfigCatalogItem[]
+}
+
+export const displayConfigApi = {
+  get: (tournamentId: number) =>
+    api.get<DisplayConfig>(`/tournaments/${tournamentId}/display-config/`),
+  set: (tournamentId: number, config: DisplayConfig) =>
+    api.put<DisplayConfig>(`/tournaments/${tournamentId}/display-config/`, config),
+  // Every item a TD could hide — surface-agnostic, see build_catalog's docstring.
+  getCatalog: (tournamentId: number) =>
+    api.get<DisplayConfigCatalog>(`/tournaments/${tournamentId}/display-config/catalog/`),
 }

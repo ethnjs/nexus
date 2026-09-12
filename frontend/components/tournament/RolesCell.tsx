@@ -1,17 +1,18 @@
 "use client";
 
-import { ApiError, MembershipSlim, membershipsApi, Role } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
+import { ApiError, MembershipFull, MembershipView, membersApi, Role } from "@/lib/api";
+import { userName } from "@/lib/personDisplay";
 import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
 import { ChipInput } from "@/components/ui/ChipInput";
+import { FieldValue } from "@/components/profile/PanelField";
 import { Popover } from "@/components/ui/Popover";
 import { Button } from "@/components/ui/Button";
 import { IconPlus } from "@/components/ui/Icons";
 
 interface RolesCellProps {
   tournamentId: number;
-  membership: MembershipSlim;
+  membership: MembershipView;
   allRoles: Role[];
   /** Role-level rank gate — whether `role` can be added or removed at all (independent of which member holds it). */
   canTouchRole: (role: Role) => boolean;
@@ -23,22 +24,33 @@ interface RolesCellProps {
    * docked panel, so the same roles aren't editable in two places at once.
    */
   readOnly?: boolean;
-  onUpdated: (updated: MembershipSlim) => void;
+  /** What to render instead of an empty chip row when the cell is inert — a
+      panel field wants to say "None", a table cell would rather stay blank. */
+  emptyLabel?: string;
+  onUpdated: (updated: MembershipFull) => void;
 }
 
 // Inline role editor — chips for held roles (removable), a checklist
 // popover to add/remove more. Shared between the roster table and the
 // member detail panel.
-export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, onUpdated }: RolesCellProps) {
+export function RolesCell({
+  tournamentId, membership, allRoles, canTouchRole, locked, readOnly = false, emptyLabel, onUpdated,
+}: RolesCellProps) {
   // Two different reasons the chips go inert; ChipInput only has the one knob.
   const inert = locked || readOnly;
   const { show } = useToast();
   const { user: currentUser } = useAuth();
-  const memberName = personName(membership.user);
+  const memberName = userName(membership.user);
   const isSelf = currentUser?.id === membership.user.id;
 
-  const heldIds = new Set(membership.roles.map((r) => r.id));
-  const roleByLabel = new Map(membership.roles.map((r) => [r.label, r]));
+  const heldIds = new Set((membership.roles ?? []).map((r) => r.id));
+  const roleByLabel = new Map((membership.roles ?? []).map((r) => [r.label, r]));
+
+  // Inert with no chips and no add button is a blank cell, which reads as
+  // "still loading" rather than "holds no roles".
+  if (inert && (membership.roles ?? []).length === 0 && emptyLabel) {
+    return <FieldValue muted>{emptyLabel}</FieldValue>;
+  }
 
   function rankLockReason(role: Role): string | undefined {
     if (canTouchRole(role)) return undefined;
@@ -49,7 +61,7 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
 
   async function handleRemove(role: Role) {
     try {
-      const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
+      const updated = await membersApi.updateRoles(tournamentId, membership.id, { remove: [role.id] });
       onUpdated(updated);
       show(`Removed ${role.label} from ${memberName}`);
     } catch (err: unknown) {
@@ -58,16 +70,16 @@ export function RolesCell({ tournamentId, membership, allRoles, canTouchRole, lo
   }
 
   async function handleAdd(role: Role) {
-    const updated = await membershipsApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
+    const updated = await membersApi.updateRoles(tournamentId, membership.id, { add: [role.id] });
     onUpdated(updated);
     show(`Added ${role.label} to ${memberName}`);
   }
 
   return (
     <ChipInput
-      value={membership.roles.map((r) => r.label)}
+      value={(membership.roles ?? []).map((r) => r.label)}
       onChange={(labels) => {
-        const removed = membership.roles.find((r) => !labels.includes(r.label));
+        const removed = (membership.roles ?? []).find((r) => !labels.includes(r.label));
         if (removed) handleRemove(removed);
       }}
       variant="transparent"

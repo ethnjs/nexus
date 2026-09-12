@@ -37,7 +37,7 @@ from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
 from app.models.models import (
     Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole,
-    User, Event, EventCategory,
+    TournamentTrack, User, Event, EventCategory,
 )
 from app.schemas.sheet_config import (
     FormQuestionOption,
@@ -62,13 +62,20 @@ def future_date(month: int, day: int) -> str:
     return f"{FUTURE_YEAR}-{month:02d}-{day:02d}"
 
 
+# When/where/what-division live on tracks now, so a create payload carries at
+# least one primary track instead of the flat fields it used to.
 TOURNAMENT_REQUIRED_FIELDS = {
-    "start_date": future_date(5, 21),
-    "end_date": future_date(5, 23),
     "state": "Southern California",
     "level": "invitational",
-    "division": ["B", "C"],
     "timezone": "America/Los_Angeles",
+    "tracks": [{
+        "name": "Main",
+        "is_primary": True,
+        "start_date": future_date(5, 21),
+        "end_date": future_date(5, 23),
+        "location": "Test Location",
+        "division": ["B", "C"],
+    }],
 }
 test_engine = create_engine(TEST_DATABASE_URL, echo=False)
 
@@ -160,15 +167,24 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     tournament = Tournament(
         name=name,
         owner_id=owner.id,
-        location="Test Location",
-        start_date=date.today(),
-        end_date=date.today() + timedelta(days=1),
         state="Southern California",
         level="invitational",
-        division=["B", "C"],
         timezone="America/Los_Angeles",
     )
     db.add(tournament)
+    db.flush()
+
+    # The tournament's dates, venue and divisions are derived from this — a
+    # tournament without a primary track has no schedule at all.
+    db.add(TournamentTrack(
+        tournament_id=tournament.id,
+        name="Main",
+        is_primary=True,
+        location="Test Location",
+        start_date=date.today(),
+        end_date=date.today() + timedelta(days=1),
+        division=["B", "C"],
+    ))
     db.flush()
 
     role_rows = [TournamentRole(tournament_id=tournament.id, **r) for r in DEFAULT_ROLES]
@@ -188,6 +204,37 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     db.commit()
     db.refresh(tournament)
     return tournament
+
+
+def primary_track_id(db: Session, tournament_id: int) -> int:
+    """The tournament's primary track — where its dates live, and the only
+    kind of track a shift may belong to. Every tournament has exactly one
+    unless a test made more, so tests that just need *a* track for a shift
+    can reach for this instead of building their own."""
+    return (
+        db.query(TournamentTrack.id)
+        .filter(
+            TournamentTrack.tournament_id == tournament_id,
+            TournamentTrack.is_primary.is_(True),
+            TournamentTrack.is_archived.is_(False),
+        )
+        .order_by(TournamentTrack.start_date, TournamentTrack.id)
+        .limit(1)
+        .scalar()
+    )
+
+
+def set_display_config(db, tournament, user, config: dict) -> None:
+    """Write one viewer's display config. It lives on their membership row,
+    not the tournament — every surface renders per viewer now, so a test
+    has to say *whose* config it is setting."""
+    membership = (
+        db.query(TournamentMembership)
+        .filter_by(tournament_id=tournament.id, user_id=user.id)
+        .one()
+    )
+    membership.display_config = config
+    db.commit()
 
 
 def grant_role(db: Session, tournament: Tournament, user: User, role_label: str) -> TournamentMembership:

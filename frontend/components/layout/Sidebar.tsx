@@ -10,6 +10,7 @@ import {
   IconMembers,
   IconSettings,
   IconChevronDown,
+  IconCalendar,
 } from "@/components/ui/Icons";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -23,6 +24,7 @@ export const EXPANDED_W  = 192;
 const NAV_ITEMS = [
   { segment: "overview", icon: <IconHome />,  label: "Overview" },
   { segment: "events",   icon: <IconEvents />, label: "Events" },
+  { segment: "shifts",   icon: <IconCalendar size={17} />, label: "Shifts" },
   { segment: "forms",    icon: <IconForms />,  label: "Forms" },
   { segment: "members",  icon: <IconMembers />, label: "Members" },
 ];
@@ -31,7 +33,6 @@ const SETTINGS_SUBITEMS = [
   { segment: "general",    label: "General" },
   { segment: "roles",      label: "Roles" },
   { segment: "invites",    label: "Invites" },
-  { segment: "tracks",     label: "Tracks" },
   { segment: "audit-log",  label: "Audit Log" },
 ];
 
@@ -60,13 +61,13 @@ export function Sidebar({ onExpandedChange, tournamentId }: SidebarProps) {
     ({ segment }) =>
       (segment !== "roles" || canManageRoles) &&
       (segment !== "invites" || canManageInvites) &&
-      (segment !== "tracks" || canManageTournament) &&
       (segment !== "audit-log" || canManageTournament)
   );
   const navItems = NAV_ITEMS.filter(
     ({ segment }) =>
       (segment !== "members" || canManageMembers) &&
       (segment !== "events" || canManageEvents) &&
+      (segment !== "shifts" || canManageEvents) &&
       (segment !== "forms" || canManageForms)
   );
   // Locked open on settings routes — the sub-nav labels need to stay

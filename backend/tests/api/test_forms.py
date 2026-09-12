@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy.orm.attributes import flag_modified
 
-from tests.conftest import grant_role, login
+from tests.conftest import grant_role, login, primary_track_id
 from tests.api.chapter._helpers import make_chapter, make_university, make_user
 
 from app.models.models import (
@@ -34,6 +34,24 @@ from app.models.models import (
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
+
+
+def _second_track(db, tournament, name="Day 2"):
+    """A second primary track, for the tests that prove one availability
+    question can't disturb another's shifts. That used to be two days on one
+    tournament; track is the scope now."""
+    from datetime import date as _date, timedelta as _timedelta
+
+    from app.models.models import TournamentTrack
+
+    track = TournamentTrack(
+        tournament_id=tournament.id, name=name, is_primary=True,
+        start_date=_date.today(), end_date=_date.today() + _timedelta(days=1),
+        location="Elsewhere", division=["B"],
+    )
+    db.add(track)
+    db.flush()
+    return track
 
 def _make_form(db, user, tournament, **overrides):
     defaults = dict(
@@ -283,7 +301,7 @@ class TestTournamentFormPrerequisites:
         form = _make_form(db, td_user, td_tournament)
         role = db.query(TournamentRole).filter(TournamentRole.tournament_id == td_tournament.id).first()
         now = datetime.now(timezone.utc)
-        shift = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=now, end=now + timedelta(hours=2))
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=now, end=now + timedelta(hours=2))
         db.add(shift)
         db.commit()
         self._link(db, form, td_tournament)
@@ -307,7 +325,7 @@ class TestTournamentFormPrerequisites:
         self._link(db, form, td_tournament)
         other_role = db.query(TournamentRole).filter(TournamentRole.tournament_id == other_tournament.id).first()
         now = datetime.now(timezone.utc)
-        other_shift = TournamentShift(tournament_id=other_tournament.id, label="Other", start=now, end=now + timedelta(hours=2))
+        other_shift = TournamentShift(tournament_id=other_tournament.id, track_id=primary_track_id(db, other_tournament.id), label="Other", start=now, end=now + timedelta(hours=2))
         db.add(other_shift)
         db.commit()
         login(client, "td@test.com", "tdpass")
@@ -1273,8 +1291,7 @@ class TestListArchivedFields:
     def test_config_comes_back_unresolved(self, client, db, td_user, td_tournament):
         """It's read only to be sent straight back to PUT .../fields/, so the
         option values must be the round-trippable ids, not a rendering."""
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1282,7 +1299,7 @@ class TestListArchivedFields:
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             is_archived=True,
             config={"required": False, "options": [
                 {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
@@ -1353,7 +1370,7 @@ class TestInvalidateField:
     def test_lunch_write_through_is_cleared(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="single_select_radio",
             config={"required": False, "options": [
                 {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
             ]},
@@ -1372,11 +1389,21 @@ class TestInvalidateField:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         target = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
         )
+        other_track_id = _second_track(db, td_tournament).id
+        # A preference question may only offer events that run on its track,
+        # so the shared event has to be linked to both.
+        from app.models.models import TournamentEventTrack
+
+        db.add_all([
+            TournamentEventTrack(tournament_event_id=event.id, track_id=primary_track_id(db, td_tournament.id)),
+            TournamentEventTrack(tournament_event_id=event.id, track_id=other_track_id),
+        ])
+        db.flush()
         other = _make_field(
-            db, form, order=2, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            db, form, order=2, field_key=f"event_preference_{other_track_id}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_e1", "value": [event.id], "label": "Anatomy"}]},
         )
         db.commit()
@@ -1391,12 +1418,12 @@ class TestInvalidateField:
         ).count() == 2
 
         res = client.delete(f"/forms/{form.id}/fields/{target.id}/")
-        assert res.status_code == 204
+        assert res.status_code == 204, res.json()
 
         rows = db.query(TournamentMembershipEventPreference).filter(
             TournamentMembershipEventPreference.membership_id == membership_id
         ).all()
-        assert [row.key for row in rows] == ["afternoon"]
+        assert [row.track_id for row in rows] == [other_track_id]
 
     def _membership_id(self, db, user, tournament):
         return (
@@ -1409,8 +1436,7 @@ class TestInvalidateField:
     def test_availability_write_through_is_left_alone(self, client, db, td_user, td_tournament):
         """Availability rows are shared with whatever else covers that day, so
         this field's contribution can't be separated out after the fact."""
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
@@ -1418,7 +1444,7 @@ class TestInvalidateField:
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [
                 {"option_id": "opt_morning", "value": [shift.id], "label": "Morning"},
             ]},
@@ -1701,8 +1727,7 @@ class TestAnswerSnapshotting:
 class TestWriteThroughOnSubmit:
     def test_availability_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id,
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id),
             label="Saturday",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8),
@@ -1710,7 +1735,7 @@ class TestWriteThroughOnSubmit:
         db.add(shift)
         db.flush()
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": f"opt_{shift.id}", "value": [shift.id], "label": shift.label}]},
         )
         db.commit()
@@ -1750,12 +1775,12 @@ class TestWriteThroughOnSubmit:
 
     def test_grouped_availability_option_writes_one_row_per_shift(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="single_select_radio",
             config={"required": False, "options": [{"option_id": "opt_all_day", "value": [morning.id, afternoon.id], "label": "All Day"}]},
         )
         db.commit()
@@ -1773,25 +1798,23 @@ class TestWriteThroughOnSubmit:
         off `value` directly iterated the dict's keys and fed the strings
         "shift_ids"/"track_statuses" into the shift set."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
-        track = TournamentTrack(tournament_id=td_tournament.id, name="Day 1")
-        db.add_all([shift, track])
+        db.add(shift)
         db.flush()
+        # The status applies to the field's own track — the key already names
+        # it, so the option carries a bare status rather than an id list.
+        track_id = primary_track_id(db, td_tournament.id)
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{track_id}", question_type="single_select_radio",
             config={
                 "required": False,
                 "track_status_enabled": True,
                 "options": [{
                     "option_id": "opt_morning", "label": "Morning",
-                    "value": {
-                        "shift_ids": [shift.id],
-                        "track_statuses": [{"id": track.id, "status": "confirmed"}],
-                    },
+                    "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
                 }],
             },
         )
@@ -1806,12 +1829,12 @@ class TestWriteThroughOnSubmit:
 
     def test_overlapping_selected_options_dedupe_shared_shift(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
@@ -1952,25 +1975,23 @@ class TestWriteThroughOnSubmit:
         """One field, both targets — the track opt-in doesn't displace the
         availability write-through."""
         form = _make_form(db, td_user, td_tournament, status="published")
-        shift = TournamentShift(
-            tournament_id=td_tournament.id, label="Morning",
+        shift = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning",
             start=datetime(2026, 3, 15, tzinfo=timezone.utc),
             end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4),
         )
-        track = self._track(db, td_tournament, "Day 1")
         db.add(shift)
         db.flush()
+        # The status lands on the field's own track — the key names it, so
+        # the option carries a bare status rather than a track id.
+        track_id = primary_track_id(db, td_tournament.id)
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="single_select_radio",
+            db, form, field_key=f"availability_{track_id}", question_type="single_select_radio",
             config={
                 "required": False,
                 "track_status_enabled": True,
                 "options": [{
                     "option_id": "opt_morning", "label": "Morning",
-                    "value": {
-                        "shift_ids": [shift.id],
-                        "track_statuses": [{"id": track.id, "status": "confirmed"}],
-                    },
+                    "value": {"shift_ids": [shift.id], "track_status": "confirmed"},
                 }],
             },
         )
@@ -1982,7 +2003,7 @@ class TestWriteThroughOnSubmit:
 
         membership_id = self._membership_id(db, td_user, td_tournament)
         assert self._shift_ids(db, membership_id) == {shift.id}
-        assert self._track_status(db, membership_id, track.id) == "confirmed"
+        assert self._track_status(db, membership_id, track_id) == "confirmed"
 
     def _flag(self, db, form, user, field):
         """Open a pending update on `field` so PATCH will accept it. Which
@@ -1999,12 +2020,12 @@ class TestWriteThroughOnSubmit:
 
     def test_deselecting_option_keeps_shift_still_covered_by_another(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
-        morning = TournamentShift(tournament_id=td_tournament.id, label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
-        afternoon = TournamentShift(tournament_id=td_tournament.id, label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
+        morning = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Morning", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        afternoon = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Afternoon", start=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=8))
         db.add_all([morning, afternoon])
         db.flush()
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [
@@ -2032,19 +2053,21 @@ class TestWriteThroughOnSubmit:
         Sunday form must not disturb the Saturday availability a different
         form collected. Write-through is bounded by the days a submission
         actually asked about."""
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        track_one = primary_track_id(db, td_tournament.id)
+        track_two = _second_track(db, td_tournament).id
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=track_one, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=track_two, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
 
         form_sat = _make_form(db, td_user, td_tournament, name="Saturday form", status="published")
         field_sat = _make_field(
-            db, form_sat, field_key="availability_20260314", question_type="multi_select_checkbox",
+            db, form_sat, field_key=f"availability_{track_one}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
         )
         form_sun = _make_form(db, td_user, td_tournament, name="Sunday form", status="published")
         field_sun = _make_field(
-            db, form_sun, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form_sun, field_key=f"availability_{track_two}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
         )
         db.commit()
@@ -2062,13 +2085,13 @@ class TestWriteThroughOnSubmit:
         """The TD drops a shift out of an option. A member who re-answers must
         actually lose it — if ownership came from the options' current
         contents, that shift would belong to nothing and linger forever."""
-        one = TournamentShift(tournament_id=td_tournament.id, label="Early", start=datetime(2026, 3, 15, 8, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 10, tzinfo=timezone.utc))
-        two = TournamentShift(tournament_id=td_tournament.id, label="Mid", start=datetime(2026, 3, 15, 10, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 12, tzinfo=timezone.utc))
+        one = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Early", start=datetime(2026, 3, 15, 8, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 10, tzinfo=timezone.utc))
+        two = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Mid", start=datetime(2026, 3, 15, 10, tzinfo=timezone.utc), end=datetime(2026, 3, 15, 12, tzinfo=timezone.utc))
         db.add_all([one, two])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [
                 {"option_id": "opt_morning", "value": [one.id, two.id], "label": "Morning"},
             ]},
@@ -2092,17 +2115,17 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {two.id}
 
     def test_two_availability_fields_disjoint_selections_both_persist(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=_second_track(db, td_tournament).id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field_sat = _make_field(
-            db, form, field_key="availability_20260314", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{saturday.track_id}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
         )
         field_sun = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
         )
         db.commit()
@@ -2121,16 +2144,18 @@ class TestWriteThroughOnSubmit:
         assert self._shift_ids(db, membership_id) == {saturday.id, sunday.id}
 
     def test_two_availability_fields_overlapping_selections_dedupe(self, client, db, td_user, td_tournament):
-        shared = TournamentShift(tournament_id=td_tournament.id, label="Shared", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        shared = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Shared", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add(shared)
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
+        # Two questions covering the same track — which is what the optional
+        # suffix is for, since field_key is unique per tournament.
         field_a = _make_field(
-            db, form, field_key="availability_20260314", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{shared.track_id}_judges", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_a", "value": [shared.id], "label": "Shared"}]},
         )
         field_b = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{shared.track_id}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_b", "value": [shared.id], "label": "Shared"}]},
         )
         db.commit()
@@ -2152,17 +2177,17 @@ class TestWriteThroughOnSubmit:
         assert [row.tournament_shift_id for row in rows] == [shared.id]
 
     def test_blanking_one_of_two_availability_fields_only_clears_its_own_shifts(self, client, db, td_user, td_tournament):
-        saturday = TournamentShift(tournament_id=td_tournament.id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
-        sunday = TournamentShift(tournament_id=td_tournament.id, label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
+        saturday = TournamentShift(tournament_id=td_tournament.id, track_id=_second_track(db, td_tournament).id, label="Saturday", start=datetime(2026, 3, 14, tzinfo=timezone.utc), end=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(hours=4))
+        sunday = TournamentShift(tournament_id=td_tournament.id, track_id=primary_track_id(db, td_tournament.id), label="Sunday", start=datetime(2026, 3, 15, tzinfo=timezone.utc), end=datetime(2026, 3, 15, tzinfo=timezone.utc) + timedelta(hours=4))
         db.add_all([saturday, sunday])
         db.flush()
         form = _make_form(db, td_user, td_tournament, status="published")
         field_sat = _make_field(
-            db, form, field_key="availability_20260314", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{saturday.track_id}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sat", "value": [saturday.id], "label": "Saturday"}]},
         )
         field_sun = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key=f"availability_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_sun", "value": [sunday.id], "label": "Sunday"}]},
         )
         db.commit()
@@ -2192,7 +2217,7 @@ class TestWriteThroughOnSubmit:
     def test_lunch_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="single_select_radio",
             config={
                 "required": False,
                 "options": [
@@ -2222,7 +2247,183 @@ class TestWriteThroughOnSubmit:
         assert rows[0].value == "chicken"
         assert rows[0].label == "Chicken"
         assert rows[0].category == "protein"
-        assert rows[0].date == date(2027, 2, 13)
+        assert rows[0].track_id == primary_track_id(db, td_tournament.id)
+
+    def test_key_change_to_lunch_backfills_existing_answers(self, client, db, td_user, td_tournament):
+        """Answers given while the key was a plain one never reached
+        TournamentMembershipLunch, and the key change also drops them from
+        custom responses — so the switch replays them rather than stranding
+        them until every member resubmits."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key="special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
+        ).status_code == 200
+        # Plain key: nothing written through yet.
+        assert db.query(TournamentMembershipLunch).count() == 0
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests",
+                "label": "Special requests", "question_type": "short_text",
+                "config": {"required": False, "max_length": 200},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).one()
+        assert row.value == "Vegan cheese only"
+        assert row.category == "special_requests"
+        assert row.track_id == primary_track_id(db, td_tournament.id)
+
+    def test_key_change_to_lunch_backfills_option_answers(self, client, db, td_user, td_tournament):
+        """A select question's stored answer is an {option_id, value, label}
+        snapshot — the backfill unwraps it and resolves against the new
+        config, whose freeform option values survive the key change."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        options = [
+            {"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"},
+            {"option_id": "opt_tofu", "value": "tofu", "label": "Tofu"},
+        ]
+        field = _make_field(
+            db, form, field_key="protein_choice", question_type="single_select_radio",
+            config={"required": False, "options": options},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "opt_tofu"}]},
+        ).status_code == 200
+        assert db.query(TournamentMembershipLunch).count() == 0
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+                "label": "Protein", "question_type": "single_select_radio",
+                "config": {"required": False, "options": options},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).one()
+        assert row.value == "tofu"
+        assert row.label == "Tofu"
+        assert row.category == "protein"
+
+    def test_key_change_between_lunch_keys_does_not_backfill(self, client, db, td_user, td_tournament):
+        """Only a non-preset -> lunch transition backfills. Editing a key that
+        was already lunch leaves the old rows to _clear/-resubmit handling
+        rather than silently writing the new (date, category)."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_protein", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        assert client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Tofu"}]},
+        ).status_code == 200
+        assert db.query(TournamentMembershipLunch).count() == 1
+
+        res = client.put(
+            f"/forms/{form.id}/fields/",
+            json={"fields": [{
+                "id": field.id, "field_key": f"lunch_{primary_track_id(db, td_tournament.id)}_protein",
+                "label": "Protein", "question_type": "short_text",
+                "config": {"required": False, "max_length": 200},
+            }]},
+        )
+        assert res.status_code == 200, res.json()
+
+        rows = db.query(TournamentMembershipLunch).all()
+        assert len(rows) == 1
+        assert rows[0].track_id == primary_track_id(db, td_tournament.id)
+
+    def test_lunch_free_text_write_through_on_tournament_form(self, client, db, td_user, td_tournament):
+        """A short_text lunch question writes its typed answer through as the
+        row's value/label — there's no option to resolve."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": "Vegan cheese only"}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        membership = (
+            db.query(TournamentMembership)
+            .filter(TournamentMembership.user_id == td_user.id, TournamentMembership.tournament_id == td_tournament.id)
+            .first()
+        )
+        rows = db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.membership_id == membership.id
+        ).all()
+        assert len(rows) == 1
+        assert rows[0].value == "Vegan cheese only"
+        assert rows[0].category == "special_requests"
+        assert rows[0].track_id == primary_track_id(db, td_tournament.id)
+
+    def test_lunch_free_text_longer_than_the_old_column_limit(self, client, db, td_user, td_tournament):
+        """value/label are Text, not VARCHAR(64)/(255) — a long_text answer
+        that would have blown the old limits stores intact."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_notes", question_type="long_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+        answer = "No dairy. " * 40  # 400 chars
+
+        res = client.post(
+            f"/forms/{form.id}/responses/",
+            json={"answers": [{"field_id": field.id, "value": answer}]},
+        )
+        assert res.status_code == 200, res.json()
+
+        row = db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.category == "notes"
+        ).one()
+        assert row.value == answer.strip()
+
+    def test_lunch_free_text_blank_answer_writes_no_row(self, client, db, td_user, td_tournament):
+        """A whitespace-only answer stores nothing, so a skipped question
+        reads the same as one that was never asked."""
+        form = _make_form(db, td_user, td_tournament, status="published")
+        field = _make_field(
+            db, form, field_key=f"lunch_{primary_track_id(db, td_tournament.id)}_special_requests", question_type="short_text",
+            config={"required": False},
+        )
+        db.commit()
+        login(client, "td@test.com", "tdpass")
+
+        res = client.post(f"/forms/{form.id}/responses/",
+                          json={"answers": [{"field_id": field.id, "value": "   "}]})
+        assert res.status_code == 200, res.json()
+
+        assert db.query(TournamentMembershipLunch).filter(
+            TournamentMembershipLunch.category == "special_requests"
+        ).count() == 0
 
     def test_event_preference_write_through_ranked_choice(self, client, db, td_user, td_tournament):
         e1 = _make_event(db, td_tournament, "Anatomy")
@@ -2230,7 +2431,7 @@ class TestWriteThroughOnSubmit:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="event_preference_morning", question_type="ranked_choice",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="ranked_choice",
             config={
                 "required": False, "ranks": 2, "allow_duplicates": False,
                 "options": [
@@ -2263,7 +2464,7 @@ class TestWriteThroughOnSubmit:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         field = _make_field(
-            db, form, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{_second_track(db, td_tournament).id}", question_type="multi_select_checkbox",
             config={
                 "required": False,
                 "options": [{"option_id": "opt_life", "value": [e1.id, e2.id], "label": "Life Science"}],
@@ -2291,11 +2492,11 @@ class TestWriteThroughOnSubmit:
         db.commit()
         form = _make_form(db, td_user, td_tournament, status="published")
         morning = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key=f"event_preference_{primary_track_id(db, td_tournament.id)}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_e1", "value": [e1.id], "label": "Anatomy"}]},
         )
         afternoon = _make_field(
-            db, form, order=2, field_key="event_preference_afternoon", question_type="multi_select_checkbox",
+            db, form, order=2, field_key=f"event_preference_{_second_track(db, td_tournament).id}", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_e2", "value": [e2.id], "label": "Astronomy"}]},
         )
         db.commit()
@@ -2323,7 +2524,7 @@ class TestWriteThroughOnSubmit:
     def test_event_preference_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="event_preference_morning", question_type="multi_select_checkbox",
+            db, form, field_key="event_preference_1", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_1", "value": ["not_a_real_event_id"], "label": "Whenever"}]},
         )
         db.commit()
@@ -2340,7 +2541,7 @@ class TestWriteThroughOnSubmit:
     def test_availability_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="availability_20260315", question_type="multi_select_checkbox",
+            db, form, field_key="availability_1", question_type="multi_select_checkbox",
             config={"required": False, "options": [{"option_id": "opt_1", "value": "not_a_real_shift_id", "label": "Whenever"}]},
         )
         db.commit()
@@ -2358,7 +2559,7 @@ class TestWriteThroughOnSubmit:
     def test_lunch_answer_on_chapter_form_saves_but_does_not_write_through(self, client, db, td_user, chapter):
         form = _make_chapter_form(db, td_user, chapter, status="published")
         field = _make_field(
-            db, form, field_key="lunch_20270213_protein", question_type="single_select_radio",
+            db, form, field_key="lunch_1_protein", question_type="single_select_radio",
             config={"required": False, "options": [{"option_id": "opt_chicken", "value": "chicken", "label": "Chicken"}]},
         )
         db.commit()

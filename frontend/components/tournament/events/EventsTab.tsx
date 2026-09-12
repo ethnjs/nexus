@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision } from "@/lib/api";
-import { formatDateTime } from "@/lib/timeFormat";
+import { tournamentEventsApi, ApiError, TournamentEvent, TournamentDivision, TournamentTrack } from "@/lib/api";
 import { useTournament } from "@/lib/useTournament";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
@@ -25,11 +25,11 @@ import { emptyFilterState } from "@/components/ui/FilterModal";
 import { usePersistedFilter } from "@/lib/usePersistedFilter";
 import { useAuth } from "@/lib/useAuth";
 import { MassEventEditor, MASS_EVENT_EDITOR_WIDTH } from "@/components/tournament/events/MassEventEditor";
-import { eventName } from "@/lib/eventDisplay";
+import { eventFirstDay, eventName } from "@/lib/eventDisplay";
 
 // Name doesn't need much room (event names are short); Start/End are 50%
 // wider than before so a full date+time doesn't get clipped.
-const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 195px 195px 70px";
+const EVENT_ROW_COLUMNS = "1.3fr 90px 100px 1.1fr 200px 80px 70px";
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
 // grid-template-columns only works when the track count stays constant.
@@ -44,7 +44,7 @@ const DIVISION_BADGE_VARIANT: Record<string, "divisionA" | "divisionB" | "divisi
   C: "divisionC",
 };
 
-type SortField = "name" | "division" | "start_time";
+type SortField = "name" | "division" | "day";
 type SortDir = "asc" | "desc";
 
 // Sentinel for the null case of a nullable field (division/category) so it
@@ -59,7 +59,7 @@ const TYPE_OPTIONS = [
 const SORT_FIELD_OPTIONS = [
   { value: "name", label: "Name" },
   { value: "division", label: "Division" },
-  { value: "start_time", label: "Start" },
+  { value: "day", label: "Day" },
 ];
 
 function categoryKey(e: TournamentEvent): string {
@@ -70,7 +70,9 @@ function sortValue(e: TournamentEvent, field: SortField): string | number {
   switch (field) {
     case "name": return eventName(e).toLowerCase();
     case "division": return e.division ?? "";
-    case "start_time": return e.start_time ? new Date(e.start_time).getTime() : 0;
+    // An event has no time of its own — its schedule is its shifts, so
+    // the first day it runs is what there is to sort by.
+    case "day": return eventFirstDay(e);
   }
 }
 
@@ -98,7 +100,7 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
   // Committed filters only — the modal keeps its own draft until Apply.
   const [filters, applyFilters] = usePersistedFilter("events", user?.id, tournamentId, EVENTS_FILTER_KEYS);
   const [showFilterModal, setShowFilterModal] = useState(false);
-  const [sortField, setSortField] = useState<SortField>("start_time");
+  const [sortField, setSortField] = useState<SortField>("day");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
 
   // The two mutually-exclusive panel flows (single-focus vs. Select mode) and
@@ -180,6 +182,13 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
     () => (events ?? []).filter((e) => selectedIds.has(e.id)),
     [events, selectedIds]
   );
+
+  // Deduped across every event — the same pending track can hold dozens.
+  const eventTracks = useMemo(() => {
+    const byId = new Map<number, TournamentTrack>();
+    for (const event of events ?? []) for (const track of event.tracks) byId.set(track.id, track);
+    return [...byId.values()];
+  }, [events]);
 
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -293,6 +302,10 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
           {loadError}
         </p>
       )}
+
+      {/* Only the tracks these events actually hold — a pending-delete track
+          with nothing on this page isn't this page's problem. */}
+      <PendingTrackBanner tracks={eventTracks} subject="events" />
 
       {events.length === 0 ? (
         <Card radius="lg" style={{ padding: "8px" }}>
@@ -424,8 +437,8 @@ export function EventsTab({ tournamentId, canManageEvents }: EventsTabProps) {
               <span style={{ textAlign: "center" }}>Division</span>
               <span style={{ textAlign: "center" }}>Type</span>
               <span>Category</span>
-              <span style={{ textAlign: "center" }}>Start</span>
-              <span style={{ textAlign: "center" }}>End</span>
+              <span>Tracks</span>
+              <span style={{ textAlign: "center" }}>Shifts</span>
               <span style={{ textAlign: "center" }}>Actions</span>
             </div>
 
@@ -524,6 +537,9 @@ function EventRow({
   // Two different reasons a row might be clickable: toggling a checkbox in
   // Select mode, or switching which row the single-edit panel shows. Never
   // both at once — the two flows are mutually exclusive.
+  // This event is one of the references keeping a pending-delete track
+  // alive — flagged here so the ones to repoint are findable in the table.
+  const isPending = event.tracks.some((t) => t.is_archived);
   const clickable = (selectMode || focusActive) && !selectionLocked;
   const handleRowClick = selectMode ? onToggleSelect : onFocus;
   const highlighted = selectMode ? selected : focused;
@@ -539,7 +555,9 @@ function EventRow({
         display: "grid", gridTemplateColumns: eventColumns(selectMode), alignItems: "center",
         gap: "10px", padding: "10px 12px",
         borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: highlighted ? "var(--color-bg)" : hovered ? "var(--color-bg)" : "transparent",
+        background: isPending
+          ? (highlighted || hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
+          : (highlighted || hovered ? "var(--color-bg)" : "transparent"),
         transition: "background 100ms ease, grid-template-columns 200ms ease",
         cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
       }}
@@ -578,11 +596,20 @@ function EventRow({
       }}>
         {event.event?.category.name ?? ""}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.start_time ? formatDateTime(event.start_time) : "—"}
+      {/* Which parts of the tournament this event belongs to. The days are
+          derivable from its shifts, but they are the same days its track
+          already names — the track is the thing that isn't inferable. */}
+      <span style={{ display: "flex", gap: "4px", flexWrap: "wrap", minWidth: 0 }}>
+        {event.tracks.length > 0
+          ? event.tracks.map((t) => (
+              <Badge key={t.id} variant={t.is_archived ? "warning" : "default"} title={t.is_archived ? PENDING_TRACK_NOTE : undefined}>
+                {t.name}
+              </Badge>
+            ))
+          : <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>—</span>}
       </span>
-      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)", textAlign: "center" }}>
-        {event.end_time ? formatDateTime(event.end_time) : "—"}
+      <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", textAlign: "center" }}>
+        {event.shifts.length}
       </span>
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
         <Button type="button" variant="secondary" size="sm" iconOnly disabled={selectionLocked} title={lockedTitle ?? "Edit"} onClick={onFocus}>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { tournamentsApi, Tournament, TournamentSummary, UserMeSlim, authApi, ApiError } from "@/lib/api"
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal"
 import { TournamentCard } from "@/components/tournament/TournamentCard"
+import { MasonryGrid } from "@/components/ui/MasonryGrid"
 import { Topbar } from "@/components/layout/Topbar"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Banner, BannerProps } from "@/components/ui/Banner"
@@ -156,14 +157,19 @@ export default function DashboardPage() {
               </Button>
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+            // Masonry, not a grid: a multi-site tournament listing a row per
+            // track is legitimately taller than a single-day one, and a grid
+            // would stretch every card to match it. This list is ordered
+            // newest-first, which is why it isn't plain CSS columns — see
+            // MasonryGrid.
+            <MasonryGrid minColumnWidth={280} gap={16}>
               {tournaments.map((t) => (
                 <TournamentCard
                   key={t.id} tournament={t}
                   onClick={() => router.push(`/dashboard/tournaments/${t.id}/overview`)}
                 />
               ))}
-            </div>
+            </MasonryGrid>
           )}
         </div>
       </main>

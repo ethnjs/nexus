@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import {
-  tournamentsApi, universitiesApi, Tournament, University,
-  TournamentState, TournamentLevel, TournamentDivision,
-  TOURNAMENT_STATES, TOURNAMENT_LEVELS, TOURNAMENT_DIVISIONS,
+  tournamentsApi, Tournament,
+  TournamentState, TournamentLevel,
+  TOURNAMENT_STATES, TOURNAMENT_LEVELS,
   ApiError,
 } from "@/lib/api";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -18,6 +18,7 @@ import { Combobox } from "@/components/ui/Combobox";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { Badge } from "@/components/ui/Badge";
+import { Toggle } from "@/components/ui/Toggle";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Spinner } from "@/components/ui/Spinner";
 import { DeleteTournamentModal } from "@/components/tournament/settings/DeleteTournamentModal";
@@ -25,21 +26,21 @@ import { TransferOwnershipModal } from "@/components/tournament/settings/Transfe
 import { LeaveTournamentModal } from "@/components/tournament/settings/LeaveTournamentModal";
 import { ArchiveTournamentModal } from "@/components/tournament/settings/ArchiveTournamentModal";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
+import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
+import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
 const STATE_OPTIONS: TournamentState[] = [...TOURNAMENT_STATES];
 
+// Dates, venue and divisions are absent by design — they belong to the
+// tracks below, and the tournament derives its own from them. Sending one
+// here is a 422 (TournamentUpdate is extra="forbid").
 interface GeneralDraft {
   name: string;
   short_name: string;
-  location: string;        // display text — free-text location, or the matched university's name
-  university_id: number | null; // non-null when location is a matched university, not free text
-  start_date: string;
-  end_date: string;
   state: TournamentState | "";
   level: TournamentLevel | "";
-  division: TournamentDivision[];
   is_public: boolean;
 }
 
@@ -47,13 +48,8 @@ function toDraft(t: Tournament): GeneralDraft {
   return {
     name: t.name,
     short_name: t.short_name ?? "",
-    location: t.location ?? t.university?.name ?? "",
-    university_id: t.university?.id ?? null,
-    start_date: t.start_date,
-    end_date: t.end_date,
     state: t.state,
     level: t.level,
-    division: t.division,
     is_public: t.is_public,
   };
 }
@@ -69,7 +65,6 @@ export default function GeneralSettingsPage() {
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
   const [stateText, setStateText] = useState("");
   const [levelText, setLevelText] = useState("");
-  const [universities, setUniversities] = useState<University[]>([]);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | undefined>(undefined);
@@ -79,6 +74,11 @@ export default function GeneralSettingsPage() {
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [pendingAgeToggle, setPendingAgeToggle] = useState<"collect_is_over_18" | "collect_is_over_21" | null>(null);
+  const [ageToggleError, setAgeToggleError] = useState<string | undefined>(undefined);
+  // Reserved as bottom padding so the fixed save bar never covers the last
+  // row — a track row scrolling itself into view has to land above it.
+  const [saveBarHeight, setSaveBarHeight] = useState(0);
 
   useEffect(() => {
     if (selectedTournament) {
@@ -88,27 +88,46 @@ export default function GeneralSettingsPage() {
     }
   }, [selectedTournament]);
 
-  useEffect(() => {
-    universitiesApi.list().then(setUniversities).catch(() => { });
-  }, []);
-
   const canEdit = !!membership && (membership.is_owner || hasPermission("manage_tournament"));
 
   const isAdmin = currentUser?.role === "admin";
   const isOwnerOrAdmin = !!membership?.is_owner || isAdmin;
-  const hasEnded = !!selectedTournament && selectedTournament.end_date < new Date().toISOString().slice(0, 10);
+  // The last day it runs — `dates` is already sorted, and its final entry is
+  // the real end even when the days aren't contiguous.
+  const lastDay = selectedTournament?.dates.at(-1);
+  const hasEnded = !!lastDay && lastDay < new Date().toISOString().slice(0, 10);
   const unarchiveNeedsAdmin = !!selectedTournament?.is_archived && hasEnded && !isAdmin;
 
-  const isDirty = useMemo(() => {
+  // The tournament's own dates, location and division are derived from its
+  // tracks, so any track write changes the header — refetch it.
+  const refetch = useCallback(() => {
+    tournamentsApi.get(tournamentId).then(setSelectedTournament).catch(() => {});
+  }, [tournamentId, setSelectedTournament]);
+  const trackEditor = useTrackEditor(tournamentId, refetch);
+
+  const detailsDirty = useMemo(() => {
     if (!selectedTournament || !draft) return false;
     return JSON.stringify(draft) !== JSON.stringify(toDraft(selectedTournament));
   }, [draft, selectedTournament]);
+  // One bar for the page: the details fields and every track row are the
+  // same set of unsaved changes as far as the TD is concerned.
+  const isDirty = detailsDirty || trackEditor.isDirty;
 
-  function toggleDivision(d: TournamentDivision) {
-    setDraft((cur) => cur && {
-      ...cur,
-      division: cur.division.includes(d) ? cur.division.filter((x) => x !== d) : [...cur.division, d],
-    });
+  // Turning collection ON needs the type-to-confirm modal (real
+  // consequences for existing members); turning it OFF applies immediately —
+  // nothing is destroyed and no one loses access.
+  async function handleAgeToggleChange(flag: "collect_is_over_18" | "collect_is_over_21", checked: boolean) {
+    if (checked) {
+      setPendingAgeToggle(flag);
+      return;
+    }
+    setAgeToggleError(undefined);
+    try {
+      const updated = await tournamentsApi.update(tournamentId, { [flag]: false });
+      setSelectedTournament(updated);
+    } catch (err: unknown) {
+      setAgeToggleError(err instanceof ApiError ? err.message : "Something went wrong. Try again.");
+    }
   }
 
   function handleCancel() {
@@ -117,6 +136,7 @@ export default function GeneralSettingsPage() {
       setStateText(selectedTournament.state);
       setLevelText(LEVEL_OPTIONS.find((o) => o.value === selectedTournament.level)?.label ?? "");
     }
+    trackEditor.reset();
     setErrors({});
     setSaveError(undefined);
   }
@@ -130,14 +150,8 @@ export default function GeneralSettingsPage() {
     const fieldErrors: Record<string, string> = {};
     if (!draft.name.trim()) fieldErrors.name = "Cannot be empty.";
     else if (/\d/.test(draft.name)) fieldErrors.name = "Name must not contain numbers.";
-    if (!draft.university_id && !draft.location.trim()) fieldErrors.location = "Location is required.";
-    if (!draft.start_date) fieldErrors.start_date = "Start date is required.";
-    else if (draft.start_date < new Date().toISOString().slice(0, 10)) fieldErrors.start_date = "Cannot be in the past.";
-    if (!draft.end_date) fieldErrors.end_date = "End date is required.";
-    else if (draft.end_date < draft.start_date) fieldErrors.end_date = "Cannot be before start date.";
     if (!draft.state) fieldErrors.state = "Pick one from the list.";
     if (!draft.level) fieldErrors.level = "Pick one from the list.";
-    if (draft.division.length === 0) fieldErrors.division = "Select at least one division.";
 
     if (Object.keys(fieldErrors).length > 0 || !draft.state || !draft.level) {
       setErrors(fieldErrors);
@@ -145,25 +159,21 @@ export default function GeneralSettingsPage() {
       return;
     }
 
-    // Explicit nulls clear whichever field isn't the active source — the
-    // backend now applies both atomically (see models.py's before_flush check).
-    const source = draft.university_id
-      ? { university_id: draft.university_id, location: null }
-      : { location: draft.location.trim(), university_id: null };
-
     try {
-      const updated = await tournamentsApi.update(tournamentId, {
-        name: draft.name.trim(),
-        short_name: draft.short_name.trim() || null,
-        start_date: draft.start_date,
-        end_date: draft.end_date,
-        state: draft.state,
-        level: draft.level,
-        division: draft.division,
-        is_public: draft.is_public,
-        ...source,
-      });
-      setSelectedTournament(updated);
+      if (detailsDirty) {
+        setSelectedTournament(await tournamentsApi.update(tournamentId, {
+          name: draft.name.trim(),
+          short_name: draft.short_name.trim() || null,
+          state: draft.state,
+          level: draft.level,
+          is_public: draft.is_public,
+        }));
+      }
+      // Tracks are separate resources with their own writes — the bar is
+      // shared, the requests aren't. A track failure leaves the details
+      // saved, which is why the error names the tracks specifically.
+      const trackError = await trackEditor.save();
+      if (trackError) setSaveError(trackError);
     } catch (error: unknown) {
       setSaveError(error instanceof ApiError ? error.message : "Something went wrong. Try again.");
     } finally {
@@ -180,7 +190,7 @@ export default function GeneralSettingsPage() {
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: `${saveBarHeight}px` }}>
       <PageHeader heading="General" subheading="Tournament Settings" />
 
       {canEdit && (
@@ -204,42 +214,6 @@ export default function GeneralSettingsPage() {
               onChange={(e) => setDraft((d) => d && { ...d, short_name: e.target.value })}
             />
           </SettingsRow>
-          <SettingsRow label="Location">
-            <Combobox
-              options={universities}
-              getId={(u) => u.id}
-              getLabel={(u) => u.name}
-              getSearchText={(u) => `${u.name} ${u.abbreviation ?? ""}`}
-              value={draft.location}
-              onChange={(text, matched) => setDraft((d) => d && { ...d, location: text, university_id: matched?.id ?? null })}
-              placeholder="e.g. USC"
-              locked={isArchived}
-              error={errors.location}
-            />
-          </SettingsRow>
-          <SettingsRow label="Dates">
-            <div style={{ display: "flex", gap: "10px" }}>
-              <Input
-                label="Start"
-                type="date"
-                fullWidth
-                locked={isArchived}
-                min={new Date().toISOString().slice(0, 10)}
-                value={draft.start_date}
-                onChange={(e) => setDraft((d) => d && { ...d, start_date: e.target.value })}
-                error={errors.start_date}
-              />
-              <Input
-                label="End"
-                type="date"
-                fullWidth
-                locked={isArchived}
-                value={draft.end_date}
-                onChange={(e) => setDraft((d) => d && { ...d, end_date: e.target.value })}
-                error={errors.end_date}
-              />
-            </div>
-          </SettingsRow>
           <SettingsRow label="State">
             <Combobox
               options={STATE_OPTIONS}
@@ -252,7 +226,7 @@ export default function GeneralSettingsPage() {
               error={errors.state}
             />
           </SettingsRow>
-          <SettingsRow label="Level">
+          <SettingsRow label="Level" last>
             <Combobox
               options={LEVEL_OPTIONS}
               getId={(o) => o.value}
@@ -264,21 +238,10 @@ export default function GeneralSettingsPage() {
               error={errors.level}
             />
           </SettingsRow>
-          <SettingsRow label="Division" last>
-            <ButtonGroup
-              options={TOURNAMENT_DIVISIONS.map((d) => ({ value: d, label: d }))}
-              value={draft.division}
-              onChange={(v) => toggleDivision(v as TournamentDivision)}
-              locked={isArchived}
-            />
-            {errors.division && (
-              <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
-                {errors.division}
-              </p>
-            )}
-          </SettingsRow>
         </SettingsSection>
       )}
+
+      {canEdit && <TracksSection editor={trackEditor} locked={isArchived} />}
 
       {isOwnerOrAdmin && (
         <SettingsSection title="Invites">
@@ -319,6 +282,37 @@ export default function GeneralSettingsPage() {
               </Button>
             )}
           </SettingsRow>
+        </SettingsSection>
+      )}
+
+      {canEdit && (
+        <SettingsSection title="Age Disclosure">
+          <SettingsRow
+            label="Collect 18+ status"
+            helper="Members consent before this is shared — their date of birth is never sent."
+          >
+            <Toggle
+              checked={selectedTournament.collect_is_over_18}
+              onChange={(v) => handleAgeToggleChange("collect_is_over_18", v)}
+              locked={isArchived}
+            />
+          </SettingsRow>
+          <SettingsRow
+            label="Collect 21+ status"
+            helper="Members consent before this is shared — their date of birth is never sent."
+            last
+          >
+            <Toggle
+              checked={selectedTournament.collect_is_over_21}
+              onChange={(v) => handleAgeToggleChange("collect_is_over_21", v)}
+              locked={isArchived}
+            />
+          </SettingsRow>
+          {ageToggleError && (
+            <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginTop: "6px" }}>
+              {ageToggleError}
+            </p>
+          )}
         </SettingsSection>
       )}
 
@@ -386,7 +380,11 @@ export default function GeneralSettingsPage() {
       </SettingsSection>
 
       {canEdit && (
-        <FloatingSaveBar visible={isDirty} saving={saving} error={saveError} onSave={handleSave} onCancel={handleCancel} />
+        <FloatingSaveBar
+          visible={isDirty} saving={saving} error={saveError}
+          onSave={handleSave} onCancel={handleCancel}
+          onHeightChange={setSaveBarHeight}
+        />
       )}
 
       {showDeleteModal && selectedTournament && (
@@ -430,6 +428,16 @@ export default function GeneralSettingsPage() {
         <StaffInviteModal
           tournamentId={tournamentId}
           onClose={() => setShowInviteModal(false)}
+        />
+      )}
+
+      {pendingAgeToggle && (
+        <AgeDisclosureToggleModal
+          tournamentId={tournamentId}
+          flag={pendingAgeToggle}
+          thresholdLabel={pendingAgeToggle === "collect_is_over_18" ? "18+" : "21+"}
+          onClose={() => setPendingAgeToggle(null)}
+          onDone={(updated) => { setSelectedTournament(updated); setPendingAgeToggle(null); }}
         />
       )}
     </div>

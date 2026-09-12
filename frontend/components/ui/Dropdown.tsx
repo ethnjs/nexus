@@ -65,6 +65,10 @@ interface DropdownProps {
   error?:       string
   locked?:      boolean
   fullWidth?:   boolean
+  /** Marks the label with an asterisk, same as Input/Combobox. Display only
+      — nothing here enforces it, since a Dropdown has no form submission of
+      its own to block. */
+  required?:    boolean
   size?:        'sm' | 'md'
   /** Minimum width of the trigger in px. Useful for sm dropdowns that need a fixed floor. */
   minWidth?:    number
@@ -116,6 +120,7 @@ export function Dropdown({
   error,
   locked = false,
   fullWidth = false,
+  required = false,
   size = 'md',
   minWidth,
   width,
@@ -299,6 +304,7 @@ export function Dropdown({
           }}
         >
           {label}
+          {required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
         </label>
       )}
 

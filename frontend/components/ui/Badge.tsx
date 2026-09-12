@@ -7,6 +7,7 @@ type BadgeVariant =
   | 'interested'
   | 'confirmed'
   | 'declined'
+  | 'pending'
   | 'assigned'
   | 'removed'
   | 'admin'
@@ -27,6 +28,9 @@ const variantStyles: Record<BadgeVariant, string> = {
   interested: 'bg-accent-subtle text-secondary border-border',
   confirmed:  'bg-success-subtle text-success border-success/20',
   declined:   'bg-danger-subtle text-danger border-danger/20',
+  // Nothing recorded yet — reads as absent rather than as an outcome, so it
+  // stays muted instead of taking a status colour.
+  pending:    'bg-accent-subtle text-tertiary border-border',
   assigned:   'bg-blue-50 text-blue-700 border-blue-200',
   removed:    'bg-accent-subtle text-tertiary border-border',
   admin:      'bg-accent text-inverse border-accent',

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ApiError, MembershipSlim, membershipsApi } from "@/lib/api";
+import { ApiError, MembershipFull, membersApi } from "@/lib/api";
 import { useRoleLock } from "@/lib/roles/useRoleLock";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
@@ -21,7 +21,7 @@ interface AddRoleMembersModalProps {
 
 export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, onAdded }: AddRoleMembersModalProps) {
   const [search, setSearch] = useState("");
-  const [candidates, setCandidates] = useState<MembershipSlim[] | null>(null);
+  const [candidates, setCandidates] = useState<MembershipFull[] | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -34,10 +34,11 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
   // would just 403 on save, so they shouldn't show up as pickable here.
   useEffect(() => {
     const timer = setTimeout(() => {
-      membershipsApi.search(tournamentId, {
-        exclude_role_id: roleId,
+      membersApi.list(tournamentId, {
+        fields: ["contact", "roles"],
+        excludeRoleId: roleId,
         q: search.trim() || undefined,
-        max_rank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
+        maxRank: !bypassRankBound && ownRank !== null ? ownRank : undefined,
       })
         .then(setCandidates)
         .catch(() => setError("Failed to load members."));
@@ -60,7 +61,7 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
     setError(undefined);
     try {
       await Promise.all(
-        [...selected].map((membershipId) => membershipsApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
+        [...selected].map((membershipId) => membersApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
       );
       onAdded();
     } catch (err: unknown) {

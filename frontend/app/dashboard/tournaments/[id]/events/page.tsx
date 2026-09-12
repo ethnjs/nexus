@@ -1,20 +1,14 @@
 "use client";
 
-import { useState } from "react";
 import { useParams } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
-import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
 import { Spinner } from "@/components/ui/Spinner";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { TabStrip } from "@/components/ui/TabStrip";
 import { IconLock } from "@/components/ui/Icons";
 import { EventsTab } from "@/components/tournament/events/EventsTab";
-import { ShiftsTab } from "@/components/tournament/events/ShiftsTab";
-
-type EventsPageTab = "events" | "shifts";
 
 export default function EventsPage() {
   const params = useParams();
@@ -22,9 +16,6 @@ export default function EventsPage() {
 
   const { user: currentUser } = useAuth();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
-  const { guard } = useUnsavedChanges();
-
-  const [activeTab, setActiveTab] = useState<EventsPageTab>("events");
 
   const isAdmin = currentUser?.role === "admin";
   const isOwner = !!membership?.is_owner;
@@ -57,20 +48,7 @@ export default function EventsPage() {
     <div>
       <PageHeader heading="Events" />
 
-      <TabStrip
-        tabs={[
-          { key: "events", label: "Events" },
-          { key: "shifts", label: "Shifts" },
-        ]}
-        activeKey={activeTab}
-        onChange={(tab) => guard(() => setActiveTab(tab))}
-      />
-
-      {activeTab === "events" ? (
-        <EventsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
-      ) : (
-        <ShiftsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
-      )}
+      <EventsTab tournamentId={tournamentId} canManageEvents={canManageEvents} />
     </div>
   );
 }

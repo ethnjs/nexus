@@ -116,8 +116,8 @@ function applyFocusIntent(root: HTMLElement, intent: FocusIntent) {
 // keeps the type-by-type switch in one place (QuestionRenderer) instead of
 // duplicated between a respondent-facing renderer and a TD-facing editor.
 export function FieldCard({
-  field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, errors,
-  allowArchive = false,
+  field, expanded, onExpand, focusIntent, focusNonce, onFieldChange, onDuplicate, onDelete, tournament, shifts, allFields, usedFieldKeys, errors,
+  allowArchive = false, onRequireTrack,
 }: {
   field: EditableField;
   expanded: boolean;
@@ -142,7 +142,13 @@ export function FieldCard({
       still loading, same as tournament. */
   shifts: TournamentShift[] | null;
   allFields: EditableField[];
+  /** Every field_key already saved elsewhere on this tournament — see
+      duplicateKey below. */
+  usedFieldKeys: string[];
   errors: string[];
+  /** Forwarded to the entity pickers — opens the toolbar's preset popover
+      when a picker is used before the question has a track. */
+  onRequireTrack?: () => void;
   /** Passed through to the options editor — see QuestionRenderer. */
   allowArchive?: boolean;
 }) {
@@ -180,7 +186,20 @@ export function FieldCard({
   const hadKeyOrPresetError = errors.some((e) => isFieldKeyError(e) || isPresetError(e));
   const presetIncomplete = !!presetKind && field.field_key.endsWith('_');
   const effKey = effectiveFieldKey(field);
-  const duplicateKey = !!effKey && allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey);
+  // A same-form collision is checked live against the other staged fields; a
+  // preset key can also collide with a *different* form's field, which only
+  // the tournament-wide usedFieldKeys snapshot (not allFields) would catch —
+  // a plain custom key relies on FieldKeyPopover's own blur-time check for
+  // that instead, so this half is preset-only. `effKey !== field.originalFieldKey`
+  // excludes the field's own already-saved key — usedFieldKeys otherwise
+  // always contains it too, which would flag every untouched existing preset
+  // field as a duplicate of itself. Both halves are naturally self-correcting
+  // as the TD edits: once the key changes, it just stops matching either
+  // check, no stale-error bookkeeping required.
+  const duplicateKey = !!effKey && (
+    allFields.some((f) => f.clientKey !== field.clientKey && effectiveFieldKey(f) === effKey)
+    || (!!presetKind && effKey !== field.originalFieldKey && usedFieldKeys.includes(effKey))
+  );
   const hasKeyOrPresetError = hadKeyOrPresetError && (presetIncomplete || duplicateKey);
   const hasCardError = liveNonKeyErrors.length > 0 || hasKeyOrPresetError;
   const branchTargets: BranchTarget[] = allFields
@@ -320,6 +339,7 @@ export function FieldCard({
               customValuesEnabled={field.customValuesEnabled}
               errors={bodyErrors}
               allowArchive={allowArchive}
+              onRequireTrack={onRequireTrack}
             />
 
             <div style={{ height: "1px", background: "var(--color-border)", margin: "18px 0 12px" }} />

@@ -1,18 +1,16 @@
 """Diff-sync for the structural tables that a form response's reserved-key
-answers (`availability`, `lunch_{date}_{category}`, `track_status_{suffix}`)
-write through to on tournament-owned forms — see
-form-question-types-reference.md. Each function diffs the submitted values
-against what's already stored and applies only the delta (insert new, delete
-removed) rather than replace-all, so an untouched row (e.g. a different lunch
-date/category) is never disturbed.
+answers (`availability_{track}`, `lunch_{track}_{category}`,
+`event_preference_{track}`, `track_status_{suffix}`) write through to on
+tournament-owned forms — see form-question-types-reference.md. Each function
+diffs the submitted values against what's already stored and applies only the
+delta (insert new, delete removed) rather than replace-all, so an untouched
+row (e.g. a different track's lunch category) is never disturbed.
 
 Track status is the exception to "diff": it only ever upserts, and a write can
 be refused outright by the transition rule. See sync_track_statuses.
 
 Callers commit — these only add/delete/flush, so the write-through and the
 FormAnswer rows it's derived from land in the same transaction."""
-
-from datetime import date as date_type, datetime
 
 from sqlalchemy.orm import Session
 
@@ -30,39 +28,37 @@ from app.models.models import (
 )
 
 
-def parse_lunch_field_key(field_key: str) -> tuple[date_type, str]:
-    """Splits a `lunch_{date}_{category}` field_key (already known to match
-    LUNCH_FIELD_KEY_PATTERN) into its date and category parts."""
+def parse_lunch_field_key(field_key: str) -> tuple[int, str]:
+    """Splits a `lunch_{track_id}_{category}` field_key (already known to
+    match LUNCH_FIELD_KEY_PATTERN) into its track and category parts."""
     match = LUNCH_FIELD_KEY_PATTERN.match(field_key)
-    date_str, category = match.group(1), match.group(2)
-    return datetime.strptime(date_str, "%Y%m%d").date(), category
+    return int(match.group(1)), match.group(2)
 
 
-def parse_availability_field_key(field_key: str) -> date_type:
-    """The date an `availability_{YYYYMMDD}` field covers (already known to
+def parse_availability_field_key(field_key: str) -> int:
+    """The track an `availability_{track_id}` field covers (already known to
     match AVAILABILITY_FIELD_KEY_PATTERN)."""
-    match = AVAILABILITY_FIELD_KEY_PATTERN.match(field_key)
-    return datetime.strptime(match.group(1), "%Y%m%d").date()
+    return int(AVAILABILITY_FIELD_KEY_PATTERN.match(field_key).group(1))
 
 
-def parse_event_preference_field_key(field_key: str) -> str:
-    """The suffix an `event_preference_{suffix}` field carries (already known
+def parse_event_preference_field_key(field_key: str) -> int:
+    """The track an `event_preference_{track_id}` field covers (already known
     to match EVENT_PREFERENCE_FIELD_KEY_PATTERN)."""
-    return EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key).group(1)
+    return int(EVENT_PREFERENCE_FIELD_KEY_PATTERN.match(field_key).group(1))
 
 
-def shift_ids_on_dates(db: Session, tournament_id: int, dates: set[date_type]) -> set[int]:
-    """Every shift the given tournament days contain — the set an
-    availability question for those days is answering about, whether or not
-    its options currently reference each one."""
-    if not dates:
+def shift_ids_on_tracks(db: Session, tournament_id: int, track_ids: set[int]) -> set[int]:
+    """Every shift the given tracks contain — the set an availability question
+    for those tracks is answering about, whether or not its options currently
+    reference each one."""
+    if not track_ids:
         return set()
     return {
         shift_id
-        for shift_id, start in db.query(TournamentShift.id, TournamentShift.start)
-        .filter(TournamentShift.tournament_id == tournament_id)
-        .all()
-        if start.date() in dates
+        for (shift_id,) in db.query(TournamentShift.id).filter(
+            TournamentShift.tournament_id == tournament_id,
+            TournamentShift.track_id.in_(track_ids),
+        )
     }
 
 
@@ -71,15 +67,15 @@ def sync_availability(
 ) -> None:
     """Applies one availability answer as a delta over the shifts it governs.
 
-    `owned_shift_ids` is every shift on the day(s) the answered question(s)
+    `owned_shift_ids` is every shift on the track(s) the answered question(s)
     cover — not just the ones its options happen to group right now. Shifts
-    outside that set belong to a different day's question, possibly on a
+    outside that set belong to a different track's question, possibly on a
     different form, and are left exactly as they are.
 
-    Scoping by day rather than by the options' current contents matters: if a
-    TD regroups an option so it no longer mentions some shift, that shift is
-    still part of the day being answered about, so a member who drops it must
-    actually lose it instead of keeping it forever as an orphan."""
+    Scoping by track rather than by the options' current contents matters: if
+    a TD regroups an option so it no longer mentions some shift, that shift is
+    still part of the track being answered about, so a member who drops it
+    must actually lose it instead of keeping it forever as an orphan."""
     existing_ids = {
         shift_id
         for (shift_id,) in db.query(TournamentMembershipAvailability.tournament_shift_id)
@@ -103,19 +99,19 @@ def sync_availability(
 def sync_lunch(
     db: Session,
     membership_id: int,
-    date: date_type,
+    track_id: int,
     category: str,
     values: list[dict],
 ) -> None:
     """Diffs `values` (each `{"value": ..., "label": ...}`) against this
     membership's existing TournamentMembershipLunch rows for this
-    (date, category) only — rows for any other date or category on the
+    (track, category) only — rows for any other track or category on the
     same membership are never touched."""
     existing_rows = (
         db.query(TournamentMembershipLunch)
         .filter(
             TournamentMembershipLunch.membership_id == membership_id,
-            TournamentMembershipLunch.date == date,
+            TournamentMembershipLunch.track_id == track_id,
             TournamentMembershipLunch.category == category,
         )
         .all()
@@ -132,7 +128,7 @@ def sync_lunch(
         db.add(
             TournamentMembershipLunch(
                 membership_id=membership_id,
-                date=date,
+                track_id=track_id,
                 category=category,
                 value=value,
                 label=item["label"],
@@ -145,15 +141,16 @@ def sync_lunch(
 def sync_event_preferences(
     db: Session,
     membership_id: int,
-    key: str,
+    track_id: int,
     items: list[dict],
 ) -> None:
     """Diffs `items` (each `{"tournament_event_id": ..., "rank": ...}`)
     against this membership's existing TournamentMembershipEventPreference
-    rows for this `key` only — rows for any other suffix on the same
-    membership are never touched. A suffix is one field's exclusive key
-    (unlike availability's shared day pool), so this can safely delete
-    outright rather than needing an owned-scope parameter.
+    rows for this track only — rows for any other track on the same
+    membership are never touched. A track has exactly one preference
+    question, so it owns its rows outright (unlike availability's shared
+    per-track pool, which several questions can feed) and this can delete
+    without needing an owned-scope parameter.
 
     Unlike sync_lunch, an existing row whose event stays selected but whose
     rank changed (a ranked-choice re-ranking) is updated in place rather than
@@ -163,7 +160,7 @@ def sync_event_preferences(
         db.query(TournamentMembershipEventPreference)
         .filter(
             TournamentMembershipEventPreference.membership_id == membership_id,
-            TournamentMembershipEventPreference.key == key,
+            TournamentMembershipEventPreference.track_id == track_id,
         )
         .all()
     )
@@ -181,7 +178,7 @@ def sync_event_preferences(
         db.add(
             TournamentMembershipEventPreference(
                 membership_id=membership_id,
-                key=key,
+                track_id=track_id,
                 tournament_event_id=event_id,
                 rank=item["rank"],
             )
@@ -190,27 +187,104 @@ def sync_event_preferences(
     db.flush()
 
 
+# ---------------------------------------------------------------------------
+# answer -> rows
+#
+# Turning one stored answer into the rows its sync function wants. Split out of
+# the response routes because there is now a second writer: the member's own
+# edit page writes the same tables directly, and a second implementation of
+# these shapes would drift from this one silently. The subtleties worth not
+# duplicating are the option_id -> value/label snapshot lookup, ranked_choice's
+# rank->option_id payload (every other question type hands over a flat list),
+# and the rank each question type implies.
+# ---------------------------------------------------------------------------
+
+def lunch_values_from_answer(field, value) -> list[dict]:
+    """One lunch answer as `{"value", "label"}` rows for sync_lunch.
+
+    A free-text question stores the typed answer itself; anything else stores
+    option ids that resolve back through the field's own option snapshots.
+    Blank free text clears the rows rather than storing an empty one, so an
+    erased answer reads the same as never having answered."""
+    from app.core.form.validation import LUNCH_FREE_TEXT_QUESTION_TYPES
+
+    if field.question_type in LUNCH_FREE_TEXT_QUESTION_TYPES:
+        text = value.strip() if isinstance(value, str) else ""
+        return [{"value": text, "label": text}] if text else []
+
+    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+    selected = value if isinstance(value, list) else ([value] if value else [])
+    return [
+        {"value": options_by_id[v]["value"], "label": options_by_id[v]["label"]}
+        for v in selected
+        if v in options_by_id
+    ]
+
+
+def event_preference_items_from_answer(field, value) -> list[dict]:
+    """One event-preference answer as `{"tournament_event_id", "rank"}` rows
+    for sync_event_preferences.
+
+    Each selected option expands into one row per event it groups. The rank
+    depends on the question type: `ranked_choice` carries its own (and is the
+    one type whose stored value is a rank -> option_id mapping rather than a
+    flat list), `single_select_dropdown` implies rank 1, and
+    `multi_select_checkbox` is unranked."""
+    options_by_id = {opt["option_id"]: opt for opt in (field.config or {}).get("options", [])}
+    items: list[dict] = []
+
+    if field.question_type == "ranked_choice":
+        for rank, option_id in (value if isinstance(value, dict) else {}).items():
+            option = options_by_id.get(option_id)
+            if option is None:
+                continue
+            for event_id in option.get("value") or []:
+                items.append({"tournament_event_id": event_id, "rank": int(rank)})
+        return items
+
+    # Options are mutually exclusive by event (see
+    # validate_event_preference_options), so no event can collide across two
+    # selected options here.
+    rank = 1 if field.question_type == "single_select_dropdown" else None
+    selected = value if isinstance(value, list) else ([value] if value else [])
+    for option_id in selected:
+        option = options_by_id.get(option_id)
+        if option is None:
+            continue
+        for event_id in option.get("value") or []:
+            items.append({"tournament_event_id": event_id, "rank": rank})
+    return items
+
+
 TRACK_STATUSES = ("interested", "confirmed", "declined")
 
 
 def can_set_track_status(current: str | None, incoming: str) -> bool:
     """Whether a write may move a track from `current` to `incoming`.
 
-    The whole rule: **a track never falls back to `interested` once it's moved
-    past it.** Everything else is permitted — interested→confirmed, either→
-    declined, declined→confirmed for someone who changes their mind, and any
-    status re-written as itself.
+    The whole rule: **`confirmed` never falls back to `interested`.**
+    Everything else is permitted — interested→confirmed, either→declined,
+    declined→confirmed *or* →interested for someone who changes their mind,
+    and any status re-written as itself.
 
     This is what keeps track statuses ordered, in place of comparing submission
     times. Write-through is forward-only, but a TD can still raise a pending
     update on a track question in an *older* form, and that patch would
     otherwise demote a track a newer form already confirmed. Since the only
-    damage an out-of-order write can do is a demotion, refusing demotions
-    closes it without any notion of "which response is newer".
+    damage an out-of-order write can do is that demotion, refusing it closes
+    the hole without any notion of "which response is newer".
+
+    `declined` is deliberately not a floor. A member who opts out on their own
+    page and then fills in a form saying they're interested is giving newer
+    information about the same question, and treating the opt-out as final
+    made the form silently do nothing. Re-entry from `declined` was already
+    allowed for `confirmed`; there was never a reason for `interested` to be
+    the exception, and it isn't ordering that the guard protects — a declined
+    track has no progress to lose.
 
     The cost is that no form can walk a mistaken `confirmed` back down to
     `interested` — that needs a path that bypasses this guard."""
-    return incoming != "interested" or current in (None, "interested")
+    return incoming != "interested" or current != "confirmed"
 
 
 def sync_track_statuses(
@@ -229,7 +303,8 @@ def sync_track_statuses(
     into these rows, so no field owns one and none can withdraw its
     contribution after the fact — a member who stops selecting an option keeps
     the status it granted. Same reasoning as availability, minus availability's
-    day boundary: there's no equivalent scope that would make a removal safe.
+    track boundary: a track_status_* key names no track, so there's no
+    equivalent scope that would make a removal safe.
 
     A write the transition rule refuses is skipped silently rather than
     raising. It's a legitimate outcome of the rules — a respondent answering

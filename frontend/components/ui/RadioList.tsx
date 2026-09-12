@@ -29,7 +29,7 @@ export function RadioList({ options, value, onChange, locked = false, size = 16,
         <RadioRow
           key={opt.value}
           option={opt}
-          checked={!locked && value === opt.value}
+          checked={!!value && value === opt.value}
           locked={locked}
           size={size}
           fontSize={fontSize}
@@ -56,18 +56,22 @@ function RadioRow({ option, checked, locked, size, fontSize, onClick }: {
       data-option-value={option.value}
       style={{
         display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
-        height: ROW_HEIGHT,
+        // minHeight, not height: a label long enough to wrap would
+        // otherwise overflow a fixed-height row.
+        minHeight: ROW_HEIGHT,
         borderRadius: 'var(--radius-md)',
         background: 'var(--color-surface)',
         cursor: locked ? 'default' : 'pointer',
       }}
     >
-      {/* locked rows never show a selection — value comparison alone
-          isn't safe there (e.g. multiple not-yet-saved options can all
-          share an empty option_id, which would otherwise all "match"
-          an empty value at once). */}
       <RadioCircle checked={checked} disabled={locked} size={size} />
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize, color: 'var(--color-text-primary)' }}>
+      {/* Dimmed to match the circle, which already greys itself when
+          disabled — a locked row reads as inactive rather than as an option
+          that simply isn't responding. */}
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize,
+        color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
+      }}>
         {option.label}
       </span>
     </label>

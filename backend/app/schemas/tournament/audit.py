@@ -2,9 +2,8 @@ from __future__ import annotations
 from datetime import datetime
 from pydantic import BaseModel
 
-from app.schemas.tournament.membership import MembershipSlimResponse
 from app.schemas.tournament.role import RoleRead
-from app.schemas.user import UserSlimResponse
+from app.schemas.person import PersonRefResponse
 
 
 class AuditLogEntryRead(BaseModel):
@@ -17,7 +16,7 @@ class AuditLogEntryRead(BaseModel):
     created_at: datetime
     # The actor's membership in this tournament — falls back to the bare user
     # when they have none (e.g. a site admin acting without ever joining).
-    actor: MembershipSlimResponse | UserSlimResponse
+    actor: PersonRefResponse
     # Current role state, resolved server-side — populated only when
     # target_type == "role" and the role still exists (None for
     # role_deleted, and for the bulk-reorder role_updated variant, which has
@@ -35,7 +34,7 @@ class AuditLogPage(BaseModel):
 
 
 class AuditLogActor(BaseModel):
-    actor: MembershipSlimResponse | UserSlimResponse
+    actor: PersonRefResponse
     # Total entries this actor has in this tournament's log — lets the
     # "Filter by User" dropdown sort most-active first.
     count: int

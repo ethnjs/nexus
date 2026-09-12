@@ -129,10 +129,10 @@ class TestRequired:
 class TestFieldKey:
     def test_standard_to_preset_flags(self):
         field = _field(field_key="availability_question")
-        assert changes.KEY_CHANGED in _classify(field, new_field_key="availability_20260315")
+        assert changes.KEY_CHANGED in _classify(field, new_field_key="availability_7")
 
     def test_preset_to_standard_flags(self):
-        field = _field(field_key="lunch_20270213_protein")
+        field = _field(field_key="lunch_7_protein")
         assert changes.KEY_CHANGED in _classify(field, new_field_key="lunch_choice")
 
     def test_standard_rename_is_not_a_key_change(self):
@@ -142,8 +142,8 @@ class TestFieldKey:
         assert _classify(field, new_field_key="preferred_color") == set()
 
     def test_preset_to_different_preset_is_not_a_key_change(self):
-        field = _field(field_key="availability_20260315")
-        assert _classify(field, new_field_key="availability_20260316") == set()
+        field = _field(field_key="availability_7")
+        assert _classify(field, new_field_key="availability_8") == set()
 
 
 class TestText:
@@ -207,7 +207,7 @@ class TestEntityRegrouping:
 
     def _availability(self, groups):
         return _field(
-            field_key="availability_20260315",
+            field_key="availability_7",
             question_type="multi_select_checkbox",
             config={"required": False, "options": [
                 {"option_id": option_id, "value": list(value), "label": option_id.title()}

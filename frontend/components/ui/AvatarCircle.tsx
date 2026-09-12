@@ -1,7 +1,6 @@
 interface AvatarCircleUser {
   first_name?: string | null;
   last_name?: string | null;
-  email: string;
 }
 
 export type AvatarCircleSize = "xs" | "sm" | "md" | "lg";
@@ -22,9 +21,10 @@ const SIZE_MAP: Record<AvatarCircleSize, { box: number; font: number }> = {
 };
 
 export function AvatarCircle({ user, size = 32 }: AvatarCircleProps) {
+  // No email fallback: a person reference carries a name and roles only, and
+  // an initial taken from an address isn't worth putting one back.
   const initials =
-    (`${user.first_name?.[0] ?? ""}${user.last_name?.[0] ?? ""}`).toUpperCase() ||
-    user.email[0].toUpperCase();
+    (`${user.first_name?.[0] ?? ""}${user.last_name?.[0] ?? ""}`).toUpperCase() || "?";
 
   const { box, font } = typeof size === "number"
     ? { box: size, font: Math.max(11, Math.round(size * 0.34)) }

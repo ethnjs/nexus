@@ -30,11 +30,11 @@ export function CheckboxList({ options, value, onChange, locked = false, size = 
         <CheckboxRow
           key={opt.value}
           option={opt}
-          checked={!locked && value.includes(opt.value)}
+          checked={value.includes(opt.value)}
           locked={locked}
           size={size}
           fontSize={fontSize}
-          onChange={() => onChange(opt.value)}
+          onChange={() => !locked && onChange(opt.value)}
         />
       ))}
     </div>
@@ -56,16 +56,20 @@ function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
       data-option-value={option.value}
       style={{
         display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
-        height: ROW_HEIGHT,
+        // minHeight, not height: a label long enough to wrap would
+        // otherwise overflow a fixed-height row.
+        minHeight: ROW_HEIGHT,
         borderRadius: 'var(--radius-md)',
         background: 'var(--color-surface)',
         cursor: locked ? 'default' : 'pointer',
       }}
     >
-      {/* locked rows never show a selection — see RadioList for why value
-          comparison alone isn't safe there. */}
       <Checkbox checked={checked} locked={locked} onChange={onChange} size={size} />
-      <span style={{ fontFamily: 'var(--font-sans)', fontSize, color: 'var(--color-text-primary)' }}>
+      {/* Dimmed to match the box, which already greys itself when locked. */}
+      <span style={{
+        fontFamily: 'var(--font-sans)', fontSize,
+        color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
+      }}>
         {option.label}
       </span>
     </label>

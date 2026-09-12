@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { TournamentTrack } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { IconPlus, IconDescription, IconButton, IconBranch, IconSwap } from "@/components/ui/Icons";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
@@ -8,10 +8,10 @@ import { FieldKeyPopover } from "@/components/forms/FieldKeyPopover";
 import { PresetPopover } from "@/components/forms/PresetPopover";
 import { EditableField } from "@/lib/forms/editableField";
 import { EditableOption } from "@/components/forms/OptionsEditor";
-import { activePresetKind, isEntityBackedPreset } from "@/lib/forms/fieldKeyPresets";
+import { activePresetKind, allowsCustomValues } from "@/lib/forms/fieldKeyPresets";
 import { BRANCHING_TYPES, OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
-type ActivePopover = "key" | "preset" | null;
+export type ActivePopover = "key" | "preset" | null;
 
 // The one toolbar shared by every field card (field key/presets, add a
 // field below, toggle the description input). It's absolutely positioned
@@ -21,7 +21,8 @@ type ActivePopover = "key" | "preset" | null;
 // boxRef — imperatively, since re-rendering on every observed resize frame
 // would be waste.
 export function FieldToolbar({
-  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tournamentDates, onOpenPresets, presetsEnabled,
+  boxRef, field, onFieldChange, usedFieldKeys, allFields, errors, saveAttempt, tracks, onOpenPresets, presetsEnabled,
+  activePopover, onActivePopoverChange, demandPresetComplete,
   showDescription, onAddFieldBelow, onToggleDescription, displayStyle, onToggleDisplayStyle,
 }: {
   boxRef: React.RefObject<HTMLDivElement | null>;
@@ -33,9 +34,17 @@ export function FieldToolbar({
   saveAttempt: number;
   /** The tournament's individual running days — passed through to
       PresetPopover's availability/lunch date pickers. */
-  tournamentDates: string[];
+  tracks: TournamentTrack[];
   /** Fires when the presets panel opens — see PresetPopover's onOpen. */
   onOpenPresets?: () => void;
+  /** Which of the two popovers is open — only one can be at a time. Owned by
+      the caller so a card's body can pull the preset one open (an entity
+      picker used before the question has a track), and so switching fields
+      closes whatever was left open. */
+  activePopover: ActivePopover;
+  /** Forwarded to PresetPopover — see its `demandComplete`. */
+  demandPresetComplete?: boolean;
+  onActivePopoverChange: (popover: ActivePopover) => void;
   presetsEnabled: boolean;
   showDescription: boolean;
   onAddFieldBelow: () => void;
@@ -46,7 +55,7 @@ export function FieldToolbar({
 }) {
   // Only one of the key/preset popovers can be open at a time — setting one
   // implicitly closes the other, since both read from this single slot.
-  const [activePopover, setActivePopover] = useState<ActivePopover>(null);
+
 
   // Turning a toggle off doesn't just hide the extra UI — it resets the data
   // those rows were carrying back to the "off" default, so a TD who turns
@@ -103,17 +112,18 @@ export function FieldToolbar({
           errors={errors}
           saveAttempt={saveAttempt}
           open={activePopover === "key"}
-          onOpenChange={(open) => setActivePopover(open ? "key" : null)}
+          onOpenChange={(open) => onActivePopoverChange(open ? "key" : null)}
         />
         {presetsEnabled && <PresetPopover
           field={field}
           onFieldChange={onFieldChange}
-          tournamentDates={tournamentDates}
+          tracks={tracks}
           onOpen={onOpenPresets}
           errors={errors}
           saveAttempt={saveAttempt}
+          demandComplete={demandPresetComplete}
           open={activePopover === "preset"}
-          onOpenChange={(open) => setActivePopover(open ? "preset" : null)}
+          onOpenChange={(open) => onActivePopoverChange(open ? "preset" : null)}
         />}
         {displayStyle && (
           <Button
@@ -133,7 +143,7 @@ export function FieldToolbar({
             <IconBranch size={14} />
           </Button>
         )}
-        {OPTION_BEARING_TYPES.includes(field.question_type) && !isEntityBackedPreset(activePresetKind(field.field_key)) && (
+        {OPTION_BEARING_TYPES.includes(field.question_type) && allowsCustomValues(activePresetKind(field.field_key)) && (
           <Button
             type="button" variant={field.customValuesEnabled ? "primary" : "secondary"} size="sm" iconOnly
             title={field.customValuesEnabled ? "Hide custom values" : "Set custom values"}

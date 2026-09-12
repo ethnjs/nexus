@@ -8,20 +8,38 @@ tournament — see Tournament.archive_override_at for the full rationale).
 from __future__ import annotations
 from datetime import date
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.join_codes import deactivate_tournament_join_codes
 from app.core.tournament.audit import TOURNAMENT_ARCHIVED, log_action
-from app.models.models import Tournament
+from app.models.models import Tournament, TournamentTrack
 
 
 def archive_ended_tournaments(db: Session) -> int:
     """Archive every non-archived, non-overridden tournament past its
     end_date. Commits. Returns the number archived."""
+    # end_date is a Python property over the tournament's primary tracks, so
+    # it can't be filtered on directly. The equivalent in SQL is the same
+    # aggregate: a tournament has ended when the latest of its live primary
+    # tracks has. A tournament with no dated primary track matches nothing and
+    # is correctly left alone.
+    ended = (
+        db.query(TournamentTrack.tournament_id)
+        .filter(
+            TournamentTrack.is_primary.is_(True),
+            TournamentTrack.is_archived.is_(False),
+            TournamentTrack.end_date.isnot(None),
+        )
+        .group_by(TournamentTrack.tournament_id)
+        .having(func.max(TournamentTrack.end_date) < date.today())
+        .subquery()
+    )
+
     tournaments = (
         db.query(Tournament)
         .filter(
-            Tournament.end_date < date.today(),
+            Tournament.id.in_(db.query(ended.c.tournament_id)),
             Tournament.is_archived.is_(False),
             Tournament.archive_override_at.is_(None),
         )

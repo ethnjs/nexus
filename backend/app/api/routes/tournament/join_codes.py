@@ -10,20 +10,19 @@ from app.core.tournament.audit import (
     JOIN_CODE_CREATED, JOIN_CODE_DEACTIVATED, JOIN_CODE_UPDATED, STAFF_INVITE_SENT, log_action,
 )
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived, tournament_display_name
-from app.core.tournament.memberships import has_any_membership, resolve_memberships_or_users
+from app.core.tournament.memberships import has_any_membership, resolve_person_refs
 from app.core.tournament.permissions import MANAGE_INVITES, require_permission
 from app.core.auth import get_current_user
 from app.db.session import get_db
 from app.models.models import JoinCode, User
 from app.schemas.join_code import JoinCodeCreate, JoinCodeResponse, JoinCodeUpdate, StaffInviteCreate, StaffInviteResponse
-from app.schemas.tournament.membership import MembershipSlimResponse
-from app.schemas.user import UserSlimResponse
+from app.schemas.person import PersonRefResponse
 from app.services.email_service import send_staff_invite_emails
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 
 
-def _to_response(join_code: JoinCode, creators: dict[int, MembershipSlimResponse | UserSlimResponse]) -> JoinCodeResponse:
+def _to_response(join_code: JoinCode, creators: dict[int, PersonRefResponse]) -> JoinCodeResponse:
     return JoinCodeResponse(
         id=join_code.id,
         code=join_code.code,
@@ -50,7 +49,7 @@ def list_join_codes(
         .order_by(JoinCode.created_at.desc())
         .all()
     )
-    creators = resolve_memberships_or_users(db, tournament_id, {jc.created_by for jc in join_codes})
+    creators = resolve_person_refs(db, tournament_id, {jc.created_by for jc in join_codes})
     return [_to_response(jc, creators) for jc in join_codes]
 
 
@@ -99,7 +98,7 @@ def create_join_code(
 
     db.commit()
     db.refresh(join_code)
-    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
+    creators = resolve_person_refs(db, tournament_id, {join_code.created_by})
     return _to_response(join_code, creators)
 
 
@@ -143,7 +142,7 @@ def update_join_code(
 
     db.commit()
     db.refresh(join_code)
-    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
+    creators = resolve_person_refs(db, tournament_id, {join_code.created_by})
     return _to_response(join_code, creators)
 
 
@@ -225,5 +224,5 @@ async def send_staff_invites(
     )
 
     db.commit()
-    creators = resolve_memberships_or_users(db, tournament_id, {join_code.created_by})
+    creators = resolve_person_refs(db, tournament_id, {join_code.created_by})
     return StaffInviteResponse(join_code=_to_response(join_code, creators), sent=sent, failed=failed)

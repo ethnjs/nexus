@@ -13,7 +13,10 @@ import { RadioList } from '@/components/ui/RadioList'
 import { CheckboxList } from '@/components/ui/CheckboxList'
 import { OptionsEditor, EditableOption, BranchTarget } from '@/components/forms/OptionsEditor'
 import { EntityOptionsEditor } from '@/components/forms/EntityOptionsEditor'
-import { activePresetKind, isEntityBackedPreset } from '@/lib/forms/fieldKeyPresets'
+import {
+  activePresetKind, isEntityBackedPreset,
+  parseAvailabilityFieldKey, parseEventPreferenceFieldKey,
+} from '@/lib/forms/fieldKeyPresets'
 import { OPTION_BEARING_TYPES, BRANCHING_TYPES } from '@/lib/forms/fieldTypes'
 
 // Only what rendering actually needs — not the full persisted FormField
@@ -40,6 +43,11 @@ interface QuestionRendererProps {
   /** view mode only. false = read-only preview (the builder's collapsed card
       state); true = a real respondent can answer. */
   interactive?: boolean
+  /** view mode, interactive only — the question still shows the answer given,
+      but every input is locked. Distinct from `interactive: false`, which is a
+      blank preview: this is an answer that exists and can't be changed right
+      now (e.g. a track the member has declined). */
+  locked?: boolean
   /** view mode only. Shape depends on question_type (string for text types,
       boolean for acknowledgment, ...). */
   value?: unknown
@@ -83,6 +91,9 @@ interface QuestionRendererProps {
       there's nothing to preserve, so removing an option just removes it and
       the extra control would be noise. */
   allowArchive?: boolean
+  /** Forwarded to EntityOptionsEditor — see its own prop. Absent outside the
+      form builder, where there is no preset popover to open. */
+  onRequireTrack?: () => void
   /** edit mode only — this field's useFormValidation messages (label/key
       errors are handled by the caller — see FieldCard — so only the
       body-relevant ones need to reach here: confirmation text, options,
@@ -100,10 +111,29 @@ interface QuestionRendererProps {
 // availability, where GET /forms/{id}/ resolves `value` into each grouped
 // shift's own start/end (see optionDisplayLabel) so the option can show its
 // time range alongside the TD-typed label.
+// The required marker rides the last word rather than following the label as
+// a free-floating node: a label that fills its line to within a few px would
+// otherwise wrap the lone asterisk onto a line of its own. Only the tail is
+// nowrap, so everything before it still wraps normally.
+function QuestionLabel({ label, required }: { label: string; required: boolean }) {
+  if (!required) return <>{label}</>
+  const split = label.lastIndexOf(' ')
+  return (
+    <>
+      {split === -1 ? null : label.slice(0, split + 1)}
+      <span style={{ whiteSpace: 'nowrap' }}>
+        {split === -1 ? label : label.slice(split + 1)}
+        <span style={{ color: 'var(--color-danger)' }}> *</span>
+      </span>
+    </>
+  )
+}
+
 export function QuestionRenderer({
-  field, mode = 'view', interactive = false, value, onChange, error, shifts, showHeader = true,
+  field, mode = 'view', interactive = false, locked = false, value, onChange, error, shifts, showHeader = true,
   onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [],
   allowArchive = false,
+  onRequireTrack,
 }: QuestionRendererProps) {
   const config = field.config ?? {}
 
@@ -115,8 +145,7 @@ export function QuestionRenderer({
               so the builder's collapsed card can open straight into it. Inert
               everywhere else. */}
           <span data-focus="label" style={{ fontFamily: 'var(--font-sans)', fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>
-            {field.label || 'Untitled question'}
-            {config.required && <span style={{ color: 'var(--color-danger)' }}> *</span>}
+            <QuestionLabel label={field.label || 'Untitled question'} required={!!config.required} />
           </span>
           {field.description && (
             <p data-focus="description" style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)', marginTop: '4px' }}>
@@ -136,9 +165,10 @@ export function QuestionRenderer({
           customValuesEnabled={customValuesEnabled}
           errors={errors}
           allowArchive={allowArchive}
+          onRequireTrack={onRequireTrack}
         />
       ) : (
-        <QuestionBody field={field} interactive={interactive} value={value} onChange={onChange} error={error} shifts={shifts} />
+        <QuestionBody field={field} interactive={interactive} locked={locked} value={value} onChange={onChange} error={error} shifts={shifts} />
       )}
     </div>
   )
@@ -188,15 +218,20 @@ function optionDisplayLabel(option: FormFieldOption, shifts?: TournamentShift[] 
   return option.label
 }
 
-function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
+function QuestionBody({ field, interactive, locked, value, onChange, error, shifts }: {
   field: QuestionFieldData
   interactive?: boolean
   value?: unknown
   onChange?: (value: unknown) => void
   error?: string
   shifts?: TournamentShift[] | null
+  locked?: boolean
 }) {
   const config = field.config ?? {}
+  // Locked keeps the answer on screen but refuses edits, so every input is
+  // locked and every handler is a no-op. `interactive` still decides whether
+  // there is an answer to show at all.
+  const editable = interactive && !locked
   // An archived option stays in `config.options` forever so old answers
   // referencing its option_id keep resolving (see apply_option_archiving on
   // the backend) — it is storage, never a choice to present. Respondents
@@ -209,9 +244,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Input
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : 'Short answer'}
-          locked={!interactive}
+          locked={!editable}
           fullWidth
         />
       )
@@ -220,9 +255,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Textarea
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(e) => onChange?.(e.target.value)}
+          onChange={(e) => editable && onChange?.(e.target.value)}
           placeholder={interactive ? undefined : 'Long answer'}
-          disabled={!interactive}
+          disabled={!editable}
           rows={3}
           fullWidth
         />
@@ -230,11 +265,11 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 
     case 'acknowledgment':
       return (
-        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: interactive ? 'pointer' : 'default' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: editable ? 'pointer' : 'default' }}>
           <Checkbox
             checked={interactive ? Boolean(value) : false}
-            onChange={(checked) => onChange?.(checked)}
-            locked={!interactive}
+            onChange={(checked) => editable && onChange?.(checked)}
+            locked={!editable}
             size={18}
           />
           <span style={{ fontFamily: 'var(--font-sans)', fontSize: '14px', color: 'var(--color-text-secondary)' }}>
@@ -253,8 +288,8 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           <ButtonGroup
             options={displayOptions}
             value={selected}
-            onChange={(v) => interactive && onChange?.(v)}
-            locked={!interactive}
+            onChange={(v) => editable && onChange?.(v)}
+            locked={!editable}
             clickThrough={!interactive}
           />
         )
@@ -264,8 +299,8 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
         <RadioList
           options={displayOptions}
           value={selected}
-          onChange={(v) => interactive && onChange?.(v)}
-          locked={!interactive}
+          onChange={(v) => editable && onChange?.(v)}
+          locked={!editable}
           size={19}
           fontSize="16px"
           gap="8px"
@@ -278,10 +313,10 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       return (
         <Dropdown
           value={interactive ? (value as string | undefined) ?? '' : ''}
-          onChange={(v) => onChange?.(v)}
+          onChange={(v) => editable && onChange?.(v)}
           options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
           placeholder="Choose"
-          locked={!interactive}
+          locked={!editable}
           fullWidth
         />
       )
@@ -293,7 +328,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
       const selected = interactive ? ((value as string[] | undefined) ?? []) : []
 
       function toggle(optionId: string) {
-        if (!interactive) return
+        if (!editable) return
         onChange?.(selected.includes(optionId) ? selected.filter((id) => id !== optionId) : [...selected, optionId])
       }
 
@@ -303,7 +338,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
             options={displayOptions}
             value={selected}
             onChange={toggle}
-            locked={!interactive}
+            locked={!editable}
             clickThrough={!interactive}
           />
         )
@@ -314,7 +349,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           options={displayOptions}
           value={selected}
           onChange={toggle}
-          locked={!interactive}
+          locked={!editable}
           size={19}
           fontSize="16px"
           gap="8px"
@@ -330,9 +365,9 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
           options={options.map((opt) => ({ value: opt.option_id, label: opt.label }))}
           ranks={ranks}
           value={interactive ? (value as Record<string, string> | undefined) ?? {} : {}}
-          onChange={(next) => interactive && onChange?.(next)}
+          onChange={(next) => editable && onChange?.(next)}
           allowDuplicates={!!config.allow_duplicates}
-          locked={!interactive}
+          locked={!editable}
           error={error}
         />
       )
@@ -360,7 +395,7 @@ function QuestionBody({ field, interactive, value, onChange, error, shifts }: {
 // happen to be entity-backed — an availability field is still real,
 // addressable rows a TD can jump from or lay out as buttons, same as any
 // other single_select_radio/dropdown field.
-function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false }: {
+function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, branchingEnabled, customValuesEnabled, errors = [], allowArchive = false, onRequireTrack }: {
   field: QuestionFieldData
   onFieldChange: (updates: FieldUpdate) => void
   tournament: Tournament | null
@@ -369,10 +404,17 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
   customValuesEnabled?: boolean
   errors?: string[]
   allowArchive?: boolean
+  onRequireTrack?: () => void
 }) {
   const presetKind = activePresetKind(field.field_key ?? '')
   const supportsBranching = BRANCHING_TYPES.includes(field.question_type)
   const isEntityBackedKind = isEntityBackedPreset(presetKind)
+  // The track named in the field's own key — scopes what the entity pickers
+  // may offer. track_status names no track, so it has none.
+  const presetTrackId =
+    presetKind === 'availability' ? parseAvailabilityFieldKey(field.field_key ?? '').trackId
+    : presetKind === 'event_preference' ? parseEventPreferenceFieldKey(field.field_key ?? '').trackId
+    : null
   const hasTracks = presetKind === 'track_status' || (presetKind === 'availability' && !!field.config?.track_status_enabled)
   // tournament null means the entity-backed editor has no scope to fetch
   // shifts/events from — falls through to the read-only preview at the
@@ -408,6 +450,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
         {isEntity || usesTrackEditor ? (
           <EntityOptionsEditor
             fieldKey={presetKind as 'availability' | 'event_preference' | 'track_status'}
+            trackId={presetTrackId}
             tournament={tournament!}
             questionType={field.question_type}
             options={allOptions}
@@ -417,6 +460,7 @@ function QuestionEditBody({ field, onFieldChange, tournament, branchTargets, bra
             errors={errors}
             trackStatusEnabled={hasTracks}
             allowArchive={allowArchive}
+            onRequireTrack={onRequireTrack}
           />
         ) : (
           <OptionsEditor

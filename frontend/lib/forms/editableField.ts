@@ -1,6 +1,7 @@
 import { FormField, FormFieldConfig, FormFieldInput } from "@/lib/api";
 import { EditableOption } from "@/components/forms/OptionsEditor";
 import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
+import { OPTION_BEARING_TYPES } from "@/lib/forms/fieldTypes";
 
 // A field being edited in the builder — same shape as FormField, but `id`
 // is null for a not-yet-saved field (PUT .../fields/ creates it on Save,
@@ -14,12 +15,18 @@ import { effectiveFieldKey } from "@/lib/forms/fieldKeyPresets";
 // survive FieldToolbar remounting on every expanded-field switch — see
 // deriveBranchingEnabled/deriveCustomValuesEnabled below for how a loaded
 // field's initial value is worked out from its actual option data.
+// originalFieldKey is the key this field is already known to own on the
+// server ("" for a field with no id, which can't own one yet) — the fixed
+// point a live cross-form duplicate check (FieldCard's duplicateKey) needs
+// to exclude, since usedFieldKeys otherwise always contains an unedited
+// existing field's own key right alongside anyone else's.
 export type EditableField = Omit<FormField, "id"> & {
   id: string | null;
   clientKey: string;
   showDescription: boolean;
   branchingEnabled: boolean;
   customValuesEnabled: boolean;
+  originalFieldKey: string;
 };
 
 // A field's options actually use branching/custom values yet — used to seed
@@ -55,6 +62,7 @@ export function newField(order: number): EditableField {
     showDescription: false,
     branchingEnabled: false,
     customValuesEnabled: false,
+    originalFieldKey: "",
     form_id: "",
     field_key: "",
     order,
@@ -81,6 +89,11 @@ export function newField(order: number): EditableField {
 // doesn't carry it either.
 export function toFieldInput(field: EditableField, notifyResponders?: boolean): FormFieldInput {
   const config: FormFieldConfig = { ...(field.config ?? {}) };
+  // A type that takes no options must not carry the key at all — the text
+  // config schemas are extra="forbid", so even `options: []` 422s the whole
+  // batch. Enforced here as well as at each staging site so no editing path
+  // can produce a payload the server refuses.
+  if (!OPTION_BEARING_TYPES.includes(field.question_type)) delete config.options;
   if (config.options) {
     config.options = (config.options as EditableOption[]).map((option) => {
       const { clientKey, ...rest } = option;

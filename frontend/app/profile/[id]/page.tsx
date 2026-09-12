@@ -14,34 +14,7 @@ import { CompetitionExperienceSection } from "@/components/profile/sections/Comp
 import { VolunteerExperienceSection } from "@/components/profile/sections/VolunteerExperienceSection";
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { CompetitionExperienceDraft, VolunteerExperienceDraft } from "@/components/profile/ExperienceTables";
-import Link from "next/link";
-import { IconEdit } from "@/components/ui/Icons";
-
-
-interface FloatingEditButtonProps {
-  profileId: string | number;
-}
-
-export function FloatingEditButton({ profileId }: FloatingEditButtonProps) {
-  return (
-    <Link
-      href={`/profile/${profileId}/edit`}
-      style={{
-        position: "fixed", bottom: "32px", right: "32px",
-        width: "52px", height: "52px", borderRadius: "50%",
-        background: "var(--color-accent)", color: "var(--color-text-inverse)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        boxShadow: "var(--shadow-lg)", textDecoration: "none",
-        transition: "transform 0.15s ease",
-        zIndex: 50,
-      }}
-      onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.06)"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-    >
-      <IconEdit size={20} />
-    </Link>
-  );
-}
+import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 
 
 export default function ProfilePage() {
@@ -210,7 +183,7 @@ export default function ProfilePage() {
         <ProfileCard><LogisticsSection user={profile} /></ProfileCard>
       </div>
       {currentUser?.id === profile.id && (
-        <FloatingEditButton profileId={profile.id} />
+        <FloatingEditButton href={`/profile/${profile.id}/edit`} title="Edit your profile" />
       )}
     </div>
   );

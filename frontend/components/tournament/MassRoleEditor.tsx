@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { membershipsApi, ApiError, MembershipSlim, Role } from "@/lib/api";
-import { personName } from "@/lib/personDisplay";
+import { membersApi, ApiError, MembershipFull, Role } from "@/lib/api";
+import { userName } from "@/lib/personDisplay";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
@@ -17,7 +17,7 @@ import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
 export const MASS_ROLE_EDITOR_WIDTH = 460;
 
 interface MemberResult {
-  membership: MembershipSlim;
+  membership: MembershipFull;
   error?: string;
 }
 
@@ -36,7 +36,7 @@ function ResultsCard({ results }: { results: MemberResult[] }) {
       <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
         {results.map((r) => (
           <p key={r.membership.id} style={{ fontFamily: "var(--font-sans)", fontSize: "12px" }}>
-            <span style={{ fontWeight: 500 }}>{personName(r.membership)}</span>{" "}
+            <span style={{ fontWeight: 500 }}>{userName(r.membership.user)}</span>{" "}
             {r.error ? (
               <span style={{ color: "var(--color-danger)" }}>— {r.error}</span>
             ) : (
@@ -68,13 +68,13 @@ function RoleDiffRow({ role, sign, onUndo }: { role: Role; sign: "+" | "-"; onUn
 
 interface MassRoleEditorProps {
   tournamentId: number;
-  memberships: MembershipSlim[];
+  memberships: MembershipFull[];
   allRoles: Role[];
   /** Role-level rank gate, same as RolesCell — only roles this returns true for are offered here at all, so there's no per-member lock UI to build: a role you can't touch never appears as an option regardless of which member holds it. */
   canTouchRole: (role: Role) => boolean;
   onClose: () => void;
   /** Called once per membership that saved successfully, so the caller can patch its local list the same way RolesCell's onUpdated does. */
-  onUpdated: (updated: MembershipSlim) => void;
+  onUpdated: (updated: MembershipFull) => void;
   /** Lets the owning table block selection changes while this panel is dirty. */
   onDirtyChange?: (dirty: boolean) => void;
 }
@@ -93,7 +93,7 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
   // hiding them — a role being untouchable is still useful to see.
   const heldRoles = (() => {
     const byId = new Map<number, Role>();
-    memberships.forEach((m) => m.roles.forEach((r) => byId.set(r.id, r)));
+    memberships.forEach((m) => (m.roles ?? []).forEach((r) => byId.set(r.id, r)));
     return [...byId.values()];
   })();
 
@@ -141,11 +141,11 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
     setResults(null);
 
     const outcomes = await Promise.allSettled(memberships.map(async (m) => {
-      const heldIds = new Set(m.roles.map((r) => r.id));
+      const heldIds = new Set((m.roles ?? []).map((r) => r.id));
       const add = [...rolesToAdd].filter((id) => !heldIds.has(id));
       const remove = [...rolesToRemove].filter((id) => heldIds.has(id));
       if (add.length === 0 && remove.length === 0) return m;
-      return membershipsApi.updateRoles(tournamentId, m.id, {
+      return membersApi.updateRoles(tournamentId, m.id, {
         add: add.length > 0 ? add : undefined,
         remove: remove.length > 0 ? remove : undefined,
       });

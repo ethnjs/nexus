@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.core.form import changes
 from app.core.form.validation import (
     AVAILABILITY_FIELD_KEY_PATTERN,
@@ -143,13 +143,29 @@ def track_referenced_by_form_field(db: Session, tournament_id: int, track_id: in
         .filter(Form.tournament_id == tournament_id)
         .all()
     )
-    return any(
-        any(
-            assignment.get("id") == track_id
-            for assignment in track_status_assignments(field.config or {})
-        )
-        for field in fields
+    # A reserved key naming the track is a reference in its own right — an
+    # availability_{track}/lunch_{track}/event_preference_{track} field points
+    # at the track through its key, not through any option value.
+    from app.core.form.validation import (
+        availability_field_track_id, event_preference_field_track_id, lunch_field_track_id,
     )
+
+    for field in fields:
+        keyed = (
+            availability_field_track_id(field.field_key)
+            or event_preference_field_track_id(field.field_key)
+            or lunch_field_track_id(field.field_key)
+        )
+        if keyed == track_id:
+            return True
+        if any(
+            assignment.get("id") == track_id
+            for assignment in track_status_assignments(
+                field.config or {}, availability_field_track_id(field.field_key),
+            )
+        ):
+            return True
+    return False
 
 
 def shift_referenced_by_live_field(db: Session, tournament_id: int, shift_id: int) -> bool:
@@ -336,6 +352,15 @@ def _resolve_availability_option(db: Session, option: dict) -> dict:
         "option_id": option["option_id"],
         "label": option["label"],
         "value": resolved_value,
+        # Only single_select_radio ever reaches here with these set (the
+        # other allowed type, multi_select_checkbox, doesn't support
+        # branching — see BRANCHING_QUESTION_TYPES) — carried through
+        # unconditionally anyway so a respondent's branching walk sees the
+        # same jump target the builder round-trips via raw=true. Omitting
+        # them here was a bug: they used to just vanish from this response,
+        # silently breaking branching for every availability field that had it.
+        "next_field_id": option.get("next_field_id"),
+        "action": option.get("action"),
     }
 
 
@@ -351,8 +376,12 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
     if not isinstance(value, list):
         return option
 
+    # Whole rows rather than a column tuple: display_name has to fall back to
+    # the joined catalog Event's name, which a bare TournamentEvent.name
+    # select can't see.
     events = (
-        db.query(TournamentEvent.id, TournamentEvent.name, TournamentEvent.division)
+        db.query(TournamentEvent)
+        .options(joinedload(TournamentEvent.event))
         .filter(TournamentEvent.id.in_(value))
         .order_by(TournamentEvent.id)
         .all()
@@ -361,9 +390,14 @@ def _resolve_event_preference_option(db: Session, option: dict) -> dict:
         "option_id": option["option_id"],
         "label": option["label"],
         "value": [
-            {"id": event_id, "name": name, "division": division}
-            for event_id, name, division in events
+            {"id": e.id, "name": e.display_name, "division": e.division}
+            for e in events
         ],
+        # See _resolve_availability_option's identical fields — same bug,
+        # same fix. Only single_select_dropdown (of event_preference's three
+        # allowed types) ever has these set.
+        "next_field_id": option.get("next_field_id"),
+        "action": option.get("action"),
     }
 
 
@@ -395,6 +429,11 @@ def resolve_field_options(db: Session, field: FormField) -> list[dict]:
                 "option_id": option["option_id"],
                 "label": option["label"],
                 "value": _resolve_track_statuses(db, option.get("value") or []),
+                # See _resolve_availability_option's identical fields — same
+                # bug, same fix. Only single_select_radio (of track_status's
+                # two allowed types) ever has these set.
+                "next_field_id": option.get("next_field_id"),
+                "action": option.get("action"),
             }
             for option in options
         ]

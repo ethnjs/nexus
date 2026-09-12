@@ -21,6 +21,7 @@ from app.api.routes.tournament import audit as tournament_audit
 from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
 from app.api.routes.tournament import onboarding as tournament_onboarding
 from app.api.routes.tournament import tracks as tournament_tracks
+from app.api.routes.tournament import display_config as tournament_display_config
 from app.api.routes import chapter as chapter_core
 from app.api.routes.chapter import admin as chapter_admin
 from app.api.routes.chapter import memberships as chapter_memberships
@@ -98,7 +99,6 @@ app.include_router(season_event.admin_router,     prefix="", dependencies=[api_k
 app.include_router(tournament_core.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_events.router,             prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_shifts.router,               prefix="", dependencies=[api_key_dependency])
-app.include_router(tournament_shifts.event_shifts_router,  prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_memberships.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.router,               prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_roles.membership_roles_router, prefix="", dependencies=[api_key_dependency])
@@ -109,6 +109,7 @@ app.include_router(tournament_setup_checklist.router,      prefix="", dependenci
 app.include_router(tournament_onboarding.router,            prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_onboarding.member_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_tracks.router,                prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_display_config.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
 app.include_router(users.router,                  prefix="", dependencies=[api_key_dependency])
 app.include_router(user_experience.router,        prefix="", dependencies=[api_key_dependency])
