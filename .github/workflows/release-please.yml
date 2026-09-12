@@ -26,6 +26,25 @@ jobs:
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
+  link-release-notes:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      # Appends the user-facing notes link under release-please's generated commit list.
+      - name: Link the docs release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ needs.release-please.outputs.tag_name }}
+        run: |
+          gh release view "$TAG" -R "$REPO" --json body -q .body > notes.md
+          printf '\n\nRelease notes: https://docs.ethanshih.com/docs/nexus/release-notes/%s\n' "$TAG" >> notes.md
+          gh release edit "$TAG" -R "$REPO" --notes-file notes.md
+
   dispatch-docs:
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
