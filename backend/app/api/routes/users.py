@@ -79,16 +79,17 @@ def admin_update_user(
     """
     Admin can only update a user's role and status.
 
-    Setting status="locked" also revokes every session for that user —
-    locking is meant to cut off access immediately, not just block future
-    logins, so a currently-logged-in device shouldn't stay usable.
+    Moving a user off status="active" revokes every session they hold. Losing
+    access is meant to take effect now, not at their next sign-in — login
+    already refuses any non-active status, so leaving live sessions alone
+    would let a logged-in device keep working indefinitely.
     """
     user = find_user_by_id(db, user_id)
     updates = body.model_dump(exclude_unset=True)
     for field, value in updates.items():
         setattr(user, field, value)
 
-    if updates.get("status") == "locked":
+    if "status" in updates and updates["status"] != "active":
         revoke_all_sessions(db, user.id)
 
     db.commit()

@@ -124,8 +124,8 @@ class TestAdminUpdateUser:
         assert client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
 
     def test_locking_revokes_existing_session(self, client, admin_user, db):
-        # Locking must cut off an already-logged-in device immediately, not
-        # just block future logins the way plain deactivation does.
+        # Every move off "active" cuts off an already-logged-in device
+        # immediately rather than only blocking future logins.
         alice = _db_user(db, email="alice@example.com")
         login(client, "alice@example.com", "Password@1")
         alice_cookie = client.cookies.get("access_token")
@@ -138,6 +138,54 @@ class TestAdminUpdateUser:
 
         client.cookies.set("access_token", alice_cookie)
         assert client.get("/users/me/").status_code == 401
+
+    def test_deactivating_revokes_existing_session(self, client, admin_user, db):
+        """Deactivation is not a "future logins only" flag — an admin-set
+        deactivation has to drop the live session the same way locking does."""
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+        assert client.get("/users/me/").status_code == 200
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"}).status_code == 200
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 401
+
+    def test_admin_can_reactivate_user(self, client, admin_user, db):
+        """Admin-only reactivation is the only way back from deactivated or
+        locked — there is no logged-out self-service path."""
+        alice = _db_user(db, email="alice@example.com", status="deactivated")
+        assert login(client, "alice@example.com", "Password@1").status_code == 401
+
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "active"})
+        assert res.status_code == 200
+        assert res.json()["status"] == "active"
+
+        assert login(client, "alice@example.com", "Password@1").status_code == 200
+
+    def test_reactivating_does_not_revoke_admin_session(self, client, admin_user, db):
+        """Only a move *off* active revokes. Restoring a user must not knock
+        the acting admin's own session out."""
+        alice = _db_user(db, status="locked")
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "active"}).status_code == 200
+        assert client.get("/users/me/").status_code == 200
+
+    def test_role_only_update_leaves_sessions_alone(self, client, admin_user, db):
+        """A role change is not a status change — promoting a user must not
+        sign them out."""
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"role": "admin"}).status_code == 200
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 200
 
     def test_non_admin_forbidden(self, client, td_user, db):
         alice = _db_user(db)

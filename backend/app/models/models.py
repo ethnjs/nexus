@@ -180,10 +180,12 @@ class User(Base):
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
     # "active" | "invited" | "deactivated" | "locked". Login allows only
-    # "active", so deactivated and locked deny access identically — the split
-    # records *who* deactivated, which is what decides who may reverse it:
-    # deactivated is self-inflicted and self-reversible, locked is
-    # admin-imposed and admin-only to clear.
+    # "active", so every non-active status denies access identically — the
+    # deactivated/locked split records *who* did it: deactivated is the
+    # user's own choice (POST /users/me/deactivate/), locked is imposed by an
+    # admin. Both are currently admin-only to clear, since there is no
+    # logged-out reactivation path; the eventual intent is for deactivated to
+    # become self-reversible, which is the only reason the split exists.
     status = Column(String(32), nullable=False, default="active")
 
     # if a student
