@@ -83,19 +83,23 @@ export function AdminUserPanel({ userId, onClose }: { userId: number; onClose: (
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "16px", padding: "20px" }}>
-          <ProfileHeader user={user} />
-
-          {/* Account state, which the shared profile sections don't carry —
-              it's the reason an admin opened this rather than /profile/[id]. */}
-          <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center" }}>
-            <Badge variant={user.role === "admin" ? "admin" : "default"}>
-              {user.role === "admin" ? "Admin" : "User"}
-            </Badge>
-            <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
-            <Badge variant={user.email_verified ? "confirmed" : "warning"}>
-              {user.email_verified ? "Email verified" : "Email unverified"}
-            </Badge>
-          </div>
+          {/* Account state rides in the header beside the name — it's the
+              reason an admin opened this rather than /profile/[id], and the
+              shared profile sections don't carry any of it. */}
+          <ProfileHeader
+            user={user}
+            badges={
+              <>
+                <Badge variant={user.role === "admin" ? "admin" : "default"}>
+                  {user.role === "admin" ? "Admin" : "User"}
+                </Badge>
+                <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
+                <Badge variant={user.email_verified ? "confirmed" : "warning"}>
+                  {user.email_verified ? "Email verified" : "Email unverified"}
+                </Badge>
+              </>
+            }
+          />
 
           {/* One ProfileCard per section, same as /profile/[id] and MemberPanel —
               the sections render their heading and content only, and rely on a

@@ -1,3 +1,4 @@
+import { ReactNode } from "react";
 import Link from "next/link";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { formatPhone } from "@/lib/auth";
@@ -14,9 +15,16 @@ interface ProfileHeaderUser {
 interface ProfileHeaderProps {
   user: ProfileHeaderUser;
   showEditButton?: boolean;
+  /**
+   * Badges set below the contact line — account state an admin needs beside
+   * the name (role, status, email verification). A slot rather than fields on
+   * this component: /profile/[id] and MemberPanel show the same header to
+   * people with no business seeing any of it.
+   */
+  badges?: ReactNode;
 }
 
-export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderProps) {
+export function ProfileHeader({ user, showEditButton = false, badges }: ProfileHeaderProps) {
   const fullName =
     user.first_name && user.last_name
       ? `${user.first_name} ${user.last_name}`
@@ -68,6 +76,11 @@ export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderPro
               </>
             )}
           </div>
+          {badges && (
+            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", alignItems: "center", marginTop: "12px" }}>
+              {badges}
+            </div>
+          )}
         </div>
 
         {showEditButton && (
