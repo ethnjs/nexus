@@ -338,6 +338,7 @@ export default function AdminTournamentsPage() {
             onClear={() => setSearch("")}
             icon={<IconSearch size={16} />}
             size="md"
+            font="sans"
             variant="secondary"
             style={{ width: "420px" }}
           />
