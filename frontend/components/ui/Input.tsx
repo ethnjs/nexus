@@ -91,7 +91,7 @@ function ClearButton({ right, onClear }: { right: string; onClear: () => void })
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, labelExtra, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onClear, onChange, inputMode, max, onFocus, onBlur, ...props }, ref) => {
+  ({ label, labelExtra, error, helper, fullWidth, font = 'mono', size = 'md', variant = 'primary', className = '', id, value, locked, disabled, required, charset, icon, onClear, onChange, inputMode, max, onFocus, onBlur, style, ...props }, ref) => {
     const generatedId = useId()
     const inputId = id ?? generatedId
     const sizing = SIZE_MAP[size]
@@ -173,6 +173,11 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               width: fullWidth ? '100%' : undefined,
               cursor: locked ? 'not-allowed' : undefined,
               transition: 'border-color 150ms ease',
+              // Caller overrides merge in rather than replacing the lot.
+              // `style` is pulled out of props deliberately: {...props} spreads
+              // after this object, so a caller passing style used to wipe the
+              // border, height, padding, background and font along with it.
+              ...style,
             }}
             onFocus={e => {
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border-strong)'
