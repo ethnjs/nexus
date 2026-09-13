@@ -1,14 +1,14 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.auth import require_admin
 from app.core.tournament.audit import TOURNAMENT_VERIFIED, log_action
-from app.core.tournament import get_tournament, require_not_archived
+from app.core.tournament import get_tournament, require_not_archived, tournament_counts
 from app.db.session import get_db
 from app.models.models import Tournament, User
-from app.schemas.tournament import TournamentRead
+from app.schemas.tournament import AdminTournamentRead
 from app.api.routes.tournament import _serialize
 
 router = APIRouter(prefix="/admin/tournaments", tags=["tournaments"])
@@ -21,14 +21,29 @@ class VerifyRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # GET /admin/tournaments/ — platform admin only (global list)
 # ---------------------------------------------------------------------------
-@router.get("/", response_model=list[TournamentRead])
+@router.get("/", response_model=list[AdminTournamentRead])
 def list_all_tournaments(
     db: Session = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
-    """List every tournament, regardless of membership. Admin only."""
-    tournaments = db.query(Tournament).order_by(Tournament.created_at.desc()).all()
-    return [_serialize(t) for t in tournaments]
+    """List every tournament, regardless of membership. Admin only.
+
+    Carries the owner and the event/volunteer counts so the admin table can
+    judge a tournament without opening it. Owner and tracks are eager-loaded
+    and the counts come from two grouped queries, so the response costs a
+    fixed number of queries no matter how many tournaments exist.
+    """
+    tournaments = (
+        db.query(Tournament)
+        .options(joinedload(Tournament.owner), selectinload(Tournament.tracks))
+        .order_by(Tournament.created_at.desc())
+        .all()
+    )
+    counts = tournament_counts(db, [t.id for t in tournaments])
+    return [
+        AdminTournamentRead(**_serialize(t), owner=t.owner, **counts[t.id])
+        for t in tournaments
+    ]
 
 
 # ---------------------------------------------------------------------------

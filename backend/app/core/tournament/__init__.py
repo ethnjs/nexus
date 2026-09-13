@@ -1,13 +1,16 @@
 from __future__ import annotations
+from collections.abc import Sequence
 from datetime import datetime
 from typing import TypeVar
 from zoneinfo import ZoneInfo
 from fastapi import Depends, HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user
+from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
 from app.db.session import get_db
-from app.models.models import Tournament, TournamentMembership, User
+from app.models.models import Tournament, TournamentEvent, TournamentMembership, User
 
 T = TypeVar("T")
 
@@ -52,6 +55,50 @@ def tournament_display_name(tournament: Tournament) -> str:
     yet."""
     label = tournament.short_name or tournament.name
     return f"{tournament.first_day.year} {label}" if tournament.first_day else label
+
+
+def tournament_counts(db: Session, tournament_ids: Sequence[int]) -> dict[int, dict[str, int]]:
+    """{tournament_id: {"event_count": n, "volunteer_count": n}} for the ids given.
+
+    Two grouped queries for the whole list, not per row. The obvious
+    `len(t.events)` / `sum(1 for m in t.memberships ...)` lazy-loads both full
+    collections for every tournament in the list — tolerable for one user's
+    handful of dashboard cards, an N+1 over every tournament on the platform.
+
+    Ids with nothing to count are still present, at zero: a caller building a
+    response shouldn't have to distinguish "no events" from "not in the dict".
+    """
+    counts: dict[int, dict[str, int]] = {
+        tid: {"event_count": 0, "volunteer_count": 0} for tid in tournament_ids
+    }
+    if not counts:
+        return counts
+
+    ids = list(counts)
+
+    # TournamentEvent, not Event: Event is the global canonical catalog and
+    # has no tournament_id. Tournament.events points here.
+    event_rows = (
+        db.query(TournamentEvent.tournament_id, func.count(TournamentEvent.id))
+        .filter(TournamentEvent.tournament_id.in_(ids))
+        .group_by(TournamentEvent.tournament_id)
+        .all()
+    )
+    for tournament_id, count in event_rows:
+        counts[tournament_id]["event_count"] = count
+
+    # Declined memberships are excluded, matching is_declined() — the row
+    # still exists, it just isn't a volunteer.
+    member_rows = (
+        db.query(TournamentMembership.tournament_id, func.count(TournamentMembership.id))
+        .filter(TournamentMembership.tournament_id.in_(ids), ACTIVE_MEMBERSHIP_CLAUSE)
+        .group_by(TournamentMembership.tournament_id)
+        .all()
+    )
+    for tournament_id, count in member_rows:
+        counts[tournament_id]["volunteer_count"] = count
+
+    return counts
 
 
 def require_not_archived(tournament: Tournament) -> None:

@@ -8,8 +8,8 @@ from app.core.tournament.archive import archive_tournament as apply_archive
 from app.core.tournament.audit import OWNERSHIP_TRANSFERRED, TOURNAMENT_UNARCHIVED, log_action
 # Aliased — this module's own GET /{tournament_id}/ route handler is also
 # named get_tournament, which would otherwise collide.
-from app.core.tournament import get_tournament as fetch_tournament, require_not_archived
-from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership, is_declined
+from app.core.tournament import get_tournament as fetch_tournament, require_not_archived, tournament_counts
+from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE, has_any_membership
 from app.core.tournament.permissions import (
     MANAGE_TOURNAMENT,
     require_membership,
@@ -72,14 +72,9 @@ def list_my_tournaments(
         .order_by(Tournament.created_at.desc())
         .all()
     )
+    counts = tournament_counts(db, [t.id for t in tournaments])
     return [
-        TournamentSummary(
-            **_serialize(t),
-            event_count=len(t.events),
-            # len(t.memberships) would count declined rows too — they still
-            # exist, just inactive.
-            volunteer_count=sum(1 for m in t.memberships if not is_declined(m)),
-        )
+        TournamentSummary(**_serialize(t), **counts[t.id])
         for t in tournaments
     ]
 

@@ -476,6 +476,16 @@ export interface TournamentSummary extends TournamentPublic {
   updated_at:      string
 }
 
+// GET /admin/tournaments/ — the platform-admin audience. A separate type
+// because the audience differs, not the caller: an admin reads tournaments it
+// holds no membership in and is the only reader entitled to the owner by name.
+// No track count — `tracks` is already here, so use primaryTracks() to count.
+export interface AdminTournament extends Tournament {
+  owner:           UserSlim | null
+  event_count:     number
+  volunteer_count: number
+}
+
 // No dates/venue/divisions here — those belong to tracks, and at least one
 // track must be primary. Both Create and Update are extra="forbid" on the
 // backend: sending the old flat fields is a 422, not a silent drop.
@@ -518,7 +528,7 @@ export const tournamentsApi = {
 // -------------------------------------------------------------------------
 export const adminTournamentsApi = {
   // GET /admin/tournaments/ — every tournament, regardless of membership
-  list: () => api.get<Tournament[]>('/admin/tournaments/'),
+  list: () => api.get<AdminTournament[]>('/admin/tournaments/'),
   setVerified: (id: number, is_verified: boolean) =>
     api.patch<{ id: number; is_verified: boolean }>(`/admin/tournaments/${id}/verify/`, { is_verified }),
 }
