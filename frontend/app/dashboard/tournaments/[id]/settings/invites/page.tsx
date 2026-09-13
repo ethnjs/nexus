@@ -8,6 +8,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card } from "@/components/ui/Card";
+import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { EditableText } from "@/components/ui/EditableText";
@@ -41,17 +42,15 @@ function EditableLabel({ tournamentId, invite, onUpdated }: {
 }
 
 function InviteRow({
-  tournamentId, invite, now, isLast, onUpdated, onDeactivated,
+  tournamentId, invite, now, onUpdated, onDeactivated,
 }: {
   tournamentId: number;
   invite: Invite;
   now: number;
-  isLast: boolean;
   onUpdated: (invite: Invite) => void;
   onDeactivated: (id: number) => void;
 }) {
   const [deactivating, setDeactivating] = useState(false);
-  const [hovered, setHovered] = useState(false);
   const expiry = invite.expires_at === null
     ? "∞"
     : formatCountdown(new Date(invite.expires_at).getTime() - now);
@@ -67,17 +66,7 @@ function InviteRow({
   }
 
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS, alignItems: "center",
-        gap: "8px", padding: "10px 12px",
-        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: hovered ? "var(--color-bg)" : "transparent",
-        transition: "background 100ms ease",
-      }}
-    >
+    <div className={table.row}>
       <EditableLabel tournamentId={tournamentId} invite={invite} onUpdated={onUpdated} />
       <Badge
         variant="default" className="font-mono"
@@ -123,12 +112,11 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
 }) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
-      <div style={{
-        display: "grid", gridTemplateColumns: INVITE_ROW_COLUMNS, gap: "8px",
-        padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-        fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-        color: "var(--color-text-tertiary)",
-      }}>
+      <div
+        className={table.table}
+        style={{ gridTemplateColumns: INVITE_ROW_COLUMNS }}
+      >
+      <div className={table.header}>
         <span>Invites — {invites.length}</span>
         <span style={{ textAlign: "center" }}>Code</span>
         <span style={{ textAlign: "center" }}>Creator</span>
@@ -137,17 +125,17 @@ function InviteTable({ invites, tournamentId, now, onUpdated, onDeactivated }: {
         <span />
       </div>
 
-      {invites.map((invite, i) => (
+      {invites.map((invite) => (
         <InviteRow
           key={invite.id}
           tournamentId={tournamentId}
           invite={invite}
           now={now}
-          isLast={i === invites.length - 1}
           onUpdated={onUpdated}
           onDeactivated={onDeactivated}
         />
       ))}
+      </div>
     </Card>
   );
 }
