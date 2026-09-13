@@ -33,7 +33,15 @@ const STATUS_VARIANT = {
  * them, and adds the account-level facts those don't carry (role, status,
  * email verification) since that is what an admin opened this for.
  */
-export function AdminUserPanel({ userId, onClose }: { userId: number; onClose: () => void }) {
+export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNext }: {
+  userId: number;
+  onClose: () => void;
+  /** Step through the caller's current filtered/sorted order. Omit both to hide the controls. */
+  onPrev?: () => void;
+  onNext?: () => void;
+  hasPrev?: boolean;
+  hasNext?: boolean;
+}) {
   const [user, setUser] = useState<AdminUserFull | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loadedFor, setLoadedFor] = useState(userId);
@@ -63,6 +71,10 @@ export function AdminUserPanel({ userId, onClose }: { userId: number; onClose: (
     <DockedPanel
       width={ADMIN_USER_PANEL_WIDTH}
       onClose={onClose}
+      onPrev={onPrev}
+      onNext={onNext}
+      prevDisabled={!hasPrev}
+      nextDisabled={!hasNext}
       headerActions={
         <Button
           type="button" variant="secondary" size="sm" iconOnly

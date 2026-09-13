@@ -25,17 +25,28 @@ import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
 import table from "@/components/ui/Table.module.css";
 
+// Every track carries a floor *and* an `fr` weight, so the slack on a wide
+// display spreads across all seven in proportion to what they hold. Two `fr`
+// columns among five fixed ones dumped it all into Name and Email; capping
+// them instead just moved the gap to the right of Actions. The floor is what
+// stops a narrow window squeezing a cell until it wraps — an `fr` alone
+// shrinks to nothing.
 const COLUMNS = [
-  "minmax(190px, 1.1fr)", // name — avatar + gap eat ~36px before the name
-  "minmax(200px, 1fr)",   // email
-  "124px",                // phone — widest formatted number is ~108px
-  "92px",                 // role
-  "104px",                // status
-  "96px",                 // created
-  "152px",                // actions — four icon buttons
+  "minmax(190px, 1.4fr)", // name — avatar + gap eat ~36px before the name
+  "minmax(200px, 1.6fr)", // email — the longest content, so the largest share
+  "minmax(124px, 0.8fr)", // phone — widest formatted number is ~108px
+  "minmax(92px, 0.6fr)",  // role — one badge
+  "minmax(104px, 0.7fr)", // status — one badge
+  "minmax(96px, 0.7fr)",  // joined
+  // Sized to exactly what it holds: four sm iconOnly buttons are 28px square
+  // (Button's sm height) with 4px gaps — 4*28 + 3*4. At that width "centred"
+  // and "flush right" are the same thing, so the header sits over the buttons
+  // and the track still ends at the card's right edge. An `fr` share here left
+  // the buttons floating in a 250px track with the header adrift from them.
+  "124px",                // actions — 4 * 28px buttons + 3 * 4px gaps
 ].join(" ");
 
-const MIN_TABLE_WIDTH = 1060;
+const MIN_TABLE_WIDTH = 1030;
 
 const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "removed" | "declined"> = {
   active:      "confirmed",
@@ -66,10 +77,12 @@ function userName(user: AdminUserSlim): string {
   return [user.first_name, user.last_name].filter(Boolean).join(" ") || user.email;
 }
 
-function UserRow({ user, isSelf, onOpen, onAction }: {
+function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
   user: AdminUserSlim;
   /** The account doing the looking — the backend refuses every one of these on yourself. */
   isSelf: boolean;
+  /** This row is the one the panel is showing. */
+  isOpen: boolean;
   onOpen: () => void;
   onAction: (kind: "lock" | "activate" | "promote" | "demote" | "reset" | "delete") => void;
 }) {
@@ -77,22 +90,19 @@ function UserRow({ user, isSelf, onOpen, onAction }: {
   const selfTitle = "You can't do this to your own account";
 
   return (
-    <div className={table.row} data-dimmed={isActive ? undefined : "true"}>
-      <button
-        type="button"
-        onClick={onOpen}
-        title="Open profile"
-        style={{
-          display: "flex", alignItems: "center", gap: "8px", minWidth: 0,
-          border: "none", background: "transparent", padding: 0, cursor: "pointer",
-          font: "inherit", textAlign: "left", color: "inherit",
-        }}
-      >
+    <div
+      className={`${table.row} ${table.clickable}`}
+      data-dimmed={isActive ? undefined : "true"}
+      data-active={isOpen ? "true" : undefined}
+      onClick={onOpen}
+      title="Open profile"
+    >
+      <span style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
         <AvatarCircle user={user} size="sm" />
         <span style={{ ...TEXT_CELL, color: "var(--color-text-primary)", fontWeight: 500 }}>
           {userName(user)}
         </span>
-      </button>
+      </span>
 
       <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
         <span style={TEXT_CELL} title={user.email}>{user.email}</span>
@@ -141,7 +151,10 @@ function UserRow({ user, isSelf, onOpen, onAction }: {
       {/* Every one of these is refused on your own account server-side, so the
           row for the acting admin shows them disabled rather than letting a
           click come back a 400. */}
-      <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
+      <div
+        style={{ display: "flex", justifyContent: "center", gap: "4px" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {isActive ? (
           <Button
             type="button" variant="secondary" size="sm" iconOnly
@@ -222,17 +235,6 @@ export default function AdminUsersPage() {
       });
   }, []);
 
-  useEffect(() => {
-    if (panelUserId === null) {
-      clearPanel();
-      return;
-    }
-    setPanel(
-      <AdminUserPanel userId={panelUserId} onClose={() => setPanelUserId(null)} />,
-      ADMIN_USER_PANEL_WIDTH,
-    );
-  }, [panelUserId, setPanel, clearPanel]);
-
   // The slot lives in the layout and would outlive this table otherwise.
   useEffect(() => clearPanel, [clearPanel]);
 
@@ -250,6 +252,33 @@ export default function AdminUsersPage() {
     });
   }, [users, search, role]);
 
+  // Position in the *filtered* order, so the arrows step through what the
+  // reader is actually looking at rather than the unfiltered list.
+  const panelIndex = panelUserId === null ? -1 : visible.findIndex((u) => u.id === panelUserId);
+  const prevUser = panelIndex > 0 ? visible[panelIndex - 1] : null;
+  const nextUser = panelIndex >= 0 && panelIndex < visible.length - 1 ? visible[panelIndex + 1] : null;
+
+  useEffect(() => {
+    if (panelUserId === null) {
+      clearPanel();
+      return;
+    }
+    setPanel(
+      <AdminUserPanel
+        userId={panelUserId}
+        onClose={() => setPanelUserId(null)}
+        onPrev={() => prevUser && setPanelUserId(prevUser.id)}
+        onNext={() => nextUser && setPanelUserId(nextUser.id)}
+        hasPrev={prevUser !== null}
+        hasNext={nextUser !== null}
+      />,
+      ADMIN_USER_PANEL_WIDTH,
+    );
+    // Re-registers when the neighbours change (a search narrowing the list
+    // moves them) — LayoutPanelSlot only re-arms its open animation when the
+    // panel goes absent->present, so this doesn't restart the slide.
+  }, [panelUserId, prevUser, nextUser, setPanel, clearPanel]);
+
   function replaceRow(updated: AdminUserSlim) {
     setUsers((prev) => (prev ?? []).map((u) => (u.id === updated.id ? updated : u)));
   }
@@ -261,7 +290,6 @@ export default function AdminUsersPage() {
   }
 
   const isFiltered = search.trim() !== "" || role !== "all";
-  const adminCount = (users ?? []).filter((u) => u.role === "admin").length;
 
   return (
     <>
@@ -332,6 +360,7 @@ export default function AdminUsersPage() {
                 key={u.id}
                 user={u}
                 isSelf={currentUser?.id === u.id}
+                isOpen={panelUserId === u.id}
                 onOpen={() => setPanelUserId(u.id)}
                 onAction={(kind) => setPending({ kind, user: u })}
               />
