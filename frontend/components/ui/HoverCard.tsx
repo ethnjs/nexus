@@ -6,7 +6,15 @@ interface HoverCardProps {
   /** Rich content shown in the popover — unlike Tooltip, not limited to a plain string. */
   content: ReactNode;
   children: ReactNode;
-  width?: number;
+  /**
+   * Fixed px width, or "fit" to size the card to its content.
+   *
+   * Fixed is right when the content wraps and needs a predictable measure (a
+   * stack of per-track rows). "fit" is right for a single line — a fixed
+   * width wider than the text leaves it sitting off to one side of an
+   * over-wide box, which reads as misaligned even though the box is centred.
+   */
+  width?: number | "fit";
   /** Merged onto the trigger wrapper — e.g. justifyContent to center the trigger within a stretched grid cell. */
   style?: CSSProperties;
 }
@@ -43,7 +51,13 @@ export function HoverCard({ content, children, width = 220, style }: HoverCardPr
       {cardPos && (
         <div style={{
           position: "fixed", bottom: cardPos.bottom, left: cardPos.left, transform: "translateX(-50%)",
-          zIndex: 400, width: `${width}px`, padding: "10px 12px",
+          zIndex: 400, padding: "10px 12px",
+          // max-content rather than fit-content: the card is position:fixed
+          // with no containing block to fit *to*, so fit-content would
+          // collapse toward zero instead of hugging the text.
+          width: width === "fit" ? "max-content" : `${width}px`,
+          // Even a "fit" card shouldn't run off a narrow viewport.
+          maxWidth: width === "fit" ? "min(90vw, 420px)" : undefined,
           background: "var(--color-surface)", border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-lg)",
         }}>

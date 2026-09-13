@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { COLLAPSED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
+import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
+import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
 
 /**
  * Shell for the dashboard root and the admin pages under it. Same structure
@@ -27,18 +29,23 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
-      <AdminSidebar onExpandedChange={setSidebarExpanded} />
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden",
-        marginLeft: COLLAPSED_W,
-      }}>
-        {/* No wordmark — the rail carries it. */}
-        <Topbar showAvatar sidebarExpanded={sidebarExpanded} />
-        <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
-          {children}
-        </main>
+    <LayoutPanelProvider>
+      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
+        <AdminSidebar onExpandedChange={setSidebarExpanded} />
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden",
+          marginLeft: COLLAPSED_W,
+        }}>
+          {/* No wordmark — the rail carries it. */}
+          <Topbar showAvatar sidebarExpanded={sidebarExpanded} />
+          <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+            {children}
+          </main>
+        </div>
+        {/* Third flex sibling, not an overlay: it shrinks the column above
+            instead of covering it, so the table stays live beside it. */}
+        <LayoutPanelSlot />
       </div>
-    </div>
+    </LayoutPanelProvider>
   );
 }

@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { adminTournamentsApi, tournamentsApi, AdminTournament, ApiError } from "@/lib/api";
 import {
-  formatDates, formatTrackDates, placeOf, primaryTracks, tournamentDisplayName,
+  formatDates, formatTrackDates, placeOf, placeOfShort, primaryTracks,
+  stateAbbreviation, tournamentDisplayName,
 } from "@/lib/tournamentDisplay";
+import { formatDuration } from "@/lib/timeFormat";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -14,9 +16,12 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { HoverCard } from "@/components/ui/HoverCard";
+import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { IconArchive, IconRestore, IconTrash, IconSearch, IconTrophy } from "@/components/ui/Icons";
+import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
+import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
 import table from "@/components/ui/Table.module.css";
 
 // Fixed px wherever the content has a known maximum — a formatted date range,
@@ -25,24 +30,24 @@ import table from "@/components/ui/Table.module.css";
 // wraps; an `fr` track alone shrinks to nothing.
 const COLUMNS = [
   "minmax(180px, 1.3fr)", // name
-  "minmax(150px, 0.9fr)", // owner
-  "minmax(130px, 0.9fr)", // venue
-  "160px",                // dates
+  "minmax(170px, 0.9fr)", // owner — avatar + gap eat ~32px before the name
+  "minmax(120px, 0.8fr)", // venue — short form, so narrower than the full name needed
+  "minmax(150px, 0.7fr)", // dates — widest is a cross-year pair
   "64px",                 // tracks
   "104px",                // level
-  "56px",                 // state
+  "72px",                 // state
   "88px",                 // division
   "76px",                 // members
   "68px",                 // events
-  "116px",                // status
-  "84px",                 // created
+  "128px",                // status
+  "88px",                 // created
   "76px",                 // actions
 ].join(" ");
 
 // Sum of the track floors. The card scrolls horizontally rather than letting
 // thirteen columns crush each other — every cell here has a legible minimum
 // and none of them truncate usefully.
-const MIN_TABLE_WIDTH = 1330;
+const MIN_TABLE_WIDTH = 1370;
 
 type StatusFilter = "all" | "active" | "archived";
 
@@ -52,13 +57,15 @@ const STATUS_OPTIONS = [
   { value: "all",      label: "All" },
 ];
 
+// Mono is for data you compare down a column — the counts. Everything that
+// reads as prose (owner, venue, dates) is sans, per the app's font split.
 const NUM_CELL: React.CSSProperties = {
   fontFamily: "var(--font-mono)", fontSize: "12px",
   color: "var(--color-text-secondary)", textAlign: "center",
 };
 
 const TEXT_CELL: React.CSSProperties = {
-  fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-secondary)",
+  fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)",
   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
 };
 
@@ -80,7 +87,10 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
   const primary = primaryTracks(tournament);
 
   if (primary.length <= 1) {
-    return <span style={TEXT_CELL}>{placeOf(tournament) ?? "—"}</span>;
+    const place = placeOfShort(tournament);
+    // Full name in the title — the abbreviation is for scanning the column,
+    // not for hiding which university it is.
+    return <span style={TEXT_CELL} title={placeOf(tournament) ?? undefined}>{place ?? "—"}</span>;
   }
 
   return (
@@ -93,7 +103,7 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
               <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600 }}>
                 {track.name}
               </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
+              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-secondary)" }}>
                 {placeOf(track) ?? "No venue"}
               </span>
               <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)" }}>
@@ -111,14 +121,24 @@ function VenueCell({ tournament }: { tournament: AdminTournament }) {
   );
 }
 
+// Level is a fixed four-value enum; each gets a stable colour so the column
+// can be read by shape rather than by reading every word.
+const LEVEL_VARIANT: Record<string, "admin" | "confirmed" | "assigned" | "default"> = {
+  nationals:     "admin",
+  state:         "confirmed",
+  regionals:     "assigned",
+  invitational:  "default",
+};
+
 function divisionVariant(division: string) {
   if (division === "A") return "divisionA" as const;
   if (division === "B") return "divisionB" as const;
   return "divisionC" as const;
 }
 
-function TournamentRow({ tournament, onArchive, onUnarchive, onDelete }: {
+function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDelete }: {
   tournament: AdminTournament;
+  onOpenOwner: (userId: number) => void;
   onArchive: () => void;
   onUnarchive: () => void;
   onDelete: () => void;
@@ -135,22 +155,22 @@ function TournamentRow({ tournament, onArchive, onUnarchive, onDelete }: {
       </span>
 
       {tournament.owner ? (
-        <HoverCard
-          width={220}
-          content={
-            <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-              <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 600 }}>
-                {ownerName(tournament.owner)}
-              </span>
-              <span style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-secondary)" }}>
-                {tournament.owner.email}
-              </span>
-            </div>
-          }
-          style={{ width: "100%" }}
+        <button
+          type="button"
+          onClick={() => onOpenOwner(tournament.owner!.id)}
+          title={`${tournament.owner.email} — open profile`}
+          style={{
+            display: "flex", alignItems: "center", gap: "8px", minWidth: 0,
+            border: "none", background: "transparent", padding: 0, cursor: "pointer",
+            font: "inherit", textAlign: "left", color: "inherit",
+          }}
         >
-          <span style={TEXT_CELL}>{ownerName(tournament.owner)}</span>
-        </HoverCard>
+          {/* "sm" (28px) matches the roster table's avatar. */}
+          <AvatarCircle user={tournament.owner} size="sm" />
+          <span style={{ ...TEXT_CELL, color: "var(--color-text-primary)" }}>
+            {ownerName(tournament.owner)}
+          </span>
+        </button>
       ) : (
         <span style={TEXT_CELL}>—</span>
       )}
@@ -165,8 +185,12 @@ function TournamentRow({ tournament, onArchive, onUnarchive, onDelete }: {
         {primary.length}/{tournament.tracks.length}
       </span>
 
-      <span style={{ ...TEXT_CELL, textAlign: "center" }}>{tournament.level}</span>
-      <span style={{ ...TEXT_CELL, textAlign: "center" }}>{tournament.state}</span>
+      <span style={{ display: "flex", justifyContent: "center" }}>
+        <Badge variant={LEVEL_VARIANT[tournament.level] ?? "default"}>{tournament.level}</Badge>
+      </span>
+      <span style={{ display: "flex", justifyContent: "center" }}>
+        <Badge variant="default" title={tournament.state}>{stateAbbreviation(tournament.state)}</Badge>
+      </span>
 
       <span style={{ display: "flex", gap: "3px", justifyContent: "center", flexWrap: "wrap" }}>
         {tournament.division.length === 0
@@ -179,15 +203,36 @@ function TournamentRow({ tournament, onArchive, onUnarchive, onDelete }: {
       <span style={NUM_CELL}>{tournament.volunteer_count}</span>
       <span style={NUM_CELL}>{tournament.event_count}</span>
 
+      {/* Active was previously implied by the absence of an Archived badge,
+          which left the cell blank for most rows. It's a state, so it says so. */}
       <span style={{ display: "flex", gap: "3px", justifyContent: "center", flexWrap: "wrap" }}>
-        {tournament.is_archived && <Badge variant="removed">Archived</Badge>}
-        {tournament.is_verified && <Badge variant="confirmed">Verified</Badge>}
-        {tournament.is_public && <Badge variant="default">Public</Badge>}
+        <Badge variant={tournament.is_archived ? "removed" : "confirmed"}>
+          {tournament.is_archived ? "Archived" : "Active"}
+        </Badge>
+        {tournament.is_verified && <Badge variant="assigned">Verified</Badge>}
+        {tournament.is_public && <Badge variant="interested">Public</Badge>}
       </span>
 
-      <span style={{ ...TEXT_CELL, fontSize: "11px", textAlign: "center" }}>
-        {new Date(tournament.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })}
-      </span>
+      {/* Relative is what an admin actually reads this for ("made last week");
+          the exact timestamp is one hover away rather than spending the column. */}
+      <HoverCard
+        width="fit"
+        style={{ justifyContent: "center", width: "100%" }}
+        content={
+          // One line, in a card sized to it — dateStyle:"full" spells the
+          // weekday and month out, which wrapped to two lines.
+          <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", whiteSpace: "nowrap" }}>
+            {new Date(tournament.created_at).toLocaleString("en-US", {
+              weekday: "short", month: "short", day: "numeric", year: "numeric",
+              hour: "numeric", minute: "2-digit",
+            })}
+          </span>
+        }
+      >
+        <span style={{ ...NUM_CELL, borderBottom: "1px dotted var(--color-border-strong)", cursor: "help" }}>
+          {formatDuration(tournament.created_at)} ago
+        </span>
+      </HoverCard>
 
       <div style={{ display: "flex", justifyContent: "center", gap: "4px" }}>
         {tournament.is_archived ? (
@@ -212,6 +257,9 @@ export default function AdminTournamentsPage() {
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+
+  const [ownerUserId, setOwnerUserId] = useState<number | null>(null);
+  const { setPanel, clearPanel } = useSetLayoutPanel();
 
   const [archiveTarget, setArchiveTarget] = useState<AdminTournament | null>(null);
   const [unarchiveTarget, setUnarchiveTarget] = useState<AdminTournament | null>(null);
@@ -253,18 +301,28 @@ export default function AdminTournamentsPage() {
     setTournaments((prev) => (prev ?? []).filter((t) => !ids.includes(t.id)));
   }
 
+  // Registered into the layout's panel slot rather than rendered here, so it
+  // takes horizontal space beside the table instead of covering it.
+  useEffect(() => {
+    if (ownerUserId === null) {
+      clearPanel();
+      return;
+    }
+    setPanel(
+      <AdminUserPanel userId={ownerUserId} onClose={() => setOwnerUserId(null)} />,
+      ADMIN_USER_PANEL_WIDTH,
+    );
+  }, [ownerUserId, setPanel, clearPanel]);
+
+  // Leaving the page has to drop the panel too — the slot lives in the layout
+  // and would otherwise outlive the table that registered it.
+  useEffect(() => clearPanel, [clearPanel]);
+
   const isFiltered = search.trim() !== "" || status !== "all";
 
   return (
     <>
-      <PageHeader
-          heading="Tournaments"
-          subheading={
-            tournaments === null
-              ? ""
-              : `${visible.length}${isFiltered ? ` of ${tournaments.length}` : ""} tournament${tournaments.length === 1 ? "" : "s"} platform-wide`
-          }
-        />
+      <PageHeader heading="Tournaments" />
 
         {loadError && (
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-danger)", marginBottom: "10px" }}>
@@ -330,6 +388,7 @@ export default function AdminTournamentsPage() {
                 <TournamentRow
                   key={t.id}
                   tournament={t}
+                  onOpenOwner={setOwnerUserId}
                   onArchive={() => setArchiveTarget(t)}
                   onUnarchive={() => setUnarchiveTarget(t)}
                   onDelete={() => setDeleteTarget(t)}
