@@ -194,7 +194,11 @@ def delete_tournament(
             detail="Only the tournament owner can delete this tournament",
         )
 
-    require_not_archived(tournament)
+    # A platform admin may purge an archived tournament; the owner may not.
+    # Archiving is a historical record the TD shouldn't be able to erase, but
+    # admin cleanup has to be able to reach it.
+    if current_user.role != "admin":
+        require_not_archived(tournament)
 
     db.delete(tournament)
     db.commit()
