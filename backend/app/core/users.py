@@ -24,6 +24,24 @@ def find_user_by_id(db: Session, id: int) -> User:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     return user
 
+
+def require_not_last_admin(db: Session, user: User) -> None:
+    """Refuses to take the platform's only admin out of service.
+
+    Belongs on the *self-service* routes, not the admin ones. An admin acting
+    on somebody else is still an admin afterwards, so once the admin routes
+    refuse to act on the caller themselves they can never reach zero admins.
+    Self-delete and self-deactivate are the only paths that can, and both are
+    one-way: nothing outside an admin can restore an account.
+    """
+    if user.role != "admin":
+        return
+    if db.query(User).filter(User.role == "admin").count() <= 1:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The platform must keep at least one admin account",
+        )
+
 def create_user(
     db: Session,
     email: str,

@@ -7,7 +7,7 @@ from app.core.auth import (
     get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
     get_current_session, revoke_all_other_sessions,
 )
-from app.core.users import find_user_by_id
+from app.core.users import find_user_by_id, require_not_last_admin
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
@@ -74,7 +74,7 @@ def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin)
+    current_user: User = Depends(require_admin)
 ):
     """
     Admin can only update a user's role and status.
@@ -83,9 +83,29 @@ def admin_update_user(
     access is meant to take effect now, not at their next sign-in — login
     already refuses any non-active status, so leaving live sessions alone
     would let a logged-in device keep working indefinitely.
+
+    An admin cannot demote or deactivate themselves through this route. Both
+    are irreversible from the caller's side — the demote drops the very
+    permission needed to undo it, and the deactivate revokes their session on
+    the way out — so a misclick on your own row would need another admin to
+    fix. Deliberate self-deactivation still exists at POST
+    /users/me/deactivate/, where it is password-confirmed.
     """
     user = find_user_by_id(db, user_id)
     updates = body.model_dump(exclude_unset=True)
+
+    if user.id == current_user.id:
+        if updates.get("role") == "user":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot demote your own account",
+            )
+        if "status" in updates and updates["status"] != "active":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot deactivate your own account here — use account settings",
+            )
+
     for field, value in updates.items():
         setattr(user, field, value)
 
@@ -103,12 +123,24 @@ def admin_update_user(
 def admin_delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
-    """Delete any user. Admin only."""
+    """Delete any user. Admin only.
+
+    Not yourself, though: deleting the account you are acting with is an
+    irreversible accident, and the self-service DELETE /users/me/ exists for
+    when it is genuinely intended (and asks for a password).
+    """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
     db.delete(user)
     db.commit()
 
@@ -233,6 +265,8 @@ def deactivate_me(
     if not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
+    require_not_last_admin(db, user)
+
     user.status = "deactivated"
     revoke_all_sessions(db, user.id)
     db.commit()
@@ -259,6 +293,8 @@ def delete_me(
     """
     if not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    require_not_last_admin(db, user)
 
     db.delete(user)
     db.commit()
