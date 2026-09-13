@@ -179,7 +179,12 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
-    status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
+    # "active" | "invited" | "deactivated" | "locked". Login allows only
+    # "active", so deactivated and locked deny access identically — the split
+    # records *who* deactivated, which is what decides who may reverse it:
+    # deactivated is self-inflicted and self-reversible, locked is
+    # admin-imposed and admin-only to clear.
+    status = Column(String(32), nullable=False, default="active")
 
     # if a student
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)
