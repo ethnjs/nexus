@@ -8,7 +8,8 @@ import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
 import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider, useLayoutPanelContent, LayoutPanel } from "@/lib/useLayoutPanel";
-import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
@@ -146,7 +147,7 @@ function TournamentShell({
 
   return (
     <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
-      <Sidebar
+      <TournamentSidebar
         onExpandedChange={setSidebarExpanded}
         tournamentId={tournamentId}
       />
