@@ -173,6 +173,52 @@ class TestAdminDeleteUser:
 
 
 # ---------------------------------------------------------------------------
+# POST /admin/users/{id}/password-reset/ — admin only
+# ---------------------------------------------------------------------------
+
+class TestAdminSendPasswordReset:
+    def test_admin_can_send_reset(self, client, admin_user, db, mock_send_email):
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(f"/admin/users/{alice.id}/password-reset/")
+        assert res.status_code == 200
+        assert mock_send_email.called
+
+    def test_user_without_password_rejected(self, client, admin_user, db, mock_send_email):
+        """No password means the account was never set up — that needs the
+        account-setup invite, not a reset."""
+        alice = _db_user(db, hashed_password=None)
+        login(client, "admin@test.com", "adminpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 400
+        assert not mock_send_email.called
+
+    def test_deactivated_user_allowed(self, client, admin_user, db, mock_send_email):
+        """Status isn't a gate — reset-then-reactivate is a real sequence."""
+        alice = _db_user(db, status="deactivated")
+        login(client, "admin@test.com", "adminpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 200
+
+    def test_rate_limited_on_repeat(self, client, admin_user, db, mock_send_email):
+        """Surfaced as a real 429, unlike the public route's uniform 200."""
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/users/{alice.id}/password-reset/")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 429
+
+    def test_non_admin_forbidden(self, client, td_user, db):
+        alice = _db_user(db)
+        login(client, "td@test.com", "tdpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 403
+
+    def test_not_found(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.post("/admin/users/9999/password-reset/").status_code == 404
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/admin/users/1/password-reset/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
 # POST /users/me/deactivate/ — authenticated self-service deactivation
 # ---------------------------------------------------------------------------
 

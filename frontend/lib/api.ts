@@ -339,6 +339,10 @@ export const adminUsersApi = {
   getByEmail: (email: string)                      => api.get<AdminUserFull>(`/admin/users/by-email/${encodeURIComponent(email)}/`),
   updateRole: (id: number, body: AdminUserUpdate)  => api.patch<AdminUserSlim>(`/admin/users/${id}/`, body),
   delete:     (id: number)                         => api.delete<void>(`/admin/users/${id}/`),
+  // Sends the same email the public forgot-password flow does, but reports
+  // real errors (400 no password / 429 rate-limited) instead of a uniform 200
+  // — enumeration isn't a concern for a user picked off the admin list.
+  sendPasswordReset: (id: number)                  => api.post<void>(`/admin/users/${id}/password-reset/`, {}),
 }
 
 
