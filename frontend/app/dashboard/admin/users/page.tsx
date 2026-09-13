@@ -92,7 +92,9 @@ function UserRow({ user, isSelf, isOpen, onOpen, onAction }: {
   return (
     <div
       className={`${table.row} ${table.clickable}`}
-      data-dimmed={isActive ? undefined : "true"}
+      // Deliberately not dimmed. A dimmed row reads as "unavailable to you",
+      // which is backwards here: a locked account is exactly the one an admin
+      // needs to act on. The Status badge carries the state instead.
       data-active={isOpen ? "true" : undefined}
       onClick={onOpen}
       title="Open profile"
