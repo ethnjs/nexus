@@ -9,6 +9,7 @@ import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
 import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Topbar } from "@/components/layout/Topbar";
@@ -91,7 +92,7 @@ function TournamentShell({
           tournamentId={tournamentId}
           showAvatar
           sidebarExpanded={sidebarExpanded && !onSettingsRoute}
-          clearsMobileToggle
+          showNavToggle
         />
         <main className={styles.main}>
           {children}
@@ -133,9 +134,13 @@ export default function TournamentLayout({
                 rendered into the latter, a sibling of <main> rather than a
                 descendant of it. Inert on every other tab. */}
             <BoardDndProvider>
-              <TournamentShell tournamentId={tournamentId}>
-                {children}
-              </TournamentShell>
+              {/* Above the shell so the Topbar's drawer toggle and the rail
+                  it opens share one state — they're siblings inside it. */}
+              <NavDrawerProvider>
+                <TournamentShell tournamentId={tournamentId}>
+                  {children}
+                </TournamentShell>
+              </NavDrawerProvider>
             </BoardDndProvider>
           </LayoutPanelProvider>
         </UnsavedChangesProvider>

@@ -3,8 +3,8 @@
 import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconChevronDown, IconMenu } from "@/components/ui/Icons";
-import { Button } from "@/components/ui/Button";
+import { IconChevronDown } from "@/components/ui/Icons";
+import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Sidebar.module.css";
 
 export const COLLAPSED_W = 52;
@@ -59,9 +59,10 @@ function cx(...names: (string | false | undefined)[]): string {
  *
  * One markup tree, two arrangements chosen by media query in Sidebar.module.css:
  *  - desktop: a collapsed rail that widens on hover and overlays the page.
- *  - mobile:  a fixed toggle plus an off-canvas drawer behind a scrim, since
- *             hover-to-expand has no touch equivalent and the rail would
- *             otherwise be a dead 52px strip.
+ *  - mobile:  an off-canvas drawer behind a scrim, since hover-to-expand has
+ *             no touch equivalent and the rail would otherwise be a dead 52px
+ *             strip. The button that opens it belongs to the Topbar; this
+ *             reads its state from NavDrawerProvider.
  *
  * The viewport switch is CSS, not a useIsMobile() branch, so the first painted
  * frame is already correct — see the note at the top of the stylesheet. The
@@ -71,18 +72,10 @@ function cx(...names: (string | false | undefined)[]): string {
 export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard", navHeader }: SidebarProps) {
   const [hovered, setHovered] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const pathname = usePathname();
-
-  // Closes the drawer on navigation that didn't come from a nav row and so
-  // wouldn't fire its onClick — the tournament switcher in navHeader, a
-  // redirect. Adjusted during render rather than in an effect: React discards
-  // this pass and re-renders immediately, with no extra paint in between.
-  const [renderedPath, setRenderedPath] = useState(pathname);
-  if (renderedPath !== pathname) {
-    setRenderedPath(pathname);
-    setDrawerOpen(false);
-  }
+  // The toggle lives in the Topbar, so the open state is shared through a
+  // context rather than held here. See lib/useNavDrawer.tsx.
+  const { open: drawerOpen, setOpen: setDrawerOpen } = useNavDrawer();
 
   function isActive(item: SidebarItem): boolean {
     const prefix = item.match ?? item.href;
@@ -105,20 +98,6 @@ export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard", navH
 
   return (
     <>
-      <div className={styles.toggle}>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          aria-label="Toggle navigation menu"
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen((o) => !o)}
-        >
-          <IconMenu size={14} />
-        </Button>
-      </div>
-
       <div
         onClick={() => setDrawerOpen(false)}
         className={cx(styles.scrim, drawerOpen && styles.open)}

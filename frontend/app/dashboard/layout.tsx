@@ -7,6 +7,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
 import { useAuth } from "@/lib/useAuth";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
 import styles from "@/components/layout/Shell.module.css";
 
 /**
@@ -41,27 +42,31 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <LayoutPanelProvider>
-      <div className={styles.shell}>
-        {showRail && <AdminSidebar onExpandedChange={setSidebarExpanded} />}
-        <div className={showRail ? styles.column : `${styles.column} ${styles.columnBare}`}>
-          {/* With a rail, it carries the wordmark on desktop and the bar only
-              takes over on mobile, where the rail is an off-canvas drawer.
-              With no rail, the bar is the only thing carrying it. */}
-          <Topbar
-            showWordmark={showRail ? "mobile-only" : true}
-            showAvatar
-            sidebarExpanded={sidebarExpanded}
-            clearsMobileToggle={showRail}
-          />
-          <main className={styles.main}>
-            {children}
-          </main>
+    // Above the shell so the Topbar's drawer toggle and the rail it opens
+    // share one state — they're siblings inside it.
+    <NavDrawerProvider>
+      <LayoutPanelProvider>
+        <div className={styles.shell}>
+          {showRail && <AdminSidebar onExpandedChange={setSidebarExpanded} />}
+          <div className={showRail ? styles.column : `${styles.column} ${styles.columnBare}`}>
+            {/* With a rail, it carries the wordmark on desktop and the bar only
+                takes over on mobile, where the rail is an off-canvas drawer.
+                With no rail, the bar is the only thing carrying it. */}
+            <Topbar
+              showWordmark={showRail ? "mobile-only" : true}
+              showAvatar
+              sidebarExpanded={sidebarExpanded}
+              showNavToggle={showRail}
+            />
+            <main className={styles.main}>
+              {children}
+            </main>
+          </div>
+          {/* Third flex sibling, not an overlay: it shrinks the column above
+              instead of covering it, so the table stays live beside it. */}
+          <LayoutPanelSlot />
         </div>
-        {/* Third flex sibling, not an overlay: it shrinks the column above
-            instead of covering it, so the table stays live beside it. */}
-        <LayoutPanelSlot />
-      </div>
-    </LayoutPanelProvider>
+      </LayoutPanelProvider>
+    </NavDrawerProvider>
   );
 }

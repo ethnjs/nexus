@@ -25,6 +25,15 @@
   flex-shrink: 0;
 }
 
+/*
+ * The drawer toggle is a real item in the bar rather than a fixed overlay, so
+ * it stays welded to the bar during iOS overscroll. Hidden on desktop, where
+ * the rail expands on hover instead.
+ */
+.navToggle {
+  display: none;
+}
+
 @media (max-width: 640px) {
   /*
    * --sidebar-offset is dropped entirely here, not just defaulted to 0. The
@@ -35,15 +44,16 @@
    * the property outright means no mobile arrangement can depend on it.
    */
   .topbar {
-    padding-left: 16px;
+    padding-left: 12px;
   }
 
-  /*
-   * Clears a fixed-position drawer toggle overlapping the bar's top-left —
-   * Sidebar's on the app shells, SettingsNav's on the settings pages.
-   */
-  .topbar.clearsToggle {
-    padding-left: 44px;
+  .navToggle {
+    display: block;
+  }
+
+  /* The toggle already sets the bar's left inset. */
+  .wordmark {
+    padding-left: 0;
   }
 }
 

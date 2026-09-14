@@ -83,20 +83,6 @@
   background: var(--color-accent-subtle);
 }
 
-/*
- * Positioning wrapper only — appearance comes from Button, which can't be
- * styled from here because it sets display, width and height inline. Matches
- * the app shell's drawer toggle; centred against the 52px Topbar for a 28px
- * button: (52 - 28) / 2 = 12.
- */
-.toggle {
-  display: none;
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 150;
-}
-
 .scrim {
   display: none;
   position: fixed;
@@ -187,10 +173,6 @@
   .nav.open {
     transform: none;
     box-shadow: var(--shadow-lg);
-  }
-
-  .toggle {
-    display: block;
   }
 
   .scrim.open {

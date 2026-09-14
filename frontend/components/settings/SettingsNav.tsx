@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IconUser, IconShield, IconMenu } from "@/components/ui/Icons";
-import { Button } from "@/components/ui/Button";
+import { IconUser, IconShield } from "@/components/ui/Icons";
+import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Settings.module.css";
 
 const NAV_ITEMS = [
@@ -21,38 +20,17 @@ function cx(...names: (string | false | undefined)[]): string {
  * scrim on mobile. Same arrangement as the app shell's rail (see
  * components/layout/Sidebar.tsx), and the switch is a media query for the same
  * reason — a JS viewport check renders desktop on the first frame and visibly
- * corrects itself afterwards.
+ * corrects itself afterwards. The button that opens the drawer belongs to the
+ * Topbar; this reads its state from NavDrawerProvider.
  */
 export function SettingsNav() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
-
-  // Closes on navigation that didn't come from a nav row — a redirect, a link
-  // elsewhere in the drawer — which wouldn't fire the row's onClick. Adjusted
-  // during render rather than in an effect: React discards this pass and
-  // re-renders immediately, with no extra paint in between.
-  const [renderedPath, setRenderedPath] = useState(pathname);
-  if (renderedPath !== pathname) {
-    setRenderedPath(pathname);
-    setOpen(false);
-  }
+  // The toggle lives in the Topbar, so the open state is shared through a
+  // context rather than held here. See lib/useNavDrawer.tsx.
+  const { open, setOpen } = useNavDrawer();
 
   return (
     <>
-      <div className={styles.toggle}>
-        <Button
-          type="button"
-          variant="secondary"
-          size="sm"
-          iconOnly
-          aria-label="Toggle settings menu"
-          aria-expanded={open}
-          onClick={() => setOpen((o) => !o)}
-        >
-          <IconMenu size={14} />
-        </Button>
-      </div>
-
       <div
         onClick={() => setOpen(false)}
         className={cx(styles.scrim, open && styles.open)}

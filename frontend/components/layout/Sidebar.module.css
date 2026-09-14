@@ -12,23 +12,7 @@
  * sync; a media query can't read a JS constant (or a CSS custom property).
  */
 
-/* ─── Drawer toggle + scrim (mobile only) ──────────────────────────────── */
-
-/*
- * Positioning wrapper only — the toggle's own appearance comes from Button.
- * It can't be styled through this class directly: Button sets display, width
- * and height inline, and an inline style outranks any rule here, so the
- * `display: none` that hides this on desktop would never apply.
- *
- * Centred against the 52px Topbar for Button's sm size: (52 - 28) / 2 = 12.
- */
-.toggle {
-  display: none;
-  position: fixed;
-  top: 12px;
-  left: 12px;
-  z-index: 150;
-}
+/* ─── Scrim (mobile only) ──────────────────────────────────────────────── */
 
 .scrim {
   display: none;
@@ -285,10 +269,6 @@
 /* ─── Mobile: off-canvas drawer ────────────────────────────────────────── */
 
 @media (max-width: 640px) {
-  .toggle {
-    display: block;
-  }
-
   .scrim.open {
     display: block;
   }

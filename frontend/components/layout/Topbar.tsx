@@ -3,6 +3,9 @@
 import { UserAvatar } from "@/components/ui/UserAvatar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { Button } from "@/components/ui/Button";
+import { IconMenu } from "@/components/ui/Icons";
+import { useNavDrawer } from "@/lib/useNavDrawer";
 import styles from "./Topbar.module.css";
 
 // Shared with DockedPanel so its own header strip lines up exactly with
@@ -25,11 +28,10 @@ interface TopbarProps {
   tournamentId?: string | number;
   sidebarExpanded?: boolean;
   /**
-   * Reserve room at the left for a fixed-position drawer toggle rendered
-   * outside the Topbar but overlapping its top-left corner. Mobile-only, and
-   * applied in CSS so it's correct on the first painted frame.
+   * Render the mobile nav drawer's toggle as the bar's first item. Needs a
+   * NavDrawerProvider above this Topbar and the drawer it controls.
    */
-  clearsMobileToggle?: boolean;
+  showNavToggle?: boolean;
 }
 
 export function Topbar({
@@ -38,21 +40,37 @@ export function Topbar({
   showAvatar = true,
   tournamentId,
   sidebarExpanded = false,
-  clearsMobileToggle = false,
+  showNavToggle = false,
 }: TopbarProps) {
-  const className = [styles.topbar, clearsMobileToggle && styles.clearsToggle]
-    .filter(Boolean)
-    .join(" ");
+  const { open, setOpen } = useNavDrawer();
 
   return (
     <header
-      className={className}
+      className={styles.topbar}
       style={{
         // Only the hover-driven part stays inline — it's interaction state,
         // which can't exist before hydration. The rest is in the stylesheet.
         ["--sidebar-offset" as string]: sidebarExpanded ? `${EXPANDED_W - COLLAPSED_W}px` : "0px",
       }}
     >
+      {/* In the bar's normal flow, not a fixed overlay — see NavDrawerProvider
+          for why. Hidden on desktop, where the rail expands on hover. */}
+      {showNavToggle && (
+        <span className={styles.navToggle}>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            iconOnly
+            aria-label="Toggle navigation menu"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+          >
+            <IconMenu size={14} />
+          </Button>
+        </span>
+      )}
+
       {showWordmark && (
         <a
           href="/dashboard"
