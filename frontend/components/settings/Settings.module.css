@@ -1,0 +1,230 @@
+/*
+ * Settings frame — page shell, side nav, and the label/control rows.
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS rather than a useIsMobile() branch. 640px mirrors
+ * MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.page {
+  min-height: 100dvh;
+  background: var(--color-bg);
+}
+
+.container {
+  max-width: 1000px; /* SETTINGS_CONTAINER_MAX_WIDTH */
+  margin: 0 auto;
+}
+
+.content {
+  margin-left: 220px; /* SETTINGS_NAV_WIDTH */
+  max-width: 700px;
+  padding: 16px 20px 40px;
+}
+
+/* ─── Side nav ─────────────────────────────────────────────────────────── */
+
+.nav {
+  width: 220px;
+  position: fixed;
+  /* Topbar height (52) + gap (16). */
+  top: 68px;
+  left: max(calc((100vw - 1000px) / 2), 0px);
+  height: calc(100dvh - 84px);
+  box-sizing: border-box;
+  padding: 32px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.navTitle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+  padding: 0 10px;
+  margin-bottom: 8px;
+}
+
+.navList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+  background: transparent;
+  text-decoration: none;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.navItem.active {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  background: var(--color-accent-subtle);
+}
+
+/* Hover in CSS, not onMouseEnter/onMouseLeave writing inline styles — those
+   fire on touch but never un-fire, leaving a row stuck in its hover colour. */
+.navItem:not(.active):hover {
+  background: var(--color-accent-subtle);
+}
+
+/*
+ * Positioning wrapper only — appearance comes from Button, which can't be
+ * styled from here because it sets display, width and height inline. Matches
+ * the app shell's drawer toggle; centred against the 52px Topbar for a 28px
+ * button: (52 - 28) / 2 = 12.
+ */
+.toggle {
+  display: none;
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 150;
+}
+
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 150;
+}
+
+/* ─── Rows ─────────────────────────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 24px;
+  padding: 8px 28px;
+}
+
+.sectionTitle {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-top: 20px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.rowLast {
+  border-bottom: none;
+}
+
+.rowLabel {
+  flex-shrink: 0;
+  max-width: 220px;
+}
+
+.rowLabelText {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.rowHelper {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+  margin-top: 4px;
+}
+
+/* Relative, not a fixed px cap — scales with whatever layout wraps this row
+   (tournament settings today, a narrower account settings layout later)
+   instead of being tuned to one specific container width. */
+.rowControl {
+  flex: 1;
+  max-width: 60%;
+  min-width: 0;
+}
+
+/* ─── Mobile ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .content {
+    margin-left: 0;
+    padding: 20px 16px 40px;
+  }
+
+  /* Off-canvas drawer, same arrangement as the app shell's rail. */
+  .nav {
+    top: 0;
+    left: 0;
+    height: 100dvh;
+    border-radius: 0;
+    border-top: none;
+    border-bottom: none;
+    box-shadow: none;
+    transform: translateX(-232px);
+    transition: transform 0.2s ease;
+    z-index: 200;
+  }
+
+  .nav.open {
+    transform: none;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .toggle {
+    display: block;
+  }
+
+  .scrim.open {
+    display: block;
+  }
+
+  /* 38px is a fine mouse target but below the 44px touch minimum. */
+  .navItem {
+    height: 44px;
+  }
+
+  /*
+   * Stacked: a 220px label beside a control capped at 60% needs ~370px before
+   * anything wraps, so on a phone the control was squeezed to a sliver and
+   * anything inside it that couldn't shrink — an email address, a Banner with
+   * a button — pushed out past the card edge.
+   */
+  .row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 16px 0;
+  }
+
+  .rowLabel {
+    max-width: none;
+  }
+
+  .rowControl {
+    max-width: none;
+  }
+
+  .section {
+    margin-bottom: 16px;
+    padding: 4px 16px;
+  }
+}
