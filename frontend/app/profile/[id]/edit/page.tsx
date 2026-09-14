@@ -8,12 +8,15 @@ import {
   universitiesApi, University,
   STUDENT_STATUS, SHIRT_SIZE, UserMeFull, ApiError,
 } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import { IconArrowLeft } from "@/components/ui/Icons";
+import { useBlockNavigation, useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import styles from "@/components/profile/Profile.module.css";
 import {
   PronounsField, StudentStatusField,
@@ -66,6 +69,7 @@ export default function ProfileEditPage() {
   const router = useRouter();
   const params = useParams();
   const profileId = params.id as string;
+  const { guard } = useUnsavedChanges();
 
   const [original, setOriginal] = useState<UserMeFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
@@ -130,6 +134,10 @@ export default function ProfileEditPage() {
     return draftChanged || competitionChanged || volunteerChanged;
   }, [draft, competitionRows, volunteerRows, original]);
 
+  // Registers the dirty state with the provider in this route's layout, which
+  // then intercepts link clicks and browser navigation away from the page.
+  useBlockNavigation(isDirty);
+
   // ── Cancel ──────────────────────────────────────────────────────────────
   function handleCancel() {
     if (!original) return;
@@ -141,8 +149,10 @@ export default function ProfileEditPage() {
     setSaveError(undefined);
   }
 
+  // guard(), not a plain push: the provider's click interceptor only catches
+  // <a> elements, and this is a button.
   function handleBack() {
-    router.push(`/profile/${profileId}`);
+    guard(() => router.push(`/profile/${profileId}`));
   }
 
   // ── Row diffing helpers ─────────────────────────────────────────────────
@@ -293,6 +303,11 @@ export default function ProfileEditPage() {
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
       <Topbar showWordmark showAvatar />
       <div className={styles.page}>
+        <Button type="button" variant="ghost" size="sm" onClick={handleBack} className={styles.backLink}>
+          <IconArrowLeft />
+          Back to profile
+        </Button>
+
         <ProfileHeader user={original} showEditButton />
 
         <ProfileCard>

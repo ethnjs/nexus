@@ -14,6 +14,17 @@
   gap: 20px;
 }
 
+/*
+ * Back-to-profile Button on the edit page. Only layout lives here — the
+ * appearance is Button's ghost variant. align-self stops it stretching to the
+ * full card width in .page's flex column, and the negative margin cancels the
+ * Button's own left padding so its label lines up with the cards below it.
+ */
+.backLink {
+  align-self: flex-start;
+  margin-left: -14px;
+}
+
 /* ─── Header card ──────────────────────────────────────────────────────── */
 
 .header {
