@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { adminUsersApi, AdminUserFull, ApiError } from "@/lib/api";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Spinner } from "@/components/ui/Spinner";
-import { Badge } from "@/components/ui/Badge";
+import { AccountBadges } from "@/components/admin/AccountBadges";
 import { Button } from "@/components/ui/Button";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
@@ -17,13 +17,6 @@ import { IconExpand } from "@/components/ui/Icons";
 // Exported so a caller registering this in the layout slot reserves exactly
 // the width it renders at.
 export const ADMIN_USER_PANEL_WIDTH = 620;
-
-const STATUS_VARIANT = {
-  active:      "confirmed",
-  invited:     "pending",
-  deactivated: "removed",
-  locked:      "declined",
-} as const;
 
 /**
  * Read-only account detail, for any admin surface that names a user — the
@@ -100,17 +93,7 @@ export function AdminUserPanel({ userId, onClose, onPrev, onNext, hasPrev, hasNe
               shared profile sections don't carry any of it. */}
           <ProfileHeader
             user={user}
-            badges={
-              <>
-                <Badge variant={user.role === "admin" ? "admin" : "default"}>
-                  {user.role === "admin" ? "Admin" : "User"}
-                </Badge>
-                <Badge variant={STATUS_VARIANT[user.status]}>{user.status}</Badge>
-                <Badge variant={user.email_verified ? "confirmed" : "warning"}>
-                  {user.email_verified ? "Email verified" : "Email unverified"}
-                </Badge>
-              </>
-            }
+            badges={<AccountBadges user={user} />}
           />
 
           {/* One ProfileCard per section, same as /profile/[id] and MemberPanel —

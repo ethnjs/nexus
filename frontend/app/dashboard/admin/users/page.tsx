@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { adminUsersApi, AdminUserSlim, ApiError, USER_STATUS } from "@/lib/api";
+import { adminUsersApi, AdminUserSlim, ApiError } from "@/lib/api";
 import { formatPhone } from "@/lib/auth";
 import { formatDuration } from "@/lib/timeFormat";
 import { useAuth } from "@/lib/useAuth";
@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/Icons";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
+import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
 import table from "@/components/ui/Table.module.css";
 
 // Every track carries a floor *and* an `fr` weight, so the slack on a wide
@@ -47,13 +48,6 @@ const COLUMNS = [
 ].join(" ");
 
 const MIN_TABLE_WIDTH = 1030;
-
-const STATUS_VARIANT: Record<USER_STATUS, "confirmed" | "pending" | "removed" | "declined"> = {
-  active:      "confirmed",
-  invited:     "pending",
-  deactivated: "removed",
-  locked:      "declined",
-};
 
 type RoleFilter = "all" | "admin" | "user";
 
