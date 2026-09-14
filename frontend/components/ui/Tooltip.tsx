@@ -1,4 +1,6 @@
-import { CSSProperties, ReactNode, useEffect, useState } from "react"
+"use client"
+
+import { CSSProperties, ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react"
 import styles from './Tooltip.module.css'
 import { IconCheckCircle, IconInfo, IconWarning, IconXCircle } from "./Icons"
 
@@ -51,13 +53,52 @@ export function Tooltip({ variant, status, message, children, showIcon = true, m
 
   const resolvedVariant = variant ?? (status !== 'idle' ? status : 'info')
 
+  // The bubble is centred on its trigger, so one near a screen edge hangs off
+  // it — which on a phone is most of them. CSS can't know which edge is close,
+  // so measure once per appearance and nudge the bubble back inside. The arrow
+  // shifts the opposite way to stay pointing at the trigger.
+  const bubbleRef = useRef<HTMLDivElement>(null)
+  const [shift, setShift] = useState(0)
+
+  useLayoutEffect(() => {
+    if (!visible) {
+      setShift(0)
+      return
+    }
+    const el = bubbleRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const margin = 8
+    let dx = 0
+    if (rect.left < margin) dx = margin - rect.left
+    else if (rect.right > window.innerWidth - margin) dx = window.innerWidth - margin - rect.right
+    // Runs once per appearance: setting shift re-renders but doesn't re-fire
+    // this effect, so there's no measure/adjust loop.
+    if (dx !== 0) setShift(dx)
+  }, [visible, message, status])
+
+  const bubbleStyle: CSSProperties = {
+    transform: `translateX(calc(-50% + ${shift}px))`,
+    ['--tooltip-arrow-shift' as string]: `${shift}px`,
+    // min() so an explicit maxWidth can't exceed a narrow viewport — the
+    // account page asks for 400px, which is wider than a phone screen.
+    ...(maxWidth
+      ? {
+          maxWidth: `min(${typeof maxWidth === 'number' ? `${maxWidth}px` : maxWidth}, calc(100vw - 16px))`,
+          width: 'max-content',
+          whiteSpace: 'normal' as const,
+        }
+      : {}),
+  }
+
   return (
     <div className={styles.wrapper} style={style} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {children}
       {visible && (
         <div
+          ref={bubbleRef}
           className={`${styles.bubble} ${styles[resolvedVariant]}`}
-          style={maxWidth ? { maxWidth, width: 'max-content', whiteSpace: 'normal' } : undefined}
+          style={bubbleStyle}
         >
           {showIcon && variantIcon[resolvedVariant]}
           {typeof message === 'string' ? message : message[status!]}

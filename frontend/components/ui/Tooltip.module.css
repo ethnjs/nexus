@@ -16,6 +16,7 @@
   position: absolute;
   top: calc(100% + 10px);
   left: 50%;
+  /* Overridden inline with the measured edge correction — see Tooltip.tsx. */
   transform: translateX(-50%);
   z-index: 50;
   white-space: nowrap;
@@ -30,14 +31,23 @@
   gap: 6px;
 }
 
-/* Triangle pointing up */
+/* Triangle pointing up. Shifts opposite to the bubble's edge correction so it
+   keeps pointing at the trigger rather than drifting with the bubble. */
 .bubble::after {
   content: '';
   position: absolute;
   bottom: 100%;
-  left: 50%;
+  left: calc(50% - var(--tooltip-arrow-shift, 0px));
   transform: translateX(-50%);
   border: 5px solid transparent;
+}
+
+/* A nowrap bubble with no explicit maxWidth still has to fit the screen. */
+@media (max-width: 640px) {
+  .bubble {
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+  }
 }
 
 /* ── Variants ──────────────────────────────────────────────── */
