@@ -14,22 +14,20 @@
 
 /* ─── Drawer toggle + scrim (mobile only) ──────────────────────────────── */
 
+/*
+ * Positioning wrapper only — the toggle's own appearance comes from Button.
+ * It can't be styled through this class directly: Button sets display, width
+ * and height inline, and an inline style outranks any rule here, so the
+ * `display: none` that hides this on desktop would never apply.
+ *
+ * Centred against the 52px Topbar for Button's sm size: (52 - 28) / 2 = 12.
+ */
 .toggle {
   display: none;
   position: fixed;
-  top: 8px;
-  left: 8px;
+  top: 12px;
+  left: 12px;
   z-index: 150;
-  width: 36px;
-  height: 36px;
-  align-items: center;
-  justify-content: center;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
-  color: var(--color-text-primary);
-  cursor: pointer;
 }
 
 .scrim {
@@ -288,7 +286,7 @@
 
 @media (max-width: 640px) {
   .toggle {
-    display: flex;
+    display: block;
   }
 
   .scrim.open {

@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconChevronDown, IconMenu } from "@/components/ui/Icons";
+import { Button } from "@/components/ui/Button";
 import styles from "./Sidebar.module.css";
 
 export const COLLAPSED_W = 52;
@@ -104,15 +105,19 @@ export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard", navH
 
   return (
     <>
-      <button
-        type="button"
-        aria-label="Toggle navigation menu"
-        aria-expanded={drawerOpen}
-        onClick={() => setDrawerOpen((o) => !o)}
-        className={styles.toggle}
-      >
-        <IconMenu size={18} />
-      </button>
+      <div className={styles.toggle}>
+        <Button
+          type="button"
+          variant="secondary"
+          size="sm"
+          iconOnly
+          aria-label="Toggle navigation menu"
+          aria-expanded={drawerOpen}
+          onClick={() => setDrawerOpen((o) => !o)}
+        >
+          <IconMenu size={14} />
+        </Button>
+      </div>
 
       <div
         onClick={() => setDrawerOpen(false)}
