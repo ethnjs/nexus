@@ -22,5 +22,13 @@
 @media (max-width: 640px) {
   .textControl {
     font-size: 16px;
+    /*
+     * The floor raises the text without touching the box, so 16px inside an
+     * xs (26px) or sm (28px) control looked oversized and cramped — the font
+     * nearly filling its own field. min-height grows the box to match; it
+     * beats the inline `height` the size map sets, which a plain `height`
+     * here would not.
+     */
+    min-height: 36px;
   }
 }
