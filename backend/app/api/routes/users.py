@@ -7,7 +7,7 @@ from app.core.auth import (
     get_current_user, require_admin, revoke_all_sessions, verify_password, clear_auth_cookie,
     get_current_session, revoke_all_other_sessions,
 )
-from app.core.users import find_user_by_id
+from app.core.users import find_user_by_id, require_not_last_admin
 from app.core.profile_status import compute_missing_profile_fields, is_profile_complete, is_onboarding_complete
 from app.db.session import get_db
 from app.models.models import User, UserCompetitionExperience, UserVolunteerExperience, Event, UserSession
@@ -17,6 +17,7 @@ from app.schemas.user import (
 )
 from app.schemas.auth import MessageResponse, AccountDeactivateRequest, AccountDeleteRequest
 from app.schemas.session import SessionResponse
+from app.services.email_service import send_password_reset_request_email
 
 router = APIRouter(tags=["users"])
 
@@ -73,21 +74,42 @@ def admin_update_user(
     user_id: int,
     body: AdminUserUpdate,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin)
+    current_user: User = Depends(require_admin)
 ):
     """
     Admin can only update a user's role and status.
 
-    Setting status="locked" also revokes every session for that user —
-    locking is meant to cut off access immediately, not just block future
-    logins, so a currently-logged-in device shouldn't stay usable.
+    Moving a user off status="active" revokes every session they hold. Losing
+    access is meant to take effect now, not at their next sign-in — login
+    already refuses any non-active status, so leaving live sessions alone
+    would let a logged-in device keep working indefinitely.
+
+    An admin cannot demote or deactivate themselves through this route. Both
+    are irreversible from the caller's side — the demote drops the very
+    permission needed to undo it, and the deactivate revokes their session on
+    the way out — so a misclick on your own row would need another admin to
+    fix. Deliberate self-deactivation still exists at POST
+    /users/me/deactivate/, where it is password-confirmed.
     """
     user = find_user_by_id(db, user_id)
     updates = body.model_dump(exclude_unset=True)
+
+    if user.id == current_user.id:
+        if updates.get("role") == "user":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot demote your own account",
+            )
+        if "status" in updates and updates["status"] != "active":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot deactivate your own account here — use account settings",
+            )
+
     for field, value in updates.items():
         setattr(user, field, value)
 
-    if updates.get("status") == "locked":
+    if "status" in updates and updates["status"] != "active":
         revoke_all_sessions(db, user.id)
 
     db.commit()
@@ -101,14 +123,71 @@ def admin_update_user(
 def admin_delete_user(
     user_id: int,
     db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
-    """Delete any user. Admin only."""
+    """Delete any user. Admin only.
+
+    Not yourself, though: deleting the account you are acting with is an
+    irreversible accident, and the self-service DELETE /users/me/ exists for
+    when it is genuinely intended (and asks for a password).
+    """
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot delete your own account",
+        )
+
     db.delete(user)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/users/{user_id}/password-reset/ — admin only
+# ---------------------------------------------------------------------------
+@router.post("/admin/users/{user_id}/password-reset/", status_code=status.HTTP_200_OK,
+    response_model=MessageResponse,
+    responses={
+        400: {"description": "User has no password to reset"},
+        429: {"description": "Reset requested too recently"},
+        500: {"description": "Failed to send reset email"},
+    },
+)
+async def admin_send_password_reset(
+    user_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+):
+    """
+    Sends the same reset email the public forgot-password flow sends, on an
+    admin's behalf.
+
+    Unlike that route, this one reports real errors instead of a uniform 200.
+    The generic response there exists to prevent account enumeration, which
+    doesn't apply to an admin acting on a user they picked off the admin
+    list — and swallowing the 429 would just leave them unable to tell a
+    rate-limit from a send failure.
+
+    Status isn't checked: a deactivated or locked user still can't log in, so
+    resetting their password is harmless, and blocking it would get in the way
+    of the reset-then-reactivate sequence.
+    """
+    user = find_user_by_id(db, user_id)
+
+    # No password means the account was never set up — that needs the
+    # account-setup invite, not a reset. Same exclusion the public route makes.
+    if not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User has no password set",
+        )
+
+    await send_password_reset_request_email(db, user.id, user.email)
+
+    return {"detail": "Password reset email sent"}
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +265,8 @@ def deactivate_me(
     if not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
 
+    require_not_last_admin(db, user)
+
     user.status = "deactivated"
     revoke_all_sessions(db, user.id)
     db.commit()
@@ -212,6 +293,8 @@ def delete_me(
     """
     if not user.hashed_password or not verify_password(body.password, user.hashed_password):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Current password is incorrect")
+
+    require_not_last_admin(db, user)
 
     db.delete(user)
     db.commit()

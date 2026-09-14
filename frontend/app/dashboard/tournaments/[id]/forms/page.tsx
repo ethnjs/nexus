@@ -6,6 +6,7 @@ import { formsApi, Form, FormListItem, FormStatus, ApiError } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { Card } from "@/components/ui/Card";
+import table from "@/components/ui/Table.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -33,13 +34,11 @@ const STATUS_BADGE_VARIANT: Record<FormStatus, "default" | "confirmed" | "remove
   archived: "removed",
 };
 
-function FormRow({ form, isLast, onAction, lockedReason }: {
+function FormRow({ form, onAction, lockedReason }: {
   form: FormListItem;
-  isLast: boolean;
   onAction: (form: FormListItem, option: FormActionOption) => Promise<void>;
   lockedReason?: string;
 }) {
-  const [hovered, setHovered] = useState(false);
   const [busy, setBusy] = useState(false);
 
   async function act(option: FormActionOption) {
@@ -50,19 +49,11 @@ function FormRow({ form, isLast, onAction, lockedReason }: {
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={`${table.row} ${table.clickable}`}
       // New tab, same as the Edit button: the builder is a long-lived editing
       // session, and losing this list (with its filters and scroll) to go back
       // and forth is worse than an extra tab.
       onClick={() => window.open(`/forms/${form.id}/edit`, "_blank", "noopener,noreferrer")}
-      style={{
-        display: "grid", gridTemplateColumns: FORM_ROW_COLUMNS, alignItems: "center",
-        gap: "8px", padding: "10px 12px", cursor: "pointer",
-        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: hovered ? "var(--color-bg)" : "transparent",
-        transition: "background 100ms ease",
-      }}
     >
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
@@ -126,12 +117,11 @@ function FormTable({ forms, onAction, lockedReason }: {
 }) {
   return (
     <Card radius="lg" style={{ padding: "8px 12px", marginBottom: "16px" }}>
-      <div style={{
-        display: "grid", gridTemplateColumns: FORM_ROW_COLUMNS, gap: "8px",
-        padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-        fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-        color: "var(--color-text-tertiary)",
-      }}>
+      <div
+        className={table.table}
+        style={{ gridTemplateColumns: FORM_ROW_COLUMNS }}
+      >
+      <div className={table.header}>
         <span>Forms — {forms.length}</span>
         <span style={{ textAlign: "center" }}>Status</span>
         <span>Creator</span>
@@ -140,9 +130,10 @@ function FormTable({ forms, onAction, lockedReason }: {
         <span />
       </div>
 
-      {forms.map((form, i) => (
-        <FormRow key={form.id} form={form} isLast={i === forms.length - 1} onAction={onAction} lockedReason={lockedReason} />
+      {forms.map((form) => (
+        <FormRow key={form.id} form={form} onAction={onAction} lockedReason={lockedReason} />
       ))}
+      </div>
     </Card>
   );
 }

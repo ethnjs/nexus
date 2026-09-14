@@ -11,6 +11,7 @@ import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { Card } from "@/components/ui/Card";
+import table from "@/components/ui/Table.module.css";
 import { Badge } from "@/components/ui/Badge";
 import { PENDING_TRACK_NOTE, PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Button } from "@/components/ui/Button";
@@ -432,19 +433,17 @@ export default function ShiftsPage() {
         </Card>
       ) : (
         <Card radius="lg" style={{ padding: "8px 12px" }}>
-          <div style={{
-            display: "grid", gridTemplateColumns: shiftGridColumns(selectMode), gap: "10px",
-            transition: "grid-template-columns 200ms ease",
-            padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-            fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-            color: "var(--color-text-tertiary)",
-          }}>
+          {/* One grid owns the tracks; header and rows are subgrids of it, so
+              toggling Select mode resolves the template once instead of once
+              per row. */}
+          <div
+            className={`${table.table} ${table.animatedTracks}`}
+            style={{ gridTemplateColumns: shiftGridColumns(selectMode) }}
+          >
+          <div className={table.header}>
             <span
-              style={{
-                display: "flex", justifyContent: "center", overflow: "hidden",
-                opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-                transition: "opacity 150ms ease",
-              }}
+              className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+              style={{ display: "flex", justifyContent: "center" }}
               title={panelDirty ? "Save or discard your changes first" : undefined}
             >
               <Checkbox
@@ -461,12 +460,11 @@ export default function ShiftsPage() {
             <span style={{ textAlign: "center" }}>Actions</span>
           </div>
 
-          {visibleShifts.map((shift, i) => (
+          {visibleShifts.map((shift) => (
             <ShiftRow
               key={shift.id}
               shift={shift}
               track={trackById(shift.track_id)}
-              isLast={i === visibleShifts.length - 1}
               focused={focusedId === shift.id}
               canEdit={canEdit}
               deleteLockedReason={archivedReason}
@@ -478,6 +476,7 @@ export default function ShiftsPage() {
               onToggleSelect={() => toggleSelected(shift.id)}
             />
           ))}
+          </div>
         </Card>
       )}
 
@@ -521,13 +520,12 @@ export default function ShiftsPage() {
 // both previews and edits meant two ways to change the same thing, and only
 // one of them could show a shift's events.
 function ShiftRow({
-  shift, track, isLast, focused, canEdit, deleteLockedReason, onClick, onDelete,
+  shift, track, focused, canEdit, deleteLockedReason, onClick, onDelete,
   selectMode, selected, selectionLocked, onToggleSelect,
 }: {
   shift: TournamentShift;
   /** Undefined only while the catalog is still loading. */
   track: TournamentTrack | undefined;
-  isLast: boolean;
   focused: boolean;
   canEdit: boolean;
   deleteLockedReason?: string;
@@ -539,36 +537,22 @@ function ShiftRow({
   selectionLocked: boolean;
   onToggleSelect: () => void;
 }) {
-  const [hovered, setHovered] = useState(false);
   // In select mode a click toggles the box; otherwise it opens the panel.
   const highlighted = selectMode ? selected : focused;
   const lockedTitle = selectionLocked ? "Save or discard your changes first" : undefined;
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={table.row}
+      data-active={highlighted ? "true" : undefined}
+      data-pending={track?.is_archived ? "true" : undefined}
       onClick={selectionLocked ? undefined : selectMode ? onToggleSelect : onClick}
       title={lockedTitle}
-      style={{
-        display: "grid", gridTemplateColumns: shiftGridColumns(selectMode), alignItems: "center",
-        gap: "10px", padding: "10px 12px",
-        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: track?.is_archived && !highlighted
-          ? (hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
-          : highlighted
-            ? "var(--color-accent-subtle)"
-            : hovered ? "var(--color-bg)" : "transparent",
-        cursor: selectionLocked ? "not-allowed" : "pointer",
-        transition: "background 100ms ease, grid-template-columns 200ms ease",
-      }}
+      style={{ cursor: selectionLocked ? "not-allowed" : "pointer" }}
     >
       <span
-        style={{
-          display: "flex", justifyContent: "center", overflow: "hidden",
-          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-          transition: "opacity 150ms ease",
-        }}
+        className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+        style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />

@@ -124,8 +124,8 @@ class TestAdminUpdateUser:
         assert client.patch(f"/admin/users/{alice.id}/", json={"role": "superuser"}).status_code == 422
 
     def test_locking_revokes_existing_session(self, client, admin_user, db):
-        # Locking must cut off an already-logged-in device immediately, not
-        # just block future logins the way plain deactivation does.
+        # Every move off "active" cuts off an already-logged-in device
+        # immediately rather than only blocking future logins.
         alice = _db_user(db, email="alice@example.com")
         login(client, "alice@example.com", "Password@1")
         alice_cookie = client.cookies.get("access_token")
@@ -138,6 +138,85 @@ class TestAdminUpdateUser:
 
         client.cookies.set("access_token", alice_cookie)
         assert client.get("/users/me/").status_code == 401
+
+    def test_deactivating_revokes_existing_session(self, client, admin_user, db):
+        """Deactivation is not a "future logins only" flag — an admin-set
+        deactivation has to drop the live session the same way locking does."""
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+        assert client.get("/users/me/").status_code == 200
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "deactivated"}).status_code == 200
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 401
+
+    def test_admin_can_reactivate_user(self, client, admin_user, db):
+        """Admin-only reactivation is the only way back from deactivated or
+        locked — there is no logged-out self-service path."""
+        alice = _db_user(db, email="alice@example.com", status="deactivated")
+        assert login(client, "alice@example.com", "Password@1").status_code == 401
+
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{alice.id}/", json={"status": "active"})
+        assert res.status_code == 200
+        assert res.json()["status"] == "active"
+
+        assert login(client, "alice@example.com", "Password@1").status_code == 200
+
+    def test_reactivating_does_not_revoke_admin_session(self, client, admin_user, db):
+        """Only a move *off* active revokes. Restoring a user must not knock
+        the acting admin's own session out."""
+        alice = _db_user(db, status="locked")
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"status": "active"}).status_code == 200
+        assert client.get("/users/me/").status_code == 200
+
+    def test_role_only_update_leaves_sessions_alone(self, client, admin_user, db):
+        """A role change is not a status change — promoting a user must not
+        sign them out."""
+        alice = _db_user(db, email="alice@example.com")
+        login(client, "alice@example.com", "Password@1")
+        alice_cookie = client.cookies.get("access_token")
+
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{alice.id}/", json={"role": "admin"}).status_code == 200
+
+        client.cookies.set("access_token", alice_cookie)
+        assert client.get("/users/me/").status_code == 200
+
+    def test_cannot_demote_self(self, client, admin_user, db):
+        """The demote would drop the very permission needed to undo it."""
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{admin_user.id}/", json={"role": "user"})
+        assert res.status_code == 400
+        db.refresh(admin_user)
+        assert admin_user.role == "admin"
+
+    def test_cannot_deactivate_self(self, client, admin_user, db):
+        """A misclick on your own row would revoke your session on the way out."""
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "deactivated"}).status_code == 400
+        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "locked"}).status_code == 400
+        db.refresh(admin_user)
+        assert admin_user.status == "active"
+
+    def test_can_still_promote_self_noop(self, client, admin_user):
+        """Only *losing* role or status is guarded — setting what you already
+        have must not 400."""
+        login(client, "admin@test.com", "adminpass")
+        assert client.patch(f"/admin/users/{admin_user.id}/", json={"role": "admin"}).status_code == 200
+        assert client.patch(f"/admin/users/{admin_user.id}/", json={"status": "active"}).status_code == 200
+
+    def test_can_demote_another_admin(self, client, admin_user, db):
+        """The guard is about acting on yourself, not about admins generally."""
+        other = _db_user(db, email="other@example.com", role="admin")
+        login(client, "admin@test.com", "adminpass")
+        res = client.patch(f"/admin/users/{other.id}/", json={"role": "user"})
+        assert res.status_code == 200
+        assert res.json()["role"] == "user"
 
     def test_non_admin_forbidden(self, client, td_user, db):
         alice = _db_user(db)
@@ -164,12 +243,68 @@ class TestAdminDeleteUser:
         login(client, "td@test.com", "tdpass")
         assert client.delete("/admin/users/1/").status_code == 403
 
+    def test_cannot_delete_self(self, client, admin_user, db):
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{admin_user.id}/").status_code == 400
+        assert db.query(User).filter(User.id == admin_user.id).first() is not None
+
+    def test_can_delete_another_admin(self, client, admin_user, db):
+        other = _db_user(db, email="other@example.com", role="admin")
+        login(client, "admin@test.com", "adminpass")
+        assert client.delete(f"/admin/users/{other.id}/").status_code == 204
+
     def test_not_found(self, client, admin_user):
         login(client, "admin@test.com", "adminpass")
         assert client.delete("/admin/users/9999/").status_code == 404
 
     def test_unauthenticated_forbidden(self, client):
         assert client.delete("/admin/users/1/").status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# POST /admin/users/{id}/password-reset/ — admin only
+# ---------------------------------------------------------------------------
+
+class TestAdminSendPasswordReset:
+    def test_admin_can_send_reset(self, client, admin_user, db, mock_send_email):
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+        res = client.post(f"/admin/users/{alice.id}/password-reset/")
+        assert res.status_code == 200
+        assert mock_send_email.called
+
+    def test_user_without_password_rejected(self, client, admin_user, db, mock_send_email):
+        """No password means the account was never set up — that needs the
+        account-setup invite, not a reset."""
+        alice = _db_user(db, hashed_password=None)
+        login(client, "admin@test.com", "adminpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 400
+        assert not mock_send_email.called
+
+    def test_deactivated_user_allowed(self, client, admin_user, db, mock_send_email):
+        """Status isn't a gate — reset-then-reactivate is a real sequence."""
+        alice = _db_user(db, status="deactivated")
+        login(client, "admin@test.com", "adminpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 200
+
+    def test_rate_limited_on_repeat(self, client, admin_user, db, mock_send_email):
+        """Surfaced as a real 429, unlike the public route's uniform 200."""
+        alice = _db_user(db)
+        login(client, "admin@test.com", "adminpass")
+        client.post(f"/admin/users/{alice.id}/password-reset/")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 429
+
+    def test_non_admin_forbidden(self, client, td_user, db):
+        alice = _db_user(db)
+        login(client, "td@test.com", "tdpass")
+        assert client.post(f"/admin/users/{alice.id}/password-reset/").status_code == 403
+
+    def test_not_found(self, client, admin_user):
+        login(client, "admin@test.com", "adminpass")
+        assert client.post("/admin/users/9999/password-reset/").status_code == 404
+
+    def test_unauthenticated_forbidden(self, client):
+        assert client.post("/admin/users/1/password-reset/").status_code == 401
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +338,20 @@ class TestDeactivateMe:
         client.post("/users/me/deactivate/", json={"password": "tdpass"})
         assert login(client, "td@test.com", "tdpass").status_code == 401
 
+    def test_last_admin_cannot_deactivate(self, client, admin_user, db):
+        """Deactivation is only reversible by an admin, so the last one
+        deactivating themselves locks every admin out of the platform."""
+        login(client, "admin@test.com", "adminpass")
+        res = client.post("/users/me/deactivate/", json={"password": "adminpass"})
+        assert res.status_code == 400
+        db.refresh(admin_user)
+        assert admin_user.status == "active"
+
+    def test_admin_can_deactivate_when_another_admin_exists(self, client, admin_user, db):
+        _db_user(db, email="second@example.com", role="admin")
+        login(client, "admin@test.com", "adminpass")
+        assert client.post("/users/me/deactivate/", json={"password": "adminpass"}).status_code == 200
+
     def test_unauthenticated_forbidden(self, client):
         assert client.post("/users/me/deactivate/", json={"password": "whatever"}).status_code == 401
 
@@ -231,11 +380,33 @@ class TestDeleteMe:
         # docs/deferred-items.md rather than handled by this route.
         from app.models.models import TournamentMembership
         grant_role(db, td_tournament, admin_user, "Volunteer")
+        # A second admin so the last-admin guard doesn't block the delete —
+        # this test is about the membership cascade, not about that rule.
+        _db_user(db, email="second@example.com", role="admin")
 
         login(client, "admin@test.com", "adminpass")
         assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() > 0
         assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
         assert db.query(TournamentMembership).filter(TournamentMembership.user_id == admin_user.id).count() == 0
+
+    def test_last_admin_cannot_delete(self, client, admin_user, db):
+        """Nothing outside an admin can create one, so deleting the last admin
+        leaves the platform permanently without one."""
+        login(client, "admin@test.com", "adminpass")
+        res = client.request("DELETE", "/users/me/", json={"password": "adminpass"})
+        assert res.status_code == 400
+        assert db.query(User).filter(User.id == admin_user.id).first() is not None
+
+    def test_admin_can_delete_when_another_admin_exists(self, client, admin_user, db):
+        _db_user(db, email="second@example.com", role="admin")
+        login(client, "admin@test.com", "adminpass")
+        assert client.request("DELETE", "/users/me/", json={"password": "adminpass"}).status_code == 200
+
+    def test_non_admin_delete_unaffected_by_admin_guard(self, client, td_user, db):
+        """The guard keys off the caller's own role — a regular user deleting
+        their account never consults the admin count."""
+        login(client, "td@test.com", "tdpass")
+        assert client.request("DELETE", "/users/me/", json={"password": "tdpass"}).status_code == 200
 
     def test_unauthenticated_forbidden(self, client):
         assert client.request("DELETE", "/users/me/", json={"password": "whatever"}).status_code == 401

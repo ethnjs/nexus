@@ -14,7 +14,6 @@ from app.core.auth import (
     hash_password,
     verify_password,
     get_current_user,
-    require_admin,
     set_auth_cookie,
     clear_auth_cookie,
     consume_verification_token,
@@ -28,7 +27,6 @@ from app.schemas.user import AdminUserSlimResponse
 from app.schemas.auth import (
     LoginRequest,
     RegisterRequest,
-    AdminRegisterRequest,
     MessageResponse,
     EmailChangeRequest,
     EmailPendingChangeResponse,
@@ -37,7 +35,6 @@ from app.schemas.auth import (
     PasswordResetRequest,
     PasswordResetConfirm,
     AccountSetupConfirm,
-    AccountSetupResendRequest,
 )
 from app.services.email_service import (
     send_signup_verification_email,
@@ -45,7 +42,6 @@ from app.services.email_service import (
     send_email_change_requested_notice,
     send_password_reset_request_email,
     send_password_changed_notice,
-    send_account_setup_invite_email,
 )
 from datetime import datetime, timezone
 
@@ -132,22 +128,6 @@ def register(body: RegisterRequest, request: Request, response: Response, db: Se
     set_auth_cookie(response, raw_token)
 
     return user
-
-
-
-@router.post("/admin/auth/register/", response_model=AdminUserSlimResponse, status_code=status.HTTP_201_CREATED)
-async def admin_register(body: AdminRegisterRequest, db: Session = Depends(get_db), _: User = Depends(require_admin)):
-    """
-    Admin only. Can create normal users and admin users. Password is excluded to allow the newly created user
-    to set their own via the account-setup invite email sent here.
-    """
-    check_if_email_exists(db, body.email)
-
-    user = create_user(db, body.email, body.first_name, body.last_name, body.role, status="invited")
-    await send_account_setup_invite_email(db, user.id, user.email)
-
-    return user
-
 
 
 # ---------------------------------------------------------------------------
@@ -395,7 +375,13 @@ async def confirm_password_reset(body: PasswordResetConfirm, db: Session = Depen
 
 
 # ---------------------------------------------------------------------------
-# Account setup (admin-created invite)
+# Account setup
+#
+# Dormant: no producer currently mints an 'account_setup' token, so no user
+# can reach status="invited" and this route is unreachable. Kept for the
+# invite flow's eventual producer (a TD pre-provisioning staff) — note that a
+# producer also needs an invite-resend route, since a 7-day account_setup
+# token otherwise expires with no recovery path.
 # ---------------------------------------------------------------------------
 
 @router.post("/auth/account-setup/confirm/", response_model=AdminUserSlimResponse, status_code=status.HTTP_200_OK,
@@ -410,9 +396,9 @@ async def confirm_account_setup(
     db: Session = Depends(get_db),
 ):
     """
-    Completes an admin-created account: sets the initial password. Logs the
-    user in immediately, same as register(), since this mirrors sign-up's
-    flow. Phone and any name correction happen afterward in onboarding.
+    Completes an invited account: sets the initial password. Logs the user in
+    immediately, same as register(), since this mirrors sign-up's flow. Phone
+    and any name correction happen afterward in onboarding.
     """
     token_row = consume_verification_token(db, body.token, "account_setup")
     if token_row is None:
@@ -433,26 +419,3 @@ async def confirm_account_setup(
     set_auth_cookie(response, raw_token)
 
     return user
-
-
-@router.post("/admin/auth/account-setup/resend/", status_code=status.HTTP_200_OK, response_model=MessageResponse,
-    responses={
-        400: {"description": "Account setup already completed"},
-        429: {"description": "Invite requested too recently"},
-        500: {"description": "Failed to send invite email"},
-    },
-)
-async def resend_account_setup(
-    body: AccountSetupResendRequest,
-    db: Session = Depends(get_db),
-    _: User = Depends(require_admin),
-):
-    """Admin-only — resends the account-setup invite for a pending (not yet activated) user."""
-    user = find_user_by_id(db, body.user_id)
-
-    if user.status != "invited":
-        raise HTTPException(400, "Account setup already completed")
-
-    await send_account_setup_invite_email(db, user.id, user.email)
-
-    return {"detail": "Invite resent"}

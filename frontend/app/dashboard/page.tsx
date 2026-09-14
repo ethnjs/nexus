@@ -6,7 +6,6 @@ import { tournamentsApi, Tournament, TournamentSummary, UserMeSlim, authApi, Api
 import { NewTournamentModal } from "@/components/tournament/NewTournamentModal"
 import { TournamentCard } from "@/components/tournament/TournamentCard"
 import { MasonryGrid } from "@/components/ui/MasonryGrid"
-import { Topbar } from "@/components/layout/Topbar"
 import { PageHeader } from "@/components/ui/PageHeader"
 import { Banner, BannerProps } from "@/components/ui/Banner"
 import { Button } from "@/components/ui/Button"
@@ -111,11 +110,11 @@ export default function DashboardPage() {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", height: "100vh", background: "var(--color-bg)" }}>
-      <Topbar showWordmark showAvatar />
-
-      <main style={{ flex: 1, overflowY: "auto", padding: "28px" }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto" }}>
+    <>
+      {/* The shell (Topbar, rail, scrolling main) lives in dashboard/layout.tsx.
+          The 960px cap is this page's own: the cards are a masonry grid and
+          read better centred than stretched across a wide display. */}
+      <div style={{ maxWidth: "960px", margin: "0 auto" }}>
           
           {activeBanners.length > 0 && activeBanners.map(({ id, variant, message, action, snoozeDays }) => {
             return (
@@ -171,12 +170,11 @@ export default function DashboardPage() {
               ))}
             </MasonryGrid>
           )}
-        </div>
-      </main>
+      </div>
 
       {showModal && (
         <NewTournamentModal onClose={() => setShowModal(false)} onCreated={handleCreated} />
       )}
-    </div>
+    </>
   )
 }
