@@ -1,0 +1,26 @@
+/*
+ * Shared by Input and Textarea.
+ *
+ * iOS Safari and Chrome automatically zoom the page in when the user focuses
+ * a text field whose computed font-size is under 16px — and every size in our
+ * SIZE_MAPs is (md is 14px). The zoom then persists after blur, leaving the
+ * page scrolled sideways and the layout apparently broken. A 16px floor on
+ * phones is the only way to suppress it; maximum-scale=1 on the viewport meta
+ * also works but disables pinch-zoom, which is an accessibility regression.
+ *
+ * The per-size value arrives as an inline --control-font-size custom property
+ * rather than an inline font-size, because an inline font-size would outrank
+ * this rule and the media query below could never take effect.
+ *
+ * 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep in sync.
+ */
+
+.textControl {
+  font-size: var(--control-font-size);
+}
+
+@media (max-width: 640px) {
+  .textControl {
+    font-size: 16px;
+  }
+}

@@ -2,6 +2,8 @@
 
 import { forwardRef, TextareaHTMLAttributes, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 
+import controlStyles from '@/components/ui/controls.module.css'
+
 type InputFont = 'sans' | 'mono' | 'serif'
 type InputSize = 'xs' | 'sm' | 'md'
 // primary -- light gray; secondary -- white (matches Input's variant)
@@ -137,7 +139,10 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
             height: autoGrow ? undefined : sizing.height,
             padding: sizing.padding,
             fontFamily: FONT_MAP[font],
-            fontSize: sizing.fontSize,
+            // Read by controls.module.css, which floors it at 16px on phones
+            // so iOS doesn't zoom the page on focus. Setting font-size inline
+            // here would outrank that rule.
+            ['--control-font-size' as string]: sizing.fontSize,
             background: inactive ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
             color: inactive ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
             border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
@@ -186,7 +191,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextProps>(
           }}
           onMouseEnter={e => { setHovering(true); onMouseEnter?.(e) }}
           onMouseLeave={e => { setHovering(false); onMouseLeave?.(e) }}
-          className={className}
+          className={[controlStyles.textControl, className].filter(Boolean).join(' ')}
           value={value ?? ''}
           {...props}
           disabled={inactive}

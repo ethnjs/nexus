@@ -5,6 +5,7 @@ import {
 } from 'react'
 
 import { IconX } from '@/components/ui/Icons'
+import controlStyles from '@/components/ui/controls.module.css'
 
 type InputFont  = 'sans' | 'mono' | 'serif'
 type InputSize  = 'xs' | 'sm' | 'md' | 'lg'
@@ -164,7 +165,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               paddingLeft: icon ? `calc(${sizing.paddingX} * 2 + 14px)` : sizing.paddingX,
               paddingRight: clearable ? `calc(${sizing.paddingX} * 2 + 12px)` : sizing.paddingX,
               fontFamily: FONT_MAP[font],
-              fontSize: sizing.fontSize,
+              // Read by controls.module.css, which floors it at 16px on
+              // phones so iOS doesn't zoom the page on focus. Setting
+              // font-size inline here would outrank that rule.
+              ['--control-font-size' as string]: sizing.fontSize,
               background: locked ? 'var(--color-accent-subtle)' : error ? 'var(--color-danger-subtle)' : BACKGROUND_MAP[variant],
               color: locked ? 'var(--color-text-tertiary)' : 'var(--color-text-primary)',
               border: `1px solid ${error ? 'var(--color-danger)' : 'var(--color-border)'}`,
@@ -187,7 +191,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               e.target.style.borderColor = error ? 'var(--color-danger)' : 'var(--color-border)'
               onBlur?.(e)
             }}
-            className={className}
+            className={[controlStyles.textControl, className].filter(Boolean).join(' ')}
             value={value ?? ''}
             {...props}
           />
