@@ -135,7 +135,7 @@
 
 @media (max-width: 640px) {
   .page {
-    padding: 16px 0 40px;
+    padding: 16px 16px 40px;
     gap: 14px;
   }
 
