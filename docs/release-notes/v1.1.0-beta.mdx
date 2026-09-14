@@ -1,0 +1,30 @@
+---
+title: v1.1.0-beta
+description: One-line summary of the release.
+date: 2026-09-XXT12:00:00-07:00
+---
+
+{/* DRAFT — admin-dashboard branch only. Other branches for this release still need
+    their own "What's new" entries added below before this ships. */}
+
+## What's new
+
+{/* other features from this release go here */}
+
+## Improvements
+
+- Added an internal admin dashboard for managing accounts, tournaments, and the
+  university/event catalog. This is a platform-admin tool — regular users won't see it.
+
+## Fixes
+
+- Deactivating or locking an account now signs it out of every device immediately, instead of
+  only blocking future logins.
+- Fixed a crash when deleting a university that a tournament's venue still pointed at.
+- Tournaments whose dates cross a year boundary now show the year on both dates instead of one being mislabeled.
+- Fixed a couple of UI styling bugs:
+  - An input field could lose its border, sizing, or background when a page tried to style it.
+  - The dropdown menu's bottom action could show a stale highlight left over from hovering an
+    option above it.
+
+## Worth knowing
