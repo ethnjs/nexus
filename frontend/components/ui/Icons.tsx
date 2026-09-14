@@ -98,11 +98,18 @@ export function IconSettings({ size = 18, ...props }: IconProps) {
   );
 }
 
+// Solid shield with the check knocked out of it rather than drawn on top:
+// one path, fill-rule evenodd, so the check shows whatever is behind the icon
+// and stays correct on any background (the nav row's active fill, dark mode).
+// A second stroked path would have needed a hardcoded colour to fake the hole.
 export function IconShield({ size = 18, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <path d="M10 2l7 3v5c0 4.5-3 7.5-7 8-4-0.5-7-3.5-7-8V5l7-3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M320 64C324.6 64 329.2 65 333.4 66.9L521.8 146.8C543.8 156.1 560.2 177.8 560.1 204C559.6 303.2 518.8 484.7 346.5 567.2C329.8 575.2 310.4 575.2 293.7 567.2C121.3 484.7 80.6 303.2 80.1 204C80 177.8 96.4 156.1 118.4 146.8L306.7 66.9C310.9 65 315.4 64 320 64zM220.5 344.7L272.6 398.7A27 27 0 0 0 312.4 397.7L430.4 261.7A27 27 0 0 0 389.6 226.3L291 340L259.5 307.3A27 27 0 0 0 220.5 344.7Z"
+      />
     </svg>
   );
 }
