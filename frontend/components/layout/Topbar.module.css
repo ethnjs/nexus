@@ -25,14 +25,25 @@
   flex-shrink: 0;
 }
 
-/*
- * Clears a fixed-position drawer toggle overlapping the bar's top-left —
- * Sidebar's on the app shells, SettingsNav's on the settings pages. Both are
- * 36px wide at 8px from the edge; 44px clears them with room to breathe.
- */
 @media (max-width: 640px) {
+  /*
+   * --sidebar-offset is dropped entirely here, not just defaulted to 0. The
+   * rail widening is a desktop-only affordance, but the state behind it still
+   * turns on: onMouseEnter fires on touch, so tapping the drawer sets
+   * `hovered`, and a settings route sets `activeGroup` regardless of width.
+   * Either one shifted the wordmark by 140px as the drawer moved. Ignoring
+   * the property outright means no mobile arrangement can depend on it.
+   */
+  .topbar {
+    padding-left: 16px;
+  }
+
+  /*
+   * Clears a fixed-position drawer toggle overlapping the bar's top-left —
+   * Sidebar's on the app shells, SettingsNav's on the settings pages.
+   */
   .topbar.clearsToggle {
-    padding-left: calc(44px + var(--sidebar-offset, 0px));
+    padding-left: 44px;
   }
 }
 
