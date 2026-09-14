@@ -17,7 +17,11 @@ interface TopbarProps {
    */
   showWordmark?: boolean | "mobile-only";
   showDropdown?: boolean;
-  showAvatar?: boolean;
+  /**
+   * `"logout-only"` shows the avatar but limits its menu to Sign out — for
+   * onboarding, where Profile and Settings both redirect straight back.
+   */
+  showAvatar?: boolean | "logout-only";
   tournamentId?: string | number;
   sidebarExpanded?: boolean;
   /**
@@ -68,7 +72,7 @@ export function Topbar({
 
       <div style={{ flex: 1 }} />
 
-      {showAvatar && <UserAvatar />}
+      {showAvatar && <UserAvatar logoutOnly={showAvatar === "logout-only"} />}
     </header>
   );
 }

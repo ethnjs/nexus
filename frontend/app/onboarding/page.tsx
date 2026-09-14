@@ -288,7 +288,7 @@ function OnboardingContent() {
 
   return (
     <div className={styles.page}>
-      <Topbar showWordmark showAvatar={false} />
+      <Topbar showWordmark showAvatar="logout-only" />
       <div className={styles.container}>
         <PageHeader heading="Complete Your Profile" />
 
