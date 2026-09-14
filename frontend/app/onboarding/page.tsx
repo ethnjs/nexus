@@ -20,6 +20,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { IconInfo } from "@/components/ui/Icons";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import styles from "./Onboarding.module.css";
 import {
   PronounsField, StudentStatusField,
   UniversityField, MajorField, YearLevelField, GraduationYearField,
@@ -286,15 +287,12 @@ function OnboardingContent() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
+    <div className={styles.page}>
       <Topbar showWordmark showAvatar={false} />
-      <div style={{
-        maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
-        display: "flex", flexDirection: "column", gap: "5px",
-      }}>
+      <div className={styles.container}>
         <PageHeader heading="Complete Your Profile" />
 
-        <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+        <form onSubmit={handleSubmit} noValidate className={styles.form}>
           <ProfileCard>
             <ProfileQuestion
               question="What is your name?"
