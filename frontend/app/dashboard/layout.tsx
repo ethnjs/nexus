@@ -6,6 +6,7 @@ import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
+import { useAuth } from "@/lib/useAuth";
 import styles from "@/components/layout/Shell.module.css";
 
 /**
@@ -23,6 +24,17 @@ import styles from "@/components/layout/Shell.module.css";
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const { user } = useAuth();
+
+  // AdminSidebar's only non-admin entry is Home, which on /dashboard is the
+  // page you're already on — so for a regular volunteer the rail is a strip
+  // (or a drawer) holding one dead link. Drop it entirely and let the Topbar
+  // wordmark be the way back. Admins still get the platform areas.
+  //
+  // `user` is null until useAuth's fetch lands, so this starts false and an
+  // admin sees the rail appear a beat late. That's the right way round: the
+  // common case renders correctly straight away.
+  const showRail = user?.role === "admin";
 
   if (pathname.startsWith("/dashboard/tournaments/")) {
     return <>{children}</>;
@@ -31,15 +43,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <LayoutPanelProvider>
       <div className={styles.shell}>
-        <AdminSidebar onExpandedChange={setSidebarExpanded} />
-        <div className={styles.column}>
-          {/* The rail carries the wordmark on desktop, but it's an off-canvas
-              drawer on mobile — so the bar takes over there. */}
+        {showRail && <AdminSidebar onExpandedChange={setSidebarExpanded} />}
+        <div className={showRail ? styles.column : `${styles.column} ${styles.columnBare}`}>
+          {/* With a rail, it carries the wordmark on desktop and the bar only
+              takes over on mobile, where the rail is an off-canvas drawer.
+              With no rail, the bar is the only thing carrying it. */}
           <Topbar
-            showWordmark="mobile-only"
+            showWordmark={showRail ? "mobile-only" : true}
             showAvatar
             sidebarExpanded={sidebarExpanded}
-            clearsMobileToggle
+            clearsMobileToggle={showRail}
           />
           <main className={styles.main}>
             {children}

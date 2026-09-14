@@ -36,6 +36,11 @@
   margin-left: 192px; /* EXPANDED_W */
 }
 
+/* No rail rendered at all — see the dashboard layout's admin check. */
+.columnBare {
+  margin-left: 0;
+}
+
 .main {
   flex: 1;
   overflow-y: auto;
