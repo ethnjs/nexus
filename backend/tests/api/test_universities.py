@@ -2,7 +2,7 @@
 import uuid
 
 from tests.conftest import login
-from app.models.models import AlumniChapter, University
+from app.models.models import AlumniChapter, TournamentTrack, University
 
 
 def _university(db, **kwargs):
@@ -118,6 +118,35 @@ def test_delete_university_removes_record(client, admin_user, db):
 def test_delete_university_referenced_by_chapter_conflicts(client, admin_user, db):
     university = _university(db)
     db.add(AlumniChapter(name="Test Chapter", university_id=university.id))
+    db.commit()
+    login(client, "admin@test.com", "adminpass")
+
+    res = client.delete(f"/admin/universities/{university.id}/")
+    assert res.status_code == 409
+    assert db.query(University).filter_by(id=university.id).first() is not None
+
+
+def test_delete_university_referenced_by_user_conflicts(client, admin_user, db, td_user):
+    university = _university(db)
+    td_user.university_id = university.id
+    db.commit()
+    login(client, "admin@test.com", "adminpass")
+
+    res = client.delete(f"/admin/universities/{university.id}/")
+    assert res.status_code == 409
+    assert db.query(University).filter_by(id=university.id).first() is not None
+
+
+def test_delete_university_referenced_by_track_conflicts(client, admin_user, db, td_tournament):
+    """A track is the third referrer. Before this check the delete went
+    through, SQLAlchemy nulled the track's university_id, and the track was
+    left with neither a university nor a location — which the model's own
+    XOR validator rejects, surfacing as a 500."""
+    university = _university(db)
+    track = db.query(TournamentTrack).filter_by(tournament_id=td_tournament.id).first()
+    # A track holds exactly one of university_id/location, never both.
+    track.location = None
+    track.university_id = university.id
     db.commit()
     login(client, "admin@test.com", "adminpass")
 
