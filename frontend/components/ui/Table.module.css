@@ -76,12 +76,6 @@
   background: var(--color-bg);
 }
 
-/* A row whose subject is out of service — an archived tournament, a
-   deactivated account — reads as such without spending a column on it. */
-.row[data-dimmed="true"] {
-  opacity: 0.55;
-}
-
 /* A row awaiting action, e.g. an event pending confirmation. Keeps its tint
    on hover rather than reverting to the neutral hover background. */
 .row[data-pending="true"] {

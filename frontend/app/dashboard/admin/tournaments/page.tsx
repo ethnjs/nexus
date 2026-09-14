@@ -147,7 +147,10 @@ function TournamentRow({ tournament, onOpenOwner, onArchive, onUnarchive, onDele
   const primary = primaryTracks(tournament);
 
   return (
-    <div className={table.row} data-dimmed={tournament.is_archived ? "true" : undefined}>
+    // Deliberately not dimmed. A dimmed row reads as "unavailable to you",
+    // which is backwards here: an archived tournament is exactly the one an
+    // admin is here to unarchive or purge. The Archived badge carries the state.
+    <div className={table.row}>
       <span style={{
         fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500,
         overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0,
