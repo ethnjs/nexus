@@ -14,6 +14,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import styles from "@/components/profile/Profile.module.css";
 import {
   PronounsField, StudentStatusField,
   UniversityField, MajorField, YearLevelField, GraduationYearField,
@@ -291,10 +292,7 @@ export default function ProfileEditPage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
       <Topbar showWordmark showAvatar />
-      <div style={{
-        maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
-        display: "flex", flexDirection: "column", gap: "20px",
-      }}>
+      <div className={styles.page}>
         <ProfileHeader user={original} showEditButton />
 
         <ProfileCard>

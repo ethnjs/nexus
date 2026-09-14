@@ -19,6 +19,7 @@ import { LogisticsSection } from "@/components/profile/sections/LogisticsSection
 import { CompetitionExperienceDraft, VolunteerExperienceDraft } from "@/components/profile/ExperienceTables";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
 import { AccountBadges } from "@/components/admin/AccountBadges";
+import styles from "@/components/profile/Profile.module.css";
 
 
 export default function ProfilePage() {
@@ -163,10 +164,7 @@ export default function ProfilePage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
       <Topbar showWordmark showAvatar />
-      <div style={{
-        maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
-        display: "flex", flexDirection: "column", gap: "20px",
-      }}>
+      <div className={styles.page}>
         {/* Account state is admin-only — /profile/[id] is otherwise readable by
             the person themselves, who has no use for it. */}
         <ProfileHeader
