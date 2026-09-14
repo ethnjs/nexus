@@ -13,6 +13,19 @@ interface EditableTextProps {
   startEditing?: boolean
   /** Reads as plain text and can't enter edit mode — put the reason in `title`. */
   locked?: boolean
+  /**
+   * Shown in place of an empty value, muted. Without it an empty field
+   * renders nothing and there is no target left to click — which matters for
+   * any nullable field. Never becomes the draft.
+   */
+  placeholder?: string
+  /**
+   * Let an empty value save (as ""), instead of treating it as a cancel.
+   * Opt-in: for a required field, clearing it and clicking away should abandon
+   * the edit, not blank the record. A nullable field needs the opposite —
+   * otherwise a wrong abbreviation can never be removed.
+   */
+  allowEmpty?: boolean
 }
 
 const DEFAULT_TEXT_STYLE: CSSProperties = {
@@ -32,7 +45,7 @@ const BOX_STYLE: CSSProperties = { lineHeight: 1.4, display: 'block' }
 // by a hidden mirror span (same font) rather than a fixed size, so the
 // span->input swap never shifts whatever sits next to it, and the box keeps
 // tracking width as the user types.
-export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false }: EditableTextProps) {
+export function EditableText({ value, onSave, textStyle, title = 'Click to edit', startEditing = false, locked = false, placeholder, allowEmpty = false }: EditableTextProps) {
   const [editing, setEditing] = useState(startEditing)
   const [draft, setDraft] = useState(value)
   const [saving, setSaving] = useState(false)
@@ -65,7 +78,7 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
 
   async function save() {
     const trimmed = draft.trim()
-    if (!trimmed || trimmed === value) {
+    if ((!trimmed && !allowEmpty) || trimmed === value) {
       setEditing(false)
       return
     }
@@ -134,9 +147,12 @@ export function EditableText({ value, onSave, textStyle, title = 'Click to edit'
         color: 'var(--color-text-primary)',
         cursor: locked ? 'not-allowed' : 'text',
         borderBottom: '1px solid transparent',
+        // Muted only while standing in for an absent value — the placeholder
+        // shouldn't read as content.
+        ...(value ? {} : { color: 'var(--color-text-tertiary)' }),
       }}
     >
-      {value}
+      {value || placeholder}
     </span>
   )
 }
