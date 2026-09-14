@@ -3,10 +3,10 @@
 import { ReactNode, useState } from "react";
 import { usePathname } from "next/navigation";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
-import { COLLAPSED_W } from "@/components/layout/Sidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
+import styles from "@/components/layout/Shell.module.css";
 
 /**
  * Shell for the dashboard root and the admin pages under it. Same structure
@@ -30,15 +30,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <LayoutPanelProvider>
-      <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
+      <div className={styles.shell}>
         <AdminSidebar onExpandedChange={setSidebarExpanded} />
-        <div style={{
-          flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden",
-          marginLeft: COLLAPSED_W,
-        }}>
-          {/* No wordmark — the rail carries it. */}
-          <Topbar showAvatar sidebarExpanded={sidebarExpanded} />
-          <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+        <div className={styles.column}>
+          {/* The rail carries the wordmark on desktop, but it's an off-canvas
+              drawer on mobile — so the bar takes over there. */}
+          <Topbar
+            showWordmark="mobile-only"
+            showAvatar
+            sidebarExpanded={sidebarExpanded}
+            clearsMobileToggle
+          />
+          <main className={styles.main}>
             {children}
           </main>
         </div>

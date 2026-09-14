@@ -1,0 +1,56 @@
+/*
+ * The app shell frame shared by app/dashboard/layout.tsx and
+ * app/dashboard/tournaments/[id]/layout.tsx. See the note atop
+ * Sidebar.module.css for why the viewport switch lives in CSS. 640px mirrors
+ * MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.shell {
+  display: flex;
+  /*
+   * dvh, not vh: on mobile Safari and Chrome 100vh measures the viewport with
+   * the URL bar hidden, so a 100vh + overflow:hidden shell clips its own
+   * bottom edge until the bar actually collapses.
+   */
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  /*
+   * COLLAPSED_W. Reserved as a margin so the rail widening on hover overlays
+   * the page rather than reflowing it.
+   */
+  margin-left: 52px;
+  transition: margin-left 0.2s ease;
+}
+
+/* Settings routes lock the rail open, so its full width is reserved instead. */
+.columnWide {
+  margin-left: 192px; /* EXPANDED_W */
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 24px;
+}
+
+@media (max-width: 640px) {
+  /* The rail is an off-canvas drawer here — it reserves no width. */
+  .column,
+  .columnWide {
+    margin-left: 0;
+  }
+
+  .main {
+    /* Extra bottom padding clears floating action bars above the home gesture. */
+    padding: 16px 16px 32px;
+  }
+}

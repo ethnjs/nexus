@@ -10,7 +10,7 @@ export default function SettingsLayout({ children }: { children: React.ReactNode
 
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
-      <Topbar showWordmark showAvatar extraLeftPad={isMobile ? 44 : 0} />
+      <Topbar showWordmark showAvatar clearsMobileToggle />
       <div style={{ maxWidth: `${SETTINGS_CONTAINER_MAX_WIDTH}px`, margin: "0 auto" }}>
         <SettingsNav />
         <div style={{
