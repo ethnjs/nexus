@@ -22,6 +22,7 @@ import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { IconArchive, IconRestore, IconTrash, IconSearch, IconTrophy } from "@/components/ui/Icons";
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
+import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
 
 // Fixed px wherever the content has a known maximum — a formatted date range,
@@ -258,6 +259,7 @@ export default function AdminTournamentsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
 
+  const run = useActionToast();
   const [ownerUserId, setOwnerUserId] = useState<number | null>(null);
   const { setPanel, clearPanel } = useSetLayoutPanel();
 
@@ -409,7 +411,10 @@ export default function AdminTournamentsPage() {
               its members but nothing in it can be changed while archived.
             </>
           }
-          onConfirm={() => tournamentsApi.archive(archiveTarget.id).then(replaceRow)}
+          onConfirm={() => run(
+            `${tournamentDisplayName(archiveTarget)} archived`,
+            () => tournamentsApi.archive(archiveTarget.id).then(replaceRow),
+          )}
           onClose={() => setArchiveTarget(null)}
         />
       )}
@@ -426,7 +431,10 @@ export default function AdminTournamentsPage() {
               auto-archive job once you do this.
             </>
           }
-          onConfirm={() => tournamentsApi.unarchive(unarchiveTarget.id).then(replaceRow)}
+          onConfirm={() => run(
+            `${tournamentDisplayName(unarchiveTarget)} unarchived`,
+            () => tournamentsApi.unarchive(unarchiveTarget.id).then(replaceRow),
+          )}
           onClose={() => setUnarchiveTarget(null)}
         />
       )}
@@ -443,7 +451,7 @@ export default function AdminTournamentsPage() {
               {deleteTarget.event_count === 1 ? "" : "s"}. This can&rsquo;t be undone.
             </>
           }
-          onDelete={(t) => tournamentsApi.delete(t.id)}
+          onDelete={(t) => run(`${tournamentDisplayName(t)} deleted`, () => tournamentsApi.delete(t.id))}
           onClose={() => setDeleteTarget(null)}
           onDeleted={removeRows}
         />

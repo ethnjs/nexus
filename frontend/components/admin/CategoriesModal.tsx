@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { EditableText } from "@/components/ui/EditableText";
 import { IconPlus, IconTrash } from "@/components/ui/Icons";
+import { useActionToast } from "@/lib/useActionToast";
 
 /**
  * Categories get a modal rather than a table of their own: there are five of
@@ -23,6 +24,7 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
   onChanged: (categories: EventCategory[]) => void;
   onClose: () => void;
 }) {
+  const run = useActionToast();
   const [newName, setNewName] = useState("");
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -39,7 +41,7 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
     setError(undefined);
     setAdding(true);
     try {
-      const created = await eventCategoriesApi.create({ name });
+      const created = await run(`${name} added`, () => eventCategoriesApi.create({ name }));
       onChanged(sorted([...categories, created]));
       setNewName("");
     } catch (err: unknown) {
@@ -51,15 +53,17 @@ export function CategoriesModal({ categories, onChanged, onClose }: {
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
   async function handleRename(id: number, name: string) {
-    const updated = await eventCategoriesApi.update(id, { name });
-    onChanged(sorted(categories.map((c) => (c.id === id ? updated : c))));
+    await run(`Renamed to ${name}`, async () => {
+      const updated = await eventCategoriesApi.update(id, { name });
+      onChanged(sorted(categories.map((c) => (c.id === id ? updated : c))));
+    });
   }
 
   async function handleDelete(category: EventCategory) {
     setError(undefined);
     setDeletingId(category.id);
     try {
-      await eventCategoriesApi.delete(category.id);
+      await run(`${category.name} deleted`, () => eventCategoriesApi.delete(category.id));
       onChanged(categories.filter((c) => c.id !== category.id));
     } catch (err: unknown) {
       // 409 while events still point at it — the message names the reason.

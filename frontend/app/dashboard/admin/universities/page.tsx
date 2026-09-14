@@ -12,6 +12,7 @@ import { EditableText } from "@/components/ui/EditableText";
 import { BulkDeleteModal } from "@/components/ui/BulkDeleteModal";
 import { NewUniversityModal } from "@/components/admin/NewUniversityModal";
 import { IconSearch, IconSchool, IconTrash, IconPlus } from "@/components/ui/Icons";
+import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
 
 const COLUMNS = [
@@ -78,6 +79,7 @@ function UniversityRow({ university, onSave, onDelete }: {
 }
 
 export default function AdminUniversitiesPage() {
+  const run = useActionToast();
   const [universities, setUniversities] = useState<University[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
@@ -106,8 +108,10 @@ export default function AdminUniversitiesPage() {
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
   async function handleSave(id: number, patch: Parameters<typeof universitiesApi.update>[1]) {
-    const updated = await universitiesApi.update(id, patch);
-    setUniversities((prev) => (prev ?? []).map((u) => (u.id === id ? updated : u)));
+    await run("University updated", async () => {
+      const updated = await universitiesApi.update(id, patch);
+      setUniversities((prev) => (prev ?? []).map((u) => (u.id === id ? updated : u)));
+    });
   }
 
   function handleCreated(created: University) {
@@ -214,7 +218,7 @@ export default function AdminUniversitiesPage() {
               using it as a venue.
             </>
           }
-          onDelete={(u) => universitiesApi.delete(u.id)}
+          onDelete={(u) => run(`${u.name} deleted`, () => universitiesApi.delete(u.id))}
           onClose={() => setDeleteTarget(null)}
           onDeleted={removeRows}
         />

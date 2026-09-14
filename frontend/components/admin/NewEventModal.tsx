@@ -6,12 +6,14 @@ import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
+import { useActionToast } from "@/lib/useActionToast";
 
 export function NewEventModal({ categories, onClose, onCreated }: {
   categories: EventCategory[];
   onClose: () => void;
   onCreated: (event: CanonicalEvent) => void;
 }) {
+  const run = useActionToast();
   const [name, setName] = useState("");
   const [categoryId, setCategoryId] = useState<string>(
     categories.length === 1 ? String(categories[0].id) : "",
@@ -28,10 +30,10 @@ export function NewEventModal({ categories, onClose, onCreated }: {
     setError(undefined);
     setSaving(true);
     try {
-      const created = await canonicalEventsApi.create({
+      const created = await run(`${name.trim()} added`, () => canonicalEventsApi.create({
         name: name.trim(),
         category_id: Number(categoryId),
-      });
+      }));
       onCreated(created);
       onClose();
     } catch (err: unknown) {

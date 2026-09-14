@@ -11,6 +11,7 @@ import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { IconSearch, IconPlus, IconX } from "@/components/ui/Icons";
+import { useToast } from "@/lib/useToast";
 
 const ALL_CATEGORIES = "__all__";
 
@@ -39,6 +40,7 @@ export function AddSeasonEventsModal({
   onClose: () => void;
   onAdded: (created: SeasonEvent[]) => void;
 }) {
+  const { show } = useToast();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string>(ALL_CATEGORIES);
   const [staged, setStaged] = useState<Staged[]>([]);
@@ -112,7 +114,13 @@ export function AddSeasonEventsModal({
     if (created.length > 0) onAdded(created);
 
     const failed = outcomes.length - created.length;
-    if (failed === 0) { onClose(); return; }
+    if (failed === 0) {
+      // One toast for the batch — a toast per pair would stack a dozen deep.
+      show(`Added ${created.length} entr${created.length === 1 ? "y" : "ies"} to ${year}`, "success");
+      onClose();
+      return;
+    }
+    show(`${failed} of ${outcomes.length} couldn't be added`, "error");
 
     const first = outcomes.find((o): o is PromiseRejectedResult => o.status === "rejected");
     const reason = first?.reason instanceof ApiError ? first.reason.message : "Something went wrong.";

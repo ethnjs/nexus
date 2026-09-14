@@ -5,11 +5,13 @@ import { universitiesApi, University, ApiError } from "@/lib/api";
 import { Modal } from "@/components/ui/Modal";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { useActionToast } from "@/lib/useActionToast";
 
 export function NewUniversityModal({ onClose, onCreated }: {
   onClose: () => void;
   onCreated: (university: University) => void;
 }) {
+  const run = useActionToast();
   const [name, setName] = useState("");
   const [abbreviation, setAbbreviation] = useState("");
   const [location, setLocation] = useState("");
@@ -25,13 +27,13 @@ export function NewUniversityModal({ onClose, onCreated }: {
     setError(undefined);
     setSaving(true);
     try {
-      const created = await universitiesApi.create({
+      const created = await run(`${name.trim()} added`, () => universitiesApi.create({
         name: name.trim(),
         // Empty means "not set", not an empty string — the column is nullable
         // and a "" abbreviation would win over the name in placeOfShort.
         abbreviation: abbreviation.trim() || null,
         location: location.trim() || null,
-      });
+      }));
       onCreated(created);
       onClose();
     } catch (err: unknown) {

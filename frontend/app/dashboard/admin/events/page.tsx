@@ -25,6 +25,7 @@ import { CategoriesModal } from "@/components/admin/CategoriesModal";
 import { NewEventModal } from "@/components/admin/NewEventModal";
 import { AddSeasonEventsModal } from "@/components/admin/AddSeasonEventsModal";
 import { IconSearch, IconEvents, IconTrash, IconPlus, IconFilter, IconX, IconPresets } from "@/components/ui/Icons";
+import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
 
 // The season selector's "edit the catalog itself" position. A sentinel rather
@@ -79,6 +80,7 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
   onEventsChanged: (events: CanonicalEvent[]) => void;
   onCategoriesChanged: (categories: EventCategory[]) => void;
 }) {
+  const run = useActionToast();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FilterState<EventFilterKey>>(() => emptyFilterState(EVENT_FILTER_KEYS));
   const [showFilters, setShowFilters] = useState(false);
@@ -106,13 +108,17 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
 
   /** Rethrows so EditableText keeps the field open with the server's message. */
   async function handleRename(id: number, name: string) {
-    const updated = await canonicalEventsApi.update(id, { name });
-    onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+    await run(`Renamed to ${name}`, async () => {
+      const updated = await canonicalEventsApi.update(id, { name });
+      onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+    });
   }
 
   async function handleRecategorise(id: number, categoryId: number) {
-    const updated = await canonicalEventsApi.update(id, { category_id: categoryId });
-    onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+    await run("Category changed", async () => {
+      const updated = await canonicalEventsApi.update(id, { category_id: categoryId });
+      onEventsChanged(events.map((e) => (e.id === id ? updated : e)));
+    });
   }
 
   const isFiltered = search.trim() !== "" || isFilterActive(filters);
@@ -250,7 +256,7 @@ function CatalogView({ events, categories, seasonPicker, onEventsChanged, onCate
               own copy.
             </>
           }
-          onDelete={(e) => canonicalEventsApi.delete(e.id)}
+          onDelete={(e) => run(`${e.name} deleted`, () => canonicalEventsApi.delete(e.id))}
           onClose={() => setDeleteTarget(null)}
           onDeleted={(ids) => onEventsChanged(events.filter((e) => !ids.includes(e.id)))}
         />
@@ -269,6 +275,7 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
   /** Bubbles a new season's year up so the picker gains it. */
   onSeasonAdded: (year: number) => void;
 }) {
+  const run = useActionToast();
   const [seasonEvents, setSeasonEvents] = useState<SeasonEvent[] | null>(null);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FilterState<SeasonFilterKey>>(() => emptyFilterState(SEASON_FILTER_KEYS));
@@ -335,22 +342,27 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
     if (busy.has(key)) return;
     setBusy((prev) => new Set(prev).add(key));
     setError(undefined);
+    const label = `${event.name} — Division ${division} ${next ? "on" : "off"} for ${year}`;
     try {
-      const existing = byCell.get(key);
-      if (existing) {
-        // Patched, not deleted — the row carries created_at, and dropping it
-        // loses when the decision was first made. Removing the event from the
-        // season entirely is the row's own action.
-        const updated = await seasonEventsApi.update(existing.id, { is_active: next });
-        setSeasonEvents((prev) => (prev ?? []).map((s) => (s.id === existing.id ? updated : s)));
-      } else {
-        const created = await seasonEventsApi.create({
-          event_id: event.id, year, division, is_active: next,
-        });
-        setSeasonEvents((prev) => [...(prev ?? []), created]);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof ApiError ? err.message : "Couldn't save that change.");
+      await run(label, async () => {
+        const existing = byCell.get(key);
+        if (existing) {
+          // Patched, not deleted — the row carries created_at, and dropping it
+          // loses when the decision was first made. Removing the event from the
+          // season entirely is the row's own action.
+          const updated = await seasonEventsApi.update(existing.id, { is_active: next });
+          setSeasonEvents((prev) => (prev ?? []).map((s) => (s.id === existing.id ? updated : s)));
+        } else {
+          const created = await seasonEventsApi.create({
+            event_id: event.id, year, division, is_active: next,
+          });
+          setSeasonEvents((prev) => [...(prev ?? []), created]);
+        }
+      });
+    } catch {
+      // Already toasted — the inline line is for the error staying put next to
+      // the control after the toast auto-dismisses.
+      setError("Couldn't save that change.");
     } finally {
       setBusy((prev) => {
         const nextSet = new Set(prev);
@@ -527,7 +539,10 @@ function SeasonView({ year, events, categories, seasonPicker, onSeasonAdded }: {
               division off instead if you only want it out of the defaults.
             </>
           }
-          onDelete={(row) => seasonEventsApi.delete(row.id)}
+          onDelete={(row) => run(
+            `${row.event.name} removed from ${year}`,
+            () => seasonEventsApi.delete(row.id),
+          )}
           onClose={() => setRemoveTarget(null)}
           onDeleted={(ids) =>
             setSeasonEvents((prev) => (prev ?? []).filter((s) => !ids.includes(s.id)))

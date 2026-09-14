@@ -24,6 +24,7 @@ import {
 import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { AdminUserPanel, ADMIN_USER_PANEL_WIDTH } from "@/components/admin/AdminUserPanel";
 import { STATUS_VARIANT } from "@/components/admin/AccountBadges";
+import { useActionToast } from "@/lib/useActionToast";
 import table from "@/components/ui/Table.module.css";
 
 // Every track carries a floor *and* an `fr` weight, so the slack on a wide
@@ -212,11 +213,11 @@ type PendingAction =
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  const run = useActionToast();
   const [users, setUsers] = useState<AdminUserSlim[] | null>(null);
   const [loadError, setLoadError] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [role, setRole] = useState<RoleFilter>("all");
-  const [notice, setNotice] = useState<string | undefined>(undefined);
 
   const [panelUserId, setPanelUserId] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -297,12 +298,6 @@ export default function AdminUsersPage() {
         </p>
       )}
 
-      {notice && (
-        <p style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-success)", marginBottom: "10px" }}>
-          {notice}
-        </p>
-      )}
-
       <div style={{ display: "flex", gap: "10px", alignItems: "center", marginBottom: "16px", flexWrap: "wrap" }}>
         <Input
           placeholder="Search name, email or phone"
@@ -376,7 +371,10 @@ export default function AdminUsersPage() {
               undo this.
             </>
           }
-          onConfirm={() => adminUsersApi.updateRole(pending.user.id, { status: "locked" }).then(replaceRow)}
+          onConfirm={() => run(
+            `${userName(pending.user)} locked`,
+            () => adminUsersApi.updateRole(pending.user.id, { status: "locked" }).then(replaceRow),
+          )}
           onClose={() => setPending(null)}
         />
       )}
@@ -392,7 +390,10 @@ export default function AdminUsersPage() {
               sign in again with their existing password.
             </>
           }
-          onConfirm={() => adminUsersApi.updateRole(pending.user.id, { status: "active" }).then(replaceRow)}
+          onConfirm={() => run(
+            `${userName(pending.user)} restored`,
+            () => adminUsersApi.updateRole(pending.user.id, { status: "active" }).then(replaceRow),
+          )}
           onClose={() => setPending(null)}
         />
       )}
@@ -408,7 +409,10 @@ export default function AdminUsersPage() {
               including this page.
             </>
           }
-          onConfirm={() => adminUsersApi.updateRole(pending.user.id, { role: "admin" }).then(replaceRow)}
+          onConfirm={() => run(
+            `${userName(pending.user)} is now an admin`,
+            () => adminUsersApi.updateRole(pending.user.id, { role: "admin" }).then(replaceRow),
+          )}
           onClose={() => setPending(null)}
         />
       )}
@@ -424,7 +428,10 @@ export default function AdminUsersPage() {
               per-tournament roles and lose platform-wide access.
             </>
           }
-          onConfirm={() => adminUsersApi.updateRole(pending.user.id, { role: "user" }).then(replaceRow)}
+          onConfirm={() => run(
+            `${userName(pending.user)} is no longer an admin`,
+            () => adminUsersApi.updateRole(pending.user.id, { role: "user" }).then(replaceRow),
+          )}
           onClose={() => setPending(null)}
         />
       )}
@@ -440,9 +447,11 @@ export default function AdminUsersPage() {
               password keeps working until they use it.
             </>
           }
-          onConfirm={() => adminUsersApi.sendPasswordReset(pending.user.id)}
+          onConfirm={() => run(
+            `Password reset sent to ${pending.user.email}`,
+            () => adminUsersApi.sendPasswordReset(pending.user.id),
+          )}
           onClose={() => setPending(null)}
-          onConfirmed={() => setNotice(`Password reset sent to ${pending.user.email}.`)}
         />
       )}
 
@@ -458,7 +467,7 @@ export default function AdminUsersPage() {
               off access.
             </>
           }
-          onDelete={(u) => adminUsersApi.delete(u.id)}
+          onDelete={(u) => run(`${userName(u)} deleted`, () => adminUsersApi.delete(u.id))}
           onClose={() => setPending(null)}
           onDeleted={removeRows}
         />
