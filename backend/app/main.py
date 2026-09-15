@@ -23,6 +23,7 @@ from app.api.routes.tournament import audit as tournament_audit
 from app.api.routes.tournament import setup_checklist as tournament_setup_checklist
 from app.api.routes.tournament import onboarding as tournament_onboarding
 from app.api.routes.tournament import tracks as tournament_tracks
+from app.api.routes.tournament import buildings as tournament_buildings
 from app.api.routes.tournament import display_config as tournament_display_config
 from app.api.routes.tournament import assignments as tournament_assignments
 from app.api.routes import chapter as chapter_core
@@ -126,6 +127,7 @@ app.include_router(tournament_setup_checklist.router,      prefix="", dependenci
 app.include_router(tournament_onboarding.router,            prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_onboarding.member_router,     prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_tracks.router,                prefix="", dependencies=[api_key_dependency])
+app.include_router(tournament_buildings.router,             prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_display_config.router,        prefix="", dependencies=[api_key_dependency])
 app.include_router(tournament_assignments.router,           prefix="", dependencies=[api_key_dependency])
 app.include_router(sheets.router,                 prefix="", dependencies=[api_key_dependency])
