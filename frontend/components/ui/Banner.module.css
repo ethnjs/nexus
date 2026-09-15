@@ -1,0 +1,88 @@
+/*
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * lib/useIsMobile.ts — keep the two in sync.
+ *
+ * Variant colours stay inline in Banner.tsx — they're per-variant tokens, not
+ * layout, and there are four of them.
+ */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.message {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--color-text-primary);
+  flex: 1;
+  /*
+   * Without this a flex item won't shrink past its longest word, so a banner
+   * whose message, action and dismiss can't all fit pushed its contents out
+   * past the rounded border instead of wrapping.
+   */
+  min-width: 0;
+}
+
+.action {
+  flex-shrink: 0;
+}
+
+.dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text-tertiary);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/*
+ * Hover in CSS rather than onMouseEnter/onMouseLeave writing inline styles:
+ * on a touch device the mouse handlers fire but never un-fire, leaving the
+ * button stuck in its hover colours after a tap. --dismiss-hover-bg is set
+ * inline from the variant.
+ */
+.dismiss:hover {
+  color: var(--color-text-primary);
+  background: var(--dismiss-hover-bg);
+}
+
+@media (max-width: 640px) {
+  .banner {
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+
+  /*
+   * The action drops to its own full-width line; the dismiss is re-ordered
+   * ahead of it so it stays on the message's line rather than being pushed
+   * down to a third one.
+   */
+  .dismiss {
+    order: 1;
+  }
+
+  .action {
+    order: 2;
+    flex-basis: 100%;
+  }
+}
