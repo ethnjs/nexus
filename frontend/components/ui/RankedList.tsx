@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import {
-  DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, closestCenter, useSensor, useSensors,
+  DndContext, DragEndEvent, DragOverlay, DragStartEvent, MouseSensor, TouchSensor, closestCenter, useSensor, useSensors,
 } from '@dnd-kit/core'
 import {
   SortableContext, verticalListSortingStrategy, useSortable, arrayMove,
@@ -48,7 +48,16 @@ const ROW_HEIGHT = '36px'
 // of once per pick, and reordering is a drag on a touch device rather than
 // a search-and-tap, both worse on mobile.
 export function RankedList({ options, ranks, value, onChange, allowDuplicates = false, locked = false, error }: RankedListProps) {
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
+  // Split sensors rather than one PointerSensor. A PointerSensor arms on a
+  // 4px move, which on a phone is indistinguishable from the start of a
+  // scroll — paired with touch-action:none on each row (below) that made a
+  // long ranked list impossible to scroll past, since every drag on it was
+  // captured as a reorder. Touch now needs a 200ms press first, so a flick
+  // scrolls the page and a hold starts a drag.
+  const sensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } }),
+  )
   const [draft, setDraft] = useState('')
   const [activeId, setActiveId] = useState<string | null>(null)
 
@@ -234,7 +243,10 @@ function RankedRow({ value, rank, label, locked, onRemove }: {
         ref={setNodeRef}
         {...(!locked ? attributes : {})}
         {...(!locked ? listeners : {})}
-        style={{ ...style, flex: 1, touchAction: 'none' }}
+        // 'manipulation', not 'none': the browser keeps panning (so the page
+        // scrolls), and only the TouchSensor's press delay starts a drag. It
+        // still suppresses double-tap zoom, which is what we want on a row.
+        style={{ ...style, flex: 1, touchAction: 'manipulation' }}
       >
         <RowPill label={label} onRemove={!locked ? onRemove : undefined} locked={locked} />
       </div>
