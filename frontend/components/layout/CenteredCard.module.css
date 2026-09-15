@@ -1,7 +1,10 @@
 /*
- * Frame for the signed-out pages (sign-in, sign-up, password reset, email
- * verification). See the note atop components/layout/Sidebar.module.css for
- * why the viewport switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * The signed-out centred card: the auth pages (sign-in, sign-up, password
+ * reset, email verification) and the join-by-invite page, which is the same
+ * screen with a wider card.
+ *
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
  * lib/useIsMobile.ts — keep the two in sync.
  */
 
@@ -32,11 +35,22 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* Join carries tournament details above the action, so it runs wider. */
+.cardWide {
+  max-width: 480px;
+  padding: 48px 40px;
+}
+
 .wordmark {
   font-family: var(--font-serif);
   font-size: 48px;
   color: var(--color-text-primary);
   margin: 0 0 24px;
+}
+
+.wordmarkSm {
+  font-size: 40px;
+  margin-bottom: 28px;
 }
 
 .backRow {
@@ -48,17 +62,19 @@
   .page {
     /*
      * 64px of outer padding plus 60px of card padding wasted a third of a
-     * phone screen before the form started.
+     * phone screen before the content started.
      */
     padding: 24px 16px;
   }
 
-  .card {
+  .card,
+  .cardWide {
     padding: 36px 24px;
   }
 
-  .wordmark {
-    font-size: 40px;
+  .wordmark,
+  .wordmarkSm {
+    font-size: 36px;
     margin-bottom: 20px;
   }
 }

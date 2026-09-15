@@ -3,7 +3,7 @@
 import { ReactNode } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { IconArrowLeft } from '@/components/ui/Icons'
-import styles from './auth.module.css'
+import styles from '@/components/layout/CenteredCard.module.css'
 
 // Pages that show a "Back to home" link above the wordmark.
 const BACK_TO_HOME_ROUTES = ['/sign-in', '/sign-up']
