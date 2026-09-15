@@ -29,6 +29,10 @@ type TooltipProps = {
   style?: CSSProperties
 }
 
+// Distance from trigger to bubble — mirrors the .wrapper::after hover bridge
+// that keeps the pointer from falling through that gap.
+const ARROW_GAP = 10
+
 const variantIcon: Record<TooltipVariant, ReactNode> = {
   'info': <IconInfo />,
   'success': <IconCheckCircle style={{color: 'var(--color-success)'}}/>,
@@ -53,18 +57,44 @@ export function Tooltip({ variant, status, message, children, showIcon = true, m
 
   const resolvedVariant = variant ?? (status !== 'idle' ? status : 'info')
 
-  // The bubble is centred on its trigger, so one near a screen edge hangs off
-  // it — which on a phone is most of them. CSS can't know which edge is close,
-  // so measure once per appearance and nudge the bubble back inside. The arrow
-  // shifts the opposite way to stay pointing at the trigger.
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const bubbleRef = useRef<HTMLDivElement>(null)
+  const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null)
   const [shift, setShift] = useState(0)
 
+  // position:fixed off the trigger's own rect rather than absolute inside the
+  // wrapper: an absolute bubble is clipped by any ancestor with overflow:hidden
+  // (the roster table's roles cell, Popover's scrolling list), which showed up
+  // as an arrow with no bubble under it.
   useLayoutEffect(() => {
     if (!visible) {
+      setAnchor(null)
       setShift(0)
       return
     }
+    function measure() {
+      const wrap = wrapperRef.current
+      if (!wrap) return
+      const r = wrap.getBoundingClientRect()
+      setAnchor({ top: r.bottom + ARROW_GAP, left: r.left + r.width / 2 })
+    }
+    measure()
+    // Capture phase so scrolling in any ancestor container, not just the
+    // window, keeps the bubble stuck to its trigger.
+    window.addEventListener('scroll', measure, true)
+    window.addEventListener('resize', measure)
+    return () => {
+      window.removeEventListener('scroll', measure, true)
+      window.removeEventListener('resize', measure)
+    }
+  }, [visible, message, status])
+
+  // The bubble is centred on its trigger, so one near a screen edge hangs off
+  // it — which on a phone is most of them. CSS can't know which edge is close,
+  // so measure once per placement and nudge the bubble back inside. The arrow
+  // shifts the opposite way to stay pointing at the trigger.
+  useLayoutEffect(() => {
+    if (!anchor) return
     const el = bubbleRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -72,12 +102,15 @@ export function Tooltip({ variant, status, message, children, showIcon = true, m
     let dx = 0
     if (rect.left < margin) dx = margin - rect.left
     else if (rect.right > window.innerWidth - margin) dx = window.innerWidth - margin - rect.right
-    // Runs once per appearance: setting shift re-renders but doesn't re-fire
-    // this effect, so there's no measure/adjust loop.
-    if (dx !== 0) setShift(dx)
-  }, [visible, message, status])
+    // Setting shift re-renders but doesn't change `anchor`, so this doesn't
+    // re-fire — no measure/adjust loop.
+    setShift(dx)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchor])
 
   const bubbleStyle: CSSProperties = {
+    top: anchor?.top,
+    left: anchor?.left,
     transform: `translateX(calc(-50% + ${shift}px))`,
     ['--tooltip-arrow-shift' as string]: `${shift}px`,
     // min() so an explicit maxWidth can't exceed a narrow viewport — the
@@ -92,9 +125,9 @@ export function Tooltip({ variant, status, message, children, showIcon = true, m
   }
 
   return (
-    <div className={styles.wrapper} style={style} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
+    <div ref={wrapperRef} className={styles.wrapper} style={style} onMouseEnter={() => setHovered(true)} onMouseLeave={() => setHovered(false)}>
       {children}
-      {visible && (
+      {visible && anchor && (
         <div
           ref={bubbleRef}
           className={`${styles.bubble} ${styles[resolvedVariant]}`}

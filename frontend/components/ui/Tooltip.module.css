@@ -12,13 +12,12 @@
   height: 10px;
 }
 
+/* Fixed, not absolute: top/left come from the trigger's measured rect so no
+   ancestor's overflow:hidden can clip the bubble. See Tooltip.tsx. */
 .bubble {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  /* Overridden inline with the measured edge correction — see Tooltip.tsx. */
+  position: fixed;
   transform: translateX(-50%);
-  z-index: 50;
+  z-index: 300;
   white-space: nowrap;
   padding: 7px 11px;
   border-radius: var(--radius-md);
