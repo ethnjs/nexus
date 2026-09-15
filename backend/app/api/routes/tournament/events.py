@@ -11,7 +11,7 @@ from app.core.tournament.permissions import (
 )
 from app.db.session import get_db
 from app.models.models import (
-    SeasonEvent, TournamentEvent, TournamentShift, TournamentTrack, User,
+    SeasonEvent, TournamentEvent, TournamentEventTrack, TournamentShift, TournamentTrack, User,
 )
 from app.schemas.tournament.event import (
     EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
@@ -123,7 +123,27 @@ def _apply_shifts_and_tracks(
         resolved = list(by_id.values())
 
     if track_ids is not None or shift_ids is not None:
-        event.tracks = resolved
+        _set_event_tracks(event, resolved)
+
+
+def _set_event_tracks(event: TournamentEvent, tracks: list[TournamentTrack]) -> None:
+    """Replace the event's track links with exactly `tracks`, reusing the
+    existing link row for any track that stays.
+
+    Assigning the whole list at once would be shorter and wrong. A link row
+    carries where the event physically happens on that track, so tearing one
+    down and rebuilding it for a track that never left would wipe a building
+    and room the TD never touched — the same reason detaching a shift unpins
+    its assignments instead of deleting them.
+    """
+    wanted = {track.id for track in tracks}
+    existing = {detail.track_id: detail for detail in event.track_details}
+
+    for track_id, detail in existing.items():
+        if track_id not in wanted:
+            event.track_details.remove(detail)
+    for track_id in sorted(wanted - set(existing)):
+        event.track_details.append(TournamentEventTrack(track_id=track_id))
 
 
 def _validate_no_overlap(shifts: list[TournamentShift]) -> None:
