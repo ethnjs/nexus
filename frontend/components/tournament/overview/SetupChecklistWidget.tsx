@@ -8,6 +8,7 @@ import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { ChecklistProgressRing } from "./ChecklistProgressRing";
 import { ChecklistCard } from "./ChecklistCard";
+import styles from "@/components/tournament/overview/Overview.module.css";
 
 interface ChecklistConfigEntry {
   buildable: boolean;
@@ -50,8 +51,8 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
     // data-min-width: the item grid plus the ring — the overview's grid
     // spans as many columns as that takes.
     <OverviewCard title="Setup progress" data-min-width={640}>
-      <div style={{ display: "flex", gap: "20px", alignItems: "stretch" }}>
-        <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+      <div className={styles.checklistBody}>
+        <div className={styles.checklistItems}>
           {checklist.items.map((item) => {
             const config = CHECKLIST_CONFIG[item.item_key];
             const onClick = item.item_key === "invite_staff"
@@ -62,7 +63,7 @@ export function SetupChecklistWidget({ tournamentId }: { tournamentId: string })
             return <ChecklistCard key={item.item_key} item={item} onClick={onClick} />;
           })}
         </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div className={styles.checklistRing}>
           <ChecklistProgressRing completed={checklist.completed_count} total={checklist.total_count} size={180} />
         </div>
       </div>

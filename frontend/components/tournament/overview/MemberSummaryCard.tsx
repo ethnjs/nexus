@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { OverviewCard, OVERVIEW_CARD_PADDING } from "@/components/tournament/overview/OverviewCard";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { Tooltip } from "@/components/ui/Tooltip";
+import styles from "@/components/tournament/overview/Overview.module.css";
 
 // Narrowest a track's column gets — what four status tiles need side by side.
 const TRACK_MIN_WIDTH = 420;
@@ -104,7 +105,7 @@ function TrackColumn({ track }: { track: MemberSummaryTrack }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "12px", minWidth: 0 }}>
       <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 600 }}>{track.name}</span>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "8px" }}>
+      <div className={styles.statusTiles}>
         {STATUS_TILES.map((tile) => (
           <StatusTile key={tile.key} label={tile.label} value={track[tile.key]} background={tile.background} />
         ))}
@@ -162,7 +163,7 @@ function AvailabilityBar({ option, max }: { option: MemberSummaryAvailabilityOpt
   const segments = SEGMENTS.filter((segment) => option[segment.key] > 0);
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "110px 1fr", alignItems: "center", gap: "12px" }}>
+    <div className={styles.legendRow}>
       <span
         title={option.label}
         style={{
