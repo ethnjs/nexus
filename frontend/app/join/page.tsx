@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Spinner } from "@/components/ui/Spinner";
 import { IconCalendar, IconLocation } from "@/components/ui/Icons";
+import styles from "@/components/layout/CenteredCard.module.css";
 
 // Copy varies by which threshold(s) this tournament actually collects — a
 // TD who only cares about 21+ shouldn't see 18+ language.
@@ -25,13 +26,9 @@ function ageDisclosureCopy(preview: JoinPreviewTournament): string {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex items-center justify-center py-16 px-4">
-      <section style={{
-        background: "var(--color-surface)", padding: "48px 40px", borderRadius: "10px",
-        display: "flex", flexDirection: "column", alignItems: "center",
-        width: "100%", maxWidth: "min(480px, 90vw)", boxShadow: "var(--shadow-lg)",
-      }}>
-        <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "40px", color: "var(--color-text-primary)", margin: "0 0 28px" }}>
+    <div className={styles.page}>
+      <section className={`${styles.card} ${styles.cardWide}`}>
+        <h1 className={`${styles.wordmark} ${styles.wordmarkSm}`}>
           NEXUS
         </h1>
         {children}

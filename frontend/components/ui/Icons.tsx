@@ -98,11 +98,18 @@ export function IconSettings({ size = 18, ...props }: IconProps) {
   );
 }
 
+// Solid shield with the check knocked out of it rather than drawn on top:
+// one path, fill-rule evenodd, so the check shows whatever is behind the icon
+// and stays correct on any background (the nav row's active fill, dark mode).
+// A second stroked path would have needed a hardcoded colour to fake the hole.
 export function IconShield({ size = 18, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ flexShrink: 0, ...props.style }} className={props.className}>
-      <path d="M10 2l7 3v5c0 4.5-3 7.5-7 8-4-0.5-7-3.5-7-8V5l7-3z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
-      <path d="M7 10l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        fillRule="evenodd"
+        d="M320 64C324.6 64 329.2 65 333.4 66.9L521.8 146.8C543.8 156.1 560.2 177.8 560.1 204C559.6 303.2 518.8 484.7 346.5 567.2C329.8 575.2 310.4 575.2 293.7 567.2C121.3 484.7 80.6 303.2 80.1 204C80 177.8 96.4 156.1 118.4 146.8L306.7 66.9C310.9 65 315.4 64 320 64zM220.5 344.7L272.6 398.7A27 27 0 0 0 312.4 397.7L430.4 261.7A27 27 0 0 0 389.6 226.3L291 340L259.5 307.3A27 27 0 0 0 220.5 344.7Z"
+      />
     </svg>
   );
 }
@@ -322,9 +329,11 @@ export function IconDotsVertical({ size = 16, ...props }: IconProps) {
  
 export function IconLock({ size = 14, ...props }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={props.style} className={props.className}>
-      <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M5 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    <svg width={size} height={size} viewBox="0 0 640 640" style={props.style} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M256 160L256 224L384 224L384 160C384 124.7 355.3 96 320 96C284.7 96 256 124.7 256 160zM192 224L192 160C192 89.3 249.3 32 320 32C390.7 32 448 89.3 448 160L448 224C483.3 224 512 252.7 512 288L512 512C512 547.3 483.3 576 448 576L192 576C156.7 576 128 547.3 128 512L128 288C128 252.7 156.7 224 192 224z"
+      />
     </svg>
   );
 }
@@ -542,6 +551,28 @@ export function IconUser({ size = 14, ...props }: IconProps) {
       <path
         d="M463 448.2C440.9 409.8 399.4 384 352 384L288 384C240.6 384 199.1 409.8 177 448.2C212.2 487.4 263.2 512 320 512C376.8 512 427.8 487.3 463 448.2zM64 320C64 178.6 178.6 64 320 64C461.4 64 576 178.6 576 320C576 461.4 461.4 576 320 576C178.6 576 64 461.4 64 320zM320 336C359.8 336 392 303.8 392 264C392 224.2 359.8 192 320 192C280.2 192 248 224.2 248 264C248 303.8 280.2 336 320 336z"
         fill="currentColor"
+      />
+    </svg>
+  );
+}
+
+export function IconTrophy({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M208.3 64L432.3 64C458.8 64 480.4 85.8 479.4 112.2C479.2 117.5 479 122.8 478.7 128L528.3 128C554.4 128 577.4 149.6 575.4 177.8C567.9 281.5 514.9 338.5 457.4 368.3C441.6 376.5 425.5 382.6 410.2 387.1C390 415.7 369 430.8 352.3 438.9L352.3 512L416.3 512C434 512 448.3 526.3 448.3 544C448.3 561.7 434 576 416.3 576L224.3 576C206.6 576 192.3 561.7 192.3 544C192.3 526.3 206.6 512 224.3 512L288.3 512L288.3 438.9C272.3 431.2 252.4 416.9 233 390.6C214.6 385.8 194.6 378.5 175.1 367.5C121 337.2 72.2 280.1 65.2 177.6C63.3 149.5 86.2 127.9 112.3 127.9L161.9 127.9C161.6 122.7 161.4 117.5 161.2 112.1C160.2 85.6 181.8 63.9 208.3 63.9zM165.5 176L113.1 176C119.3 260.7 158.2 303.1 198.3 325.6C183.9 288.3 172 239.6 165.5 176zM444 320.8C484.5 297 521.1 254.7 527.3 176L475 176C468.8 236.9 457.6 284.2 444 320.8z"
+      />
+    </svg>
+  );
+}
+
+export function IconSchool({ size = 18, ...props }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 640 640" style={{ flexShrink: 0, ...props.style }} className={props.className}>
+      <path
+        fill="currentColor"
+        d="M288 56C288 42.7 298.7 32 312 32L424 32C437.3 32 448 42.7 448 56L448 104C448 117.3 437.3 128 424 128L352 128L352 147.2L480 224L544 224C579.3 224 608 252.7 608 288L608 512C608 547.3 579.3 576 544 576L96 576C60.7 576 32 547.3 32 512L32 288C32 252.7 60.7 224 96 224L160 224L288 147.2L288 56zM272 448L272 528L368 528L368 448C368 421.5 346.5 400 320 400C293.5 400 272 421.5 272 448zM144 480C152.8 480 160 472.8 160 464L160 432C160 423.2 152.8 416 144 416L112 416C103.2 416 96 423.2 96 432L96 464C96 472.8 103.2 480 112 480L144 480zM160 336L160 304C160 295.2 152.8 288 144 288L112 288C103.2 288 96 295.2 96 304L96 336C96 344.8 103.2 352 112 352L144 352C152.8 352 160 344.8 160 336zM528 480C536.8 480 544 472.8 544 464L544 432C544 423.2 536.8 416 528 416L496 416C487.2 416 480 423.2 480 432L480 464C480 472.8 487.2 480 496 480L528 480zM544 336L544 304C544 295.2 536.8 288 528 288L496 288C487.2 288 480 295.2 480 304L480 336C480 344.8 487.2 352 496 352L528 352C536.8 352 544 344.8 544 336zM320 336C346.5 336 368 314.5 368 288C368 261.5 346.5 240 320 240C293.5 240 272 261.5 272 288C272 314.5 293.5 336 320 336z"
       />
     </svg>
   );

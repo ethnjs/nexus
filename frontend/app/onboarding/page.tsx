@@ -20,6 +20,7 @@ import { Tooltip } from "@/components/ui/Tooltip";
 import { IconInfo } from "@/components/ui/Icons";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { ProfileQuestion } from "@/components/profile/ProfileQuestion";
+import styles from "./Onboarding.module.css";
 import {
   PronounsField, StudentStatusField,
   UniversityField, MajorField, YearLevelField, GraduationYearField,
@@ -286,15 +287,12 @@ function OnboardingContent() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "var(--color-bg)", paddingBottom: "100px" }}>
-      <Topbar showWordmark showAvatar={false} />
-      <div style={{
-        maxWidth: "900px", margin: "0 auto", padding: "40px 20px",
-        display: "flex", flexDirection: "column", gap: "5px",
-      }}>
+    <div className={styles.page}>
+      <Topbar showWordmark showAvatar="logout-only" />
+      <div className={styles.container}>
         <PageHeader heading="Complete Your Profile" />
 
-        <form onSubmit={handleSubmit} noValidate style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+        <form onSubmit={handleSubmit} noValidate className={styles.form}>
           <ProfileCard>
             <ProfileQuestion
               question="What is your name?"
@@ -430,6 +428,7 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your student status?"
+                required
                 isActive={state === STATE.STUDENT_STATUS}
               >
                 <StudentStatusField
@@ -448,7 +447,7 @@ function OnboardingContent() {
               
               {state >= STATE.UNIVERSITY && (profileData.student_status === "Undergraduate" || profileData.student_status === "Graduate") && (
                 <>
-                  <ProfileQuestion question="What university do you attend?">
+                  <ProfileQuestion question="What university do you attend?" required>
                     <UniversityField
                       universities={universities}
                       value={profileData.university_name ?? ''}
@@ -459,7 +458,7 @@ function OnboardingContent() {
                       }}
                     />
                   </ProfileQuestion>
-                  <ProfileQuestion question="What is your major?">
+                  <ProfileQuestion question="What is your major?" required>
                     <MajorField
                       value={profileData.major}
                       error={errors.major}
@@ -469,7 +468,7 @@ function OnboardingContent() {
                       }}
                     />
                   </ProfileQuestion>
-                  <ProfileQuestion question="What is your grade level?">
+                  <ProfileQuestion question="What is your grade level?" required>
                     <YearLevelField
                       value={profileData.year_level}
                       error={errors.year_level}
@@ -481,6 +480,7 @@ function OnboardingContent() {
                   </ProfileQuestion>
                   <ProfileQuestion
                     question="What is your projected graduation year?"
+                    required
                     onNext={() => {
                       const ers: typeof errors = {};
 
@@ -509,6 +509,7 @@ function OnboardingContent() {
               {state >= STATE.EMPLOYER && profileData.student_status === "Non-Student" && (
                 <ProfileQuestion
                   question="Who is your employer?"
+                  required
                   onNext={() => {
                     !profileData.employer ? setErrors((er) => ({ ...er, employer: "Cannot be empty." })) : setState(STATE.COMPETED_BEFORE);
                   }}
@@ -531,6 +532,7 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you competed in Science Olympiad before?"
+                required
                 onNext={competitionLocked ? () => setState(STATE.VOLUNTEERED_BEFORE) : undefined}
                 isActive={state === STATE.COMPETED_BEFORE}
               >
@@ -584,6 +586,7 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="Have you volunteered for Science Olympiad before?"
+                required
                 onNext={volunteerLocked ? () => setState(STATE.SHIRT_SIZE) : undefined}
                 isActive={state === STATE.VOLUNTEERED_BEFORE}
               >
@@ -637,6 +640,7 @@ function OnboardingContent() {
             <ProfileCard>
               <ProfileQuestion
                 question="What is your shirt size?"
+                required
                 isActive={state === STATE.SHIRT_SIZE}
               >
                 <ShirtSizeField
@@ -651,6 +655,7 @@ function OnboardingContent() {
               {state >= STATE.DIETARY_RESTRICTIONS && (
                 <ProfileQuestion
                   question="Do you have any dietary restrictions?"
+                  required
                   isActive={state === STATE.DIETARY_RESTRICTIONS}
                 >
                   <YesNoField
@@ -668,6 +673,7 @@ function OnboardingContent() {
               {state >= STATE.DIETARY_TEXT && hasDietary && (
                 <ProfileQuestion
                   question="List your dietary restrictions."
+                  required
                   onNext={() => {
                     !profileData.dietary_restriction ? setErrors((er) => ({ ...er, dietary_restriction: "Cannot be empty." }))
                       : setState(STATE.COMPLETE);

@@ -1,0 +1,42 @@
+/*
+ * Account onboarding frame. See the note atop
+ * components/layout/Sidebar.module.css for why the viewport switch lives in
+ * CSS. 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep the
+ * two in sync.
+ */
+
+.page {
+  /* dvh so the page ends at the visible viewport, not under the URL bar. */
+  min-height: 100dvh;
+  background: var(--color-bg);
+  padding-bottom: 100px;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+  display: flex;
+  flex-direction: column;
+  /* Cards are a single progressive stack — they read as one form, not as
+     separate sections, so the gap stays tight. */
+  gap: 5px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    /* The Complete button is in flow, not a fixed bar — it needs less room
+       under it than the 100px desktop reserve. */
+    padding-bottom: 40px;
+  }
+
+  .container {
+    padding: 16px 16px 24px;
+  }
+}

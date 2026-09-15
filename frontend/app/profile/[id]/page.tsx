@@ -3,10 +3,13 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/useAuth";
-import { usersApi, canonicalEventsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api";
+import { usersApi, adminUsersApi, canonicalEventsApi, CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api";
 import { Spinner } from "@/components/ui/Spinner";
 import { ProfileHeader } from "@/components/profile/sections/ProfileHeader";
-import type { UserMeFull } from "@/lib/api";
+// AdminUserFull, not UserMeFull: UserMeFull is structurally a subtype of it
+// (both extend UserFull, and UserMeSlim extends AdminUserSlim), so one type
+// holds either fetch. Nothing here reads the me-only fields.
+import type { AdminUserFull } from "@/lib/api";
 import { Topbar } from "@/components/layout/Topbar";
 import { ProfileCard } from "@/components/profile/ProfileCard";
 import { EducationCareerSection } from "@/components/profile/sections/EducationCareerSection";
@@ -15,6 +18,8 @@ import { VolunteerExperienceSection } from "@/components/profile/sections/Volunt
 import { LogisticsSection } from "@/components/profile/sections/LogisticsSection";
 import { CompetitionExperienceDraft, VolunteerExperienceDraft } from "@/components/profile/ExperienceTables";
 import { FloatingEditButton } from "@/components/ui/FloatingEditButton";
+import { AccountBadges } from "@/components/admin/AccountBadges";
+import styles from "@/components/profile/Profile.module.css";
 
 
 export default function ProfilePage() {
@@ -23,11 +28,12 @@ export default function ProfilePage() {
   const params = useParams();
   const profileId = params.id as string;
 
-  const [profile, setProfile] = useState<UserMeFull | null>(null);
+  const [profile, setProfile] = useState<AdminUserFull | null>(null);
   const [events, setEvents] = useState<CanonicalEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const isOwnProfile = !!currentUser && !!profile && String(currentUser.id) === String(profile.id);
+  const isAdmin = currentUser?.role === "admin";
 
   useEffect(() => {
     if (authLoading) return; // wait for auth to resolve either way
@@ -37,17 +43,26 @@ export default function ProfilePage() {
       return;
     }
 
-    if (String(currentUser.id) !== String(profileId)) {
+    const isSelf = String(currentUser.id) === String(profileId);
+
+    // Anyone can read their own; a platform admin can read anyone's. Everybody
+    // else is bounced rather than shown an error — the id in the URL shouldn't
+    // confirm whether an account exists.
+    if (!isSelf && !isAdmin) {
       router.replace("/dashboard");
       return;
     }
 
-    usersApi.meFull()
+    const load = isSelf
+      ? usersApi.meFull()
+      : adminUsersApi.get(Number(profileId));
+
+    load
       .then(setProfile)
       .catch(() => setError("Failed to load profile."));
 
     canonicalEventsApi.list().then(setEvents).catch(() => {});
-  }, [authLoading, currentUser, profileId, router]);
+  }, [authLoading, currentUser, isAdmin, profileId, router]);
 
   // ── Competition experience CRUD (fast-edit, "view-edit" mode) ──────────────
   function draftToCompetitionCreate(row: CompetitionExperienceDraft) {
@@ -149,11 +164,14 @@ export default function ProfilePage() {
   return (
     <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
       <Topbar showWordmark showAvatar />
-      <div style={{
-        maxWidth: "900px", margin: "0 auto", padding: "32px 20px",
-        display: "flex", flexDirection: "column", gap: "20px",
-      }}>
-        <ProfileHeader user={profile} showEditButton={isOwnProfile} />
+      <div className={styles.page}>
+        {/* Account state is admin-only — /profile/[id] is otherwise readable by
+            the person themselves, who has no use for it. */}
+        <ProfileHeader
+          user={profile}
+          showEditButton={isOwnProfile}
+          badges={isAdmin ? <AccountBadges user={profile} /> : undefined}
+        />
         <ProfileCard><EducationCareerSection user={profile} /></ProfileCard>
         {profile.has_competition_experience !== false && (
           <ProfileCard>

@@ -447,7 +447,12 @@ export function Dropdown({
                   onClick={() => { onFooterClick?.(); setOpen(false) }}
                   style={{
                     display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '10px 16px',
+                    // Same padding as an OptionRow, not a hardcoded pair: at
+                    // sm the old 10px 16px gave the footer double the option
+                    // rows' vertical padding and twice their indent, so it read
+                    // as a different size of control.
+                    padding: sizing.optionPadding,
+                    borderRadius: 'var(--radius-sm)',
                     fontFamily: 'var(--font-sans)',
                     fontSize: sizing.optionFontSize,
                     fontWeight: 500,
@@ -456,7 +461,13 @@ export function Dropdown({
                     userSelect: 'none',
                     transition: 'background 80ms ease',
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--color-bg)' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'var(--color-bg)'
+                    // Clear the option highlight as well: activeIdx is only
+                    // reset by hovering another option, so arriving here from
+                    // the last row left it highlighted alongside this one.
+                    setActiveIdx(-1)
+                  }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                 >
                   {footerIcon}

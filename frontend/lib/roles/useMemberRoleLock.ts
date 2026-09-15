@@ -6,6 +6,13 @@ import { useTournament } from "@/lib/useTournament";
 import { useMyMembership } from "@/lib/useMyMembership";
 import { MembershipView, Role } from "@/lib/api";
 
+/** Why `canTouchRole` said no. One string for every caller: the rule is the
+ *  same whoever the target is — including yourself, so don't special-case
+ *  self with a "your own highest-ranked role" message. That reads as "only
+ *  this one role of yours is protected" when in fact every role at or above
+ *  your rank is, on anyone. */
+export const RANK_LOCK_REASON = "You can't touch a role that ties or outranks your own highest role.";
+
 export interface MemberRoleLock {
   canManageMembers: boolean;
   isArchived: boolean;

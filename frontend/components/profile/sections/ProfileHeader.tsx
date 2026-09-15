@@ -1,7 +1,9 @@
+import { ReactNode } from "react";
 import Link from "next/link";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import { formatPhone } from "@/lib/auth";
 import { IconEdit } from "@/components/ui/Icons";
+import styles from "@/components/profile/Profile.module.css";
 
 interface ProfileHeaderUser {
   first_name?: string | null;
@@ -14,73 +16,57 @@ interface ProfileHeaderUser {
 interface ProfileHeaderProps {
   user: ProfileHeaderUser;
   showEditButton?: boolean;
+  /**
+   * Badges set below the contact line — account state an admin needs beside
+   * the name (role, status, email verification). A slot rather than fields on
+   * this component: /profile/[id] and MemberPanel show the same header to
+   * people with no business seeing any of it.
+   */
+  badges?: ReactNode;
 }
 
-export function ProfileHeader({ user, showEditButton = false }: ProfileHeaderProps) {
+export function ProfileHeader({ user, showEditButton = false, badges }: ProfileHeaderProps) {
   const fullName =
     user.first_name && user.last_name
       ? `${user.first_name} ${user.last_name}`
       : user.email;
 
   return (
-    <div style={{
-      background: "var(--color-surface)",
-      border: "1px solid var(--color-border)",
-      borderRadius: "var(--radius-lg)",
-      boxShadow: "var(--shadow-sm)",
-      padding: "28px" 
-    }}>
-      <div style={{
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "20px",
-        position: "relative",
-      }}>
-        <AvatarCircle user={user} size={96} />
-        <div>
-          <div style={{
-            fontFamily: "var(--font-sans)", fontSize: "22px", fontWeight: 700,
-            color: "var(--color-text-primary)",
-          }}>
-            {fullName}
-          </div>
-          {user.pronouns && (
-            <div style={{
-              fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 400,
-              color: "var(--color-text-tertiary)", marginTop: "2px",
-            }}>
-              {user.pronouns}
-            </div>
-          )}
-          <div style={{
-            display: "flex", flexDirection: "row", alignItems: "center", gap: "10px",
-            marginTop: "10px",
-          }}>
-            <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-              {user.email}
-            </span>
-            {user.phone && (
-              <>
-                <span style={{ width: "1px", height: "12px", background: "var(--color-border)" }} />
-                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-secondary)" }}>
-                  {formatPhone(user.phone)}
-                </span>
-              </>
-            )}
-          </div>
+    <div className={styles.header}>
+      {/* Flat grid children, not a nested text column: on mobile the name
+          stays beside the avatar while contact and badges span their own
+          rows, which nesting them would make impossible. */}
+      <div className={styles.headerRow}>
+        <div className={styles.avatar}>
+          <AvatarCircle user={user} size={96} />
         </div>
+
+        <div className={styles.nameBlock}>
+          <div className={styles.name}>{fullName}</div>
+          {user.pronouns && (
+            <div className={styles.pronouns}>{user.pronouns}</div>
+          )}
+        </div>
+
+        <div className={styles.contact}>
+          <span className={styles.contactItem}>{user.email}</span>
+          {user.phone && (
+            <>
+              <span className={styles.divider} />
+              <span className={styles.contactItem}>{formatPhone(user.phone)}</span>
+            </>
+          )}
+        </div>
+
+        {badges && (
+          <div className={styles.badges}>{badges}</div>
+        )}
 
         {showEditButton && (
           <Link
             href="/settings/account"
             title="Edit account settings"
-            style={{
-              position: "absolute", top: 0, right: 0,
-              width: "30px", height: "30px", borderRadius: "50%",
-              border: "1px solid var(--color-border)", background: "var(--color-surface)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              color: "var(--color-text-secondary)", textDecoration: "none",
-            }}
+            className={styles.editLink}
           >
             <IconEdit size={13} />
           </Link>

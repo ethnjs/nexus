@@ -55,6 +55,7 @@ import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Card } from '@/components/ui/Card'
+import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
 import {
   IconClock, IconEvents, IconEye, IconFilter, IconLocation, IconLock,
@@ -135,12 +136,6 @@ function useGrabCursor(listeners: DragListeners) {
 // Narrower than the member panel: a card is a name, a line of experience and
 // a few preference badges, and giving it more width just stretches the badges.
 const BELT_PANEL_WIDTH = 340
-
-// Matches the members table header (MembersTable.module.css .header).
-const COUNT_LABEL_STYLE: React.CSSProperties = {
-  fontFamily: 'var(--font-sans)', fontSize: '11px', fontWeight: 600,
-  letterSpacing: '0.06em', textTransform: 'uppercase', color: 'var(--color-text-tertiary)',
-}
 
 function fullName(member: { first_name: string | null; last_name: string | null }) {
   return [member.first_name, member.last_name].filter(Boolean).join(' ')
@@ -1778,7 +1773,7 @@ export default function AssignmentsPage() {
               font="sans"
               fullWidth
             />
-            <span style={COUNT_LABEL_STYLE}>Members — {belt.length}/{members.length}</span>
+            <span className={table.headerLabel}>Members — {belt.length}/{members.length}</span>
 
             {belt.length === 0 ? (
               <EmptyState
@@ -2120,7 +2115,7 @@ export default function AssignmentsPage() {
               <IconEye size={14} /> Display
             </Button>
           </div>
-          <span style={COUNT_LABEL_STYLE}>Events — {visibleEvents.length}/{events.length}</span>
+          <span className={table.headerLabel}>Events — {visibleEvents.length}/{events.length}</span>
 
           {visibleEvents.length === 0 ? (
             <EmptyState

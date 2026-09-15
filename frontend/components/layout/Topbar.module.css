@@ -1,0 +1,100 @@
+/*
+ * See the note atop Sidebar.module.css for why the viewport switch lives in
+ * CSS rather than a useIsMobile() branch. 640px mirrors MOBILE_BREAKPOINT_PX
+ * in lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.topbar {
+  height: 52px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  /*
+   * --sidebar-offset is set inline by Topbar from the rail's hover state, so
+   * the bar's content slides out of the widening rail's way. It only ever
+   * moves off 0 on desktop, where a hover can happen at all.
+   */
+  padding-left: calc(16px + var(--sidebar-offset, 0px));
+  padding-right: 20px;
+  transition: padding-left 0.2s ease;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  flex-shrink: 0;
+}
+
+/*
+ * The drawer toggle is a real item in the bar rather than a fixed overlay, so
+ * it stays welded to the bar during iOS overscroll. Hidden on desktop, where
+ * the rail expands on hover instead.
+ */
+.navToggle {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /*
+   * --sidebar-offset is dropped entirely here, not just defaulted to 0. The
+   * rail widening is a desktop-only affordance, but the state behind it still
+   * turns on: onMouseEnter fires on touch, so tapping the drawer sets
+   * `hovered`, and a settings route sets `activeGroup` regardless of width.
+   * Either one shifted the wordmark by 140px as the drawer moved. Ignoring
+   * the property outright means no mobile arrangement can depend on it.
+   */
+  .topbar {
+    padding-left: 12px;
+  }
+
+  .navToggle {
+    display: block;
+  }
+
+  /* The toggle already sets the bar's left inset. */
+  .wordmark {
+    padding-left: 0;
+  }
+}
+
+.wordmark {
+  font-family: Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  user-select: none;
+  padding-left: 8px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+/*
+ * On the app shells the rail carries the wordmark, so the bar doesn't repeat
+ * it — but the rail is an off-canvas drawer on mobile and shows nothing until
+ * it's opened, so the bar takes over there.
+ */
+.wordmarkMobileOnly {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .wordmarkMobileOnly {
+    display: inline;
+  }
+}
+
+/*
+ * The tournament switcher's desktop home. On mobile it renders inside the nav
+ * drawer instead (see TournamentDropdown) — a 280px trigger doesn't fit beside
+ * the drawer toggle and the avatar on a phone.
+ */
+.dropdownSlot {
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .dropdownSlot {
+    display: none;
+  }
+}

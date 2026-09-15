@@ -1,0 +1,80 @@
+---
+title: v1.1.0-beta
+description: One-line summary of the release.
+date: 2026-09-XXT12:00:00-07:00
+---
+
+{/* DRAFT — admin-dashboard and mobile-volunteer-flow branches merged in.
+    Other branches for this release still need their own "What's new" entries
+    added below before this ships. */}
+
+## What's new
+
+### NEXUS on your phone
+
+Volunteers sign up on whatever's in their hand, and until now that meant pinching and scrolling
+through a layout built for a laptop. The volunteer side of NEXUS is now laid out for a small
+screen.
+
+- **Signing in and signing up**, your **profile**, **account settings**, **filling in a form**,
+  and a tournament's **overview** all fit a phone without zooming.
+- **Navigation is a slide-out menu**, opened from a button in the top bar, instead of the
+  hover-only sidebar — which a touchscreen had no way to open at all.
+- **The tournament switcher moves into that menu** on a phone, where the top bar has no room
+  for it.
+- **Your competition and volunteer experience show as cards** rather than a squeezed five-column
+  table. Adding and editing entries works there too, which it previously didn't on a phone.
+
+Tournament director tools — members, events, assignments, shifts, the form builder and tournament
+settings — are still built for a desktop. See [Worth knowing](#worth-knowing).
+
+{/* other features from this release go here */}
+
+## Improvements
+
+- Added an internal admin dashboard for managing accounts, tournaments, and the
+  university/event catalog. This is a platform-admin tool — regular users won't see it.
+- The profile edit page has a **Back to profile** link, and warns you before leaving if you have
+  unsaved changes.
+- **Required questions during setup are now marked with an asterisk**, so it's clear up front
+  which ones are holding up the Complete button.
+- Lists of options that don't fit on one line — shirt sizes, a form's multiple-choice answers —
+  now wrap onto the next line instead of running off the edge.
+- The dashboard no longer shows a sidebar to regular members, where its only entry was a link to
+  the page they were already on.
+- Refreshed the Security icon in account settings.
+
+## Fixes
+
+- Deactivating or locking an account now signs it out of every device immediately, instead of
+  only blocking future logins.
+- Fixed a crash when deleting a university that a tournament's venue still pointed at.
+- Tournaments whose dates cross a year boundary now show the year on both dates instead of one being mislabeled.
+- **Reordering a ranked-choice question on a touchscreen no longer traps the page.** A quick
+  swipe scrolls, and a press-and-hold picks a row up to move it — previously any drag on the list
+  was taken as a reorder, so a long list couldn't be scrolled past.
+- **The review-your-answers screen had no page margins**, running its questions edge to edge.
+- During setup, the **profile menu is back in the top bar**, so you can sign out of an account
+  before finishing. It offers only Sign out until setup is done, since the other entries lead
+  back to setup anyway.
+- The sign-in card and the home page's sign-in buttons **sit where they should on a phone
+  browser** — previously the card sat low on the page and the buttons fell below the fold.
+- Account settings no longer pushes your **email address and its verification notice off the
+  side of the screen**.
+- Tooltips stay on screen near an edge, and no longer get **cut off by whatever they sit inside** —
+  a scrolling panel, or a row of the members table, where hovering a locked role showed an empty
+  sliver instead of the explanation.
+- Fixed a couple of UI styling bugs:
+  - An input field could lose its border, sizing, or background when a page tried to style it.
+  - The dropdown menu's bottom action could show a stale highlight left over from hovering an
+    option above it.
+  - A page heading's button — **Add Tournament**, say — could push out past the edge of its card.
+  - A banner could push its message and buttons past its own border when space was tight.
+  - A tag you can't edit sat slightly off-centre, with less room on its right than its left.
+
+## Worth knowing
+
+- **Tournament director tools are not adapted for phones yet.** Members, events, assignments,
+  shifts, the form builder and tournament settings are dense, table-heavy screens, and squeezing
+  them onto a phone needs more than a layout pass. Use a laptop or tablet for those for now —
+  everything a volunteer needs works on a phone today.

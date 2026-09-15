@@ -33,7 +33,9 @@ export function ButtonGroup({ options, value, onChange, direction = 'row', size 
   const passThrough = locked && clickThrough
 
   return (
-    <div style={{ display: 'flex', flexDirection: direction, gap: '8px', width: fullWidth ? '100%' : undefined }}>
+    // wrap so a row that outgrows its container drops to a second line
+    // instead of overflowing it — six shirt sizes don't fit a phone width.
+    <div style={{ display: 'flex', flexDirection: direction, flexWrap: 'wrap', gap: '8px', width: fullWidth ? '100%' : undefined }}>
       {options.map((opt) => {
         const isSelected = selected.includes(opt.value)
         const button = (

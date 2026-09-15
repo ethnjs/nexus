@@ -12,12 +12,12 @@
   height: 10px;
 }
 
+/* Fixed, not absolute: top/left come from the trigger's measured rect so no
+   ancestor's overflow:hidden can clip the bubble. See Tooltip.tsx. */
 .bubble {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
+  position: fixed;
   transform: translateX(-50%);
-  z-index: 50;
+  z-index: 300;
   white-space: nowrap;
   padding: 7px 11px;
   border-radius: var(--radius-md);
@@ -30,14 +30,23 @@
   gap: 6px;
 }
 
-/* Triangle pointing up */
+/* Triangle pointing up. Shifts opposite to the bubble's edge correction so it
+   keeps pointing at the trigger rather than drifting with the bubble. */
 .bubble::after {
   content: '';
   position: absolute;
   bottom: 100%;
-  left: 50%;
+  left: calc(50% - var(--tooltip-arrow-shift, 0px));
   transform: translateX(-50%);
   border: 5px solid transparent;
+}
+
+/* A nowrap bubble with no explicit maxWidth still has to fit the screen. */
+@media (max-width: 640px) {
+  .bubble {
+    max-width: calc(100vw - 16px);
+    white-space: normal;
+  }
 }
 
 /* ── Variants ──────────────────────────────────────────────── */

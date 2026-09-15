@@ -1,0 +1,44 @@
+/*
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.button {
+  position: fixed;
+  bottom: 32px;
+  right: 32px;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-lg);
+  text-decoration: none;
+  transition: transform 0.15s ease;
+  z-index: 50;
+}
+
+/*
+ * Hover in CSS rather than onMouseEnter/onMouseLeave writing inline styles:
+ * on a touch device the mouse handlers fire but never un-fire, leaving the
+ * button stuck at 1.06 scale after a tap.
+ */
+@media (hover: hover) {
+  .button:hover {
+    transform: scale(1.06);
+  }
+}
+
+@media (max-width: 640px) {
+  /* Closer to the corner, and clear of the iOS home indicator. */
+  .button {
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    right: 20px;
+    width: 48px;
+    height: 48px;
+  }
+}

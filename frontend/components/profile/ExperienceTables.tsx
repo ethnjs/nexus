@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from "react"
+import { ReactNode, useState } from "react"
 import { CanonicalEvent, CompetitionExperience, VolunteerExperience } from "@/lib/api"
+import { useIsMobile } from "@/lib/useIsMobile"
 import { Input } from "@/components/ui/Input"
 import { Textarea } from "@/components/ui/Textarea"
 import { Button } from "@/components/ui/Button"
@@ -60,45 +61,6 @@ function emptyCompetitionDraft(school = ''): CompetitionExperienceDraft {
 }
 
 // -------------------------------------------------------------------------
-// Competition experience — compact editor (card-stack, narrow-viewport fallback for "edit" mode)
-// -------------------------------------------------------------------------
-interface CompetitionExperienceCompactEditorProps {
-  value:  CompetitionExperienceDraft[]
-  onChange: (rows: CompetitionExperienceDraft[]) => void
-  events: CanonicalEvent[]
-}
-
-export function CompetitionExperienceCompactEditor({ value, onChange, events }: CompetitionExperienceCompactEditorProps) {
-  function addRow()    { onChange([...value, emptyCompetitionDraft()]) }
-  function updateRow(i: number, patch: Partial<CompetitionExperienceDraft>) {
-    onChange(value.map((row, idx) => idx === i ? { ...row, ...patch } : row))
-  }
-  function removeRow(i: number) { onChange(value.filter((_, idx) => idx !== i)) }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {value.map((row, i) => (
-        <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <Input label="School" type="text" value={row.school} onChange={e => updateRow(i, { school: e.target.value })} fullWidth />
-          <Combobox
-            label="Event"
-            options={events}
-            getId={e => e.id}
-            getLabel={e => e.name}
-            value={row.event_name}
-            allowFreeText={false}
-            onChange={(text, matched) => updateRow(i, { event_name: text, event_id: matched ? matched.id : null })}
-          />
-          <Textarea label="Notes" value={row.notes} onChange={e => updateRow(i, { notes: e.target.value })} />
-          <Button type="button" variant="secondary" onClick={() => removeRow(i)}>Remove</Button>
-        </div>
-      ))}
-      <Button type="button" variant="secondary" onClick={addRow}>+ Add competition experience</Button>
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
 // Competition experience — unified spreadsheet component (view / view-edit / edit)
 // -------------------------------------------------------------------------
 interface CompetitionExperienceSpreadsheetProps {
@@ -139,6 +101,92 @@ function EmptyExperienceState() {
   );
 }
 
+// -------------------------------------------------------------------------
+// Mobile: one card per row instead of a table
+// -------------------------------------------------------------------------
+// A five-column table leaves roughly 70px a column on a phone, and the
+// view-edit controls are worse than cramped — they're hover-revealed at
+// left:-34px / right:-34px, so a touch device can neither hover them nor fit
+// them on screen. The cards below carry the same controls as plain visible
+// buttons.
+//
+// This one switch stays in JS rather than moving to a media query like the
+// app frame did: the two arrangements are different elements, not different
+// styling, and rendering both would mount a second live copy of every input
+// in the editing card. It sits well below the fold, so the one-frame
+// correction after hydration isn't visible.
+
+const experienceCardStyle: React.CSSProperties = {
+  border: "1px solid var(--color-border)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface)",
+  padding: "12px",
+  display: "flex",
+  flexDirection: "column",
+  gap: "10px",
+};
+
+const cardLabelStyle: React.CSSProperties = {
+  fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
+  textTransform: "uppercase", letterSpacing: "0.06em",
+  color: "var(--color-text-tertiary)",
+};
+
+/** A saved row: bold heading, labelled fields, controls pinned to the top row. */
+function ExperienceCard({ title, controls, children }: {
+  title: ReactNode;
+  controls?: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div style={experienceCardStyle}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+        <div style={{
+          flex: 1, minWidth: 0, overflowWrap: "break-word",
+          fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600,
+          color: "var(--color-text-primary)",
+        }}>
+          {title}
+        </div>
+        {controls && (
+          <div style={{ display: "flex", gap: "6px", flexShrink: 0 }}>{controls}</div>
+        )}
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>{children}</div>
+    </div>
+  );
+}
+
+/** One label/value pair inside a saved card. */
+function CardField({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "62px 1fr", gap: "10px", alignItems: "baseline" }}>
+      <span style={cardLabelStyle}>{label}</span>
+      <span style={{
+        minWidth: 0, overflowWrap: "break-word", whiteSpace: "pre-wrap",
+        fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
+      }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/** One labelled input inside an editing card — stacked, not side by side. */
+function CardEditField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+      <span style={cardLabelStyle}>{label}</span>
+      {children}
+    </div>
+  );
+}
+
+/** The action row under an editing card. */
+function CardEditActions({ children }: { children: ReactNode }) {
+  return <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>{children}</div>;
+}
+
 export function CompetitionExperienceSpreadsheet({
   mode, rows, events, onChange, onAdd, onUpdate, onDelete,
 }: CompetitionExperienceSpreadsheetProps) {
@@ -149,8 +197,10 @@ export function CompetitionExperienceSpreadsheet({
   const [saveError, setSaveError] = useState<string | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<{ index: number; row: CompetitionExperienceDraft } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const isMobile = useIsMobile()
 
   const isEditableMode = mode === "view-edit" || mode === "edit"
+  const useCards = isMobile
 
   if (rows.length === 0 && mode !== "edit") return <EmptyExperienceState />
 
@@ -243,6 +293,144 @@ export function CompetitionExperienceSpreadsheet({
   function cellStyle(isLastRow: boolean): React.CSSProperties {
     return isLastRow ? { ...spreadsheetCellStyle, borderBottom: "none" } : spreadsheetCellStyle
   }
+
+  // ── Mobile cards ────────────────────────────────────────────────────────
+
+  function renderCardControls(row: CompetitionExperienceDraft, i: number) {
+    if (mode !== "view-edit" || editingIndex !== null) return null
+    return (
+      <>
+        <Button type="button" variant="secondary" size="xs" iconOnly onClick={() => startEdit(i)} title="Edit" aria-label="Edit">
+          <IconEdit size={12} />
+        </Button>
+        <Button
+          type="button" variant="secondary" size="xs" iconOnly
+          onClick={() => addAnotherForSchoolFromRow(i)}
+          title="Add another event for this school"
+          aria-label="Add another event for this school"
+        >
+          <IconPlus size={12} />
+        </Button>
+        <Button
+          type="button" variant="secondary" size="xs" iconOnly
+          onClick={() => setDeleteTarget({ index: i, row })}
+          title="Delete" aria-label="Delete"
+          style={{ color: "var(--color-danger)" }}
+        >
+          <IconTrash size={12} />
+        </Button>
+      </>
+    )
+  }
+
+  // `editModeFull` mirrors renderEditableRow: bulk "edit" mode edits the row
+  // in place through onChange with no save round-trip, while "view-edit"
+  // edits a draft and commits it.
+  function renderEditCard(draft: CompetitionExperienceDraft, i: number, key: string, editModeFull = false) {
+    const valid = isCompetitionRowValid(draft)
+
+    function patch(p: Partial<CompetitionExperienceDraft>) {
+      if (editModeFull) {
+        onChange?.(rows.map((r, idx) => idx === i ? { ...r, ...p } : r))
+      } else {
+        setEditDraft(d => d ? { ...d, ...p } : d)
+      }
+    }
+
+    return (
+      <div key={key} style={experienceCardStyle}>
+        <CardEditField label="School">
+          <Input type="text" value={draft.school} onChange={e => patch({ school: e.target.value })} size="sm" fullWidth />
+        </CardEditField>
+        <CardEditField label="Event">
+          <Combobox
+            options={events}
+            getId={e => e.id}
+            getLabel={e => e.name}
+            value={draft.event_name}
+            allowFreeText={false}
+            onChange={(text, matched) => patch({ event_name: text, event_id: matched ? matched.id : null })}
+            size="sm"
+          />
+        </CardEditField>
+        <CardEditField label="Notes">
+          <Textarea value={draft.notes} onChange={e => patch({ notes: e.target.value })} rows={2} size="sm" fullWidth />
+        </CardEditField>
+
+        {/* The desktop row puts this in a Tooltip on a hover-revealed button;
+            with no hover to carry it, the message has to be on the page.
+            Bulk edit mode has no save step, so nothing to warn about yet. */}
+        {!editModeFull && (saveError || !valid) && (
+          <p style={{ margin: 0, fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+            {saveError ?? "A school and matched event are required."}
+          </p>
+        )}
+
+        <CardEditActions>
+          {editModeFull ? (
+            <>
+              <Button
+                type="button" variant="secondary" size="sm"
+                onClick={() => addAnotherForSchoolBulk(i)}
+                disabled={!draft.school.trim()}
+              >
+                <IconPlus size={13} />
+                Another for this school
+              </Button>
+              <Button
+                type="button" variant="secondary" size="sm"
+                onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
+                style={{ color: "var(--color-danger)" }}
+              >
+                Remove
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button type="button" variant="primary" size="sm" onClick={confirmEdit} loading={saving} disabled={!valid}>
+                Save
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={addAnotherForSchool} disabled={saving || !valid}>
+                Save &amp; add another
+              </Button>
+              <Button
+                type="button" variant="secondary" size="sm" disabled={saving}
+                onClick={() => draft.id !== undefined ? setDeleteTarget({ index: i, row: draft }) : cancelEdit()}
+                style={{ color: "var(--color-danger)" }}
+              >
+                {draft.id !== undefined ? "Delete" : "Cancel"}
+              </Button>
+            </>
+          )}
+        </CardEditActions>
+      </div>
+    )
+  }
+
+  function renderCards() {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {/* Bulk edit: every row is an open editor, as the table's rows are. */}
+        {mode === "edit"
+          ? rows.map((row, i) => renderEditCard(row, i, `bulk-${i}`, true))
+          : rows.map((row, i) => (
+              editingIndex === i && editDraft
+                ? renderEditCard(editDraft, i, `editing-${row.id ?? i}`)
+                : (
+                  <ExperienceCard key={row.id ?? `row-${i}`} title={row.school} controls={renderCardControls(row, i)}>
+                    <CardField label="Event" value={row.event_name} />
+                    <CardField label="Notes" value={row.notes || "—"} />
+                  </ExperienceCard>
+                )
+            ))}
+        {mode === "view-edit" && editingIndex === -1 && editDraft && (
+          renderEditCard(editDraft, rows.length, "editing-new")
+        )}
+      </div>
+    )
+  }
+
+  // ── Desktop table ───────────────────────────────────────────────────────
 
   function renderReadOnlyRow(row: CompetitionExperienceDraft, i: number, isLastRow: boolean) {
     const showHoverControls = mode === "view-edit" && editingIndex === null
@@ -476,6 +664,7 @@ export function CompetitionExperienceSpreadsheet({
         @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
+      {useCards ? renderCards() : (
       <div style={{ overflowX: "visible" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
@@ -508,6 +697,7 @@ export function CompetitionExperienceSpreadsheet({
           </tbody>
         </table>
       </div>
+      )}
 
       {isEditableMode && (mode !== "view-edit" || editingIndex === null) && (
         <button
@@ -580,55 +770,6 @@ function emptyVolunteerDraft(): VolunteerExperienceDraft {
 }
 
 // -------------------------------------------------------------------------
-// Volunteer experience — compact editor (card-stack, narrow-viewport fallback for "edit" mode)
-// -------------------------------------------------------------------------
-interface VolunteerExperienceCompactEditorProps {
-  value:  VolunteerExperienceDraft[]
-  onChange: (rows: VolunteerExperienceDraft[]) => void
-  events: CanonicalEvent[]
-}
-
-export function VolunteerExperienceCompactEditor({ value, onChange, events }: VolunteerExperienceCompactEditorProps) {
-  function addRow()    { onChange([...value, emptyVolunteerDraft()]) }
-  function updateRow(i: number, patch: Partial<VolunteerExperienceDraft>) {
-    onChange(value.map((row, idx) => idx === i ? { ...row, ...patch } : row))
-  }
-  function removeRow(i: number) { onChange(value.filter((_, idx) => idx !== i)) }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {value.map((row, i) => (
-        <div key={i} style={{ border: '1px solid var(--color-border)', borderRadius: '8px', padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <Input label="Tournament Name" type="text" charset="alpha" value={row.tournament_name} onChange={e => updateRow(i, { tournament_name: e.target.value })} fullWidth />
-          <Input
-            label="Year"
-            type="text"
-            charset="numeric"
-            maxLength={4}
-            value={row.year}
-            onChange={e => updateRow(i, { year: e.target.value })}
-            fullWidth
-          />
-          <Combobox
-            label="Event"
-            options={events}
-            getId={e => e.id}
-            getLabel={e => e.name}
-            value={row.event_name}
-            allowFreeText
-            onChange={(text, matched) => updateRow(i, { event_name: text, event_id: matched ? matched.id : null })}
-          />
-          <Input label="Role" type="text" value={row.role} onChange={e => updateRow(i, { role: e.target.value })} fullWidth />
-          <Textarea label="Notes" value={row.notes_other} onChange={e => updateRow(i, { notes_other: e.target.value })} />
-          <Button type="button" variant="secondary" onClick={() => removeRow(i)}>Remove</Button>
-        </div>
-      ))}
-      <Button type="button" variant="secondary" onClick={addRow}>+ Add volunteer experience</Button>
-    </div>
-  )
-}
-
-// -------------------------------------------------------------------------
 // Volunteer experience — unified spreadsheet component (view / view-edit / edit)
 // -------------------------------------------------------------------------
 interface VolunteerExperienceSpreadsheetProps {
@@ -652,8 +793,10 @@ export function VolunteerExperienceSpreadsheet({
   const [saveError, setSaveError] = useState<string | undefined>(undefined)
   const [deleteTarget, setDeleteTarget] = useState<{ index: number; row: VolunteerExperienceDraft } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const isMobile = useIsMobile()
 
   const isEditableMode = mode === "view-edit" || mode === "edit"
+  const useCards = isMobile
 
   if (rows.length === 0 && mode !== "edit") return <EmptyExperienceState />
 
@@ -711,6 +854,128 @@ export function VolunteerExperienceSpreadsheet({
   function cellStyle(isLastRow: boolean): React.CSSProperties {
     return isLastRow ? { ...spreadsheetCellStyle, borderBottom: "none" } : spreadsheetCellStyle
   }
+
+  // ── Mobile cards ────────────────────────────────────────────────────────
+
+  function renderCardControls(row: VolunteerExperienceDraft, i: number) {
+    if (mode !== "view-edit" || editingIndex !== null) return null
+    return (
+      <>
+        <Button type="button" variant="secondary" size="xs" iconOnly onClick={() => startEdit(i)} title="Edit" aria-label="Edit">
+          <IconEdit size={12} />
+        </Button>
+        <Button
+          type="button" variant="secondary" size="xs" iconOnly
+          onClick={() => setDeleteTarget({ index: i, row })}
+          title="Delete" aria-label="Delete"
+          style={{ color: "var(--color-danger)" }}
+        >
+          <IconTrash size={12} />
+        </Button>
+      </>
+    )
+  }
+
+  // `editModeFull` mirrors renderEditableRow: bulk "edit" mode edits the row
+  // in place through onChange with no save round-trip, while "view-edit"
+  // edits a draft and commits it.
+  function renderEditCard(draft: VolunteerExperienceDraft, i: number, key: string, editModeFull = false) {
+    function patch(p: Partial<VolunteerExperienceDraft>) {
+      if (editModeFull) {
+        onChange?.(rows.map((r, idx) => idx === i ? { ...r, ...p } : r))
+      } else {
+        setEditDraft(d => d ? { ...d, ...p } : d)
+      }
+    }
+
+    return (
+      <div key={key} style={experienceCardStyle}>
+        <CardEditField label="Tournament">
+          <Input type="text" charset="alpha" value={draft.tournament_name} onChange={e => patch({ tournament_name: e.target.value })} size="sm" fullWidth />
+        </CardEditField>
+        <CardEditField label="Year">
+          <Input type="text" charset="numeric" maxLength={4} value={draft.year} onChange={e => patch({ year: e.target.value })} size="sm" fullWidth />
+        </CardEditField>
+        <CardEditField label="Event">
+          <Combobox
+            options={events}
+            getId={e => e.id}
+            getLabel={e => e.name}
+            value={draft.event_name}
+            allowFreeText
+            onChange={(text, matched) => patch({ event_name: text, event_id: matched ? matched.id : null })}
+            size="sm"
+          />
+        </CardEditField>
+        <CardEditField label="Role">
+          <Input type="text" value={draft.role} onChange={e => patch({ role: e.target.value })} size="sm" fullWidth />
+        </CardEditField>
+        <CardEditField label="Notes">
+          <Textarea value={draft.notes_other} onChange={e => patch({ notes_other: e.target.value })} rows={2} size="sm" fullWidth />
+        </CardEditField>
+
+        {/* The desktop row hangs this off a Tooltip on a hover-revealed
+            button; with no hover to carry it, it has to be on the page. */}
+        {!editModeFull && saveError && (
+          <p style={{ margin: 0, fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>
+            {saveError}
+          </p>
+        )}
+
+        <CardEditActions>
+          {editModeFull ? (
+            <Button
+              type="button" variant="secondary" size="sm"
+              onClick={() => onChange?.(rows.filter((_, idx) => idx !== i))}
+              style={{ color: "var(--color-danger)" }}
+            >
+              Remove
+            </Button>
+          ) : (
+            <>
+              <Button type="button" variant="primary" size="sm" onClick={confirmEdit} loading={saving}>
+                Save
+              </Button>
+              <Button type="button" variant="secondary" size="sm" onClick={cancelEdit} disabled={saving}>
+                Cancel
+              </Button>
+            </>
+          )}
+        </CardEditActions>
+      </div>
+    )
+  }
+
+  function renderCards() {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        {/* Bulk edit: every row is an open editor, as the table's rows are. */}
+        {mode === "edit"
+          ? rows.map((row, i) => renderEditCard(row, i, `bulk-${i}`, true))
+          : rows.map((row, i) => (
+              editingIndex === i && editDraft
+                ? renderEditCard(editDraft, i, `editing-${row.id ?? i}`)
+                : (
+                  <ExperienceCard
+                    key={row.id ?? `row-${i}`}
+                    title={row.tournament_name}
+                    controls={renderCardControls(row, i)}
+                  >
+                    <CardField label="Year" value={row.year} />
+                    <CardField label="Event" value={row.event_name || "—"} />
+                    <CardField label="Role" value={row.role} />
+                    <CardField label="Notes" value={row.notes_other || "—"} />
+                  </ExperienceCard>
+                )
+            ))}
+        {mode === "view-edit" && editingIndex === -1 && editDraft && (
+          renderEditCard(editDraft, rows.length, "editing-new")
+        )}
+      </div>
+    )
+  }
+
+  // ── Desktop table ───────────────────────────────────────────────────────
 
   function renderReadOnlyRow(row: VolunteerExperienceDraft, i: number, isLastRow: boolean) {
     const showHoverControls = mode === "view-edit" && editingIndex === null
@@ -902,6 +1167,7 @@ export function VolunteerExperienceSpreadsheet({
         @keyframes btn-spin { to { transform: rotate(360deg); } }
       `}</style>
 
+      {useCards ? renderCards() : (
       <div style={{ overflowX: "visible" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
@@ -936,6 +1202,7 @@ export function VolunteerExperienceSpreadsheet({
           </tbody>
         </table>
       </div>
+      )}
 
       {isEditableMode && (mode !== "view-edit" || editingIndex === null) && (
         <button

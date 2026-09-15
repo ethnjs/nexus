@@ -1,0 +1,102 @@
+/*
+ * Tournament overview widgets. See the note atop
+ * components/layout/Sidebar.module.css for why the viewport switch lives in
+ * CSS. 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep the
+ * two in sync.
+ */
+
+/* ─── Setup checklist ──────────────────────────────────────────────────── */
+
+.checklistBody {
+  display: flex;
+  gap: 20px;
+  align-items: stretch;
+}
+
+.checklistItems {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.checklistRing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── Member summary ───────────────────────────────────────────────────── */
+
+.statusTiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.legendRow {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+/* ─── Forms list ───────────────────────────────────────────────────────── */
+
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  transition: background 100ms ease;
+}
+
+.formName {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  /*
+   * Side by side, the 180px ring left ~79px per checklist column. Stacked,
+   * and reversed so the ring leads — it's the summary the list explains.
+   */
+  .checklistBody {
+    flex-direction: column-reverse;
+    gap: 16px;
+  }
+
+  .checklistItems {
+    grid-template-columns: 1fr;
+  }
+
+  /* Four tiles across a phone gave each one ~70px for a 28px number. */
+  .statusTiles {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* The bar needs the full width far more than the label needs its own column. */
+  .legendRow {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  /* Name, status badge and Open button don't fit one phone-width line. */
+  .formRow {
+    flex-wrap: wrap;
+  }
+
+  .formName {
+    /* Own line above the badge and button, and free to wrap rather than clip. */
+    flex: 1 0 100%;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+}

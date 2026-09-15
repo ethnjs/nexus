@@ -9,8 +9,16 @@ export default function HomePage() {
 
   return (
     <main>
+      {/*
+        dvh, not vh (h-screen): on iOS Chrome and Safari 100vh is the *large*
+        viewport — the height the page would have if the URL bar were
+        retracted — so a 100vh hero runs taller than what's actually on screen
+        and pushes the bottom-anchored nav island below the fold. 100dvh
+        tracks the bar, and since the hero is exactly one viewport tall there's
+        nothing to scroll, so the bar never retracts and the value stays put.
+      */}
       <section
-        className="relative h-screen flex flex-col items-center justify-center overflow-hidden"
+        className="relative h-dvh flex flex-col items-center justify-center overflow-hidden"
         style={{ background: 'var(--color-bg)' }}
       >
         <GridWarp />
@@ -24,7 +32,9 @@ export default function HomePage() {
         <div className="relative z-10 flex flex-col items-center gap-6 text-center px-6">
           <h1 style={{
             fontFamily: 'var(--font-serif)',
-            fontSize: 'clamp(80px, 16vw, 172px)',
+            // 80px floor never let the wordmark scale below a 500px-wide
+            // viewport; 56px lets it keep shrinking down to a small phone.
+            fontSize: 'clamp(56px, 16vw, 172px)',
             fontWeight: 400,
             letterSpacing: '-0.03em',
             lineHeight: 1,

@@ -1,0 +1,80 @@
+/*
+ * The signed-out centred card: the auth pages (sign-in, sign-up, password
+ * reset, email verification) and the join-by-invite page, which is the same
+ * screen with a wider card.
+ *
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.page {
+  /*
+   * dvh, not vh: on iOS Chrome and Safari 100vh is the *large* viewport — the
+   * height the page would have with the URL bar retracted — so centring
+   * against it puts the card visibly below the middle of the screen.
+   */
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 16px;
+  box-sizing: border-box;
+}
+
+.card {
+  background: var(--color-surface);
+  padding: 60px 40px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  box-shadow: var(--shadow-lg);
+}
+
+/* Join carries tournament details above the action, so it runs wider. */
+.cardWide {
+  max-width: 480px;
+  padding: 48px 40px;
+}
+
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: 48px;
+  color: var(--color-text-primary);
+  margin: 0 0 24px;
+}
+
+.wordmarkSm {
+  font-size: 40px;
+  margin-bottom: 28px;
+}
+
+.backRow {
+  width: 100%;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    /*
+     * 64px of outer padding plus 60px of card padding wasted a third of a
+     * phone screen before the content started.
+     */
+    padding: 24px 16px;
+  }
+
+  .card,
+  .cardWide {
+    padding: 36px 24px;
+  }
+
+  .wordmark,
+  .wordmarkSm {
+    font-size: 36px;
+    margin-bottom: 20px;
+  }
+}

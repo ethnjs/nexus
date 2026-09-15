@@ -7,8 +7,11 @@ import { TournamentProvider, useTournament } from "@/lib/useTournament";
 import { MyMembershipProvider, useMyMembership } from "@/lib/useMyMembership";
 import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
-import { LayoutPanelProvider, useLayoutPanelContent, LayoutPanel } from "@/lib/useLayoutPanel";
-import { Sidebar, COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
+import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
+import styles from "@/components/layout/Shell.module.css";
+import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
 import { IconWarning } from "@/components/ui/Icons";
@@ -40,78 +43,6 @@ function TournamentNotFound() {
   );
 }
 
-// Renders whatever a descendant registered via useSetLayoutPanel as a sibling
-// of the Topbar+main column, so it consumes layout width instead of covering
-// the page.
-//
-// mounted lags behind panel on close (stays mounted through the collapse
-// transition instead of vanishing instantly); expanded flips a frame after
-// mount so there's an actual 0 -> full-width transition to animate rather
-// than appearing already-open. Same technique as the shifts page's split-view
-// panel (panelMountedId/panelExpanded there).
-function LayoutPanelSlot() {
-  const panel = useLayoutPanelContent();
-  const isOpen = panel !== null;
-
-  const [mounted, setMounted] = useState<LayoutPanel | null>(panel);
-  const [armed, setArmed] = useState(false);
-  const [prev, setPrev] = useState<LayoutPanel | null>(panel);
-
-  // React's "adjust state during render" pattern rather than an effect: this
-  // is derived state, and an effect would cost an extra render pass on every
-  // registration.
-  //
-  // Content follows every registration, but the open animation only re-arms
-  // when the panel actually goes from absent to present. A registered panel is
-  // rebuilt whenever the page it came from re-renders (Members re-registers on
-  // every member-list change), and re-arming on that would restart the slide
-  // mid-flight.
-  if (panel !== prev) {
-    const wasOpen = prev !== null;
-    setPrev(panel);
-    if (panel) setMounted(panel);
-    if (isOpen !== wasOpen) setArmed(false);
-  }
-
-  // Derived, not stored, so closing drops it to 0 in the same render the panel
-  // is unregistered — no effect needed for the close half.
-  const expanded = isOpen && armed;
-
-  useEffect(() => {
-    if (!isOpen) return;
-    // A single rAF often fires before the browser has actually painted
-    // the just-mounted width:0 state, so the width:full flip lands in the
-    // same paint and there's nothing to visibly transition from. Nesting
-    // a second rAF guarantees one real paint happens in between.
-    let raf2 = 0;
-    const raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => setArmed(true));
-    });
-    return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
-  }, [isOpen]);
-
-  if (!mounted) return null;
-
-  return (
-    <div
-      onTransitionEnd={() => { if (!expanded) setMounted(null); }}
-      style={{
-        width: expanded ? mounted.width : 0,
-        opacity: expanded ? 1 : 0,
-        flexShrink: 0, overflow: "hidden", height: "100%",
-        // Same 220ms/ease as the members table's grid-template-columns
-        // transition, so the table's Roles column collapses in lockstep with
-        // this sliding open rather than finishing 20ms early.
-        transition: "width 220ms ease, opacity 220ms ease",
-      }}
-    >
-      <div style={{ width: mounted.width, height: "100%" }}>
-        {mounted.content}
-      </div>
-    </div>
-  );
-}
-
 function TournamentShell({
   tournamentId,
   children,
@@ -125,7 +56,8 @@ function TournamentShell({
   const { membership, setMembership } = useMyMembership();
   const pathname = usePathname();
   // Sidebar is locked open (not just hover-expanded) on settings routes —
-  // reserve its full width there instead of letting it overlay content.
+  // reserve its full width there instead of letting it overlay content. The
+  // mobile override (the drawer reserves nothing) is in Shell.module.css.
   const onSettingsRoute = pathname.startsWith(`/dashboard/tournaments/${tournamentId}/settings`);
 
   useEffect(() => {
@@ -145,18 +77,24 @@ function TournamentShell({
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
-      <Sidebar
+    <div className={styles.shell}>
+      <TournamentSidebar
         onExpandedChange={setSidebarExpanded}
         tournamentId={tournamentId}
       />
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden",
-        marginLeft: onSettingsRoute ? EXPANDED_W : COLLAPSED_W,
-        transition: "margin-left 0.2s ease",
-      }}>
-        <Topbar showDropdown tournamentId={tournamentId} showAvatar sidebarExpanded={sidebarExpanded && !onSettingsRoute} />
-        <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+      <div className={onSettingsRoute ? `${styles.column} ${styles.columnWide}` : styles.column}>
+        {/* The rail carries the wordmark on desktop, but it's an off-canvas
+            drawer on mobile — so the bar takes over there, and the tournament
+            switcher moves into the drawer for want of room. */}
+        <Topbar
+          showWordmark="mobile-only"
+          showDropdown
+          tournamentId={tournamentId}
+          showAvatar
+          sidebarExpanded={sidebarExpanded && !onSettingsRoute}
+          showNavToggle
+        />
+        <main className={styles.main}>
           {children}
         </main>
       </div>
@@ -196,9 +134,13 @@ export default function TournamentLayout({
                 rendered into the latter, a sibling of <main> rather than a
                 descendant of it. Inert on every other tab. */}
             <BoardDndProvider>
-              <TournamentShell tournamentId={tournamentId}>
-                {children}
-              </TournamentShell>
+              {/* Above the shell so the Topbar's drawer toggle and the rail
+                  it opens share one state — they're siblings inside it. */}
+              <NavDrawerProvider>
+                <TournamentShell tournamentId={tournamentId}>
+                  {children}
+                </TournamentShell>
+              </NavDrawerProvider>
             </BoardDndProvider>
           </LayoutPanelProvider>
         </UnsavedChangesProvider>

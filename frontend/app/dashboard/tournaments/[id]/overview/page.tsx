@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/Button";
 import { OverviewCard } from "@/components/tournament/overview/OverviewCard";
 import { MasonryGrid } from "@/components/ui/MasonryGrid";
 import { Spinner } from "@/components/ui/Spinner";
+import styles from "@/components/tournament/overview/Overview.module.css";
 
 export default function OverviewPage() {
   const params = useParams();
@@ -48,17 +49,14 @@ export default function OverviewPage() {
                     key={form.id}
                     onMouseEnter={() => setHoveredFormId(form.id)}
                     onMouseLeave={() => setHoveredFormId(null)}
+                    className={styles.formRow}
                     style={{
-                      display: "flex", alignItems: "center", gap: "10px", padding: "8px 4px",
                       borderBottom: index === forms.length - 1 ? "none" : "1px solid var(--color-border)",
                       background: hoveredFormId === form.id ? "var(--color-bg)" : "transparent",
-                      transition: "background 100ms ease",
                     }}
                   >
-                    <div style={{ minWidth: 0, flex: 1 }}>
-                      <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: "var(--font-sans)", fontSize: "13px", fontWeight: 500 }}>
-                        {form.name}
-                      </div>
+                    <div className={styles.formName}>
+                      {form.name}
                     </div>
                     <Badge variant={form.completed ? "confirmed" : "default"}>
                       {form.completed ? "Completed" : "To do"}

@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode } from "react";
+import styles from "@/components/profile/Profile.module.css";
 
 // Read-only display primitives shared by MemberPanel's tournament sections
 // and the profile page's own sections. ProfileFields.tsx is the editable
@@ -55,7 +56,8 @@ export function FieldList({ children }: { children: ReactNode }) {
   return <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>{children}</div>;
 }
 
-// The two-column field row used throughout both panels.
+// The two-column field row used throughout both panels — one column on a
+// phone, where two would leave ~150px a field and wrap every value.
 export function FieldGrid({ children }: { children: ReactNode }) {
-  return <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>{children}</div>;
+  return <div className={styles.fieldGrid}>{children}</div>;
 }

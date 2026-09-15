@@ -6,6 +6,7 @@ from pydantic import AliasChoices, BaseModel, ConfigDict, Field, computed_field,
 from app.schemas.tournament.role import RoleRead
 from app.schemas.tournament.track import TournamentTrackCreate, TournamentTrackRead
 from app.schemas.university import UniversityResponse
+from app.schemas.user import UserSlimResponse
 
 VALID_LEVELS = {"regionals", "state", "nationals", "invitational"}
 VALID_DIVISIONS = {"A", "B", "C"}
@@ -218,3 +219,21 @@ class TournamentSummary(TournamentPublic):
     volunteer_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class AdminTournamentRead(TournamentRead):
+    """GET /admin/tournaments/ — the platform-admin audience.
+
+    A separate schema because the audience is different, not because the
+    caller is: a platform admin reads tournaments it holds no membership in,
+    and is the only reader entitled to identify their owner by name. Members
+    keep TournamentRead, which carries owner_id and nothing more.
+
+    No track counts: TournamentRead already ships the full `tracks` list, so
+    a reader that wants "how many sites" counts the primary ones itself.
+    """
+    # Nullable only defensively — owner_id is NOT NULL, so a null here would
+    # mean a tournament outlived its owner row.
+    owner: UserSlimResponse | None = None
+    event_count: int
+    volunteer_count: int
