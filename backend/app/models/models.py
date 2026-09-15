@@ -370,6 +370,9 @@ class Tournament(Base):
     audit_log = relationship("AuditLogEntry", back_populates="tournament", cascade="all, delete-orphan")
     event_shifts = relationship("TournamentShift", back_populates="tournament", cascade="all, delete-orphan")
     tracks = relationship("TournamentTrack", back_populates="tournament", cascade="all, delete-orphan")
+    buildings = relationship(
+        "TournamentBuilding", back_populates="tournament", cascade="all, delete-orphan"
+    )
     forms = relationship("Form", back_populates="tournament", cascade="all, delete-orphan")
     tournament_forms = relationship("TournamentForm", back_populates="tournament", cascade="all, delete-orphan")
 
@@ -875,6 +878,9 @@ class TournamentTrack(Base):
     events = relationship(
         "TournamentEvent", secondary="tournament_event_tracks", back_populates="tracks"
     )
+    buildings = relationship(
+        "TournamentBuilding", secondary="tournament_building_tracks", back_populates="tracks"
+    )
     member_statuses = relationship(
         "TournamentMembershipTrackStatus", back_populates="track", cascade="all, delete-orphan"
     )
@@ -899,6 +905,66 @@ def _validate_track_source(mapper, connection, target: "TournamentTrack"):
         raise ValueError("A primary track must have either a university_id or a location.")
     if not target.is_primary and (univ or loc):
         raise ValueError("Only a primary track can have a university_id or location.")
+
+
+# ---------------------------------------------------------------------------
+# TournamentBuilding — a physical building an event can be held in.
+#
+# Tournament-scoped and *tagged* with the tracks it is available on, rather
+# than owned by one track. A regional running both days at one venue enters
+# its buildings once; one running Day 1 at UCI and Day 2 at Northwood tags
+# each building with the day it belongs to, and nothing can put a Day 1 event
+# in a Northwood-only building.
+#
+# There is deliberately no rooms table. A room is free text on the
+# event<->track link: rooms are typed once, read by humans, and carry no data
+# of their own, so a catalog would be a second thing to keep in sync for no
+# question it alone could answer.
+# ---------------------------------------------------------------------------
+class TournamentBuilding(Base):
+    __tablename__ = "tournament_buildings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    tournament_id = Column(
+        Integer, ForeignKey("tournaments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    name = Column(String(255), nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    tournament = relationship("Tournament", back_populates="buildings")
+    # Ordered by date so a building lists its tracks in schedule order, the
+    # same way TournamentEvent.tracks does; cosmetic tracks sort last.
+    tracks = relationship(
+        "TournamentTrack", secondary="tournament_building_tracks", back_populates="buildings",
+        order_by="(TournamentTrack.start_date, TournamentTrack.id)",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tournament_id", "name", name="uq_tournament_building_name"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentBuildingTrack — bridge table: TournamentBuilding <-> TournamentTrack.
+#
+# Which days a building is in use on. Its (building_id, track_id) primary key
+# is also a foreign-key target: an event's location names both, so pointing a
+# composite FK here is what makes "you cannot put a Day 1 event in a
+# Day 2-only building" a fact the database enforces rather than a check a
+# route can forget — the same device as uq_tournament_shift_id_track.
+# ---------------------------------------------------------------------------
+class TournamentBuildingTrack(Base):
+    __tablename__ = "tournament_building_tracks"
+
+    building_id = Column(
+        Integer, ForeignKey("tournament_buildings.id", ondelete="CASCADE"), primary_key=True
+    )
+    track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True
+    )
 
 
 # ---------------------------------------------------------------------------
