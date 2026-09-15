@@ -725,9 +725,22 @@ class TournamentEvent(Base):
     # belongs to both Test Writing and Day 1.
     # Ordered by date so EventRead renders an event's tracks in schedule
     # order; cosmetic tracks (no start_date) sort last.
+    # Read-only. The link row carries data of its own (see
+    # TournamentEventTrack), so every write goes through `track_details`
+    # below; leaving this writable too would give SQLAlchemy two paths to the
+    # same rows and let one silently undo the other. Still the shape almost
+    # every reader wants — the track objects, in schedule order.
     tracks = relationship(
-        "TournamentTrack", secondary="tournament_event_tracks", back_populates="events",
+        "TournamentTrack", secondary="tournament_event_tracks", viewonly=True,
         order_by="(TournamentTrack.start_date, TournamentTrack.id)",
+    )
+    # The link rows themselves, and the only writable side of the pairing.
+    # Unordered on purpose: ordering by the track's date needs a join this
+    # relationship can't express, and the readers that care sort on the way
+    # out.
+    track_details = relationship(
+        "TournamentEventTrack", back_populates="tournament_event",
+        cascade="all, delete-orphan",
     )
     assignments = relationship(
         "TournamentEventAssignment", back_populates="tournament_event",
@@ -875,8 +888,10 @@ class TournamentTrack(Base):
     university = relationship("University", back_populates="tracks")
     default_role = relationship("TournamentRole")
     shifts = relationship("TournamentShift", back_populates="track", cascade="all, delete-orphan")
+    # Read-only for the same reason TournamentEvent.tracks is — this is the
+    # other half of the same secondary, and writes belong to the link rows.
     events = relationship(
-        "TournamentEvent", secondary="tournament_event_tracks", back_populates="tracks"
+        "TournamentEvent", secondary="tournament_event_tracks", viewonly=True,
     )
     buildings = relationship(
         "TournamentBuilding", secondary="tournament_building_tracks", back_populates="tracks"
@@ -985,12 +1000,23 @@ class TournamentEventShift(Base):
 # rule. Writing an event's shift set auto-adds those shifts' tracks here;
 # clearing a shift never removes one, since a TD reshuffling a schedule
 # shouldn't silently lose track membership.
+#
+# An association object rather than a plain secondary table: the link is
+# about to carry where the event physically happens on that track, which is
+# per-pair data with nowhere else to live. Both `TournamentEvent.tracks` and
+# `TournamentTrack.events` are therefore viewonly, and this is the one
+# writable path to these rows.
 # ---------------------------------------------------------------------------
 class TournamentEventTrack(Base):
     __tablename__ = "tournament_event_tracks"
 
     tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
     track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
+
+    tournament_event = relationship("TournamentEvent", back_populates="track_details")
+    # lazy="joined" like TournamentEventAssignment.tournament_track: every
+    # reader of a link row renders the track's name alongside it.
+    track = relationship("TournamentTrack", lazy="joined")
 
 
 # ---------------------------------------------------------------------------
