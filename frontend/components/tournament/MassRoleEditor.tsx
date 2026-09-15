@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { Popover } from "@/components/ui/Popover";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { IconPlus, IconMinus, IconX } from "@/components/ui/Icons";
+import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
 
 // Exported so the caller registering this panel in the layout slot reserves
 // exactly the width the panel itself renders at.
@@ -98,7 +99,7 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
   })();
 
   function rankLockReason(): string {
-    return "You can't touch a role that ties or outranks your own highest role.";
+    return RANK_LOCK_REASON;
   }
 
   const pendingAddRoles = allRoles.filter((r) => rolesToAdd.has(r.id));
