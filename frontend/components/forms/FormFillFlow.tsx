@@ -8,7 +8,7 @@ import { FloatingSubmitBar } from "@/components/forms/FloatingSubmitBar";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Banner } from "@/components/ui/Banner";
-import { CONTENT_MAX_WIDTH } from "@/components/forms/SubHeader";
+import styles from "@/components/forms/FormFlow.module.css";
 import { TOPBAR_HEIGHT } from "@/components/layout/Topbar";
 import { useBlockNavigation } from "@/lib/useUnsavedChanges";
 
@@ -271,14 +271,16 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
   }
 
   return (
-    <div style={{
-      maxWidth: `${CONTENT_MAX_WIDTH}px`, margin: "0 auto", padding: "22px 24px", display: "flex", flexDirection: "column", gap: "16px",
-      paddingBottom: `${22 + submitBarHeight}px`, transition: "padding-bottom 0.25s ease",
-    }}>
+    <div
+      className={styles.page}
+      // Only the measured submit-bar reserve stays inline — it's a runtime
+      // value. It overrides the stylesheet's padding-bottom, as inline does.
+      style={{ paddingBottom: `${22 + submitBarHeight}px`, transition: "padding-bottom 0.25s ease" }}
+    >
       {banner}
 
       {(form.title || form.description) && (
-        <Card radius="lg" style={{ padding: "24px" }}>
+        <Card radius="lg" className={styles.card}>
           {form.title && (
             <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "24px", color: "var(--color-text-primary)" }}>
               {form.title}
@@ -293,7 +295,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
       )}
 
       {fields.length === 0 ? (
-        <Card radius="lg" style={{ padding: "24px" }}>
+        <Card radius="lg" className={styles.card}>
           <p style={{ fontFamily: "var(--font-sans)", fontSize: "14px", color: "var(--color-text-secondary)" }}>
             This form has no fields yet.
           </p>
@@ -307,7 +309,7 @@ export function FormFillFlow({ form, banner, successMessage, onComplete }: FormF
           // inline slot for it yet, so it falls back to plain text below.
           const isRanked = field.question_type === "ranked_choice";
           return (
-            <Card key={field.id} data-form-field={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} style={{ padding: "24px" }}>
+            <Card key={field.id} data-form-field={field.id} radius="lg" variant={errorMessage ? "danger" : "normal"} className={styles.card}>
               <QuestionRenderer
                 field={field}
                 interactive

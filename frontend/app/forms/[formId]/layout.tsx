@@ -13,7 +13,8 @@ import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 // (the default context is a pass-through, not an error).
 export default function FormLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ minHeight: "100vh", background: "var(--color-bg)" }}>
+    // dvh so the page ends at the visible viewport, not under a mobile URL bar.
+    <div style={{ minHeight: "100dvh", background: "var(--color-bg)" }}>
       <Topbar showWordmark showAvatar />
       <UnsavedChangesProvider>
         {children}
