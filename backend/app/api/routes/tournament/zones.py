@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
-from app.core.tournament.assignments import resolve_membership_role
+from app.core.tournament.assignments import authorize_role_grant
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, MANAGE_MEMBERS, require_permission,
 )
@@ -16,7 +16,7 @@ from app.core.tournament.zones import (
 from app.db.session import get_db
 from app.models.models import (
     TournamentBuildingTrack, TournamentEventTrack, TournamentMembership, TournamentRole,
-    TournamentTrack, TournamentZone, TournamentZoneAssignment, TournamentZoneMember, User,
+    TournamentTrack, TournamentTrackAssignment, TournamentZone, TournamentZoneMember, User,
 )
 from app.schemas.tournament.zone import (
     ZoneAssignmentCreate, ZoneAssignmentRead, ZoneCoverageRead, ZoneCreate, ZoneMember,
@@ -304,12 +304,15 @@ def list_zone_assignments(
     current_user: User = Depends(require_permission(MANAGE_MEMBERS)),
 ):
     get_tournament(tournament_id, db)
+    # zone_id IS NOT NULL is implicit in the join, but stated for the same
+    # reason the event listing states its own: one table now holds role grants,
+    # event staffing and zone coverage.
     query = (
-        db.query(TournamentZoneAssignment)
-        .join(TournamentZone, TournamentZone.id == TournamentZoneAssignment.zone_id)
+        db.query(TournamentTrackAssignment)
+        .join(TournamentZone, TournamentZone.id == TournamentTrackAssignment.zone_id)
         .options(
-            joinedload(TournamentZoneAssignment.zone),
-            joinedload(TournamentZoneAssignment.membership).joinedload(
+            joinedload(TournamentTrackAssignment.zone),
+            joinedload(TournamentTrackAssignment.membership).joinedload(
                 TournamentMembership.user
             ),
         )
@@ -359,14 +362,15 @@ def create_zone_assignment(
         )
     role = get_scoped_or_404(db, TournamentRole, role_id, tournament_id, "Role")
 
-    membership_role = resolve_membership_role(
-        db, tournament, membership, role, current_user,
-    )
+    authorize_role_grant(db, tournament, membership, role, current_user)
 
-    assignment = TournamentZoneAssignment(
+    # The track comes from the zone rather than the payload: a zone belongs to
+    # exactly one, and the composite FK would reject any other answer anyway.
+    assignment = TournamentTrackAssignment(
         zone_id=zone.id,
         membership_id=membership.id,
-        membership_role_id=membership_role.id,
+        role_id=role.id,
+        tournament_track_id=zone.track_id,
     )
     db.add(assignment)
     try:
@@ -396,10 +400,10 @@ def delete_zone_assignment(
     require_not_archived(tournament)
 
     assignment = (
-        db.query(TournamentZoneAssignment)
-        .join(TournamentZone, TournamentZone.id == TournamentZoneAssignment.zone_id)
+        db.query(TournamentTrackAssignment)
+        .join(TournamentZone, TournamentZone.id == TournamentTrackAssignment.zone_id)
         .filter(
-            TournamentZoneAssignment.id == assignment_id,
+            TournamentTrackAssignment.id == assignment_id,
             TournamentZone.tournament_id == tournament_id,
         )
         .first()

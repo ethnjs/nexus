@@ -88,15 +88,12 @@ class AssignmentRead(BaseModel):
             id=row.id,
             event=EventMemberRead.from_row(row.tournament_event),
             member=PersonNameRef.from_membership(row.membership),
-            role=PersonRoleRead(
-                id=row.membership_role.role_id,
-                label=row.membership_role.role.label,
-            ),
+            role=PersonRoleRead(id=row.role_id, label=row.role.label),
             shift=(
                 TournamentShiftBase.model_validate(row.tournament_shift)
                 if row.tournament_shift is not None else None
             ),
-            track=TournamentTrackRef.model_validate(row.tournament_track),
+            track=TournamentTrackRef.model_validate(row.track),
             created_at=row.created_at,
             updated_at=row.updated_at,
         )

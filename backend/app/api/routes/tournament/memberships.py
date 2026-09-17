@@ -38,7 +38,6 @@ from app.core.form.write_through import (
 from app.models.models import (
     Tournament,
     TournamentMembership,
-    TournamentMembershipRole,
     TournamentMembershipTrackStatus,
     TournamentRole,
     TournamentShift,
@@ -78,7 +77,7 @@ def _build_me_response(
         updated_at=membership.updated_at, user=membership.user,
         is_owner=is_owner, permissions=permissions,
         needs_age_consent=needs_age_consent,
-        roles=membership.roles if wants(requested, ROLES) else [],
+        roles=membership.held_roles if wants(requested, ROLES) else [],
         is_over_18=membership.is_over_18, is_over_21=membership.is_over_21,
         # build_track_statuses rather than the raw rows: it pads every live
         # track the member has no row for as "pending", and those are exactly
@@ -273,7 +272,8 @@ def get_my_membership(
 
     membership = get_membership_by_user(
         db, tournament_id, current_user.id,
-        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        # The role rides along on each assignment via its own lazy="joined".
+        selectinload(TournamentMembership.track_assignments),
     )
     permissions = sorted(get_user_permissions(current_user, tournament_id, db))
     is_owner = current_user.id == tournament.owner_id
@@ -313,7 +313,8 @@ def set_my_age_disclosure(
 
     membership = get_membership_by_user(
         db, tournament_id, current_user.id,
-        joinedload(TournamentMembership.roles).joinedload(TournamentMembershipRole.role),
+        # The role rides along on each assignment via its own lazy="joined".
+        selectinload(TournamentMembership.track_assignments),
     )
     if not membership:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Membership not found")

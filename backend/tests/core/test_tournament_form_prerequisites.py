@@ -6,7 +6,7 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentMembershipAvailability,
-    TournamentMembershipRole,
+    TournamentTrackAssignment,
     TournamentRole,
     TournamentShift,
     utcnow,
@@ -76,7 +76,7 @@ def test_role_prerequisite_matches_any_or_all(db, td_user, td_tournament, other_
     membership = _membership(db, td_tournament, other_user)
     test_writer = _role(db, td_tournament, "Prerequisite Role A", 20)
     event_supervisor = _role(db, td_tournament, "Prerequisite Role B", 21)
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=test_writer.id))
+    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=test_writer.id, is_tournament_wide=True))
     db.commit()
 
     any_form = _standard_form(db, td_user, td_tournament, {"roles": {"ids": [test_writer.id, event_supervisor.id], "match": "any"}})
@@ -84,7 +84,7 @@ def test_role_prerequisite_matches_any_or_all(db, td_user, td_tournament, other_
 
     assert member_meets_form_prerequisites(db, membership, any_form) is True
     assert member_meets_form_prerequisites(db, membership, all_form) is False
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=event_supervisor.id))
+    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=event_supervisor.id, is_tournament_wide=True))
     db.commit()
     assert member_meets_form_prerequisites(db, membership, all_form) is True
 
@@ -123,7 +123,7 @@ def test_every_configured_group_must_pass(db, td_user, td_tournament, other_user
 
     assert member_meets_form_prerequisites(db, membership, tournament_form) is False
     membership.onboarded_at = utcnow()
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=role.id))
+    db.add(TournamentTrackAssignment(membership_id=membership.id, role_id=role.id, is_tournament_wide=True))
     db.add(TournamentMembershipAvailability(membership_id=membership.id, tournament_shift_id=shift.id))
     db.commit()
     assert member_meets_form_prerequisites(db, membership, tournament_form) is True

@@ -354,7 +354,7 @@ def test_assigning_grants_a_role_the_member_lacks(
 ):
     """Same one-action behaviour event assignments have — no detour through
     the roster."""
-    from app.models.models import TournamentMembershipRole
+    from app.models.models import TournamentTrackAssignment
 
     login(client, "td@test.com", "tdpass")
     track = _track(db, td_tournament)
@@ -367,7 +367,7 @@ def test_assigning_grants_a_role_the_member_lacks(
     })
     db.expire_all()
     held = {
-        row.role_id for row in db.query(TournamentMembershipRole).filter_by(
+        row.role_id for row in db.query(TournamentTrackAssignment).filter_by(
             membership_id=membership.id,
         )
     }

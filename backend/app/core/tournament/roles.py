@@ -24,14 +24,20 @@ def with_member_counts(db: Session, roles: list["TournamentRole"]) -> list["Tour
     many roles are passed in, so callers stay off the N+1 path.
     """
     from app.core.tournament.memberships import ACTIVE_MEMBERSHIP_CLAUSE
-    from app.models.models import TournamentMembership, TournamentMembershipRole
+    from app.models.models import TournamentMembership, TournamentTrackAssignment
 
     role_ids = [r.id for r in roles]
+    # Distinct memberships, not rows: since #83 one member holds a role
+    # through a grant per track plus a row per event or zone they cover, and a
+    # plain count would report the same person several times.
     counts = dict(
-        db.query(TournamentMembershipRole.role_id, func.count(TournamentMembershipRole.id))
-        .join(TournamentMembership, TournamentMembership.id == TournamentMembershipRole.membership_id)
-        .filter(TournamentMembershipRole.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
-        .group_by(TournamentMembershipRole.role_id)
+        db.query(
+            TournamentTrackAssignment.role_id,
+            func.count(func.distinct(TournamentTrackAssignment.membership_id)),
+        )
+        .join(TournamentMembership, TournamentMembership.id == TournamentTrackAssignment.membership_id)
+        .filter(TournamentTrackAssignment.role_id.in_(role_ids), ACTIVE_MEMBERSHIP_CLAUSE)
+        .group_by(TournamentTrackAssignment.role_id)
         .all()
     ) if role_ids else {}
     for role in roles:

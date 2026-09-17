@@ -6,7 +6,7 @@ from app.core.tournament.display_config import MEMBERS_PANEL
 from app.core.tournament.permissions import MANAGE_MEMBERS
 from app.models.models import (
     Form, FormAnswer, FormField, FormResponse,
-    TournamentMembership, TournamentMembershipRole, TournamentRole,
+    TournamentMembership, TournamentTrackAssignment, TournamentRole,
 )
 from tests.conftest import grant_role, login, primary_track_id, set_display_config
 
@@ -451,7 +451,8 @@ class TestRosterFilters:
         db.commit()
 
         login(client, "td@test.com", "tdpass")
-        role_id = volunteer.roles[0].role_id
+        # roles is the distinct TournamentRole list now, not the join rows.
+        role_id = volunteer.roles[0].id
         assert self._roster(client, td_tournament.id, f"?role={role_id}") == {"alice@example.com"}
 
     def test_role_filter_none_finds_members_without_roles(self, client, db, td_user, td_tournament):
@@ -793,7 +794,7 @@ def test_search_memberships_excludes_declined(client, td_user, td_tournament, ot
 
 
 def test_list_memberships_includes_roles(client, td_user, td_tournament, db):
-    """Roles are unwrapped from TournamentMembershipRole to RoleRead in the slim response too."""
+    """Roles are unwrapped from TournamentTrackAssignment to RoleRead in the slim response too."""
     from app.models.models import User as UserModel
     u = _make_user(db, "coach@example.com")
     user = db.query(UserModel).filter(UserModel.id == u["id"]).first()
@@ -2389,8 +2390,8 @@ def test_delete_membership_owner_target_forbidden_even_when_owner_has_no_role(cl
     pass and let them be deleted. validate_member_target's explicit
     owner check is what actually stops this."""
     owner_membership = _owner_membership(db, other_tournament)
-    db.query(TournamentMembershipRole).filter(
-        TournamentMembershipRole.membership_id == owner_membership.id
+    db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.membership_id == owner_membership.id
     ).delete()
     db.commit()
 
@@ -2410,7 +2411,7 @@ def test_delete_membership_target_outranks_actor_forbidden(client, td_user, othe
     senior_role = _make_low_rank_role(db, other_tournament, "Senior Staff", rank=5)
     u = _make_user(db)
     target_membership = _make_membership(db, other_tournament.id, u["id"])
-    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=senior_role.id))
+    db.add(TournamentTrackAssignment(membership_id=target_membership.id, role_id=senior_role.id, is_tournament_wide=True))
     db.commit()
 
     _make_low_rank_role(db, other_tournament, "Weak Staff", rank=90)
@@ -2429,7 +2430,7 @@ def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tourn
     peer_role = _make_low_rank_role(db, other_tournament, "Peer Staff", rank=40)
     u = _make_user(db)
     target_membership = _make_membership(db, other_tournament.id, u["id"])
-    db.add(TournamentMembershipRole(membership_id=target_membership.id, role_id=peer_role.id))
+    db.add(TournamentTrackAssignment(membership_id=target_membership.id, role_id=peer_role.id, is_tournament_wide=True))
     db.commit()
 
     grant_role(db, other_tournament, td_user, "Peer Staff")
@@ -2444,8 +2445,8 @@ def test_delete_membership_tied_rank_target_allowed(client, td_user, other_tourn
 def test_update_membership_owner_target_forbidden_even_when_owner_has_no_role(client, td_user, other_tournament, db):
     """Same owner protection applies to the day-of-logistics PATCH, not just delete."""
     owner_membership = _owner_membership(db, other_tournament)
-    db.query(TournamentMembershipRole).filter(
-        TournamentMembershipRole.membership_id == owner_membership.id
+    db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.membership_id == owner_membership.id
     ).delete()
     db.commit()
 
@@ -2682,15 +2683,15 @@ def test_leave_tournament_unauthenticated(client, td_tournament):
 
 
 def test_leave_tournament_drops_role_assignments(client, td_user, other_tournament, db):
-    """Cascade check — leaving must not orphan TournamentMembershipRole rows."""
+    """Cascade check — leaving must not orphan TournamentTrackAssignment rows."""
     membership = grant_role(db, other_tournament, td_user, "Volunteer")
     membership_id = membership.id
     login(client, "td@test.com", "tdpass")
 
     assert client.delete(f"/tournaments/{other_tournament.id}/members/me/").status_code == 204
     assert (
-        db.query(TournamentMembershipRole)
-        .filter(TournamentMembershipRole.membership_id == membership_id)
+        db.query(TournamentTrackAssignment)
+        .filter(TournamentTrackAssignment.membership_id == membership_id)
         .count()
         == 0
     )

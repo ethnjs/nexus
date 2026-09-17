@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.models import TournamentMembership, TournamentMembershipRole, User
+from app.models.models import TournamentMembership, User
 # Safe at module scope where the tournament schemas aren't: person.py sits at
 # the bottom of the import graph on purpose (see its docstring).
 from app.schemas.person import PersonRefResponse, PersonRoleRead
@@ -74,7 +74,7 @@ def resolve_person_refs(
     memberships = (
         db.query(TournamentMembership)
         .options(
-            selectinload(TournamentMembership.roles).selectinload(TournamentMembershipRole.role),
+            selectinload(TournamentMembership.track_assignments),
             selectinload(TournamentMembership.user),
         )
         .filter(
@@ -89,7 +89,8 @@ def resolve_person_refs(
             membership_id=m.id,
             first_name=m.user.first_name,
             last_name=m.user.last_name,
-            roles=[PersonRoleRead(id=mr.role.id, label=mr.role.label) for mr in m.roles],
+            # m.roles is the distinct TournamentRole list now, not join rows.
+            roles=[PersonRoleRead(id=r.id, label=r.label) for r in m.roles],
         )
         for m in memberships
     }

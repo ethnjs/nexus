@@ -36,7 +36,7 @@ from app.services.forms_service import FormsService
 from app.core.auth import hash_password
 from app.core.tournament.permissions import DEFAULT_ROLES
 from app.models.models import (
-    Tournament, TournamentMembership, TournamentMembershipRole, TournamentRole,
+    Tournament, TournamentMembership, TournamentRole, TournamentTrackAssignment,
     TournamentTrack, User, Event, EventCategory,
 )
 from app.schemas.sheet_config import (
@@ -199,7 +199,11 @@ def _make_tournament_with_td(db: Session, owner: User, name: str) -> Tournament:
     )
     db.add(membership)
     db.flush()
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=td_role.id))
+    # Tournament-wide: the director role carries permissions, and since #83
+    # those are the roles that aren't about a particular day.
+    db.add(TournamentTrackAssignment(
+        membership_id=membership.id, role_id=td_role.id, is_tournament_wide=True,
+    ))
 
     db.commit()
     db.refresh(tournament)
@@ -237,9 +241,19 @@ def set_display_config(db, tournament, user, config: dict) -> None:
     db.commit()
 
 
-def grant_role(db: Session, tournament: Tournament, user: User, role_label: str) -> TournamentMembership:
+def grant_role(
+    db: Session, tournament: Tournament, user: User, role_label: str,
+    track_id: int | None = None,
+) -> TournamentMembership:
     """
     Give `user` a membership in `tournament` holding the role identified by
+    `role_label`, tournament-wide unless `track_id` names a track.
+
+    Tournament-wide by default so every test written before roles gained a
+    track (#83) keeps the permissions it had: a role held anywhere grants its
+    permissions across the tournament either way, and a default track would
+    have made each caller pick one for no reason.
+
     `role_label` (must already exist on the tournament — DEFAULT_ROLES covers
     every label used across the test suite, alongside any custom roles a
     test creates directly). Reuses an existing membership if one is already
@@ -263,7 +277,10 @@ def grant_role(db: Session, tournament: Tournament, user: User, role_label: str)
     if role is None:
         raise ValueError(f"No TournamentRole with label={role_label!r} on tournament {tournament.id}")
 
-    db.add(TournamentMembershipRole(membership_id=membership.id, role_id=role.id))
+    db.add(TournamentTrackAssignment(
+        membership_id=membership.id, role_id=role.id,
+        is_tournament_wide=track_id is None, tournament_track_id=track_id,
+    ))
     db.commit()
     db.refresh(membership)
     return membership

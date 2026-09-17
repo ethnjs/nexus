@@ -5,15 +5,14 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.assignments import (
-    resolve_assignment_track, resolve_membership_role, validate_shift_on_event,
+    authorize_role_grant, resolve_assignment_track, validate_shift_on_event,
 )
 from app.core.tournament.permissions import (
     MANAGE_EVENTS, MANAGE_MEMBERS, require_any_permission, require_permission,
 )
 from app.db.session import get_db
 from app.models.models import (
-    TournamentEvent, TournamentEventAssignment, TournamentMembership,
-    TournamentMembershipRole, TournamentRole, User,
+    TournamentEvent, TournamentMembership, TournamentRole, TournamentTrackAssignment, User,
 )
 from app.schemas.tournament.assignment import AssignmentCreate, AssignmentRead, AssignmentUpdate
 
@@ -29,14 +28,14 @@ def _with_relations(query):
     to the row a write returns — without them each response is an N+1 through
     lazy loads that pydantic triggers one row at a time."""
     return query.options(
-        joinedload(TournamentEventAssignment.tournament_event).joinedload(TournamentEvent.event),
+        joinedload(TournamentTrackAssignment.tournament_event).joinedload(TournamentEvent.event),
         # EventMemberRead now carries the event's shifts, so the nested event
         # needs them loaded or every assignment costs a query for them.
-        joinedload(TournamentEventAssignment.tournament_event).selectinload(TournamentEvent.shifts),
-        joinedload(TournamentEventAssignment.membership).joinedload(TournamentMembership.user),
-        joinedload(TournamentEventAssignment.membership_role).joinedload(TournamentMembershipRole.role),
-        joinedload(TournamentEventAssignment.tournament_shift),
-        joinedload(TournamentEventAssignment.tournament_track),
+        joinedload(TournamentTrackAssignment.tournament_event).selectinload(TournamentEvent.shifts),
+        joinedload(TournamentTrackAssignment.membership).joinedload(TournamentMembership.user),
+        # No hop for the role: it rides on the row's own lazy="joined".
+        joinedload(TournamentTrackAssignment.tournament_shift),
+        joinedload(TournamentTrackAssignment.track),
     )
 
 
@@ -53,8 +52,20 @@ def _flush_or_conflict(db: Session) -> None:
     """
     try:
         db.flush()
-    except IntegrityError:
+    except IntegrityError as error:
         db.rollback()
+        # Only a unique-index violation is a duplicate drag. A foreign-key
+        # violation here means the row's event, shift or track disagree with
+        # each other, and reporting that as "already assigned" sent whoever
+        # hit it looking in entirely the wrong place.
+        if "uq_track_assignment" not in str(error.orig):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "That event, shift and track don't belong together — the "
+                    "event must run on the track, and a shift must be on it too"
+                ),
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="This member is already assigned to that event in that role and shift",
@@ -82,17 +93,20 @@ def list_assignments(
 ):
     get_tournament(tournament_id, db)
 
+    # tournament_event_id IS NOT NULL is what makes this event staffing: the
+    # same table also holds plain role grants and zone coverage, and neither
+    # belongs in a list of who is on which event.
     query = _with_relations(
-        db.query(TournamentEventAssignment)
-        .join(TournamentEvent, TournamentEventAssignment.tournament_event_id == TournamentEvent.id)
+        db.query(TournamentTrackAssignment)
+        .join(TournamentEvent, TournamentTrackAssignment.tournament_event_id == TournamentEvent.id)
         .filter(TournamentEvent.tournament_id == tournament_id)
     )
     if event_id is not None:
-        query = query.filter(TournamentEventAssignment.tournament_event_id == event_id)
+        query = query.filter(TournamentTrackAssignment.tournament_event_id == event_id)
     if membership_id is not None:
-        query = query.filter(TournamentEventAssignment.membership_id == membership_id)
+        query = query.filter(TournamentTrackAssignment.membership_id == membership_id)
 
-    rows = query.order_by(TournamentEventAssignment.id).all()
+    rows = query.order_by(TournamentTrackAssignment.id).all()
     return [AssignmentRead.from_row(row) for row in rows]
 
 
@@ -100,7 +114,7 @@ def list_assignments(
 # POST /tournaments/{tournament_id}/assignments/ — manage_members
 #
 # The body names a role, not the member's join row. If they don't hold it yet
-# this grants it first (rank-bound — see resolve_membership_role), so staffing
+# this grants it first (rank-bound — see authorize_role_grant), so staffing
 # someone as a Test Writer is one action rather than a detour through the
 # roster.
 #
@@ -131,12 +145,12 @@ def create_assignment(
         db, shift, payload.tournament_track_id, tournament_id,
     )
 
-    membership_role = resolve_membership_role(db, tournament, membership, role, current_user)
+    authorize_role_grant(db, tournament, membership, role, current_user)
 
-    assignment = TournamentEventAssignment(
+    assignment = TournamentTrackAssignment(
         tournament_event_id=event.id,
         membership_id=membership.id,
-        membership_role_id=membership_role.id,
+        role_id=role.id,
         tournament_shift_id=payload.tournament_shift_id,
         tournament_track_id=track_id,
     )
@@ -145,7 +159,7 @@ def create_assignment(
     db.commit()
 
     return AssignmentRead.from_row(
-        _with_relations(db.query(TournamentEventAssignment)).filter_by(id=assignment.id).one()
+        _with_relations(db.query(TournamentTrackAssignment)).filter_by(id=assignment.id).one()
     )
 
 
@@ -172,10 +186,8 @@ def update_assignment(
 
     if payload.role_id is not None:
         role = get_scoped_or_404(db, TournamentRole, payload.role_id, tournament_id, "Role")
-        membership_role = resolve_membership_role(
-            db, tournament, assignment.membership, role, current_user,
-        )
-        assignment.membership_role_id = membership_role.id
+        authorize_role_grant(db, tournament, assignment.membership, role, current_user)
+        assignment.role_id = role.id
 
     if "tournament_shift_id" in payload.model_fields_set:
         shift = validate_shift_on_event(
@@ -202,16 +214,17 @@ def update_assignment(
     db.commit()
 
     return AssignmentRead.from_row(
-        _with_relations(db.query(TournamentEventAssignment)).filter_by(id=assignment.id).one()
+        _with_relations(db.query(TournamentTrackAssignment)).filter_by(id=assignment.id).one()
     )
 
 
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/assignments/{assignment_id}/ — manage_members
 #
-# Unassigning never removes the role the assignment used. The grant was a fact
-# about the member, not a detail of this one placement, and revoking it here
-# would quietly undo staffing on every other event they hold it for.
+# Since #83 this can remove the member's role on that track — the row was
+# the record that they held it. It only does so when nothing else claims it:
+# another event, a zone, or a plain grant row all keep the role alive. A TD
+# who wants it kept regardless leaves a grant row on the track.
 # ---------------------------------------------------------------------------
 @router.delete("/{assignment_id}/", status_code=status.HTTP_204_NO_CONTENT)
 def delete_assignment(
@@ -230,16 +243,16 @@ def delete_assignment(
 
 def _scoped_assignment(
     db: Session, assignment_id: int, tournament_id: int,
-) -> TournamentEventAssignment:
+) -> TournamentTrackAssignment:
     """get_scoped_or_404 can't be reused here: it scopes on the row's own
     tournament_id column, and an assignment has none — it reaches its
     tournament through the event. Same 404-on-either-miss behaviour, so a
     cross-tournament id is indistinguishable from a missing one."""
     assignment = (
-        _with_relations(db.query(TournamentEventAssignment))
-        .join(TournamentEvent, TournamentEventAssignment.tournament_event_id == TournamentEvent.id)
+        _with_relations(db.query(TournamentTrackAssignment))
+        .join(TournamentEvent, TournamentTrackAssignment.tournament_event_id == TournamentEvent.id)
         .filter(
-            TournamentEventAssignment.id == assignment_id,
+            TournamentTrackAssignment.id == assignment_id,
             TournamentEvent.tournament_id == tournament_id,
         )
         .first()

@@ -20,8 +20,8 @@ from sqlalchemy import exists, func, or_, true
 from sqlalchemy.orm import Query
 
 from app.models.models import (
-    TournamentEventAssignment, TournamentMembership, TournamentMembershipAvailability,
-    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentMembershipRole,
+    TournamentMembership, TournamentMembershipAvailability,
+    TournamentMembershipEventPreference, TournamentMembershipLunch, TournamentTrackAssignment,
     TournamentMembershipTrackStatus, TournamentRole, User, UserCompetitionExperience,
     UserVolunteerExperience,
 )
@@ -126,12 +126,12 @@ def apply_member_filters(
         clauses = []
         if role_ids:
             clauses.append(exists().where(
-                (TournamentMembershipRole.membership_id == TournamentMembership.id)
-                & TournamentMembershipRole.role_id.in_(role_ids)
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & TournamentTrackAssignment.role_id.in_(role_ids)
             ))
         if NO_ROLES in roles:
             clauses.append(~exists().where(
-                TournamentMembershipRole.membership_id == TournamentMembership.id
+                TournamentTrackAssignment.membership_id == TournamentMembership.id
             ))
         if clauses:
             query = query.filter(or_(*clauses))
@@ -224,8 +224,8 @@ def apply_member_filters(
             if not track_id.isdigit():
                 continue
             staffed = exists().where(
-                (TournamentEventAssignment.membership_id == TournamentMembership.id)
-                & (TournamentEventAssignment.tournament_track_id == int(track_id))
+                (TournamentTrackAssignment.membership_id == TournamentMembership.id)
+                & (TournamentTrackAssignment.tournament_track_id == int(track_id))
             )
             if value == "assigned":
                 clauses.append(staffed)
@@ -571,14 +571,14 @@ def apply_member_search(
         )
     if role_id is not None:
         held_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == role_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .filter(TournamentTrackAssignment.role_id == role_id)
         )
         query = query.filter(TournamentMembership.id.in_(held_role))
     if exclude_role_id is not None:
         held_by_role = (
-            db.query(TournamentMembershipRole.membership_id)
-            .filter(TournamentMembershipRole.role_id == exclude_role_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .filter(TournamentTrackAssignment.role_id == exclude_role_id)
         )
         query = query.filter(TournamentMembership.id.notin_(held_by_role))
     if max_rank is not None:
@@ -586,9 +586,9 @@ def apply_member_search(
         # with roles are kept only if their highest-authority (lowest rank
         # number) role is strictly less authoritative than max_rank.
         outranks_or_ties = (
-            db.query(TournamentMembershipRole.membership_id)
-            .join(TournamentRole, TournamentRole.id == TournamentMembershipRole.role_id)
-            .group_by(TournamentMembershipRole.membership_id)
+            db.query(TournamentTrackAssignment.membership_id)
+            .join(TournamentRole, TournamentRole.id == TournamentTrackAssignment.role_id)
+            .group_by(TournamentTrackAssignment.membership_id)
             .having(func.min(TournamentRole.rank) <= max_rank)
         )
         query = query.filter(TournamentMembership.id.notin_(outranks_or_ties))

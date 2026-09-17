@@ -19,7 +19,9 @@ from app.core.tournament.permissions import (
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.roles import validate_rank_bound, validate_role_action, with_member_counts
 from app.db.session import get_db
-from app.models.models import TournamentMembership, TournamentMembershipRole, TournamentRole, User
+from app.models.models import (
+    TournamentMembership, TournamentRole, TournamentTrack, TournamentTrackAssignment, User,
+)
 from app.schemas.tournament.role import (
     RoleAssignmentUpdate, RoleBulkReorder, RoleDefinition, RoleUpdate, RoleWithMemberCount,
 )
@@ -283,9 +285,13 @@ def delete_role(
 
     # Count before delete — the FK cascade removes these rows, so this is
     # the only chance to record how many memberships lose the role.
+    # Distinct memberships, not rows: one member can hold a role through a
+    # grant on each track plus a row per event they cover, and "8 members lose
+    # this" is the number a TD needs.
     members_affected = (
-        db.query(TournamentMembershipRole)
-        .filter(TournamentMembershipRole.role_id == role.id)
+        db.query(TournamentTrackAssignment.membership_id)
+        .filter(TournamentTrackAssignment.role_id == role.id)
+        .distinct()
         .count()
     )
 
@@ -356,21 +362,43 @@ def update_membership_roles(
     for role in roles_by_id.values():
         validate_role_action(current_user, tournament, m, role, db)
 
-    currently_held_ids = {
-        mr.role_id for mr in
-        db.query(TournamentMembershipRole).filter(TournamentMembershipRole.membership_id == m.id).all()
-    }
+    if payload.track_id is not None:
+        get_scoped_or_404(db, TournamentTrack, payload.track_id, tournament_id, "Track")
+
+    # Scoped to the grant rows for *this* scope, not every row carrying the
+    # role. A member staffed on an event in a role holds it through that row
+    # too; removing the grant here leaves that staffing alone, so the role
+    # survives until they are unstaffed. Revoking a role must never silently
+    # pull someone off an event.
+    grant_rows = db.query(TournamentTrackAssignment).filter(
+        TournamentTrackAssignment.membership_id == m.id,
+        TournamentTrackAssignment.tournament_event_id.is_(None),
+        TournamentTrackAssignment.zone_id.is_(None),
+        TournamentTrackAssignment.is_tournament_wide == payload.is_tournament_wide,
+    )
+    if payload.is_tournament_wide:
+        grant_rows = grant_rows.filter(TournamentTrackAssignment.tournament_track_id.is_(None))
+    else:
+        grant_rows = grant_rows.filter(
+            TournamentTrackAssignment.tournament_track_id == payload.track_id
+        )
+
+    currently_held_ids = {row.role_id for row in grant_rows.all()}
 
     to_add = [rid for rid in payload.add if rid not in currently_held_ids]
     to_remove = [rid for rid in payload.remove if rid in currently_held_ids]
 
     for role_id in to_add:
-        db.add(TournamentMembershipRole(membership_id=m.id, role_id=role_id))
+        db.add(TournamentTrackAssignment(
+            membership_id=m.id,
+            role_id=role_id,
+            is_tournament_wide=payload.is_tournament_wide,
+            tournament_track_id=payload.track_id,
+        ))
 
     if to_remove:
-        db.query(TournamentMembershipRole).filter(
-            TournamentMembershipRole.membership_id == m.id,
-            TournamentMembershipRole.role_id.in_(to_remove),
+        grant_rows.filter(
+            TournamentTrackAssignment.role_id.in_(to_remove),
         ).delete(synchronize_session=False)
 
     db.commit()

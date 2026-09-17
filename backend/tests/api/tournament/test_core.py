@@ -6,7 +6,7 @@ from app.core.tournament.audit import (
     OWNERSHIP_TRANSFERRED, TOURNAMENT_ARCHIVED, TOURNAMENT_UNARCHIVED,
 )
 from app.models.models import (
-    AuditLogEntry, Form, JoinCode, TournamentMembership, TournamentMembershipRole,
+    AuditLogEntry, Form, JoinCode, TournamentMembership, TournamentTrackAssignment,
     TournamentRole, University,
 )
 
@@ -145,8 +145,8 @@ def test_create_tournament_auto_creates_membership_with_no_roles(client, td_user
     assert membership is not None
     roles_held = (
         db.query(TournamentRole)
-        .join(TournamentMembershipRole, TournamentMembershipRole.role_id == TournamentRole.id)
-        .filter(TournamentMembershipRole.membership_id == membership.id)
+        .join(TournamentTrackAssignment, TournamentTrackAssignment.role_id == TournamentRole.id)
+        .filter(TournamentTrackAssignment.membership_id == membership.id)
         .all()
     )
     assert roles_held == []
@@ -868,10 +868,9 @@ def test_transfer_ownership_old_owner_keeps_roles(client, td_user, td_tournament
         )
         .one()
     )
-    labels = [
-        db.query(TournamentRole).filter(TournamentRole.id == r.role_id).one().label
-        for r in old_owner_membership.roles
-    ]
+    # membership.roles is the distinct TournamentRole list itself now, so
+    # there is no join row to look the label up through.
+    labels = [role.label for role in old_owner_membership.roles]
     assert labels == ["Tournament Director"]
 
 
