@@ -526,6 +526,10 @@ class TournamentMembership(Base):
     # Relationships
     user = relationship("User", back_populates="memberships")
     tournament = relationship("Tournament", back_populates="memberships")
+    track_assignments = relationship(
+        "TournamentTrackAssignment", back_populates="membership",
+        cascade="all, delete-orphan",
+    )
     roles = relationship("TournamentMembershipRole", back_populates="membership", cascade="all, delete-orphan")
     join_code = relationship("JoinCode")
     availability_shifts = relationship("TournamentMembershipAvailability", back_populates="membership", cascade="all, delete-orphan")
@@ -1494,6 +1498,175 @@ class TournamentZoneAssignment(Base):
         UniqueConstraint(
             "zone_id", "membership_id", "membership_role_id",
             name="uq_zone_assignment",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentTrackAssignment — one member, in one role, somewhere.
+#
+# Replaces three tables (see issue #83): tournament_membership_roles,
+# tournament_event_assignments and tournament_zone_assignments. Holding a role
+# and being staffed in it were two records of the same fact, and once roles
+# gained a track they could disagree about which day.
+#
+# A row is always (membership, role) plus exactly one scope:
+#
+#   tournament-wide   is_tournament_wide, everything else null. For a role
+#                     that isn't about a particular day — Tournament Director.
+#   a track           they hold the role on that day, staffed or not.
+#   + an event        they are staffing it, optionally pinned to a shift.
+#   + a zone          they are covering it.
+#
+# A member's roles are therefore *derived* — the distinct roles across their
+# rows — rather than stored anywhere else. That is what makes "you can't be
+# assigned in a role you don't hold" stop being a rule needing enforcement:
+# being staffed is holding it. The cost, accepted in #83: removing someone's
+# last row for a role on a track removes that role there, so a TD who wants it
+# kept leaves a row with no event on it.
+#
+# Permissions are unaffected by the track. They stay the union of every role a
+# member holds anywhere in the tournament — a track-scoped role still grants
+# its permissions tournament-wide (see get_user_permissions).
+#
+# Nothing here validates that the member is available, confirmed on the track,
+# or free at that time. Those stay warnings the board renders, never refusals
+# (issue #70).
+# ---------------------------------------------------------------------------
+class TournamentTrackAssignment(Base):
+    __tablename__ = "tournament_track_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    role_id = Column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+
+    # A role that isn't about a particular day. Legal only with no track,
+    # event, shift or zone — see ck_track_assignment_scope.
+    is_tournament_wide = Column(Boolean, nullable=False, default=False)
+
+    # Carries its own plain ForeignKey as well as appearing in the three
+    # composite constraints below. Unlike the usual rule in this file, that is
+    # not a duplicate: MATCH SIMPLE means a composite FK is not enforced at all
+    # when any of its columns is null, so a plain grant row — track set, event
+    # and zone null — would otherwise have nothing checking its track exists.
+    tournament_track_id = Column(
+        Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+    )
+
+    # No inline ForeignKeys on these three. Each is paired with the track in
+    # __table_args__, which is what stops a row naming a Day 2 event, shift or
+    # zone while claiming to be about Day 1.
+    tournament_event_id = Column(Integer, nullable=True, index=True)
+    tournament_shift_id = Column(Integer, nullable=True, index=True)
+    zone_id = Column(Integer, nullable=True, index=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    membership = relationship("TournamentMembership", back_populates="track_assignments")
+    # lazy="joined": every reader of one of these renders the role's label.
+    role = relationship("TournamentRole", lazy="joined")
+
+    # All four spelled out: track_id takes part in several foreign keys, so
+    # nothing here can be inferred.
+    track = relationship(
+        "TournamentTrack",
+        primaryjoin="TournamentTrackAssignment.tournament_track_id == TournamentTrack.id",
+        foreign_keys="TournamentTrackAssignment.tournament_track_id",
+        viewonly=True,
+    )
+    tournament_event = relationship(
+        "TournamentEvent",
+        primaryjoin="TournamentTrackAssignment.tournament_event_id == TournamentEvent.id",
+        foreign_keys="TournamentTrackAssignment.tournament_event_id",
+        viewonly=True,
+    )
+    tournament_shift = relationship(
+        "TournamentShift",
+        primaryjoin="TournamentTrackAssignment.tournament_shift_id == TournamentShift.id",
+        foreign_keys="TournamentTrackAssignment.tournament_shift_id",
+        viewonly=True,
+    )
+    zone = relationship(
+        "TournamentZone",
+        primaryjoin="TournamentTrackAssignment.zone_id == TournamentZone.id",
+        foreign_keys="TournamentTrackAssignment.zone_id",
+        viewonly=True,
+    )
+
+    __table_args__ = (
+        # Each scope column must agree with the row's track.
+        ForeignKeyConstraint(
+            ["tournament_event_id", "tournament_track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_track_assignment_event", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tournament_shift_id", "tournament_track_id"],
+            ["tournament_shifts.id", "tournament_shifts.track_id"],
+            name="fk_track_assignment_shift", ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["zone_id", "tournament_track_id"],
+            ["tournament_zones.id", "tournament_zones.track_id"],
+            name="fk_track_assignment_zone", ondelete="CASCADE",
+        ),
+
+        # A tournament-wide row is about no day in particular, so it carries
+        # nothing that names one; every other row must name a track.
+        CheckConstraint(
+            "(is_tournament_wide AND tournament_track_id IS NULL "
+            "  AND tournament_event_id IS NULL AND tournament_shift_id IS NULL "
+            "  AND zone_id IS NULL) "
+            "OR (NOT is_tournament_wide AND tournament_track_id IS NOT NULL)",
+            name="ck_track_assignment_scope",
+        ),
+        # An event and a zone are alternatives, not a pair.
+        CheckConstraint(
+            "tournament_event_id IS NULL OR zone_id IS NULL",
+            name="ck_track_assignment_one_target",
+        ),
+        # A shift only means anything inside an event.
+        CheckConstraint(
+            "tournament_shift_id IS NULL OR tournament_event_id IS NOT NULL",
+            name="ck_track_assignment_shift_needs_event",
+        ),
+
+        # One row per shape. Partial, because each shape is keyed by different
+        # columns and nulls in a plain unique index would let duplicates past.
+        Index(
+            "uq_track_assignment_wide", "membership_id", "role_id",
+            unique=True, postgresql_where=text("is_tournament_wide"),
+        ),
+        Index(
+            "uq_track_assignment_grant", "membership_id", "role_id", "tournament_track_id",
+            unique=True,
+            postgresql_where=text(
+                "NOT is_tournament_wide AND tournament_event_id IS NULL AND zone_id IS NULL"
+            ),
+        ),
+        Index(
+            "uq_track_assignment_event", "membership_id", "role_id", "tournament_event_id",
+            unique=True,
+            postgresql_where=text(
+                "tournament_event_id IS NOT NULL AND tournament_shift_id IS NULL"
+            ),
+        ),
+        Index(
+            "uq_track_assignment_event_shift",
+            "membership_id", "role_id", "tournament_event_id", "tournament_shift_id",
+            unique=True, postgresql_where=text("tournament_shift_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_track_assignment_zone", "membership_id", "role_id", "zone_id",
+            unique=True, postgresql_where=text("zone_id IS NOT NULL"),
         ),
     )
 
