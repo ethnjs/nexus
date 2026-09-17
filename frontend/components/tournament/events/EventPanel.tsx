@@ -6,11 +6,12 @@ import {
   TournamentEvent, TournamentEventInput, TournamentShift, TournamentTrack, CanonicalEvent, TournamentDivision,
 } from "@/lib/api";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
-import { useTournament } from "@/lib/useTournament";
+import { useTournament, isSimpleMode } from "@/lib/useTournament";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
 import { formatTime } from "@/lib/timeFormat";
 import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
+import { Badge } from "@/components/ui/Badge";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
 import { Combobox } from "@/components/ui/Combobox";
@@ -245,6 +246,11 @@ export function EventPanel({
     () => new Set(pendingTracks(tracks).map((t) => t.name)),
     [tracks],
   );
+  // Advanced tournaments can have same-labeled shifts on different tracks
+  // (the backend only forbids duplicates within a track), so the picker
+  // needs the track to disambiguate; simple mode has exactly one track, so
+  // naming it would be noise.
+  const simple = isSimpleMode(tracks);
 
   // The backend refuses a *new* link to a pending-delete track but allows an
   // existing one to round-trip, so the picker offers exactly that: live
@@ -455,7 +461,14 @@ export function EventPanel({
                           }
                           items={eligibleShifts}
                           getKey={(s) => s.id}
-                          renderLabel={(s) => `${s.label} (${formatTime(s.start)}–${formatTime(s.end)})`}
+                          renderLabel={(s) => (
+                            <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                {s.label}
+                              </span>
+                              {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(s.track_id) ?? ""}</Badge>}
+                            </span>
+                          )}
                           onSelect={handleAttachShift}
                           checklist
                           isSelected={() => false}

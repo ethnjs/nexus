@@ -1,5 +1,6 @@
 from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.form import shift_referenced_by_live_field
@@ -61,6 +62,19 @@ def get_shift(
     return get_scoped_or_404(db, TournamentShift, shift_id, tournament_id, "Shift")
 
 
+def _label_taken(db: Session, track_id: int, label: str, *, excluding_id: int | None = None) -> bool:
+    """Same label, same track only — a shift's label just needs to disambiguate
+    within the track it's picked from (the Add-shift list, the availability
+    question), so the same label reused on a different track is fine."""
+    query = db.query(TournamentShift).filter(
+        TournamentShift.track_id == track_id,
+        TournamentShift.label == label,
+    )
+    if excluding_id is not None:
+        query = query.filter(TournamentShift.id != excluding_id)
+    return query.first() is not None
+
+
 def _resolve_track(db: Session, tournament_id: int, track_id: int) -> TournamentTrack:
     """The track a shift is being placed on, rejected unless it can actually
     hold one. Only a primary track has dates, and a shift with no date range
@@ -114,11 +128,23 @@ def create_shift(
     require_not_archived(tournament)
 
     track = _resolve_track(db, tournament_id, payload.track_id)
+    if _label_taken(db, payload.track_id, payload.label):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A shift named '{payload.label}' already exists on '{track.name}'",
+        )
     shift = TournamentShift(tournament_id=tournament_id, **payload.model_dump())
     _validate_track_bounds(shift, track, tournament)
     db.add(shift)
-    db.commit()
-    db.refresh(shift)
+    try:
+        db.commit()
+        db.refresh(shift)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A shift named '{payload.label}' already exists on '{track.name}'",
+        )
     return shift
 
 
@@ -143,6 +169,11 @@ def update_shift(
         setattr(shift, field, value)
 
     track = _resolve_track(db, tournament_id, shift.track_id)
+    if _label_taken(db, shift.track_id, shift.label, excluding_id=shift.id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A shift named '{shift.label}' already exists on '{track.name}'",
+        )
     _validate_track_bounds(shift, track, tournament)
 
     # Moving the shift off a track may have cleared the last reference
@@ -151,8 +182,15 @@ def update_shift(
     if shift.track_id != previous_track_id:
         purge_pending_tracks(db, tournament_id, current_user.id)
 
-    db.commit()
-    db.refresh(shift)
+    try:
+        db.commit()
+        db.refresh(shift)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A shift named '{shift.label}' already exists on '{track.name}'",
+        )
     return shift
 
 
