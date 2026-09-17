@@ -13,11 +13,11 @@ import { DockedPanel } from "@/components/layout/DockedPanel";
 import { Card } from "@/components/ui/Card";
 import { SettingsSection, SettingsRow } from "@/components/settings/SettingsRow";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
 import { FloatingSaveBar } from "@/components/ui/FloatingSaveBar";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { DeleteShiftModal } from "@/components/tournament/events/DeleteShiftModal";
 import { IconPlus, IconTrash, IconEvents, IconSearch, IconX } from "@/components/ui/Icons";
 
@@ -276,13 +276,13 @@ export function ShiftPanel({
           {/* Only competition days appear: a cosmetic track has no dates for
               a shift to sit inside, and the backend refuses one outright. */}
           <SettingsRow label="Track">
-            <Dropdown
+            <TrackPicker
               fullWidth
               locked={locked}
-              value={draft.trackId !== null ? String(draft.trackId) : ""}
-              onChange={(v) => patch({ trackId: Number(v) })}
-              options={trackOptions.map((t) => ({ value: String(t.id), label: t.name }))}
-              placeholder={trackOptions.length === 0 ? "No competition days yet" : "Select a track"}
+              value={draft.trackId}
+              onChange={(id) => patch({ trackId: id })}
+              tracks={trackOptions}
+              emptyPlaceholder="No competition days yet"
               error={fieldErrors.trackId}
             />
           </SettingsRow>

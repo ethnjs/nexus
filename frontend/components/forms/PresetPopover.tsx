@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/Input";
 import { Toggle } from "@/components/ui/Toggle";
 import { IconPresets, IconX } from "@/components/ui/Icons";
 import { newEntityOption, newOption } from "@/components/forms/OptionsEditor";
+import { TrackPicker } from "@/components/tournament/TrackPicker";
 import { FormQuestionType, TournamentTrack } from "@/lib/api";
 import { EditableField, cleanOption, hasCustomValues } from "@/lib/forms/editableField";
 import {
@@ -294,42 +295,6 @@ function TrackStatusParams({ field, onFieldChange, showErrors }: {
   return <Input label="Key" required placeholder="e.g. volunteer interest" value={suffix} onChange={(e) => handleChange(e.target.value)} size="sm" fullWidth error={showErrors && !parsedSuffix ? "Key is required." : undefined} />;
 }
 
-// A track that isn't in the live catalog is one that has been purged since
-// this question was written; the picker shows it as a missing selection
-// rather than silently reading as "none", which would look like the TD
-// simply hadn't picked yet.
-function TrackPicker({ label, trackId, tracks, onChange, error }: {
-  label: string;
-  trackId: number | null;
-  tracks: TournamentTrack[];
-  onChange: (trackId: number) => void;
-  error?: string;
-}) {
-  // A sole track is auto-applied the instant the preset is picked (see
-  // applyPresetKind), but that can race the catalog fetch — if it resolves
-  // *after* the preset was chosen, fill it in here too rather than leaving
-  // the field stuck on the sentinel with a picker that has nothing to pick.
-  useEffect(() => {
-    if (trackId === null && tracks.length === 1) onChange(tracks[0].id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracks]);
-
-  return (
-    <Dropdown
-      label={label}
-      required
-      value={trackId !== null ? String(trackId) : ""}
-      onChange={(value) => onChange(Number(value))}
-      options={tracks.map((track) => ({ value: String(track.id), label: track.name }))}
-      placeholder={tracks.length === 0 ? "Loading tracks…" : "Select a track"}
-      locked={tracks.length === 0}
-      size="sm"
-      fullWidth
-      error={error}
-    />
-  );
-}
-
 // Local suffix state, synced FROM field_key but not read straight back out
 // of it on every keystroke — same reasoning as LunchParams' category below.
 // Unlike lunch's category, the suffix here is optional: it only exists to
@@ -356,8 +321,9 @@ function AvailabilityParams({ field, onFieldChange, tracks, showErrors }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <TrackPicker
-        label="Track"
-        trackId={parsed.trackId}
+        label="Track" required size="sm" fullWidth
+        emptyPlaceholder="Loading tracks…"
+        value={parsed.trackId}
         tracks={shiftTracks}
         onChange={setTrack}
         error={showErrors && parsed.trackId === null ? "Track is required." : undefined}
@@ -381,8 +347,9 @@ function EventPreferenceParams({ field, onFieldChange, tracks, showErrors }: {
 
   return (
     <TrackPicker
-      label="Track"
-      trackId={trackId}
+      label="Track" required size="sm" fullWidth
+      emptyPlaceholder="Loading tracks…"
+      value={trackId}
       tracks={tracks}
       onChange={(next) => onFieldChange({ field_key: buildEventPreferenceFieldKey(next) })}
       error={showErrors && trackId === null ? "Track is required." : undefined}
@@ -418,8 +385,9 @@ function LunchParams({ field, onFieldChange, tracks, showErrors }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <TrackPicker
-        label="Track"
-        trackId={trackId}
+        label="Track" required size="sm" fullWidth
+        emptyPlaceholder="Loading tracks…"
+        value={trackId}
         tracks={tracks}
         onChange={setTrack}
         error={showErrors && trackId === null ? "Track is required." : undefined}

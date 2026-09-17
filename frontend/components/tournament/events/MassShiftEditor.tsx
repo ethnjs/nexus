@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { tournamentShiftsApi, ApiError, TournamentShift, TournamentTrack } from "@/lib/api";
 import { fromDayAndTime, toDateInput, toTimeInput } from "@/lib/timeFormat";
 import { useUnsavedChanges } from "@/lib/useUnsavedChanges";
@@ -58,6 +58,8 @@ interface MassShiftEditorProps {
 export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved, onDirtyChange }: MassShiftEditorProps) {
   const { guard } = useUnsavedChanges();
   const [draft, setDraft] = useState<MassShiftDraft>(EMPTY_DRAFT);
+  // A pending-delete track can't take a new shift — the backend 409s.
+  const moveTargets = useMemo(() => tracks.filter((t) => !t.is_archived), [tracks]);
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<MassResult[] | null>(null);
 
@@ -113,18 +115,23 @@ export function MassShiftEditor({ tournamentId, shifts, tracks, onClose, onSaved
         </Card>
 
         <SettingsSection title="Fields to apply">
-          <SettingsRow label="Track" helper="A shift keeps its day if the new track runs it, otherwise it moves to the track's first day.">
-            <Dropdown
-              fullWidth
-              value={draft.trackId !== null ? String(draft.trackId) : ""}
-              onChange={(v) => setDraft((d) => ({ ...d, trackId: v ? Number(v) : null }))}
-              options={[
-                { value: "", label: "Keep each shift's track" },
-                // A pending-delete track can't take a new shift — the backend 409s.
-                ...tracks.filter((t) => !t.is_archived).map((t) => ({ value: String(t.id), label: t.name })),
-              ]}
-            />
-          </SettingsRow>
+          {/* Hidden rather than locked when there is one track: unlike the
+              other pickers, this one's value is "move them" — with a single
+              destination every shift is already there, so there is no state
+              for a locked control to report. */}
+          {moveTargets.length > 1 && (
+            <SettingsRow label="Track" helper="A shift keeps its day if the new track runs it, otherwise it moves to the track's first day.">
+              <Dropdown
+                fullWidth
+                value={draft.trackId !== null ? String(draft.trackId) : ""}
+                onChange={(v) => setDraft((d) => ({ ...d, trackId: v ? Number(v) : null }))}
+                options={[
+                  { value: "", label: "Keep each shift's track" },
+                  ...moveTargets.map((t) => ({ value: String(t.id), label: t.name })),
+                ]}
+              />
+            </SettingsRow>
+          )}
 
           <SettingsRow label="Start" helper="Blank keeps each shift's own start.">
             <Input

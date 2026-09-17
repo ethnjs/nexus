@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 import { tournamentShiftsApi, TournamentShift, TournamentTrack, ApiError } from "@/lib/api";
 import { fromDayAndTime } from "@/lib/timeFormat";
 import { Input } from "@/components/ui/Input";
-import { Dropdown } from "@/components/ui/Dropdown";
 import { Button } from "@/components/ui/Button";
 import { TrackDayPicker, trackDays } from "@/components/tournament/TrackDayPicker";
+import { TrackPicker, soleTrackId } from "@/components/tournament/TrackPicker";
 
 interface CreateShiftFormProps {
   tournamentId: number;
@@ -23,7 +23,7 @@ interface CreateShiftFormProps {
 }
 
 export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: CreateShiftFormProps) {
-  const [trackId, setTrackId] = useState<number | null>(tracks.length === 1 ? tracks[0].id : null);
+  const [trackId, setTrackId] = useState<number | null>(soleTrackId(tracks));
   const [label, setLabel] = useState("");
   const [startTime, setStartTime] = useState("");
   const [endTime, setEndTime] = useState("");
@@ -73,13 +73,11 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
         label="Label" font="sans" size="sm" fullWidth
         value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Morning"
       />
-      <Dropdown
+      <TrackPicker
         label="Track" size="sm" fullWidth
-        value={trackId !== null ? String(trackId) : ""}
-        onChange={(v) => pickTrack(Number(v))}
-        options={tracks.map((t) => ({ value: String(t.id), label: t.name }))}
-        placeholder="Select a track"
-        locked={tracks.length === 1}
+        value={trackId}
+        onChange={pickTrack}
+        tracks={tracks}
       />
       <TrackDayPicker
         label="Day" size="sm" fullWidth
