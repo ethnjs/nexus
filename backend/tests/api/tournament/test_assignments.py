@@ -1014,7 +1014,7 @@ class TestAssignmentCardSurface:
         login(client, "td@test.com", "tdpass")
 
         row = client.get(
-            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card"
+            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card:all"
         ).json()[0]
 
         assert "event_preferences" in row
@@ -1028,7 +1028,7 @@ class TestAssignmentCardSurface:
         login(client, "td@test.com", "tdpass")
 
         row = client.get(
-            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card"
+            f"/tournaments/{td_tournament.id}/members/?surface=assignment_card:all"
         ).json()[0]
 
         assert row["user"]["first_name"]

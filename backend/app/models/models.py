@@ -14,7 +14,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import relationship, validates
-from typing import Optional
+from typing import NamedTuple, Optional
 
 from app.db.session import Base
 from app.core.age import meets_age_requirement
@@ -469,6 +469,18 @@ class Tournament(Base):
 # record). Roles/permissions come from TournamentMembershipRole, not a
 # column here.
 # ---------------------------------------------------------------------------
+class HeldRole(NamedTuple):
+    """A role as one member holds it: the role row, plus where.
+
+    A plain tuple rather than a mapped class because nothing is stored — it is
+    assembled from track_assignments on read. `track_ids` is empty when the
+    role is tournament-wide, which already means "every track".
+    """
+    role: "TournamentRole"
+    is_tournament_wide: bool
+    track_ids: list[int]
+
+
 class TournamentMembership(Base):
     __tablename__ = "tournament_memberships"
 
@@ -555,6 +567,31 @@ class TournamentMembership(Base):
     # an empty list rather than failing — which is how a missing attribute
     # turns into "this member has no roles" instead of an error.
     roles = held_roles
+
+    @property
+    def held_role_details(self) -> list["HeldRole"]:
+        """held_roles, plus where each role is held — what the roster's roles
+        cell needs to hang track pills off a role (#83).
+
+        A role is wide if *any* of its rows is: one tournament-wide grant
+        already makes it apply everywhere, so listing that role's incidental
+        per-track rows beside it would read as a narrower claim than the truth.
+        """
+        wide: set[int] = set()
+        tracks: dict[int, set[int]] = {}
+        for assignment in self.track_assignments:
+            if assignment.is_tournament_wide:
+                wide.add(assignment.role_id)
+            elif assignment.tournament_track_id is not None:
+                tracks.setdefault(assignment.role_id, set()).add(assignment.tournament_track_id)
+        return [
+            HeldRole(
+                role=role,
+                is_tournament_wide=role.id in wide,
+                track_ids=[] if role.id in wide else sorted(tracks.get(role.id, ())),
+            )
+            for role in self.held_roles
+        ]
 
     def roles_on_track(self, track_id: int) -> list["TournamentRole"]:
         """The distinct roles this member holds on one track.
