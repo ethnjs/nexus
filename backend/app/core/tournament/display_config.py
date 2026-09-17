@@ -19,10 +19,67 @@ EVENTS_TABLE = "events_table"
 # share no vocabulary — one describes an event, the other a person.
 ASSIGNMENTS_EVENTS = "assignments_events"
 
-KNOWN_SURFACES = frozenset({
-    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, ASSIGNMENT_CARD, EVENTS_TABLE,
-    ASSIGNMENTS_EVENTS,
+FLAT_SURFACES = frozenset({
+    MEMBERS_PANEL, MEMBERS_TABLE, MEMBER_PAGE, EVENTS_TABLE,
 })
+
+# ---------------------------------------------------------------------------
+# Per-tab surfaces
+#
+# The assignments board is tabbed per track (#81), and each tab keeps its own
+# columns, filters and sort for both halves of the board. So these two are not
+# one surface each but a family: "assignments_events:all",
+# "assignments_events:track:3", and the same for the card.
+#
+# Encoded in the key rather than as a `tab` field inside the blob because the
+# storage is a flat dict of surface -> config, and every reader (the PUT, the
+# apply step, fields_for_surface) already keys off that string. A nested tab
+# would mean teaching all of them a second level.
+#
+# Track ids are not checked against the catalog — a deleted track's saved tab
+# is inert, the same leniency filter values and hidden items already get.
+# ---------------------------------------------------------------------------
+TAB_ALL = "all"
+TAB_TRACK_PREFIX = "track:"
+TAB_SCOPED_SURFACES = frozenset({ASSIGNMENTS_EVENTS, ASSIGNMENT_CARD})
+
+
+def surface_key(base: str, tab: str = TAB_ALL) -> str:
+    """The stored key for one tab of a tab-scoped surface."""
+    return f"{base}:{tab}"
+
+
+def track_tab(track_id: int) -> str:
+    return f"{TAB_TRACK_PREFIX}{track_id}"
+
+
+def surface_base(surface: str) -> str:
+    """The surface a key belongs to, tab suffix stripped.
+
+    Every surface-scoped rule below asks what *kind* of surface this is, never
+    which tab — a track tab hides and filters exactly what the All tab does.
+    """
+    base, _, _ = surface.partition(":")
+    return base if base in TAB_SCOPED_SURFACES else surface
+
+
+def is_known_surface(surface: str) -> bool:
+    """Whether `surface` is a key the config may store.
+
+    A prefix match rather than a set membership, because the tab-scoped
+    surfaces have one key per track and the track list is per tournament.
+    Note the bare "assignments_events" is *not* accepted: the All tab is
+    spelled ":all", and the migration rewrote existing blobs to it, so a bare
+    key now means a client that never learned about tabs.
+    """
+    if surface in FLAT_SURFACES:
+        return True
+    base, sep, tab = surface.partition(":")
+    if not sep or base not in TAB_SCOPED_SURFACES:
+        return False
+    if tab == TAB_ALL:
+        return True
+    return tab.startswith(TAB_TRACK_PREFIX) and tab[len(TAB_TRACK_PREFIX):].isdigit()
 
 # ---------------------------------------------------------------------------
 # Members table view state
@@ -102,10 +159,9 @@ EVENT_COLUMN_TYPE = "type"
 EVENT_COLUMN_CATEGORY = "category"
 EVENT_COLUMN_TRACKS = "tracks"
 EVENT_COLUMN_SHIFTS = "shifts"
-EVENT_COLUMN_BUILDING = "building"
-EVENT_COLUMN_ROOM = "room"
-EVENT_COLUMN_FLOOR = "floor"
-EVENT_COLUMN_VOLUNTEERS_NEEDED = "volunteers_needed"
+# No building/room/floor/volunteers_needed: location and staffing are per
+# track now (#81), and a table row is per event — there is no single value to
+# print. They live on the event panel and the buildings page instead.
 
 EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_DIVISION, "Division"),
@@ -113,15 +169,10 @@ EVENT_COLUMNS: tuple[tuple[str, str], ...] = (
     (EVENT_COLUMN_CATEGORY, "Category"),
     (EVENT_COLUMN_TRACKS, "Tracks"),
     (EVENT_COLUMN_SHIFTS, "Shifts"),
-    (EVENT_COLUMN_BUILDING, "Building"),
-    (EVENT_COLUMN_ROOM, "Room"),
-    (EVENT_COLUMN_FLOOR, "Floor"),
-    (EVENT_COLUMN_VOLUNTEERS_NEEDED, "Volunteers needed"),
 )
 
 # Today's fixed table, so the feature landing doesn't rearrange anyone's
-# events page. Location and staffing target are opt-in: they're blank for
-# most of planning and would be four empty columns until the week of.
+# events page.
 DEFAULT_EVENT_COLUMNS: tuple[str, ...] = (
     EVENT_COLUMN_DIVISION, EVENT_COLUMN_TYPE, EVENT_COLUMN_CATEGORY,
     EVENT_COLUMN_TRACKS, EVENT_COLUMN_SHIFTS,
@@ -293,6 +344,7 @@ def is_known_hidden_item(surface: str, item: str) -> bool:
     Track ids aren't checked against the catalog — a deleted track's saved
     entry is inert, the same leniency filter values already get.
     """
+    surface = surface_base(surface)
     if surface == ASSIGNMENT_CARD:
         if item.startswith(CARD_FIELD_NAMESPACE):
             return item[len(CARD_FIELD_NAMESPACE):] in ASSIGNMENT_CARD_FIELDS
@@ -327,6 +379,7 @@ def is_known_column(surface: str, key: str) -> bool:
     already namespaces — event_preference is excluded deliberately: a ranked
     list of events has no sensible single-cell rendering.
     """
+    surface = surface_base(surface)
     if surface == EVENTS_TABLE:
         return any(key == column_id for column_id, _ in EVENT_COLUMNS)
     if surface == ASSIGNMENTS_EVENTS:
@@ -344,6 +397,7 @@ def known_filter_keys(surface: str) -> frozenset[str]:
     """The filter keys `surface` may store. Empty for a surface that has no
     filters, which makes any saved filter on it a 422 rather than dead
     weight nothing will ever read."""
+    surface = surface_base(surface)
     if surface == MEMBERS_TABLE:
         return KNOWN_FILTER_KEYS
     if surface == EVENTS_TABLE:
@@ -361,6 +415,7 @@ def known_filter_keys(surface: str) -> frozenset[str]:
 def known_sort_fields(surface: str) -> frozenset[str]:
     """The sort fields `surface` may store — same reasoning as
     known_filter_keys."""
+    surface = surface_base(surface)
     if surface == MEMBERS_TABLE:
         return KNOWN_SORT_FIELDS
     if surface == EVENTS_TABLE:
@@ -693,7 +748,7 @@ def fields_for_surface(config: dict | None, surface: str | None) -> frozenset[st
     """
     # Not driven by saved config, unlike the three below: the card's face is
     # fixed by the issue, so there is nothing per-viewer to read.
-    if surface == ASSIGNMENT_CARD:
+    if surface and surface_base(surface) == ASSIGNMENT_CARD:
         return _ASSIGNMENT_CARD_GROUPS
 
     if surface not in (MEMBERS_TABLE, MEMBERS_PANEL, MEMBER_PAGE):
