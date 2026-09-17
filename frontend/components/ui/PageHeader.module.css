@@ -1,0 +1,72 @@
+/*
+ * See the note atop components/layout/Sidebar.module.css for why the viewport
+ * switch lives in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in
+ * lib/useIsMobile.ts — keep the two in sync.
+ */
+
+.header {
+  margin-bottom: 24px;
+  padding: 20px 28px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/*
+ * min-width:0 is the fix for the action button escaping the card. A flex item
+ * won't shrink below its min-content width by default, and a one-word serif
+ * heading like "Tournaments" has a wide one — so with the action set to
+ * flex-shrink:0, the pair overflowed the card instead of either giving way.
+ */
+.text {
+  min-width: 0;
+}
+
+.heading {
+  font-family: Georgia, serif;
+  font-size: 28px;
+  line-height: 1.2;
+  overflow-wrap: break-word;
+}
+
+.subheading {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}
+
+.metadata {
+  margin-top: 8px;
+}
+
+.action {
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  /*
+   * Side by side, the heading and a button like "Add Tournament" can't both
+   * fit a phone width at any sensible size — so the action drops below.
+   */
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 18px;
+    gap: 12px;
+  }
+
+  .heading {
+    font-size: 22px;
+  }
+
+  /*
+   * Natural width, not stretched: `action` takes arbitrary children (a single
+   * Button here, a ButtonGroup elsewhere) and forcing width on an unknown
+   * child is how you get a stretched icon button.
+   */
+  .action {
+    align-self: flex-start;
+  }
+}

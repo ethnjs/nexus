@@ -4,6 +4,8 @@ import { ReactNode, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { IconChevronDown } from "@/components/ui/Icons";
+import { useNavDrawer } from "@/lib/useNavDrawer";
+import styles from "./Sidebar.module.css";
 
 export const COLLAPSED_W = 52;
 export const EXPANDED_W  = 192;
@@ -39,59 +41,41 @@ interface SidebarProps {
   onExpandedChange?: (expanded: boolean) => void;
   /** Href for the wordmark. */
   homeHref?: string;
+  /**
+   * Rendered under the wordmark, mobile only. For a control the phone-width
+   * Topbar has no room for — today, the tournament switcher.
+   */
+  navHeader?: ReactNode;
 }
 
-const ROW_BASE = {
-  height: "38px",
-  borderRadius: "var(--radius-md)",
-  display: "flex",
-  alignItems: "center",
-  gap: "10px",
-  paddingLeft: "10px",
-  paddingRight: "10px",
-  justifyContent: "flex-start",
-  width: "100%",
-  position: "relative",
-  transition: "background var(--transition-fast), color var(--transition-fast)",
-  boxSizing: "border-box",
-  textDecoration: "none",
-} as const;
-
-/** Hover paints the row only when it isn't already the active one. */
-function hoverHandlers(isActive: boolean) {
-  return {
-    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => {
-      if (isActive) return;
-      e.currentTarget.style.background = "var(--color-accent-subtle)";
-      e.currentTarget.style.color = "var(--color-text-primary)";
-    },
-    onMouseLeave: (e: React.MouseEvent<HTMLElement>) => {
-      if (isActive) return;
-      e.currentTarget.style.background = "transparent";
-      e.currentTarget.style.color = "var(--color-text-tertiary)";
-    },
-  };
-}
-
-function ActiveBar() {
-  return (
-    <div style={{
-      position: "absolute", left: 0, top: "50%", transform: "translateY(-50%)",
-      width: "3px", height: "20px",
-      background: "var(--color-accent)", borderRadius: "0 3px 3px 0",
-    }} />
-  );
+function cx(...names: (string | false | undefined)[]): string {
+  return names.filter(Boolean).join(" ");
 }
 
 /**
- * The app's collapsed-to-hover nav rail. Presentational only — it renders
- * whatever items it is handed and knows nothing about tournaments or admin.
- * See TournamentSidebar and AdminSidebar for the two item sets.
+ * The app's nav. Presentational only — it renders whatever items it is handed
+ * and knows nothing about tournaments or admin. See TournamentSidebar and
+ * AdminSidebar for the two item sets.
+ *
+ * One markup tree, two arrangements chosen by media query in Sidebar.module.css:
+ *  - desktop: a collapsed rail that widens on hover and overlays the page.
+ *  - mobile:  an off-canvas drawer behind a scrim, since hover-to-expand has
+ *             no touch equivalent and the rail would otherwise be a dead 52px
+ *             strip. The button that opens it belongs to the Topbar; this
+ *             reads its state from NavDrawerProvider.
+ *
+ * The viewport switch is CSS, not a useIsMobile() branch, so the first painted
+ * frame is already correct — see the note at the top of the stylesheet. The
+ * only state here is interaction state (hover, open drawer, open group), which
+ * can't exist before hydration anyway.
  */
-export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard" }: SidebarProps) {
+export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard", navHeader }: SidebarProps) {
   const [hovered, setHovered] = useState(false);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
   const pathname = usePathname();
+  // The toggle lives in the Topbar, so the open state is shared through a
+  // context rather than held here. See lib/useNavDrawer.tsx.
+  const { open: drawerOpen, setOpen: setDrawerOpen } = useNavDrawer();
 
   function isActive(item: SidebarItem): boolean {
     const prefix = item.match ?? item.href;
@@ -104,149 +88,100 @@ export function Sidebar({ items, onExpandedChange, homeHref = "/dashboard" }: Si
   // labels readable only while the mouse stays parked on the rail.
   const activeGroup = items.find((i) => i.subitems && isActive(i)) ?? null;
   const expanded = hovered || activeGroup !== null;
-  const width = expanded ? EXPANDED_W : COLLAPSED_W;
 
   useEffect(() => {
+    // Drives the desktop Topbar's padding for the overlaying rail. Hover can't
+    // happen before hydration and the mobile drawer overlays nothing the
+    // Topbar must compensate for, so this staying false on a phone is correct.
     onExpandedChange?.(expanded);
   }, [expanded, onExpandedChange]);
 
   return (
-    <aside
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        width,
-        height: "100vh",
-        position: "fixed",
-        top: 0,
-        left: 0,
-        background: "var(--color-surface)",
-        borderRight: "1px solid var(--color-border)",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "stretch",
-        transition: "width 0.2s ease",
-        overflow: "hidden",
-        zIndex: 50,
-      }}>
-      {/* Header */}
-      <div style={{
-        height: "52px",
-        borderBottom: "1px solid var(--color-border)",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        flexShrink: 0,
-        paddingLeft:  expanded ? "16px" : "0",
-        paddingRight: expanded ? "16px" : "0",
-      }}>
-        <Link href={homeHref} style={{ textDecoration: "none" }}>
-          {expanded ? (
-            <span style={{ fontFamily: "var(--font-serif)", fontSize: "15px", letterSpacing: "0.18em", textTransform: "uppercase", color: "var(--color-text-primary)", userSelect: "none", whiteSpace: "nowrap" }}>
-              NEXUS
-            </span>
-          ) : (
-            <span style={{ fontFamily: "var(--font-serif)", fontSize: "13px", letterSpacing: "0.12em", textTransform: "uppercase", color: "var(--color-text-primary)", userSelect: "none" }}>
-              NX
-            </span>
-          )}
-        </Link>
-      </div>
+    <>
+      <div
+        onClick={() => setDrawerOpen(false)}
+        className={cx(styles.scrim, drawerOpen && styles.open)}
+      />
 
-      {/* Nav */}
-      <nav style={{
-        display: "flex", flexDirection: "column", gap: "2px",
-        flex: 1, padding: "10px 6px",
-        alignItems: "stretch",
-      }}>
-        {items.map((item) => {
-          const active = isActive(item);
-          const isGroup = !!item.subitems;
-          // Open on its own route, or when clicked — but only while the rail
-          // is wide enough for the labels to mean anything.
-          const showSub = isGroup && expanded && (active || openGroup === item.key);
+      <aside
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        className={cx(
+          styles.aside,
+          activeGroup !== null && styles.locked,
+          drawerOpen && styles.open,
+        )}
+      >
+        <div className={styles.header}>
+          <Link href={homeHref} style={{ textDecoration: "none" }}>
+            <span className={cx(styles.wordmark, styles.wordmarkFull)}>NEXUS</span>
+            <span className={cx(styles.wordmark, styles.wordmarkShort)}>NX</span>
+          </Link>
+        </div>
 
-          const rowStyle = {
-            ...ROW_BASE,
-            color: active ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-            background: active ? "var(--color-accent-subtle)" : "transparent",
-          };
-          const labelStyle = {
-            fontFamily: "var(--font-sans)", fontSize: "13px",
-            fontWeight: active ? 600 : 400, whiteSpace: "nowrap", letterSpacing: "0.01em",
-          } as const;
+        {navHeader && <div className={styles.navHeader}>{navHeader}</div>}
 
-          return (
-            <div key={item.key} style={{ display: "contents" }}>
-              {isGroup ? (
-                <button
-                  type="button"
-                  onClick={() => setOpenGroup((k) => (k === item.key ? null : item.key))}
-                  title={expanded ? undefined : item.label}
-                  style={{ ...rowStyle, border: "none", font: "inherit", cursor: "pointer" }}
-                  {...hoverHandlers(active)}
-                >
-                  {active && <ActiveBar />}
-                  {item.icon}
-                  {expanded && (
-                    <>
-                      <span style={{ ...labelStyle, flex: 1, textAlign: "left" }}>{item.label}</span>
-                      <IconChevronDown
-                        size={12}
-                        style={{ transform: showSub ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}
-                      />
-                    </>
-                  )}
-                </button>
-              ) : (
-                <Link
-                  href={item.href!}
-                  title={expanded ? undefined : item.label}
-                  style={rowStyle}
-                  {...hoverHandlers(active)}
-                >
-                  {active && <ActiveBar />}
-                  {item.icon}
-                  {expanded && <span style={labelStyle}>{item.label}</span>}
-                </Link>
-              )}
+        <nav className={styles.nav}>
+          {items.map((item) => {
+            const active = isActive(item);
+            const isGroup = !!item.subitems;
+            // Open on its own route, or when clicked. Unlike before, this no
+            // longer gates on `expanded`: the subitems are hidden by the same
+            // CSS that hides the labels when the rail is narrow.
+            const showSub = isGroup && (active || openGroup === item.key);
 
-              {showSub && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "2px", paddingLeft: "20px" }}>
-                  {item.subitems!.map(({ href, label }) => {
-                    const subActive = pathname === href || pathname.startsWith(`${href}/`);
-                    return (
-                      <Link
-                        key={href}
-                        href={href}
-                        style={{
-                          height: "32px",
-                          borderRadius: "var(--radius-md)",
-                          display: "flex", alignItems: "center",
-                          paddingLeft: "10px", paddingRight: "10px",
-                          color: subActive ? "var(--color-text-primary)" : "var(--color-text-tertiary)",
-                          background: subActive ? "var(--color-accent-subtle)" : "transparent",
-                          textDecoration: "none",
-                          transition: "background var(--transition-fast), color var(--transition-fast)",
-                          boxSizing: "border-box",
-                        }}
-                        {...hoverHandlers(subActive)}
-                      >
-                        <span style={{
-                          fontFamily: "var(--font-sans)", fontSize: "12px",
-                          fontWeight: subActive ? 600 : 400, whiteSpace: "nowrap",
-                        }}>
-                          {label}
-                        </span>
-                      </Link>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </nav>
-    </aside>
+            return (
+              <div key={item.key} style={{ display: "contents" }}>
+                {isGroup ? (
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroup((k) => (k === item.key ? null : item.key))}
+                    title={item.label}
+                    className={cx(styles.row, active && styles.active)}
+                  >
+                    {active && <div className={styles.activeBar} />}
+                    {item.icon}
+                    <span className={styles.label}>{item.label}</span>
+                    <IconChevronDown
+                      size={12}
+                      className={cx(styles.chevron, showSub && styles.chevronOpen)}
+                    />
+                  </button>
+                ) : (
+                  <Link
+                    href={item.href!}
+                    title={item.label}
+                    onClick={() => setDrawerOpen(false)}
+                    className={cx(styles.row, active && styles.active)}
+                  >
+                    {active && <div className={styles.activeBar} />}
+                    {item.icon}
+                    <span className={styles.label}>{item.label}</span>
+                  </Link>
+                )}
+
+                {showSub && (
+                  <div className={styles.subRows}>
+                    {item.subitems!.map(({ href, label }) => {
+                      const subActive = pathname === href || pathname.startsWith(`${href}/`);
+                      return (
+                        <Link
+                          key={href}
+                          href={href}
+                          onClick={() => setDrawerOpen(false)}
+                          className={cx(styles.subRow, subActive && styles.active)}
+                        >
+                          <span className={styles.subLabel}>{label}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </nav>
+      </aside>
+    </>
   );
 }

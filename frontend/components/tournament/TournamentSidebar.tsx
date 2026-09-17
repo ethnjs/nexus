@@ -10,6 +10,7 @@ import {
   IconCalendar,
 } from "@/components/ui/Icons";
 import { Sidebar, SidebarItem } from "@/components/layout/Sidebar";
+import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
 import { Permission } from "@/lib/api";
 import { useAuth } from "@/lib/useAuth";
 import { useMyMembership } from "@/lib/useMyMembership";
@@ -71,5 +72,13 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
     },
   ];
 
-  return <Sidebar items={items} onExpandedChange={onExpandedChange} />;
+  return (
+    <Sidebar
+      items={items}
+      onExpandedChange={onExpandedChange}
+      // Mobile only — the drawer is where the switcher goes when the Topbar
+      // is too narrow for it. Sidebar hides this slot on desktop.
+      navHeader={<TournamentDropdown tournamentId={tournamentId} fullWidth />}
+    />
+  );
 }

@@ -2,9 +2,9 @@
 
 import { ApiError, MembershipFull, MembershipView, membersApi, Role } from "@/lib/api";
 import { userName } from "@/lib/personDisplay";
-import { useAuth } from "@/lib/useAuth";
 import { useToast } from "@/lib/useToast";
 import { ChipInput } from "@/components/ui/ChipInput";
+import { RANK_LOCK_REASON } from "@/lib/roles/useMemberRoleLock";
 import { FieldValue } from "@/components/profile/PanelField";
 import { Popover } from "@/components/ui/Popover";
 import { Button } from "@/components/ui/Button";
@@ -39,9 +39,7 @@ export function RolesCell({
   // Two different reasons the chips go inert; ChipInput only has the one knob.
   const inert = locked || readOnly;
   const { show } = useToast();
-  const { user: currentUser } = useAuth();
   const memberName = userName(membership.user);
-  const isSelf = currentUser?.id === membership.user.id;
 
   const heldIds = new Set((membership.roles ?? []).map((r) => r.id));
   const roleByLabel = new Map((membership.roles ?? []).map((r) => [r.label, r]));
@@ -53,10 +51,7 @@ export function RolesCell({
   }
 
   function rankLockReason(role: Role): string | undefined {
-    if (canTouchRole(role)) return undefined;
-    return isSelf
-      ? "You can't remove your own highest-ranked role."
-      : "You can't touch a role that ties or outranks your own highest role.";
+    return canTouchRole(role) ? undefined : RANK_LOCK_REASON;
   }
 
   async function handleRemove(role: Role) {

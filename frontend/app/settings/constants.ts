@@ -1,2 +1,0 @@
-export const SETTINGS_NAV_WIDTH = 220;
-export const SETTINGS_CONTAINER_MAX_WIDTH = 1000;

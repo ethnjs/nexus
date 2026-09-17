@@ -1,0 +1,332 @@
+/*
+ * Rail (desktop) vs. drawer (mobile) for components/layout/Sidebar.tsx.
+ *
+ * This lives in CSS rather than branching on useIsMobile() because the switch
+ * has to be right on the *first painted frame*. These pages are prerendered on
+ * the server, which has no viewport, so any JS viewport check necessarily
+ * returns "desktop" for the first render and only corrects itself in an
+ * effect — the rail visibly flashes before becoming the drawer. A media query
+ * applies before any JS runs, so the server's HTML lands already-mobile.
+ *
+ * 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts. Keep the two in
+ * sync; a media query can't read a JS constant (or a CSS custom property).
+ */
+
+/* ─── Scrim (mobile only) ──────────────────────────────────────────────── */
+
+.scrim {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 150;
+}
+
+/* ─── The panel itself ─────────────────────────────────────────────────── */
+
+.aside {
+  /* dvh so the drawer ends at the visible viewport, not under the URL bar. */
+  height: 100dvh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 52px; /* COLLAPSED_W */
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  overflow: hidden;
+  z-index: 50;
+  transition: width 0.2s ease;
+}
+
+/*
+ * `.locked` is set from the route (an open group's own page keeps the rail
+ * wide), so it is known at render time on the server and never flashes.
+ * Hover is the other half and is deliberately CSS-only.
+ */
+.aside:hover,
+.aside.locked {
+  width: 192px; /* EXPANDED_W */
+}
+
+.header {
+  height: 52px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.aside:hover .header,
+.aside.locked .header {
+  padding-left: 16px;
+  padding-right: 16px;
+}
+
+/*
+ * Mobile-only slot under the wordmark for a control that has nowhere to go in
+ * a phone-width Topbar — the tournament switcher. Hidden on desktop, where
+ * the Topbar has room for it.
+ */
+.navHeader {
+  display: none;
+  padding: 10px 10px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+@media (max-width: 640px) {
+  .navHeader {
+    display: block;
+  }
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  padding: 10px 6px;
+  align-items: stretch;
+  /* A long item set with a group open can outrun a phone's viewport. */
+  overflow-y: auto;
+}
+
+/* ─── Wordmark ─────────────────────────────────────────────────────────── */
+
+.wordmark {
+  font-family: var(--font-serif);
+  text-transform: uppercase;
+  color: var(--color-text-primary);
+  user-select: none;
+  white-space: nowrap;
+}
+
+.wordmarkFull {
+  display: none;
+  font-size: 15px;
+  letter-spacing: 0.18em;
+}
+
+.wordmarkShort {
+  display: inline;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+.aside:hover .wordmarkFull,
+.aside.locked .wordmarkFull {
+  display: inline;
+}
+
+.aside:hover .wordmarkShort,
+.aside.locked .wordmarkShort {
+  display: none;
+}
+
+/* ─── Rows ─────────────────────────────────────────────────────────────── */
+
+.row {
+  height: 38px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  justify-content: flex-start;
+  width: 100%;
+  position: relative;
+  box-sizing: border-box;
+  text-decoration: none;
+  flex-shrink: 0;
+  border: none;
+  font: inherit;
+  cursor: pointer;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.row.active {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+/*
+ * Hover paints the row only when it isn't already the active one. Previously
+ * done with onMouseEnter/onMouseLeave writing inline styles, which left a row
+ * stuck on its hovered colours when it became active mid-hover.
+ */
+.row:not(.active):hover {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+.activeBar {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: var(--color-accent);
+  border-radius: 0 3px 3px 0;
+}
+
+/*
+ * Hidden while the rail is narrow, for the same reason as .label: an open
+ * group survives the mouse leaving, and full-width sublabels inside a 52px
+ * overflow-hidden rail render as sliced-off text.
+ */
+.subRows {
+  display: none;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 20px;
+}
+
+.aside:hover .subRows,
+.aside.locked .subRows {
+  display: flex;
+}
+
+.subRow {
+  height: 32px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  padding-left: 10px;
+  padding-right: 10px;
+  color: var(--color-text-tertiary);
+  background: transparent;
+  text-decoration: none;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.subRow.active {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+.subRow:not(.active):hover {
+  background: var(--color-accent-subtle);
+  color: var(--color-text-primary);
+}
+
+.subLabel {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.subRow.active .subLabel {
+  font-weight: 600;
+}
+
+/* ─── Labels ───────────────────────────────────────────────────────────── */
+
+/*
+ * Always in the DOM, hidden while the rail is narrow. Rendering them
+ * conditionally would mean the drawer opened icons-only until hydration.
+ */
+.label,
+.chevron {
+  display: none;
+}
+
+.aside:hover .label,
+.aside.locked .label {
+  display: block;
+}
+
+.aside:hover .chevron,
+.aside.locked .chevron {
+  display: block;
+}
+
+.label {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+  flex: 1;
+  text-align: left;
+}
+
+.row.active .label {
+  font-weight: 600;
+}
+
+.chevron {
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* ─── Mobile: off-canvas drawer ────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .scrim.open {
+    display: block;
+  }
+
+  .aside,
+  .aside:hover,
+  .aside.locked {
+    width: 240px; /* Wider than the desktop rail — labels beside 44px touch rows. */
+    /* Offset past the shadow so it doesn't bleed onto the page when closed. */
+    transform: translateX(-252px);
+    transition: transform 0.2s ease;
+    box-shadow: none;
+    z-index: 200;
+  }
+
+  .aside.open,
+  .aside.open:hover {
+    transform: none;
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* The drawer is always label-width — there is no collapsed state to hover. */
+  .header,
+  .aside:hover .header {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .label,
+  .chevron,
+  .wordmarkFull {
+    display: block;
+  }
+
+  .subRows {
+    display: flex;
+  }
+
+  .wordmarkShort {
+    display: none;
+  }
+
+  /* 38px is a fine mouse target but below the 44px touch minimum. */
+  .row {
+    height: 44px;
+  }
+
+  .subRow {
+    height: 40px;
+  }
+}

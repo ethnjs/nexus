@@ -9,7 +9,8 @@ import { AgeDisclosureModal } from "@/components/tournament/AgeDisclosureModal";
 import { UnsavedChangesProvider } from "@/lib/useUnsavedChanges";
 import { LayoutPanelProvider } from "@/lib/useLayoutPanel";
 import { LayoutPanelSlot } from "@/components/layout/LayoutPanelSlot";
-import { COLLAPSED_W, EXPANDED_W } from "@/components/layout/Sidebar";
+import { NavDrawerProvider } from "@/lib/useNavDrawer";
+import styles from "@/components/layout/Shell.module.css";
 import { TournamentSidebar } from "@/components/tournament/TournamentSidebar";
 import { Topbar } from "@/components/layout/Topbar";
 import { Button } from "@/components/ui/Button";
@@ -55,7 +56,8 @@ function TournamentShell({
   const { membership, setMembership } = useMyMembership();
   const pathname = usePathname();
   // Sidebar is locked open (not just hover-expanded) on settings routes —
-  // reserve its full width there instead of letting it overlay content.
+  // reserve its full width there instead of letting it overlay content. The
+  // mobile override (the drawer reserves nothing) is in Shell.module.css.
   const onSettingsRoute = pathname.startsWith(`/dashboard/tournaments/${tournamentId}/settings`);
 
   useEffect(() => {
@@ -75,18 +77,24 @@ function TournamentShell({
   }
 
   return (
-    <div style={{ display: "flex", height: "100vh", overflow: "hidden", background: "var(--color-bg)" }}>
+    <div className={styles.shell}>
       <TournamentSidebar
         onExpandedChange={setSidebarExpanded}
         tournamentId={tournamentId}
       />
-      <div style={{
-        flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden",
-        marginLeft: onSettingsRoute ? EXPANDED_W : COLLAPSED_W,
-        transition: "margin-left 0.2s ease",
-      }}>
-        <Topbar showDropdown tournamentId={tournamentId} showAvatar sidebarExpanded={sidebarExpanded && !onSettingsRoute} />
-        <main style={{ flex: 1, overflowY: "auto", padding: "22px 24px" }}>
+      <div className={onSettingsRoute ? `${styles.column} ${styles.columnWide}` : styles.column}>
+        {/* The rail carries the wordmark on desktop, but it's an off-canvas
+            drawer on mobile — so the bar takes over there, and the tournament
+            switcher moves into the drawer for want of room. */}
+        <Topbar
+          showWordmark="mobile-only"
+          showDropdown
+          tournamentId={tournamentId}
+          showAvatar
+          sidebarExpanded={sidebarExpanded && !onSettingsRoute}
+          showNavToggle
+        />
+        <main className={styles.main}>
           {children}
         </main>
       </div>
@@ -126,9 +134,13 @@ export default function TournamentLayout({
                 rendered into the latter, a sibling of <main> rather than a
                 descendant of it. Inert on every other tab. */}
             <BoardDndProvider>
-              <TournamentShell tournamentId={tournamentId}>
-                {children}
-              </TournamentShell>
+              {/* Above the shell so the Topbar's drawer toggle and the rail
+                  it opens share one state — they're siblings inside it. */}
+              <NavDrawerProvider>
+                <TournamentShell tournamentId={tournamentId}>
+                  {children}
+                </TournamentShell>
+              </NavDrawerProvider>
             </BoardDndProvider>
           </LayoutPanelProvider>
         </UnsavedChangesProvider>

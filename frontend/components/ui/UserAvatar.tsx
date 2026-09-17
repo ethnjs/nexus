@@ -7,7 +7,17 @@ import { IconLogout, IconUser, IconSettings } from "@/components/ui/Icons";
 import { AvatarCircle } from "@/components/ui/AvatarCircle";
 import Link from "next/link";
 
-export function UserAvatar() {
+interface UserAvatarProps {
+  /**
+   * Drops Profile and Settings from the menu, leaving only Sign out. For
+   * onboarding, where useAuth redirects any incomplete account straight back
+   * here — so both links are dead ends — but the person still needs a way out
+   * of the account they're signed in to.
+   */
+  logoutOnly?: boolean;
+}
+
+export function UserAvatar({ logoutOnly = false }: UserAvatarProps) {
   const { user, logout } = useAuth();
   const { guard } = useUnsavedChanges();
   const [open, setOpen] = useState(false);
@@ -22,6 +32,10 @@ export function UserAvatar() {
   }, []);
 
   if (!user) return null;
+
+  const fullName = user.first_name && user.last_name
+    ? `${user.first_name} ${user.last_name}`
+    : null;
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -41,11 +55,15 @@ export function UserAvatar() {
         }}>
           <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--color-border)" }}>
             <div style={{ fontFamily: "var(--font-sans)", fontSize: "14px", fontWeight: 600, color: "var(--color-text-primary)" }}>
-              {user.first_name && user.last_name ? `${user.first_name} ${user.last_name}` : user.email}
+              {fullName ?? user.email}
             </div>
-            <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
-              {user.email}
-            </div>
+            {/* Only when it isn't already standing in as the heading — an
+                account part-way through onboarding has no name yet. */}
+            {fullName && (
+              <div style={{ fontFamily: "var(--font-mono)", fontSize: "11px", color: "var(--color-text-tertiary)", marginTop: "3px" }}>
+                {user.email}
+              </div>
+            )}
             <div style={{ marginTop: "8px" }}>
               <span style={{
                 fontFamily: "var(--font-sans)", fontSize: "10px", fontWeight: 600,
@@ -57,6 +75,8 @@ export function UserAvatar() {
               </span>
             </div>
           </div>
+          {!logoutOnly && (
+          <>
           <Link
             href={`/profile/${user.id}`}
             onClick={() => setOpen(false)}
@@ -89,6 +109,8 @@ export function UserAvatar() {
             <IconSettings size={16}/>
             Settings
           </Link>
+          </>
+          )}
           <button
             onClick={() => guard(() => { setOpen(false); logout(); })}
             style={{

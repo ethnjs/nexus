@@ -170,12 +170,18 @@ export function ChipInput({
           const styles = STATUS_STYLES[status];
           const lockReason = chipLockReason?.(chip);
           const chipTooltip = getChipTooltip?.(chip);
+          const trailing = renderChipTrailing?.(chip);
+          // The tighter right padding is there to absorb the "x"/lock glyph's
+          // own 2px box. With nothing trailing (locked, no trailing control)
+          // that tightening has nothing to absorb and just reads as lopsided.
+          const hasTrailing = !locked || !!trailing;
           return (
             <span
               key={chip}
               style={{
                 display: "inline-flex", alignItems: "center", gap: "5px",
-                padding: "3px 6px 3px 9px", borderRadius: "var(--radius-sm)",
+                padding: hasTrailing ? "3px 6px 3px 9px" : "3px 9px",
+                borderRadius: "var(--radius-sm)",
                 background: styles.background, color: styles.color,
                 border: `1px solid ${styles.border}`,
                 fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
@@ -186,7 +192,7 @@ export function ChipInput({
                   {chip}
                 </Tooltip>
               ) : chip}
-              {renderChipTrailing?.(chip)}
+              {trailing}
               {!locked && lockReason && (
                 <Tooltip variant="info" message={lockReason} showIcon={false}>
                   <span

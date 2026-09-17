@@ -3,6 +3,7 @@
 import { ReactNode } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { IconArrowLeft } from '@/components/ui/Icons'
+import styles from '@/components/layout/CenteredCard.module.css'
 
 // Pages that show a "Back to home" link above the wordmark.
 const BACK_TO_HOME_ROUTES = ['/sign-in', '/sign-up']
@@ -12,20 +13,10 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
     const pathname = usePathname()
 
     return (
-        <div className="min-h-screen flex items-center justify-center py-16 px-4">
-            <section style={{
-                background: 'var(--color-surface)',
-                padding: '60px 40px',
-                borderRadius: '10px',
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                width: '100%',
-                maxWidth: 'min(420px, 90vw)',
-                boxShadow: 'var(--shadow-lg)',
-            }}>
+        <div className={styles.page}>
+            <section className={styles.card}>
                 {BACK_TO_HOME_ROUTES.includes(pathname) && (
-                    <div style={{ width: '100%', marginBottom: '24px' }}>
+                    <div className={styles.backRow}>
                         <button onClick={() => router.push('/')} className="link-subtle" style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -36,7 +27,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
                         </button>
                     </div>
                 )}
-                <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '48px', color: 'var(--color-text-primary)', margin: '0 0 24px' }}>NEXUS</h1>
+                <h1 className={styles.wordmark}>NEXUS</h1>
                 {children}
             </section>
         </div>

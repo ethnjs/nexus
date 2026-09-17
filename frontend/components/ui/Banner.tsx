@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react'
 import { IconXCircle, IconWarning, IconCheckCircle, IconInfo, IconX } from '@/components/ui/Icons'
+import styles from './Banner.module.css'
 
 type BannerVariant = 'success' | 'error' | 'warning' | 'info'
 
@@ -51,65 +52,34 @@ export function Banner({ variant, message, action, onDismiss }: BannerProps) {
   const t = variantTokens[variant]
 
   return (
-    <div style={{
-      display:      'flex',
-      alignItems:   'center',
-      gap:          '10px',
-      background:   t.bg,
-      border:       `1px solid ${t.border}`,
-      borderRadius: 'var(--radius-md)',
-      padding:      '10px 14px',
-      boxShadow:    'var(--shadow-sm)',
-    }}>
+    <div
+      className={styles.banner}
+      style={{
+        background: t.bg,
+        border:     `1px solid ${t.border}`,
+        ['--dismiss-hover-bg' as string]: t.dismissHoverBg,
+      }}
+    >
       {/* Icon */}
-      <span style={{ color: t.iconColor, flexShrink: 0, display: 'flex', alignItems: 'center' }}>
+      <span className={styles.icon} style={{ color: t.iconColor }}>
         {t.icon}
       </span>
 
       {/* Message */}
-      <span style={{
-        fontFamily: 'var(--font-sans)',
-        fontSize:   '14px',
-        color:      'var(--color-text-primary)',
-        flex:       1,
-      }}>
+      <span className={styles.message}>
         {message}
       </span>
 
       {/* Optional action slot */}
       {action && (
-        <div style={{ flexShrink: 0 }}>
+        <div className={styles.action}>
           {action}
         </div>
       )}
 
       {/* Optional dismiss */}
       {onDismiss && (
-        <button
-          onClick={onDismiss}
-          style={{
-            background:   'none',
-            border:       'none',
-            cursor:       'pointer',
-            color:        'var(--color-text-tertiary)',
-            width:        '28px',
-            height:       '28px',
-            padding:      '0',
-            borderRadius: 'var(--radius-sm)',
-            flexShrink:   0,
-            display:      'flex',
-            alignItems:   'center',
-            justifyContent: 'center',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.color = 'var(--color-text-primary)';
-            e.currentTarget.style.background = t.dismissHoverBg;
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.color = 'var(--color-text-tertiary)';
-            e.currentTarget.style.background = 'none';
-          }}
-        >
+        <button type="button" onClick={onDismiss} aria-label="Dismiss" className={styles.dismiss}>
           <IconX />
         </button>
       )}

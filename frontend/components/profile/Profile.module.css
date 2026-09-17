@@ -1,0 +1,192 @@
+/*
+ * Profile page frame — header card, section cards, field grid. See the note
+ * atop components/layout/Sidebar.module.css for why the viewport switch lives
+ * in CSS. 640px mirrors MOBILE_BREAKPOINT_PX in lib/useIsMobile.ts — keep the
+ * two in sync.
+ */
+
+.page {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 32px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/*
+ * Back-to-profile Button on the edit page. Only layout lives here — the
+ * appearance is Button's ghost variant. align-self stops it stretching to the
+ * full card width in .page's flex column, and the negative margin cancels the
+ * Button's own left padding so its label lines up with the cards below it.
+ */
+.backLink {
+  align-self: flex-start;
+  margin-left: -14px;
+}
+
+/* ─── Header card ──────────────────────────────────────────────────────── */
+
+.header {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 28px;
+}
+
+/*
+ * A grid, not nested flex columns, because the pieces rearrange independently
+ * on mobile: the name stays beside the avatar while the contact line and the
+ * badges drop to their own full-width rows beneath both. Named areas let that
+ * happen without a second DOM tree.
+ */
+.headerRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    "avatar name"
+    "avatar contact"
+    "avatar badges";
+  column-gap: 20px;
+  align-items: start;
+  position: relative;
+}
+
+.avatar {
+  grid-area: avatar;
+}
+
+.nameBlock {
+  grid-area: name;
+  min-width: 0;
+}
+
+.name {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text-primary);
+  overflow-wrap: break-word;
+}
+
+.pronouns {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+
+/* Wraps so a long email and a phone number don't run off a narrow card. */
+.contact {
+  grid-area: contact;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.contactItem {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.divider {
+  width: 1px;
+  height: 12px;
+  background: var(--color-border);
+  flex-shrink: 0;
+}
+
+.badges {
+  grid-area: badges;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.editLink {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+/* ─── Section card ─────────────────────────────────────────────────────── */
+
+.card {
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* ─── Field grid ───────────────────────────────────────────────────────── */
+
+.fieldGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+@media (max-width: 640px) {
+  .page {
+    padding: 16px 16px 40px;
+    gap: 14px;
+  }
+
+  /*
+   * Layout is unchanged — avatar left, name and contact stacked beside it.
+   * Only the contact line itself changes: email and phone go one per line
+   * instead of sharing a row, since side by side they don't fit the ~200px
+   * left over next to a 96px avatar.
+   */
+  .headerRow {
+    column-gap: 14px;
+  }
+
+  .contact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+
+  /* A vertical rule between two stacked lines reads as a stray mark. */
+  .divider {
+    display: none;
+  }
+
+  .header {
+    padding: 20px 16px;
+  }
+
+  .name {
+    font-size: 19px;
+  }
+
+  .card {
+    padding: 20px 16px;
+    gap: 22px;
+  }
+
+  /* Two columns of ~150px turn every value into a two-line wrap. */
+  .fieldGrid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+}

@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { ApiError, Form, FormResponse, formsApi, PendingUpdateReason } from "@/lib/api";
 import { QuestionRenderer } from "@/components/forms/QuestionRenderer";
 import { REASON_LABELS } from "@/lib/forms/changeClassification";
+import styles from "@/components/forms/FormFlow.module.css";
 
 // Re-answering a submitted response. Deliberately not FormFillFlow: that one
 // reveals a question at a time because the respondent is meeting the form for
@@ -63,7 +64,9 @@ export function FormUpdateFlow({ form, response, onUpdated }: {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+    // Same container as FormFillFlow — without it this flow rendered
+    // edge-to-edge with no max width or gutters at any screen size.
+    <div className={styles.page}>
       <Banner
         variant="warning"
         message={
@@ -83,7 +86,8 @@ export function FormUpdateFlow({ form, response, onUpdated }: {
             // Dimming the locked questions rather than accenting the flagged
             // ones: on a long form most cards are locked, and highlighting
             // the majority reads as noise instead of direction.
-            style={{ padding: "20px 24px", opacity: editable ? 1 : 0.55 }}
+            className={styles.updateCard}
+            style={{ opacity: editable ? 1 : 0.55 }}
           >
             {editable && (
               <div style={{
@@ -109,7 +113,7 @@ export function FormUpdateFlow({ form, response, onUpdated }: {
         </p>
       )}
 
-      <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: "12px" }}>
+      <div className={styles.actions}>
         {unanswered.length > 0 && (
           <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
             {unanswered.length} still to answer
