@@ -150,13 +150,18 @@ def loader_options(requested: frozenset[str] | None) -> list:
 
     # Relationships needing a further hop to be usable: a shift's event_count
     # counts the events attached to it, a track read embeds its university.
+    # A tuple where one hop isn't enough.
     NESTED = {
-        "shifts": joinedload(TournamentShift.tournament_events),
-        "tracks": joinedload(TournamentTrack.university),
-        # The link row renders its building's *name*, and that relationship is
-        # an explicit join (building_id's only FK is the composite one), so
-        # nothing loads it implicitly.
-        "track_details": joinedload(TournamentEventTrack.building),
+        "shifts": (joinedload(TournamentShift.tournament_events),),
+        "tracks": (joinedload(TournamentTrack.university),),
+        # The link row renders its building's *name* — an explicit join, since
+        # building_id's only FK is the composite one, so nothing loads it
+        # implicitly — and its staffing needs, whose roles ride along on the
+        # need's own lazy="joined".
+        "track_details": (
+            joinedload(TournamentEventTrack.building),
+            selectinload(TournamentEventTrack.needs),
+        ),
     }
 
     options = []
@@ -169,7 +174,7 @@ def loader_options(requested: frozenset[str] | None) -> list:
                 continue
             option = selectinload(attr)
             nested = NESTED.get(rel)
-            options.append(option.options(nested) if nested is not None else option)
+            options.append(option.options(*nested) if nested else option)
 
     return options
 

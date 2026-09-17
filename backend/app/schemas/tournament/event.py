@@ -26,6 +26,38 @@ def _clean_rooms(value: list[str]) -> list[str]:
     return seen
 
 
+class EventStaffingNeed(BaseModel):
+    """How many people in one role an event wants on one track.
+
+    The role is required. A need with no role is a number nobody can act on —
+    a board could say an event was two people short without saying what to
+    look for — so "any volunteer" is a role a TD creates, not a hole here.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    role_id: int
+    count: int
+
+    @field_validator("count")
+    @classmethod
+    def _check_count(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("count must be at least 1")
+        return v
+
+
+class EventStaffingNeedRead(EventStaffingNeed):
+    """Carries the role's label for the same reason a track detail carries the
+    building's name: nothing else in an event response can supply it."""
+
+    role_label: str
+
+    @classmethod
+    def from_row(cls, need) -> "EventStaffingNeedRead":
+        return cls(role_id=need.role_id, count=need.count, role_label=need.role.label)
+
+
 class EventTrackDetail(BaseModel):
     """One track an event runs on, plus where it happens there.
 
@@ -46,6 +78,20 @@ class EventTrackDetail(BaseModel):
     building_id: int | None = None
     floor: str | None = None
     rooms: list[str] = []
+    # Whole-set within the entry, like every other field here: an entry states
+    # what the event's arrangement on that track *is*. Sending an entry with
+    # no `needs` therefore clears them, exactly as sending one with no
+    # `building_id` unplaces it. Leave the track out of `track_details`
+    # entirely to keep what it already has.
+    needs: list[EventStaffingNeed] = []
+
+    @field_validator("needs")
+    @classmethod
+    def _check_needs(cls, v: list[EventStaffingNeed]) -> list[EventStaffingNeed]:
+        roles = [need.role_id for need in v]
+        if len(roles) != len(set(roles)):
+            raise ValueError("needs must not name the same role twice")
+        return v
 
     @field_validator("floor")
     @classmethod
@@ -66,6 +112,7 @@ class EventTrackDetailRead(EventTrackDetail):
     already spells out in full."""
 
     building_name: str | None = None
+    needs: list[EventStaffingNeedRead] = []
 
     @classmethod
     def from_row(cls, detail) -> "EventTrackDetailRead":
@@ -75,6 +122,7 @@ class EventTrackDetailRead(EventTrackDetail):
             building_name=detail.building.name if detail.building else None,
             floor=detail.floor,
             rooms=detail.rooms or [],
+            needs=[EventStaffingNeedRead.from_row(need) for need in detail.needs],
         )
 
 
