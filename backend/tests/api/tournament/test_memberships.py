@@ -432,6 +432,61 @@ def test_list_memberships_age_column_still_respects_consent(client, td_user, td_
     assert "is_over_18" not in row
 
 
+class TestRosterRoleTracks:
+    """A roster row's roles carry where each is held (#83) — the cell renders
+    one chip per role, with a track pill menu on the ones that aren't
+    tournament-wide."""
+
+    def _roles_for(self, client, tournament_id, email):
+        res = client.get(f"/tournaments/{tournament_id}/members/")
+        assert res.status_code == 200, res.json()
+        row = next(r for r in res.json() if r["user"]["email"] == email)
+        return {r["label"]: r for r in row["roles"]}
+
+    def test_a_track_scoped_role_lists_its_tracks(self, client, db, td_user, td_tournament):
+        from tests.conftest import grant_role
+
+        track = td_tournament.tracks[0]
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer", track_id=track.id)
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is False
+        assert role["track_ids"] == [track.id]
+
+    def test_a_tournament_wide_role_lists_no_tracks(self, client, db, td_user, td_tournament):
+        """Empty, not every track id: the role applies everywhere, and
+        enumerating today's tracks would read as a narrower claim."""
+        from tests.conftest import grant_role
+
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer")
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is True
+        assert role["track_ids"] == []
+
+    def test_one_wide_row_makes_the_role_wide(self, client, db, td_user, td_tournament):
+        """Holding a role tournament-wide *and* on a track is still wide —
+        the per-track row adds nothing the wide one didn't already grant."""
+        from tests.conftest import grant_role
+
+        track = td_tournament.tracks[0]
+        alice = _db_user_for_filter(db, "alice@example.com")
+        grant_role(db, td_tournament, alice, "Volunteer", track_id=track.id)
+        grant_role(db, td_tournament, alice, "Volunteer")
+        db.commit()
+
+        login(client, "td@test.com", "tdpass")
+        role = self._roles_for(client, td_tournament.id, "alice@example.com")["Volunteer"]
+        assert role["is_tournament_wide"] is True
+        assert role["track_ids"] == []
+
+
 class TestRosterFilters:
     """Filters match against data the roster response doesn't carry, so they
     run in SQL. Different filters AND; values within one OR."""
