@@ -188,12 +188,12 @@ def test_put_display_config_rejects_unknown_namespace(client, td_user, td_tourna
 def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     payload = {
-        "assignments_events": {
+        "assignments_events:all": {
             "hidden": [],
             "columns": ["division", "time"],
             "filters": {"staffing": ["staffed"], "track": ["3"]},
         },
-        "assignment_card": {
+        "assignment_card:all": {
             "hidden": ["card_field:availability", "card_track:event_preferences:7"],
             "filters": {"assigned": ["unassigned"], "age": ["over_18"]},
         },
@@ -201,8 +201,8 @@ def test_put_assignments_board_surfaces_round_trip(client, td_user, td_tournamen
     response = client.put(f"/tournaments/{td_tournament.id}/display-config/", json=payload)
     assert response.status_code == 200
     body = response.json()
-    assert body["assignments_events"]["columns"] == ["division", "time"]
-    assert body["assignment_card"]["hidden"] == [
+    assert body["assignments_events:all"]["columns"] == ["division", "time"]
+    assert body["assignment_card:all"]["hidden"] == [
         "card_field:availability", "card_track:event_preferences:7",
     ]
     assert client.get(f"/tournaments/{td_tournament.id}/display-config/").json() == body
@@ -214,7 +214,7 @@ def test_put_assignments_events_rejects_foreign_column(client, td_user, td_tourn
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignments_events": {"hidden": [], "columns": ["volunteers_needed"]}},
+        json={"assignments_events:all": {"hidden": [], "columns": ["category"]}},
     )
     assert response.status_code == 422
 
@@ -225,10 +225,10 @@ def test_put_assignments_events_hides_tracks(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignments_events": {"hidden": ["track:3"]}},
+        json={"assignments_events:all": {"hidden": ["track:3"]}},
     )
     assert response.status_code == 200
-    assert response.json()["assignments_events"]["hidden"] == ["track:3"]
+    assert response.json()["assignments_events:all"]["hidden"] == ["track:3"]
 
 
 def test_put_assignments_events_rejects_non_track_hidden_items(client, td_user, td_tournament):
@@ -236,7 +236,65 @@ def test_put_assignments_events_rejects_non_track_hidden_items(client, td_user, 
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignments_events": {"hidden": ["lunch:3:entree"]}},
+        json={"assignments_events:all": {"hidden": ["lunch:3:entree"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignments_board_accepts_a_per_track_tab(client, td_user, td_tournament):
+    """The board is tabbed per track, so its surfaces are a family of keys
+    rather than one each. A track id isn't checked against the catalog — a
+    deleted track's tab is inert, like every other saved id here."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events:track:7": {"columns": ["division"]}},
+    )
+    assert response.status_code == 200
+    assert response.json()["assignments_events:track:7"]["columns"] == ["division"]
+
+
+def test_put_assignments_board_tabs_are_saved_independently(client, td_user, td_tournament):
+    """The whole point of per-tab keys: narrowing Day 1 must not touch All."""
+    login(client, "td@test.com", "tdpass")
+    client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={
+            "assignments_events:all": {"columns": ["division", "time"]},
+            "assignments_events:track:7": {"columns": ["room"]},
+        },
+    )
+    saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()
+    assert saved["assignments_events:all"]["columns"] == ["division", "time"]
+    assert saved["assignments_events:track:7"]["columns"] == ["room"]
+
+
+def test_put_assignments_board_rejects_the_bare_surface(client, td_user, td_tournament):
+    """The All tab is spelled ":all". The migration moved existing blobs
+    there, so a bare key means a client that never learned about tabs."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events": {"columns": ["division"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_assignments_board_rejects_a_non_numeric_tab(client, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"assignments_events:track:day-one": {"columns": ["division"]}},
+    )
+    assert response.status_code == 422
+
+
+def test_put_rejects_a_tab_on_a_flat_surface(client, td_user, td_tournament):
+    """Only the board is tabbed — the roster has one of itself."""
+    login(client, "td@test.com", "tdpass")
+    response = client.put(
+        f"/tournaments/{td_tournament.id}/display-config/",
+        json={"members_table:all": {"columns": ["email"]}},
     )
     assert response.status_code == 422
 
@@ -245,7 +303,7 @@ def test_put_assignment_card_rejects_unknown_field(client, td_user, td_tournamen
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignment_card": {"hidden": ["card_field:email"]}},
+        json={"assignment_card:all": {"hidden": ["card_field:email"]}},
     )
     assert response.status_code == 422
 
@@ -255,7 +313,7 @@ def test_put_assignment_card_rejects_track_slice_of_scalar_field(client, td_user
     login(client, "td@test.com", "tdpass")
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
-        json={"assignment_card": {"hidden": ["card_track:age:3"]}},
+        json={"assignment_card:all": {"hidden": ["card_track:age:3"]}},
     )
     assert response.status_code == 422
 
@@ -700,14 +758,14 @@ def test_put_accepts_events_table_columns_filters_and_sort(client, td_user, td_t
     response = client.put(
         f"/tournaments/{td_tournament.id}/display-config/",
         json={"events_table": {
-            "columns": ["division", "category", "building", "volunteers_needed"],
+            "columns": ["division", "category", "tracks", "shifts"],
             "filters": {"division": ["A"], "category": ["Life Science"]},
             "sort": {"field": "day", "direction": "asc"},
         }},
     )
     assert response.status_code == 200
     saved = client.get(f"/tournaments/{td_tournament.id}/display-config/").json()["events_table"]
-    assert saved["columns"] == ["division", "category", "building", "volunteers_needed"]
+    assert saved["columns"] == ["division", "category", "tracks", "shifts"]
     assert saved["filters"] == {"division": ["A"], "category": ["Life Science"]}
     assert saved["sort"] == {"field": "day", "direction": "asc"}
 
@@ -795,7 +853,6 @@ def test_catalog_serves_event_columns(client, td_user, td_tournament):
     body = client.get(f"/tournaments/{td_tournament.id}/display-config/catalog/").json()
     assert [c["key"] for c in body["event_columns"]] == [
         "division", "type", "category", "tracks", "shifts",
-        "building", "room", "floor", "volunteers_needed",
     ]
     # Separate universes: no events column leaks into the roster's list.
     assert "division" not in [c["key"] for c in body["columns"]]

@@ -248,8 +248,81 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tournament_zone_assignments_membership_role_id'), 'tournament_zone_assignments', ['membership_role_id'], unique=False)
     op.create_index(op.f('ix_tournament_zone_assignments_zone_id'), 'tournament_zone_assignments', ['zone_id'], unique=False)
 
+    # -----------------------------------------------------------------------
+    # Saved display configs follow the surfaces that just changed shape.
+    #
+    # Two edits, both on tournament_memberships.display_config:
+    #
+    #   1. The assignments board is tabbed per track now, so its two surfaces
+    #      became a family of keys ("assignments_events:all",
+    #      "assignments_events:track:3", ...). An existing blob is what that
+    #      TD configured while the board showed every track at once, which is
+    #      exactly the All tab — so it moves there rather than being dropped.
+    #      The per-track tabs start at defaults, which is right: nobody has
+    #      ever configured them.
+    #
+    #   2. The events table lost its four location/staffing columns, so any
+    #      saved column list naming them is pruned. Left in place they would
+    #      be silently ignored on read, but would come back on the next PUT
+    #      as a 422 the TD did nothing to cause.
+    #
+    # Cast through jsonb both ways: the column is `json`, which has neither
+    # the `-` operator nor jsonb_set.
+    # -----------------------------------------------------------------------
+    op.execute(sa.text("""
+        UPDATE tournament_memberships SET display_config = (
+            (display_config::jsonb - 'assignments_events' - 'assignment_card')
+            || CASE WHEN jsonb_exists(display_config::jsonb, 'assignments_events')
+                    THEN jsonb_build_object('assignments_events:all',
+                                            display_config::jsonb -> 'assignments_events')
+                    ELSE '{}'::jsonb END
+            || CASE WHEN jsonb_exists(display_config::jsonb, 'assignment_card')
+                    THEN jsonb_build_object('assignment_card:all',
+                                            display_config::jsonb -> 'assignment_card')
+                    ELSE '{}'::jsonb END
+        )::json
+        WHERE display_config IS NOT NULL
+          AND jsonb_typeof(display_config::jsonb) = 'object'
+          AND (jsonb_exists(display_config::jsonb, 'assignments_events')
+               OR jsonb_exists(display_config::jsonb, 'assignment_card'))
+    """))
+
+    op.execute(sa.text("""
+        UPDATE tournament_memberships SET display_config = jsonb_set(
+            display_config::jsonb,
+            '{events_table,columns}',
+            (SELECT COALESCE(jsonb_agg(c), '[]'::jsonb)
+               FROM jsonb_array_elements_text(
+                        display_config::jsonb #> '{events_table,columns}') AS c
+              WHERE c NOT IN ('building', 'room', 'floor', 'volunteers_needed'))
+        )::json
+        WHERE display_config IS NOT NULL
+          AND jsonb_typeof(display_config::jsonb #> '{events_table,columns}') = 'array'
+    """))
+
 
 def downgrade() -> None:
+    # The All tab's config goes back under the bare key. Per-track tabs are
+    # dropped — the un-tabbed board has nowhere to put them, and they were
+    # never configured before this revision.
+    op.execute(sa.text("""
+        UPDATE tournament_memberships SET display_config = (
+            (SELECT COALESCE(jsonb_object_agg(k, v), '{}'::jsonb)
+               FROM jsonb_each(display_config::jsonb) AS e(k, v)
+              WHERE split_part(k, ':', 1) NOT IN ('assignments_events', 'assignment_card'))
+            || CASE WHEN jsonb_exists(display_config::jsonb, 'assignments_events:all')
+                    THEN jsonb_build_object('assignments_events',
+                                            display_config::jsonb -> 'assignments_events:all')
+                    ELSE '{}'::jsonb END
+            || CASE WHEN jsonb_exists(display_config::jsonb, 'assignment_card:all')
+                    THEN jsonb_build_object('assignment_card',
+                                            display_config::jsonb -> 'assignment_card:all')
+                    ELSE '{}'::jsonb END
+        )::json
+        WHERE display_config IS NOT NULL
+          AND jsonb_typeof(display_config::jsonb) = 'object'
+    """))
+
     op.drop_table('tournament_zone_assignments')
     op.drop_index('uq_zone_member_event', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'event'"))
     op.drop_index('uq_zone_member_floor', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'floor'"))
