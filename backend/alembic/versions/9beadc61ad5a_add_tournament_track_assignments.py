@@ -58,7 +58,7 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tournament_track_assignments_tournament_shift_id'), 'tournament_track_assignments', ['tournament_shift_id'], unique=False)
     op.create_index(op.f('ix_tournament_track_assignments_tournament_track_id'), 'tournament_track_assignments', ['tournament_track_id'], unique=False)
     op.create_index(op.f('ix_tournament_track_assignments_zone_id'), 'tournament_track_assignments', ['zone_id'], unique=False)
-    op.create_index('uq_track_assignment_event', 'tournament_track_assignments', ['membership_id', 'role_id', 'tournament_event_id'], unique=True, postgresql_where=sa.text('tournament_event_id IS NOT NULL AND tournament_shift_id IS NULL'))
+    op.create_index('uq_track_assignment_event', 'tournament_track_assignments', ['membership_id', 'role_id', 'tournament_event_id', 'tournament_track_id'], unique=True, postgresql_where=sa.text('tournament_event_id IS NOT NULL AND tournament_shift_id IS NULL'))
     op.create_index('uq_track_assignment_event_shift', 'tournament_track_assignments', ['membership_id', 'role_id', 'tournament_event_id', 'tournament_shift_id'], unique=True, postgresql_where=sa.text('tournament_shift_id IS NOT NULL'))
     op.create_index('uq_track_assignment_grant', 'tournament_track_assignments', ['membership_id', 'role_id', 'tournament_track_id'], unique=True, postgresql_where=sa.text('NOT is_tournament_wide AND tournament_event_id IS NULL AND zone_id IS NULL'))
     op.create_index('uq_track_assignment_wide', 'tournament_track_assignments', ['membership_id', 'role_id'], unique=True, postgresql_where=sa.text('is_tournament_wide'))
@@ -253,8 +253,69 @@ def upgrade() -> None:
     op.execute("DROP TABLE _perm_before")
     op.execute("DROP TABLE _perm_after")
 
+    # -----------------------------------------------------------------------
+    # The three tables this one replaces. Dropped last, after every check
+    # above has passed — nothing below this line can fail, so the assertions
+    # are the last chance to abort with the old data still intact.
+    # -----------------------------------------------------------------------
+    op.drop_table('tournament_event_assignments')
+    op.drop_table('tournament_zone_assignments')
+    op.drop_table('tournament_membership_roles')
+
 
 def downgrade() -> None:
+    # The three tables come back empty. Moving the rows home would mean
+    # splitting each track assignment back into a membership-role plus an
+    # event or zone row, and choosing which of several tracks a single
+    # tournament-wide role came from — a guess the upgrade deliberately
+    # replaced with a rule. Downgrading is a development operation here.
+    op.create_table('tournament_membership_roles',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('role_id', sa.Integer(), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['role_id'], ['tournament_roles.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('id', 'membership_id', name='uq_membership_role_id_membership'),
+    sa.UniqueConstraint('membership_id', 'role_id', name='uq_membership_role'),
+    )
+    op.create_index(op.f('ix_tournament_membership_roles_id'), 'tournament_membership_roles', ['id'], unique=False)
+
+    op.create_table('tournament_event_assignments',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('tournament_event_id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('membership_role_id', sa.Integer(), nullable=False),
+    sa.Column('tournament_shift_id', sa.Integer(), nullable=True),
+    sa.Column('tournament_track_id', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['membership_role_id', 'membership_id'], ['tournament_membership_roles.id', 'tournament_membership_roles.membership_id'], name='fk_assignment_membership_role', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_event_id'], ['tournament_events.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_shift_id', 'tournament_track_id'], ['tournament_shifts.id', 'tournament_shifts.track_id'], name='fk_assignment_shift_track', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_track_id'], ['tournament_tracks.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    )
+    op.create_index(op.f('ix_tournament_event_assignments_id'), 'tournament_event_assignments', ['id'], unique=False)
+    op.create_index('uq_event_assignment_no_shift', 'tournament_event_assignments', ['tournament_event_id', 'membership_role_id', 'tournament_track_id'], unique=True, postgresql_where=sa.text('tournament_shift_id IS NULL'))
+    op.create_index('uq_event_assignment_with_shift', 'tournament_event_assignments', ['tournament_event_id', 'membership_role_id', 'tournament_shift_id'], unique=True, postgresql_where=sa.text('tournament_shift_id IS NOT NULL'))
+
+    op.create_table('tournament_zone_assignments',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('zone_id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('membership_role_id', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['membership_role_id', 'membership_id'], ['tournament_membership_roles.id', 'tournament_membership_roles.membership_id'], name='fk_zone_assignment_membership_role', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['zone_id'], ['tournament_zones.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('zone_id', 'membership_id', 'membership_role_id', name='uq_zone_assignment'),
+    )
+    op.create_index(op.f('ix_tournament_zone_assignments_id'), 'tournament_zone_assignments', ['id'], unique=False)
+
     op.drop_index('uq_track_assignment_zone', table_name='tournament_track_assignments', postgresql_where=sa.text('zone_id IS NOT NULL'))
     op.drop_index('uq_track_assignment_wide', table_name='tournament_track_assignments', postgresql_where=sa.text('is_tournament_wide'))
     op.drop_index('uq_track_assignment_grant', table_name='tournament_track_assignments', postgresql_where=sa.text('NOT is_tournament_wide AND tournament_event_id IS NULL AND zone_id IS NULL'))

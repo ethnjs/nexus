@@ -17,45 +17,41 @@ from sqlalchemy.orm import Session
 from app.core.tournament import get_scoped_or_404
 from app.core.tournament.roles import validate_role_action
 from app.models.models import (
-    Tournament, TournamentEvent, TournamentEventAssignment, TournamentEventShift,
-    TournamentMembership, TournamentMembershipRole, TournamentRole, TournamentShift,
-    TournamentTrack, User,
+    Tournament, TournamentEvent, TournamentEventShift, TournamentMembership,
+    TournamentRole, TournamentShift, TournamentTrack, TournamentTrackAssignment, User,
 )
 
 
-def resolve_membership_role(
+def authorize_role_grant(
     db: Session,
     tournament: Tournament,
     membership: TournamentMembership,
     role: TournamentRole,
     actor: User,
-) -> TournamentMembershipRole:
-    """The join row an assignment points at, granting the role first if the
-    member doesn't hold it.
+) -> None:
+    """Check that `actor` may put `membership` in `role`, if this would be new.
 
-    Auto-granting is what makes "assign Priya as a Test Writer" one action
-    instead of two — a TD staffing a board shouldn't have to leave it, grant a
-    role, and come back. It is still a real role grant, so it goes through the
-    same rank guard the roles route uses: you cannot hand out a role that ties
-    or outranks your own, and the owner's membership is untouchable.
+    Replaces resolve_membership_role. There is no join row to resolve any
+    more: since #83 the assignment row *is* the record that the member holds
+    the role, so nothing has to be created first and nothing is returned.
 
-    Not committed here. The caller commits the grant and the assignment
-    together, so a rejected assignment can't leave a stray role behind.
+    What survives is the guard. Staffing someone in a role they don't hold
+    still grants it — that is what makes "assign Priya as a Test Writer" one
+    action — and a grant is a real privilege change, so it goes through the
+    same rank check the roles route uses: you cannot hand out a role that
+    ties or outranks your own, and the owner's membership is untouchable.
+
+    Skipped when the member already holds the role anywhere in the
+    tournament. Re-staffing someone in a role they have held for weeks is not
+    a grant, and making it re-run the rank check would stop a coordinator
+    moving their own peers between events.
     """
-    existing = (
-        db.query(TournamentMembershipRole)
-        .filter_by(membership_id=membership.id, role_id=role.id)
-        .first()
+    already_held = any(
+        assignment.role_id == role.id for assignment in membership.track_assignments
     )
-    if existing is not None:
-        return existing
-
+    if already_held:
+        return
     validate_role_action(actor, tournament, membership, role, db)
-
-    granted = TournamentMembershipRole(membership_id=membership.id, role_id=role.id)
-    db.add(granted)
-    db.flush()
-    return granted
 
 
 def validate_shift_on_event(
@@ -147,10 +143,10 @@ def detach_shifts_from_assignments(
         return 0
 
     rows = (
-        db.query(TournamentEventAssignment)
+        db.query(TournamentTrackAssignment)
         .filter(
-            TournamentEventAssignment.tournament_event_id == event_id,
-            TournamentEventAssignment.tournament_shift_id.in_(shift_ids),
+            TournamentTrackAssignment.tournament_event_id == event_id,
+            TournamentTrackAssignment.tournament_shift_id.in_(shift_ids),
         )
         .all()
     )
