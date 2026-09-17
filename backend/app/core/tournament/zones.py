@@ -121,6 +121,25 @@ def unzoned_event_ids(db: Session, track_id: int) -> list[int]:
     )
 
 
+def unplaced_event_ids(db: Session, track_id: int) -> list[int]:
+    """Events on this track with no building at all.
+
+    Overlaps unzoned_event_ids without containing or being contained by it:
+    an unplaced event is usually unzoned too, but an explicit `event` member
+    zones one regardless of where it is. Worth reporting separately because
+    the fix differs — an unzoned event wants a rule that covers it, an
+    unplaced one wants a location — and one combined bucket would send a TD
+    to the wrong page.
+    """
+    return sorted(
+        link.tournament_event_id
+        for link in db.query(TournamentEventTrack).filter(
+            TournamentEventTrack.track_id == track_id,
+            TournamentEventTrack.building_id.is_(None),
+        )
+    )
+
+
 def zone_for_event(db: Session, track_id: int, event_id: int) -> int | None:
     """One event's zone on one track. Convenience over resolve_track_zones for
     callers holding a single event; not cheaper, so prefer the bulk form in a
