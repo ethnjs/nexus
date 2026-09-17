@@ -126,8 +126,31 @@ def upgrade() -> None:
     # pointing at it first — see the buildings routes.
     op.create_foreign_key('fk_event_track_building', 'tournament_event_tracks', 'tournament_building_tracks', ['building_id', 'track_id'], ['building_id', 'track_id'], ondelete='RESTRICT')
 
+    # -----------------------------------------------------------------------
+    # The event's own location and staffing columns go, now that the backfill
+    # above has moved everything worth keeping.
+    #
+    # volunteers_needed is dropped rather than migrated: it names no role, and
+    # a staffing need has to. There is nothing to file the old number under,
+    # so TDs re-enter staffing as per-role lines. This is the one lossy part
+    # of this revision, and the downgrade cannot bring it back.
+    # -----------------------------------------------------------------------
+    op.drop_column('tournament_events', 'building')
+    op.drop_column('tournament_events', 'room')
+    op.drop_column('tournament_events', 'floor')
+    op.drop_column('tournament_events', 'volunteers_needed')
+
 
 def downgrade() -> None:
+    # The columns come back empty. The location could in principle be read
+    # back off the link rows, but only for an event on exactly one track —
+    # which is precisely the case this revision exists to stop pretending is
+    # the only one — so nothing is restored rather than restoring a lie.
+    op.add_column('tournament_events', sa.Column('building', sa.String(length=255), nullable=True))
+    op.add_column('tournament_events', sa.Column('room', sa.String(length=64), nullable=True))
+    op.add_column('tournament_events', sa.Column('floor', sa.String(length=64), nullable=True))
+    op.add_column('tournament_events', sa.Column('volunteers_needed', sa.Integer(), nullable=True))
+
     op.drop_constraint('fk_event_track_building', 'tournament_event_tracks', type_='foreignkey')
     op.drop_index(op.f('ix_tournament_event_tracks_building_id'), table_name='tournament_event_tracks')
     op.drop_column('tournament_event_tracks', 'rooms')

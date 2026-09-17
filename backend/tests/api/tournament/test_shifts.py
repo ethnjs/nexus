@@ -412,7 +412,7 @@ def test_event_on_a_cosmetic_track_has_no_shifts(client, td_user, td_tournament)
     track = client.post(
         f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
     ).json()
-    event = _make_event(client, td_tournament.id, track_ids=[track["id"]])
+    event = _make_event(client, td_tournament.id, track_details=[{"track_id": track["id"]}])
 
     assert [t["id"] for t in event["tracks"]] == [track["id"]]
     assert event["shifts"] == []
@@ -483,7 +483,7 @@ def test_track_with_events_cannot_be_deleted(client, td_user, td_tournament):
     track = client.post(
         f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
     ).json()
-    _make_event(client, td_tournament.id, track_ids=[track["id"]])
+    _make_event(client, td_tournament.id, track_details=[{"track_id": track["id"]}])
 
     response = client.delete(f"/tournaments/{td_tournament.id}/tracks/{track['id']}/")
     assert response.json()["purged"] is False

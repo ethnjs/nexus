@@ -42,7 +42,7 @@ class TournamentBuildingCreate(BaseModel):
 
 class TournamentBuildingUpdate(BaseModel):
     """Partial update. None means "not sent"; [] on track_ids means "clear",
-    matching how an event's shift_ids and track_ids already behave."""
+    matching how an event's shift_ids and track_details already behave."""
 
     model_config = ConfigDict(extra="forbid")
 

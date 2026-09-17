@@ -693,11 +693,13 @@ class TournamentEvent(Base):
     # events are just the default, not a broken reference.
     event_id = Column(Integer, ForeignKey("events.id", ondelete="SET NULL"), nullable=True)
 
-    building = Column(String(255), nullable=True)
-    room = Column(String(64), nullable=True)
-    floor = Column(String(64), nullable=True)
-
-    volunteers_needed = Column(Integer, nullable=True)
+    # No building/room/floor and no volunteers_needed. Where an event happens
+    # and how many people it wants are both per *track*: one event runs in
+    # Rowland 210 on Day 1 and Steinhaus 105 on Day 2, and wants a different
+    # mix of roles on each. Both now live on the event<->track link and its
+    # staffing needs — see TournamentEventTrack. A single column here could
+    # only ever hold one day's answer, and silently claimed it was every
+    # day's.
 
     # No start_time/end_time: an event's schedule is the union of the shifts
     # attached to it (see `days`). Its own times were a second, unreliable
