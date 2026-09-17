@@ -897,6 +897,10 @@ class TournamentShift(Base):
         # the database, rather than every write path, the thing that stops a
         # row naming a shift on one track and a track on another.
         UniqueConstraint("id", "track_id", name="uq_tournament_shift_id_track"),
+        # Labels only need to disambiguate within a track — "Morning" on Day 1
+        # and "Morning" on Day 2 aren't the same shift, so the constraint is
+        # scoped to track_id rather than tournament_id.
+        UniqueConstraint("track_id", "label", name="uq_tournament_shift_track_label"),
     )
 
     # Unlike event_count (advisory only — deletion still cascades through
