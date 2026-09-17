@@ -70,24 +70,24 @@ export function CreateShiftForm({ tournamentId, tracks, onCreated, onCancel }: C
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
       <Input
-        label="Label" font="sans" size="sm" fullWidth
+        label="Label" required font="sans" size="sm" fullWidth
         value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Morning"
       />
       <TrackPicker
-        label="Track" size="sm" fullWidth
+        label="Track" required size="sm" fullWidth
         value={trackId}
         onChange={pickTrack}
         tracks={tracks}
       />
       <TrackDayPicker
-        label="Day" size="sm" fullWidth
+        label="Day" required size="sm" fullWidth
         track={track}
         value={resolvedDay}
         onChange={setDay}
       />
       <div style={{ display: "flex", gap: "8px" }}>
-        <Input label="Start" type="time" size="sm" fullWidth value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-        <Input label="End" type="time" size="sm" fullWidth value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+        <Input label="Start" required type="time" size="sm" fullWidth value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+        <Input label="End" required type="time" size="sm" fullWidth value={endTime} onChange={(e) => setEndTime(e.target.value)} />
       </div>
       {error && (
         <p style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-danger)" }}>{error}</p>

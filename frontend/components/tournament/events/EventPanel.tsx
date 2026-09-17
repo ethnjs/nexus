@@ -451,65 +451,62 @@ export function EventPanel({
 
               {!locked && (
                   <div>
-                    <div style={{ display: "flex", gap: "8px" }}>
-                      {eligibleShifts.length > 0 && (
-                        <Popover
-                          trigger={
-                            <Button type="button" variant="secondary" size="sm" fullWidth>
-                              <IconPlus size={12} /> Add shift
-                            </Button>
-                          }
-                          items={eligibleShifts}
-                          getKey={(s) => s.id}
-                          renderLabel={(s) => (
-                            <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {s.label}
-                              </span>
-                              {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(s.track_id) ?? ""}</Badge>}
+                    {(eligibleShifts.length > 0 || newShiftTracks.length > 0) && (
+                      <Popover
+                        trigger={
+                          <Button type="button" variant="secondary" size="sm" fullWidth>
+                            <IconPlus size={12} /> Add shift
+                          </Button>
+                        }
+                        items={eligibleShifts}
+                        getKey={(s) => s.id}
+                        renderLabel={(s) => (
+                          <span style={{ display: "flex", alignItems: "center", gap: "6px", minWidth: 0 }}>
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {s.label}
                             </span>
-                          )}
-                          onSelect={handleAttachShift}
-                          checklist
-                          isSelected={() => false}
-                          width={280}
-                        />
-                      )}
-                      {/* A new shift needs a track, and the form asks for
-                          one — but only from the tracks this event is
-                          already on, so creating a shift can't quietly move
-                          the event somewhere new. */}
-                      {newShiftTracks.length > 0 && (
-                        <FormPopover
-                          width={300}
-                          trigger={
-                            <Button type="button" variant="secondary" size="sm" fullWidth>
-                              <IconPlus size={12} /> New shift
-                            </Button>
-                          }
-                        >
-                          {(close) => (
-                            <CreateShiftForm
-                              tournamentId={tournamentId}
-                              tracks={newShiftTracks}
-                              onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
-                              onCancel={close}
-                            />
-                          )}
-                        </FormPopover>
-                      )}
-                    </div>
-                    {/* No existing shift already fits this event's window —
-                        point straight at creating one instead of a
-                        dead-end "nothing to attach" message. */}
-                    {allShifts !== null && eligibleShifts.length === 0 && (
+                            {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(s.track_id) ?? ""}</Badge>}
+                          </span>
+                        )}
+                        onSelect={handleAttachShift}
+                        checklist
+                        isSelected={() => false}
+                        width={280}
+                        emptyMessage="No shifts left on this event's tracks — create one above."
+                        // A new shift needs a track, and the form asks for
+                        // one — but only from the tracks this event is
+                        // already on, so creating a shift can't quietly move
+                        // the event somewhere new.
+                        header={newShiftTracks.length > 0 && (
+                          <FormPopover
+                            width={280}
+                            trigger={
+                              <Button type="button" variant="secondary" size="sm" fullWidth>
+                                <IconPlus size={12} /> New shift
+                              </Button>
+                            }
+                          >
+                            {(close) => (
+                              <CreateShiftForm
+                                tournamentId={tournamentId}
+                                tracks={newShiftTracks}
+                                onCreated={async (shift) => { await handleCreateAndAttachShift(shift); close(); }}
+                                onCancel={close}
+                              />
+                            )}
+                          </FormPopover>
+                        )}
+                      />
+                    )}
+                    {/* No competition day on this event yet — the New shift
+                        form above has no track to offer, so point at the
+                        Tracks field instead of a dead-end popover. */}
+                    {allShifts !== null && eligibleShifts.length === 0 && newShiftTracks.length === 0 && (
                       <p style={{
                         fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)",
                         marginTop: "8px",
                       }}>
-                        {newShiftTracks.length === 0
-                          ? "Add a competition day above, and save, to attach shifts from it."
-                          : "No shifts left on this event's tracks — create one above."}
+                        Add a competition day above, and save, to attach shifts from it.
                       </p>
                     )}
                   </div>
