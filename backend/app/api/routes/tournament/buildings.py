@@ -7,9 +7,12 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.tournament import get_scoped_or_404, get_tournament, require_not_archived
 from app.core.tournament.permissions import MANAGE_EVENTS, require_permission
 from app.db.session import get_db
-from app.models.models import TournamentBuilding, TournamentTrack, User
+from app.models.models import (
+    TournamentBuilding, TournamentEventTrack, TournamentTrack, User,
+)
 from app.schemas.tournament.building import (
-    TournamentBuildingCreate, TournamentBuildingRead, TournamentBuildingUpdate,
+    TournamentBuildingCreate, TournamentBuildingDeleteResult, TournamentBuildingRead,
+    TournamentBuildingUpdate,
 )
 
 
@@ -61,6 +64,37 @@ def _resolve_tracks(db: Session, tournament_id: int, track_ids: list[int]) -> li
             ),
         )
     return rows
+
+
+def _placed_event_count(db: Session, building_id: int, track_ids: list[int]) -> int:
+    """How many event<->track links put an event in this building on one of
+    `track_ids`."""
+    if not track_ids:
+        return 0
+    return db.query(TournamentEventTrack).filter(
+        TournamentEventTrack.building_id == building_id,
+        TournamentEventTrack.track_id.in_(track_ids),
+    ).count()
+
+
+def _clear_placements(db: Session, building_id: int) -> int:
+    """Blank every event location pointing at this building, returning how
+    many were cleared.
+
+    Required rather than tidy: the link's foreign key is RESTRICT, because
+    track_id is half that table's primary key and so the database cannot null
+    the pair itself. Without this the delete raises an IntegrityError instead
+    of doing what was asked.
+
+    floor and rooms go with it. They describe a place inside the building
+    being removed, and "floor 2, room 210" attached to no building reads as a
+    location the event still has.
+    """
+    return db.query(TournamentEventTrack).filter(
+        TournamentEventTrack.building_id == building_id,
+    ).update(
+        {"building_id": None, "floor": None, "rooms": None}, synchronize_session=False,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -153,7 +187,21 @@ def update_building(
     if "name" in updates:
         building.name = updates["name"]
     if "track_ids" in updates:
-        building.tracks = _resolve_tracks(db, tournament_id, updates["track_ids"])
+        resolved = _resolve_tracks(db, tournament_id, updates["track_ids"])
+        # Untagging a track is not a request to wipe rooms, so it is refused
+        # rather than obeyed destructively — unlike DELETE below, where
+        # removing the building plainly is that request.
+        removed = sorted({t.id for t in building.tracks} - {t.id for t in resolved})
+        placed = _placed_event_count(db, building.id, removed)
+        if placed:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=(
+                    f"{placed} event location(s) still use this building on the "
+                    f"track(s) being removed; move those events first"
+                ),
+            )
+        building.tracks = resolved
 
     try:
         db.commit()
@@ -170,11 +218,13 @@ def update_building(
 # ---------------------------------------------------------------------------
 # DELETE /tournaments/{tournament_id}/buildings/{building_id}/
 #
-# Unconditional today — nothing references a building yet. Once events carry
-# a building on their track link, this has to clear those locations first for
-# the same reason the PATCH above does.
+# Clears the event locations pointing here rather than refusing, because
+# deleting the building *is* that request — and reports how many it blanked,
+# the way a track delete reports the member rows it costs. A 200 with that
+# count, not a 204: the price of the delete should never be discovered after
+# the fact.
 # ---------------------------------------------------------------------------
-@router.delete("/{building_id}/", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{building_id}/", response_model=TournamentBuildingDeleteResult)
 def delete_building(
     tournament_id: int,
     building_id: int,
@@ -184,5 +234,8 @@ def delete_building(
     tournament = get_tournament(tournament_id, db)
     require_not_archived(tournament)
     building = get_scoped_or_404(db, TournamentBuilding, building_id, tournament_id, "Building")
+
+    cleared = _clear_placements(db, building.id)
     db.delete(building)
     db.commit()
+    return TournamentBuildingDeleteResult(locations_cleared=cleared)
