@@ -107,9 +107,14 @@ def _apply_shifts_and_tracks(
     else:
         wanted = {detail.track_id: None for detail in event.track_details}
 
-    if shift_ids is not None:
-        for shift in event.shifts:
-            wanted.setdefault(shift.track_id, None)
+    # Unconditional, not only when the write included shift_ids. Gating this
+    # on shift_ids is what let a PATCH sending tracks alone drop a track the
+    # event's existing shifts still sat on, leaving an event scheduled on a
+    # day it wasn't linked to — see the repair in revision 9beadc61ad5a.
+    # A track a shift demands is therefore not removable while the shift is
+    # attached: detach the shift first, which is the honest order anyway.
+    for shift in event.shifts:
+        wanted.setdefault(shift.track_id, None)
 
     existing = {detail.track_id: detail for detail in event.track_details}
 

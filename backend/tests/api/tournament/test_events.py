@@ -1119,3 +1119,24 @@ def test_needs_ride_in_the_location_field_group(client, db, td_user, td_tourname
     ).json()
     assert row["track_details"][0]["needs"][0]["count"] == 6
     assert "shifts" not in row
+
+
+def test_a_track_a_shift_needs_cannot_be_dropped(client, db, td_user, td_tournament):
+    """Regression: a PATCH sending tracks alone used to drop a track the
+    event's shifts still sat on, leaving it scheduled on a day it wasn't
+    linked to. Detaching the shift is the way to remove the track."""
+    login(client, "td@test.com", "tdpass")
+    shift = _make_shift(client, td_tournament.id).json()
+    writing = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Test Writing"},
+    ).json()["id"]
+    created = _make_event(client, td_tournament.id, shift_ids=[shift["id"]]).json()
+
+    body = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"track_details": [{"track_id": writing}]},
+    ).json()
+
+    kept = {d["track_id"] for d in body["track_details"]}
+    assert shift["track_id"] in kept
+    assert writing in kept
