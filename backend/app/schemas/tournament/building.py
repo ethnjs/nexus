@@ -87,3 +87,11 @@ class TournamentBuildingRead(BaseModel):
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
+
+
+class TournamentBuildingDeleteResult(BaseModel):
+    """What the delete cost. Mirrors TournamentTrackDeleteResult: a building
+    still holding events can be removed, but the number of event locations it
+    blanked is reported rather than left to be discovered."""
+
+    locations_cleared: int = 0

@@ -1,7 +1,7 @@
 """Tests for /tournaments/{tournament_id}/buildings/ (TournamentBuilding)."""
 from tests.conftest import grant_role, login, primary_track_id
 
-from app.models.models import TournamentTrack
+from app.models.models import TournamentEventTrack, TournamentTrack
 
 
 def _make_building(client, tournament_id, **overrides):
@@ -86,9 +86,9 @@ def test_rename_onto_an_existing_name_conflicts(client, td_user, td_tournament):
 def test_delete_building(client, td_user, td_tournament):
     login(client, "td@test.com", "tdpass")
     building = _make_building(client, td_tournament.id).json()
-    assert client.delete(
-        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/"
-    ).status_code == 204
+    response = client.delete(f"/tournaments/{td_tournament.id}/buildings/{building['id']}/")
+    assert response.status_code == 200
+    assert response.json()["locations_cleared"] == 0
     assert client.get(f"/tournaments/{td_tournament.id}/buildings/").json() == []
 
 
@@ -220,3 +220,138 @@ def test_archived_tournament_blocks_writes(client, db, td_user, td_tournament):
     assert client.post(base, json={"name": "Later"}).status_code == 403
     assert client.patch(f"{base}{building['id']}/", json={"name": "Nope"}).status_code == 403
     assert client.delete(f"{base}{building['id']}/").status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Event placements
+#
+# There is no API for writing a location yet — the event schemas gain it in a
+# later step — so these drive the link rows directly and exercise the
+# constraint and the routes that have to work around it.
+# ---------------------------------------------------------------------------
+
+def _make_event(client, tournament_id, track_ids, name="Anatomy"):
+    return client.post(f"/tournaments/{tournament_id}/events/", json={
+        "tournament_id": tournament_id, "name": name, "division": "C",
+        "track_ids": track_ids,
+    }).json()
+
+
+def _place(db, event_id, track_id, building_id, floor="2", rooms=("210",)):
+    db.query(TournamentEventTrack).filter(
+        TournamentEventTrack.tournament_event_id == event_id,
+        TournamentEventTrack.track_id == track_id,
+    ).update({"building_id": building_id, "floor": floor, "rooms": list(rooms)})
+    db.commit()
+
+
+def _link(db, event_id, track_id):
+    return db.query(TournamentEventTrack).filter(
+        TournamentEventTrack.tournament_event_id == event_id,
+        TournamentEventTrack.track_id == track_id,
+    ).one()
+
+
+def test_delete_building_clears_placements_and_reports_the_cost(
+    client, db, td_user, td_tournament,
+):
+    """Deleting a building plainly is a request to unplace what is in it, so
+    it clears rather than refuses — but says how much it cleared."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
+    event = _make_event(client, td_tournament.id, [track_id])
+    _place(db, event["id"], track_id, building["id"])
+
+    response = client.delete(f"/tournaments/{td_tournament.id}/buildings/{building['id']}/")
+    assert response.status_code == 200
+    assert response.json()["locations_cleared"] == 1
+
+    db.expire_all()
+    link = _link(db, event["id"], track_id)
+    assert link.building_id is None
+    # floor and rooms go with it: a room inside a building that is gone reads
+    # as a location the event still has.
+    assert link.floor is None and link.rooms is None
+
+
+def test_untagging_a_track_still_in_use_is_refused(client, db, td_user, td_tournament):
+    """Unlike a delete, untagging is not a request to wipe rooms."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
+    event = _make_event(client, td_tournament.id, [track_id])
+    _place(db, event["id"], track_id, building["id"])
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/", json={"track_ids": []},
+    )
+    assert response.status_code == 409
+    assert "move those events first" in response.json()["detail"]
+    assert _link(db, event["id"], track_id).building_id == building["id"]
+
+
+def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    building = _make_building(
+        client, td_tournament.id, track_ids=[track_id, cosmetic],
+    ).json()
+    event = _make_event(client, td_tournament.id, [track_id])
+    _place(db, event["id"], track_id, building["id"])
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/buildings/{building['id']}/",
+        json={"track_ids": [track_id]},
+    )
+    assert response.status_code == 200
+    assert response.json()["track_ids"] == [track_id]
+
+
+def test_adding_a_track_keeps_the_location_on_the_tracks_that_stay(
+    client, db, td_user, td_tournament,
+):
+    """The reason the event<->track link is an association object: a TD adding
+    Day 2 to an event must not silently lose the room already set for Day 1."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
+    event = _make_event(client, td_tournament.id, [track_id])
+    _place(db, event["id"], track_id, building["id"], floor="2", rooms=("210", "212"))
+
+    response = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{event['id']}/",
+        json={"track_ids": [track_id, cosmetic]},
+    )
+    assert response.status_code == 200
+
+    db.expire_all()
+    kept = _link(db, event["id"], track_id)
+    assert kept.building_id == building["id"]
+    assert kept.floor == "2"
+    assert kept.rooms == ["210", "212"]
+    # The newly added track starts unplaced rather than inheriting.
+    assert _link(db, event["id"], cosmetic).building_id is None
+
+
+def test_placing_an_event_in_a_building_not_on_its_track_is_rejected_by_the_db(
+    client, db, td_user, td_tournament,
+):
+    """The composite FK, not a route check: this is what makes a Day 1 event
+    in a Day 2-only building unrepresentable."""
+    from sqlalchemy.exc import IntegrityError
+
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
+    # Tagged with the cosmetic track only.
+    building = _make_building(client, td_tournament.id, track_ids=[cosmetic]).json()
+    event = _make_event(client, td_tournament.id, [track_id])
+
+    try:
+        _place(db, event["id"], track_id, building["id"])
+        raise AssertionError("expected the composite foreign key to reject this")
+    except IntegrityError:
+        db.rollback()

@@ -1013,10 +1013,55 @@ class TournamentEventTrack(Base):
     tournament_event_id = Column(Integer, ForeignKey("tournament_events.id", ondelete="CASCADE"), primary_key=True)
     track_id = Column(Integer, ForeignKey("tournament_tracks.id", ondelete="CASCADE"), primary_key=True)
 
+    # -----------------------------------------------------------------------
+    # Where the event physically happens on this track.
+    #
+    # All nullable: most of planning has no answer yet, and an event can be on
+    # a track long before anyone decides which room it lands in.
+    #
+    # "One building and one floor per event per track" needs no constraint —
+    # these are plain columns on a table already keyed by (event, track), so
+    # the invariant is structural. Rooms are the exception that has to be a
+    # list: one event routinely spreads across 210, 212 and 214.
+    # -----------------------------------------------------------------------
+    #
+    # No inline ForeignKey on building_id. The composite constraint in
+    # __table_args__ is this column's FK, pairing it with track_id so the
+    # database — not each write path — is what stops a Day 1 event being put
+    # in a building only Day 2 uses. Same device as the assignment's
+    # shift/track pairing.
+    building_id = Column(Integer, nullable=True, index=True)
+    floor = Column(String(64), nullable=True)
+    rooms = Column(JSON, nullable=True)                        # list of str
+
     tournament_event = relationship("TournamentEvent", back_populates="track_details")
     # lazy="joined" like TournamentEventAssignment.tournament_track: every
     # reader of a link row renders the track's name alongside it.
     track = relationship("TournamentTrack", lazy="joined")
+    # Read-only, and explicitly joined: building_id's only foreign key is the
+    # composite one below, which points at the building<->track bridge rather
+    # than at tournament_buildings, so SQLAlchemy cannot infer this on its
+    # own. Writers set building_id directly — they deal in ids from the
+    # payload anyway.
+    building = relationship(
+        "TournamentBuilding",
+        primaryjoin="TournamentEventTrack.building_id == TournamentBuilding.id",
+        foreign_keys="TournamentEventTrack.building_id",
+        viewonly=True,
+    )
+
+    __table_args__ = (
+        # RESTRICT, not SET NULL: track_id is half this table's primary key
+        # and can't be nulled, so the pair can't be cleared by the database.
+        # Deleting a building, or untagging it from a track, therefore has to
+        # clear the locations pointing at it first — see the buildings routes.
+        ForeignKeyConstraint(
+            ["building_id", "track_id"],
+            ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
+            name="fk_event_track_building",
+            ondelete="RESTRICT",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
