@@ -4,7 +4,7 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from app.schemas.tournament.assignment import AssignmentRead
-from app.schemas.tournament.role import RoleRead
+from app.schemas.tournament.role import MemberRoleRead
 from app.schemas.tournament.track import MembershipTrackStatusRead
 from app.schemas.person import PersonRefResponse
 from app.schemas.user import UserFullResponse
@@ -270,7 +270,9 @@ class MembershipBaseResponse(BaseModel):
     updated_at: datetime | None = None
     user: UserFullResponse | None = None
 
-    roles: list[RoleRead] = []
+    # Aliased to held_role_details, not the bare `roles` alias: the cell
+    # renders track pills, which only the detailed shape carries.
+    roles: list[MemberRoleRead] = Field(default=[], validation_alias="held_role_details")
     track_statuses: list[MembershipTrackStatusRead] = []
 
     # Omitted entirely, not nulled, unless the tournament collects the flag
@@ -291,13 +293,6 @@ class MembershipBaseResponse(BaseModel):
     # (availability=..., lunch=...) despite the validation_alias, which
     # otherwise makes the alias the only accepted key.
     model_config = {"from_attributes": True, "populate_by_name": True}
-
-    @field_validator("roles", mode="before")
-    @classmethod
-    def _unwrap_roles(cls, v):
-        if v and hasattr(v[0], "role"):
-            return [mr.role for mr in v]
-        return v
 
     @field_validator("track_statuses", mode="before")
     @classmethod
