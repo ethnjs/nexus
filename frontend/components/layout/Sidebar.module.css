@@ -179,11 +179,21 @@
   border-radius: 0 3px 3px 0;
 }
 
+/*
+ * Hidden while the rail is narrow, for the same reason as .label: an open
+ * group survives the mouse leaving, and full-width sublabels inside a 52px
+ * overflow-hidden rail render as sliced-off text.
+ */
 .subRows {
-  display: flex;
+  display: none;
   flex-direction: column;
   gap: 2px;
   padding-left: 20px;
+}
+
+.aside:hover .subRows,
+.aside.locked .subRows {
+  display: flex;
 }
 
 .subRow {
@@ -301,6 +311,10 @@
   .chevron,
   .wordmarkFull {
     display: block;
+  }
+
+  .subRows {
+    display: flex;
   }
 
   .wordmarkShort {
