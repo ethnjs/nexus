@@ -68,6 +68,37 @@ class RoleRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class MemberRoleRead(RoleRead):
+    """A role as it hangs off a membership: RoleRead plus where it is held.
+
+    Its own type rather than two more nullable fields on RoleRead, because
+    RoleRead is also the tournament's role *catalog*, where "which tracks" is
+    not a question — the same split as PersonRoleRead, for the same reason:
+    widening one must not silently widen the other.
+    """
+    is_tournament_wide: bool = False
+    # Empty when the role is tournament-wide — it applies to every track, so
+    # enumerating them would read as a narrower claim than the truth.
+    track_ids: list[int] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _flatten_held_role(cls, v):
+        """Accept a HeldRole (role + where) as well as a plain role row, so a
+        caller holding only the role still validates rather than 500s."""
+        role = getattr(v, "role", None)
+        if role is None:
+            return v
+        return {
+            "id": role.id, "tournament_id": role.tournament_id,
+            "label": role.label, "permissions": role.permissions,
+            "rank": role.rank, "created_at": role.created_at,
+            "updated_at": role.updated_at,
+            "is_tournament_wide": v.is_tournament_wide,
+            "track_ids": list(v.track_ids),
+        }
+
+
 class RoleWithMemberCount(RoleRead):
     """
     RoleRead plus the per-role member count — only the role list/CRUD
