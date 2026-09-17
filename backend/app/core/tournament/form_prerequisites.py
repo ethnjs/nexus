@@ -12,7 +12,7 @@ from app.models.models import (
     TournamentForm,
     TournamentMembership,
     TournamentMembershipAvailability,
-    TournamentMembershipRole,
+    TournamentTrackAssignment,
 )
 
 
@@ -86,8 +86,8 @@ def _matches_group(group: object, actual_ids: set[int], *, id_key: str) -> bool:
 def _membership_role_ids(db: Session, membership_id: int) -> set[int]:
     return {
         role_id
-        for (role_id,) in db.query(TournamentMembershipRole.role_id)
-        .filter(TournamentMembershipRole.membership_id == membership_id)
+        for (role_id,) in db.query(TournamentTrackAssignment.role_id)
+        .filter(TournamentTrackAssignment.membership_id == membership_id)
         .all()
     }
 

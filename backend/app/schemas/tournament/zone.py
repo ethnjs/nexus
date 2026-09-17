@@ -223,10 +223,7 @@ class ZoneAssignmentRead(BaseModel):
             zone_name=row.zone.name,
             track_id=row.zone.track_id,
             member=PersonNameRef.from_membership(row.membership),
-            role=PersonRoleRead(
-                id=row.membership_role.role_id,
-                label=row.membership_role.role.label,
-            ),
+            role=PersonRoleRead(id=row.role_id, label=row.role.label),
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
