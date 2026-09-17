@@ -166,8 +166,99 @@ def upgrade() -> None:
     op.create_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), 'tournament_event_staffing_needs', ['tournament_event_id'], unique=False)
     op.create_index(op.f('ix_tournament_event_staffing_needs_track_id'), 'tournament_event_staffing_needs', ['track_id'], unique=False)
 
+    # -----------------------------------------------------------------------
+    # Zones
+    #
+    # A zone stores rules, not events — see core/tournament/zones.py. The
+    # constraints here are what make that safe: the partial unique indexes
+    # below mean at most one zone per track can claim a given building, floor
+    # or event, so the precedence rule always has exactly one answer.
+    # -----------------------------------------------------------------------
+
+    # Must come first: tournament_zones carries a composite FK against it, and
+    # Postgres requires the referenced unique index to exist beforehand.
+    op.create_unique_constraint('uq_tournament_track_id_tournament', 'tournament_tracks', ['id', 'tournament_id'])
+
+    op.create_table('tournament_zones',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('tournament_id', sa.Integer(), nullable=False),
+    sa.Column('track_id', sa.Integer(), nullable=False),
+    sa.Column('name', sa.String(length=255), nullable=False),
+    sa.Column('default_role_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['default_role_id'], ['tournament_roles.id'], ondelete='SET NULL'),
+    sa.ForeignKeyConstraint(['track_id', 'tournament_id'], ['tournament_tracks.id', 'tournament_tracks.tournament_id'], name='fk_zone_track_tournament', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('id', 'track_id', name='uq_tournament_zone_id_track'),
+    sa.UniqueConstraint('track_id', 'name', name='uq_tournament_zone_name')
+    )
+    op.create_index(op.f('ix_tournament_zones_id'), 'tournament_zones', ['id'], unique=False)
+    op.create_index(op.f('ix_tournament_zones_tournament_id'), 'tournament_zones', ['tournament_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zones_track_id'), 'tournament_zones', ['track_id'], unique=False)
+
+    op.create_table('tournament_zone_members',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('zone_id', sa.Integer(), nullable=False),
+    sa.Column('track_id', sa.Integer(), nullable=False),
+    sa.Column('kind', sa.String(length=16), nullable=False),
+    sa.Column('building_id', sa.Integer(), nullable=True),
+    sa.Column('floor', sa.String(length=64), nullable=True),
+    sa.Column('tournament_event_id', sa.Integer(), nullable=True),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint(
+        "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
+        "  AND tournament_event_id IS NULL) OR "
+        "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
+        "  AND tournament_event_id IS NULL) OR "
+        "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
+        "  AND floor IS NULL)",
+        name='ck_zone_member_shape'),
+    sa.ForeignKeyConstraint(['building_id', 'track_id'], ['tournament_building_tracks.building_id', 'tournament_building_tracks.track_id'], name='fk_zone_member_building', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_event_id', 'track_id'], ['tournament_event_tracks.tournament_event_id', 'tournament_event_tracks.track_id'], name='fk_zone_member_event', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['zone_id', 'track_id'], ['tournament_zones.id', 'tournament_zones.track_id'], name='fk_zone_member_zone', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_tournament_zone_members_building_id'), 'tournament_zone_members', ['building_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_members_id'), 'tournament_zone_members', ['id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_members_tournament_event_id'), 'tournament_zone_members', ['tournament_event_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_members_track_id'), 'tournament_zone_members', ['track_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_members_zone_id'), 'tournament_zone_members', ['zone_id'], unique=False)
+    # One zone per thing per track. Partial, because each kind uses different
+    # columns and a NULL in a plain unique index would let duplicates through.
+    op.create_index('uq_zone_member_building', 'tournament_zone_members', ['track_id', 'building_id'], unique=True, postgresql_where=sa.text("kind = 'building'"))
+    op.create_index('uq_zone_member_floor', 'tournament_zone_members', ['track_id', 'building_id', 'floor'], unique=True, postgresql_where=sa.text("kind = 'floor'"))
+    op.create_index('uq_zone_member_event', 'tournament_zone_members', ['track_id', 'tournament_event_id'], unique=True, postgresql_where=sa.text("kind = 'event'"))
+
+    op.create_table('tournament_zone_assignments',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('zone_id', sa.Integer(), nullable=False),
+    sa.Column('membership_id', sa.Integer(), nullable=False),
+    sa.Column('membership_role_id', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['membership_id'], ['tournament_memberships.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['membership_role_id', 'membership_id'], ['tournament_membership_roles.id', 'tournament_membership_roles.membership_id'], name='fk_zone_assignment_membership_role', ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['zone_id'], ['tournament_zones.id'], ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('zone_id', 'membership_id', 'membership_role_id', name='uq_zone_assignment')
+    )
+    op.create_index(op.f('ix_tournament_zone_assignments_id'), 'tournament_zone_assignments', ['id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_assignments_membership_id'), 'tournament_zone_assignments', ['membership_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_assignments_membership_role_id'), 'tournament_zone_assignments', ['membership_role_id'], unique=False)
+    op.create_index(op.f('ix_tournament_zone_assignments_zone_id'), 'tournament_zone_assignments', ['zone_id'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_table('tournament_zone_assignments')
+    op.drop_index('uq_zone_member_event', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'event'"))
+    op.drop_index('uq_zone_member_floor', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'floor'"))
+    op.drop_index('uq_zone_member_building', table_name='tournament_zone_members', postgresql_where=sa.text("kind = 'building'"))
+    op.drop_table('tournament_zone_members')
+    op.drop_table('tournament_zones')
+    # Last of the zone teardown: the composite FK above depended on it.
+    op.drop_constraint('uq_tournament_track_id_tournament', 'tournament_tracks', type_='unique')
+
     op.drop_index(op.f('ix_tournament_event_staffing_needs_track_id'), table_name='tournament_event_staffing_needs')
     op.drop_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), table_name='tournament_event_staffing_needs')
     op.drop_index(op.f('ix_tournament_event_staffing_needs_role_id'), table_name='tournament_event_staffing_needs')
