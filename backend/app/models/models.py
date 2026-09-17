@@ -1052,6 +1052,13 @@ class TournamentEventTrack(Base):
         viewonly=True,
     )
 
+    # How many of each role this event wants on this track. Ordered by role
+    # so a needs list renders the same way twice running.
+    needs = relationship(
+        "TournamentEventStaffingNeed", back_populates="track_detail",
+        cascade="all, delete-orphan", order_by="TournamentEventStaffingNeed.role_id",
+    )
+
     __table_args__ = (
         # RESTRICT, not SET NULL: track_id is half this table's primary key
         # and can't be nulled, so the pair can't be cleared by the database.
@@ -1063,6 +1070,60 @@ class TournamentEventTrack(Base):
             name="fk_event_track_building",
             ondelete="RESTRICT",
         ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentEventStaffingNeed — how many people in one role an event wants on
+# one track.
+#
+# Replaces TournamentEvent.volunteers_needed, which could say neither *which*
+# day nor *which* role. "6 volunteers and 2 lead ESes on Day 1, 8 and 2 on
+# Day 2, 3 test writers for Test Writing" is four rows here and was
+# inexpressible before.
+#
+# role_id is required. A need with no role is a number nobody can act on —
+# the board could tell you an event was two people short but not what to look
+# for — so "any volunteer" is a role a TD makes, not a hole in the model.
+# That is also why the old numbers weren't migrated: they name no role, and
+# there is nothing to file them under.
+# ---------------------------------------------------------------------------
+class TournamentEventStaffingNeed(Base):
+    __tablename__ = "tournament_event_staffing_needs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # No inline ForeignKeys on these two: the composite constraint below is
+    # their FK, and it points at the event<->track link rather than at either
+    # table separately. A need therefore cannot name a track the event does
+    # not run on, and deleting the link takes its needs with it.
+    tournament_event_id = Column(Integer, nullable=False, index=True)
+    track_id = Column(Integer, nullable=False, index=True)
+
+    role_id = Column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    count = Column(Integer, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    track_detail = relationship("TournamentEventTrack", back_populates="needs")
+    # lazy="joined": every reader of a need renders the role's label.
+    role = relationship("TournamentRole", lazy="joined")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_staffing_need_event_track",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "tournament_event_id", "track_id", "role_id",
+            name="uq_staffing_need_event_track_role",
+        ),
+        CheckConstraint("count >= 1", name="ck_staffing_need_count_positive"),
     )
 
 

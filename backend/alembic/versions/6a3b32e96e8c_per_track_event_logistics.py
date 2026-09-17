@@ -140,8 +140,40 @@ def upgrade() -> None:
     op.drop_column('tournament_events', 'floor')
     op.drop_column('tournament_events', 'volunteers_needed')
 
+    # -----------------------------------------------------------------------
+    # Per-role staffing needs, replacing the number just dropped.
+    #
+    # Keyed on the event<->track link rather than on the event, so the
+    # composite FK makes a need for a track the event doesn't run on
+    # unrepresentable, and dropping the link takes its needs with it.
+    # -----------------------------------------------------------------------
+    op.create_table('tournament_event_staffing_needs',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('tournament_event_id', sa.Integer(), nullable=False),
+    sa.Column('track_id', sa.Integer(), nullable=False),
+    sa.Column('role_id', sa.Integer(), nullable=False),
+    sa.Column('count', sa.Integer(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.CheckConstraint('count >= 1', name='ck_staffing_need_count_positive'),
+    sa.ForeignKeyConstraint(['role_id'], ['tournament_roles.id'], ondelete='CASCADE'),
+    sa.ForeignKeyConstraint(['tournament_event_id', 'track_id'], ['tournament_event_tracks.tournament_event_id', 'tournament_event_tracks.track_id'], name='fk_staffing_need_event_track', ondelete='CASCADE'),
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('tournament_event_id', 'track_id', 'role_id', name='uq_staffing_need_event_track_role')
+    )
+    op.create_index(op.f('ix_tournament_event_staffing_needs_id'), 'tournament_event_staffing_needs', ['id'], unique=False)
+    op.create_index(op.f('ix_tournament_event_staffing_needs_role_id'), 'tournament_event_staffing_needs', ['role_id'], unique=False)
+    op.create_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), 'tournament_event_staffing_needs', ['tournament_event_id'], unique=False)
+    op.create_index(op.f('ix_tournament_event_staffing_needs_track_id'), 'tournament_event_staffing_needs', ['track_id'], unique=False)
+
 
 def downgrade() -> None:
+    op.drop_index(op.f('ix_tournament_event_staffing_needs_track_id'), table_name='tournament_event_staffing_needs')
+    op.drop_index(op.f('ix_tournament_event_staffing_needs_tournament_event_id'), table_name='tournament_event_staffing_needs')
+    op.drop_index(op.f('ix_tournament_event_staffing_needs_role_id'), table_name='tournament_event_staffing_needs')
+    op.drop_index(op.f('ix_tournament_event_staffing_needs_id'), table_name='tournament_event_staffing_needs')
+    op.drop_table('tournament_event_staffing_needs')
+
     # The columns come back empty. The location could in principle be read
     # back off the link rows, but only for an event on exactly one track —
     # which is precisely the case this revision exists to stop pretending is
