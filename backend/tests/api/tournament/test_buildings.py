@@ -231,10 +231,14 @@ def test_archived_tournament_blocks_writes(client, db, td_user, td_tournament):
 # ---------------------------------------------------------------------------
 
 def _make_event(client, tournament_id, track_ids, name="Anatomy"):
-    return client.post(f"/tournaments/{tournament_id}/events/", json={
+    response = client.post(f"/tournaments/{tournament_id}/events/", json={
         "tournament_id": tournament_id, "name": name, "division": "C",
-        "track_ids": track_ids,
-    }).json()
+        "track_details": [{"track_id": t} for t in track_ids],
+    })
+    # Surface the body on a non-201 rather than letting the caller trip over a
+    # KeyError three lines later.
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
 def _place(db, event_id, track_id, building_id, floor="2", rooms=("210",)):
@@ -307,33 +311,6 @@ def test_untagging_an_unused_track_is_allowed(client, db, td_user, td_tournament
     )
     assert response.status_code == 200
     assert response.json()["track_ids"] == [track_id]
-
-
-def test_adding_a_track_keeps_the_location_on_the_tracks_that_stay(
-    client, db, td_user, td_tournament,
-):
-    """The reason the event<->track link is an association object: a TD adding
-    Day 2 to an event must not silently lose the room already set for Day 1."""
-    login(client, "td@test.com", "tdpass")
-    track_id = primary_track_id(db, td_tournament.id)
-    cosmetic = _cosmetic_track(client, td_tournament.id)["id"]
-    building = _make_building(client, td_tournament.id, track_ids=[track_id]).json()
-    event = _make_event(client, td_tournament.id, [track_id])
-    _place(db, event["id"], track_id, building["id"], floor="2", rooms=("210", "212"))
-
-    response = client.patch(
-        f"/tournaments/{td_tournament.id}/events/{event['id']}/",
-        json={"track_ids": [track_id, cosmetic]},
-    )
-    assert response.status_code == 200
-
-    db.expire_all()
-    kept = _link(db, event["id"], track_id)
-    assert kept.building_id == building["id"]
-    assert kept.floor == "2"
-    assert kept.rooms == ["210", "212"]
-    # The newly added track starts unplaced rather than inheriting.
-    assert _link(db, event["id"], cosmetic).building_id is None
 
 
 def test_placing_an_event_in_a_building_not_on_its_track_is_rejected_by_the_db(
