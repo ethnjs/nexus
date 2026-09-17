@@ -26,13 +26,19 @@ const NO_DEFAULT_ROLE = "__none__";
  * field every track carries regardless: a cosmetic track like Test Writing
  * wants its own default just as much as a competition day does.
  */
-export function TrackFields({ draft, errors, universities, roles, locked, onChange }: {
+export function TrackFields({
+  draft, errors, universities, roles, locked, onChange, showPrimaryToggle = true,
+}: {
   draft: TrackDraft;
   errors: Record<string, string>;
   universities: University[];
   roles: Role[];
   locked: boolean;
   onChange: (updates: Partial<TrackDraft>) => void;
+  /** Off in simple mode, where the sole track is necessarily a competition
+   *  day — the backend refuses to leave a tournament without one, so the
+   *  toggle would offer an action that can only 409. */
+  showPrimaryToggle?: boolean;
 }) {
   // An existing multi-day track shows both inputs on its own; the checkbox
   // only has to remember the case where the TD is on their way to entering
@@ -43,9 +49,11 @@ export function TrackFields({ draft, errors, universities, roles, locked, onChan
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-      <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
-        <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
-      </FieldRow>
+      {showPrimaryToggle && (
+        <FieldRow label="Competition day" helper="Has a date, venue and divisions. Only competition days can have shifts.">
+          <Toggle checked={draft.is_primary} onChange={(v) => onChange({ is_primary: v })} locked={locked} />
+        </FieldRow>
+      )}
 
       {draft.is_primary && (
         <>

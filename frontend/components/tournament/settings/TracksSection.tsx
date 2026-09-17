@@ -181,15 +181,28 @@ export function useTrackEditor(tournamentId: number, onChanged: () => void): Tra
   };
 }
 
-export function TracksSection({ editor, locked }: { editor: TrackEditor; locked: boolean }) {
+export function TracksSection({ editor, locked, autoExpandKey }: {
+  editor: TrackEditor;
+  locked: boolean;
+  /** A row added from outside this section — the simple-mode "Add track"
+   *  button, whose click is what made this section render at all. Without it
+   *  the TD lands on a collapsed row they have to open themselves. */
+  autoExpandKey?: number | null;
+}) {
   const { tracks, newRows, universities, roles, loadError, drafts, errors } = editor;
-  const [expandedKey, setExpandedKey] = useState<number | null>(null);
+  const [expandedKey, setExpandedKey] = useState<number | null>(autoExpandKey ?? null);
   const [deleteTarget, setDeleteTarget] = useState<TournamentTrack | null>(null);
 
   // The row a click on "Add track" just created — it scrolls itself into
   // view once rendered, since a new row lands below the fold on a
   // tournament with a few tracks and the save bar covers the bottom of it.
   const [scrollToKey, setScrollToKey] = useState<number | null>(null);
+
+  // Only on a *change* of key, so a row the TD then collapses stays collapsed
+  // — re-expanding on every render would make it impossible to close.
+  useEffect(() => {
+    if (autoExpandKey != null) setExpandedKey(autoExpandKey);
+  }, [autoExpandKey]);
 
   function handleAdd() {
     const key = editor.addRow();

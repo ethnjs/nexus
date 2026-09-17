@@ -28,6 +28,9 @@ import { ArchiveTournamentModal } from "@/components/tournament/settings/Archive
 import { StaffInviteModal } from "@/components/tournament/settings/StaffInviteModal";
 import { AgeDisclosureToggleModal } from "@/components/tournament/settings/AgeDisclosureToggleModal";
 import { TracksSection, useTrackEditor } from "@/components/tournament/settings/TracksSection";
+import { TrackFields } from "@/components/tournament/TrackFields";
+import { EMPTY_TRACK_DRAFT } from "@/lib/trackDraft";
+import { IconPlus } from "@/components/ui/Icons";
 
 interface LevelOption { value: TournamentLevel; label: string }
 const LEVEL_OPTIONS: LevelOption[] = TOURNAMENT_LEVELS.map((l) => ({ value: l, label: l[0].toUpperCase() + l.slice(1) }));
@@ -59,7 +62,7 @@ export default function GeneralSettingsPage() {
   const router = useRouter();
   const tournamentId = Number(params.id);
   const { user: currentUser } = useAuth();
-  const { selectedTournament, setSelectedTournament, isArchived } = useTournament();
+  const { selectedTournament, setSelectedTournament, isArchived, isSimple, soleTrack } = useTournament();
   const { membership, hasPermission, loading: membershipLoading } = useMyMembership();
 
   const [draft, setDraft] = useState<GeneralDraft | null>(null);
@@ -105,6 +108,24 @@ export default function GeneralSettingsPage() {
   }, [tournamentId, setSelectedTournament]);
   const trackEditor = useTrackEditor(tournamentId, refetch);
 
+  // Simple mode: one live track, so its dates/venue/division/confirm/default
+  // role render as Details rows and the Tracks section is hidden entirely.
+  //
+  // Clicking "Add track" flips to advanced immediately, before anything is
+  // saved — the TD is part-way through describing a second track and the
+  // simple layout has nowhere to put it. Derived from the unsaved rows rather
+  // than a flag, so Cancel puts the page back on its own.
+  const simpleMode = isSimple && !!soleTrack && trackEditor.newRows.length === 0;
+
+  // The key travels to TracksSection so the row the TD just asked for arrives
+  // open. The section doesn't exist yet at click time — this click is what
+  // makes it render.
+  const [addedTrackKey, setAddedTrackKey] = useState<number | null>(null);
+
+  function handleAddTrack() {
+    setAddedTrackKey(trackEditor.addRow());
+  }
+
   const detailsDirty = useMemo(() => {
     if (!selectedTournament || !draft) return false;
     return JSON.stringify(draft) !== JSON.stringify(toDraft(selectedTournament));
@@ -137,6 +158,7 @@ export default function GeneralSettingsPage() {
       setLevelText(LEVEL_OPTIONS.find((o) => o.value === selectedTournament.level)?.label ?? "");
     }
     trackEditor.reset();
+    setAddedTrackKey(null);
     setErrors({});
     setSaveError(undefined);
   }
@@ -226,7 +248,7 @@ export default function GeneralSettingsPage() {
               error={errors.state}
             />
           </SettingsRow>
-          <SettingsRow label="Level" last>
+          <SettingsRow label="Level" last={!simpleMode}>
             <Combobox
               options={LEVEL_OPTIONS}
               getId={(o) => o.value}
@@ -238,10 +260,44 @@ export default function GeneralSettingsPage() {
               error={errors.level}
             />
           </SettingsRow>
+
+          {/* The sole track's own fields, inline. A one-day tournament has no
+              use for a Tracks list of one row it can never delete, so its
+              when/where/what belongs with the rest of the tournament's
+              details. Same editor and same save path as advanced mode — only
+              the framing differs. */}
+          {simpleMode && soleTrack && (
+            <div style={{ padding: "20px 0", borderBottom: "1px solid var(--color-border)" }}>
+              <TrackFields
+                draft={trackEditor.drafts[soleTrack.id] ?? EMPTY_TRACK_DRAFT}
+                errors={trackEditor.errors[soleTrack.id] ?? {}}
+                universities={trackEditor.universities}
+                roles={trackEditor.roles}
+                locked={isArchived}
+                showPrimaryToggle={false}
+                onChange={(updates) => trackEditor.setDraft(soleTrack.id, updates)}
+              />
+            </div>
+          )}
+
+          {simpleMode && (
+            <SettingsRow
+              label="Tracks"
+              helper="Split the tournament into separate days or workstreams — a second competition day, or test writing."
+              contentStyle={{ display: "flex", justifyContent: "flex-end" }}
+              last
+            >
+              <Button type="button" variant="secondary" size="md" disabled={isArchived} onClick={handleAddTrack}>
+                <IconPlus size={14} /> Add track
+              </Button>
+            </SettingsRow>
+          )}
         </SettingsSection>
       )}
 
-      {canEdit && <TracksSection editor={trackEditor} locked={isArchived} />}
+      {canEdit && !simpleMode && (
+        <TracksSection editor={trackEditor} locked={isArchived} autoExpandKey={addedTrackKey} />
+      )}
 
       {isOwnerOrAdmin && (
         <SettingsSection title="Invites">
