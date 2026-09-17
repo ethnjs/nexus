@@ -602,10 +602,10 @@ export interface TournamentEvent {
   // Joined canonical event — set only when event_id is set. Carries
   // category, since TournamentEvent has no category field of its own.
   event:             CanonicalEvent | null
-  building:          string | null
-  room:              string | null
-  floor:             string | null
-  volunteers_needed: number | null
+  // Where the event happens and how many of each role it needs — per track,
+  // one entry per track it runs on. Replaces the old flat building/room/floor
+  // and volunteers_needed, which could only describe a one-day tournament.
+  track_details:     EventTrackDetailRead[]
   shifts:            TournamentShift[]
   // The tracks this event belongs to, in schedule order. Not derived from
   // shifts: a cosmetic track has none, so the link is stated outright. Full
@@ -616,21 +616,64 @@ export interface TournamentEvent {
   updated_at:        string
 }
 
+/** How many people in one role an event wants on one track. The role is
+ *  required: a need with no role is a number nobody can act on, so "any
+ *  volunteer" is a role the TD creates rather than a hole here. */
+export interface EventStaffingNeed {
+  role_id: number
+  /** At least 1. */
+  count: number
+}
+
+/** The read shape — carries the role's label because nothing else in an event
+ *  response can supply it. */
+export interface EventStaffingNeedRead extends EventStaffingNeed {
+  role_label: string
+}
+
+/** One track an event runs on, plus where it happens there.
+ *
+ *  One building and one floor, but many rooms: an event routinely spreads
+ *  across 210, 212 and 214, while nothing sensible spreads across two
+ *  buildings on one day. A track with no location is an entry whose fields
+ *  are all null. */
+export interface EventTrackDetail {
+  track_id: number
+  /** Must be a building tagged with this track — the database enforces it,
+   *  not just the route. */
+  building_id?: number | null
+  floor?: string | null
+  rooms?: string[]
+  needs?: EventStaffingNeed[]
+}
+
+/** The read shape. Carries the building's name because nothing else in an
+ *  event response can supply it — unlike a track, which the `tracks` group
+ *  already spells out in full. */
+export interface EventTrackDetailRead extends EventTrackDetail {
+  building_id: number | null
+  building_name: string | null
+  floor: string | null
+  rooms: string[]
+  needs: EventStaffingNeedRead[]
+}
+
 export interface TournamentEventInput {
   name?:              string | null
   division?:          TournamentDivision | null
   event_type?:        'standard' | 'trial'
   event_id?:          number | null
-  building?:          string | null
-  room?:              string | null
-  floor?:             string | null
-  volunteers_needed?: number | null
   // Both whole-set: a PATCH sending shift_ids replaces the event's shifts
   // rather than adding to them. Omit either to leave it alone. Setting
-  // shift_ids also adds those shifts' tracks to track_ids; clearing a shift
-  // never removes a track.
+  // shift_ids also adds those shifts' tracks to track_details; clearing a
+  // shift never removes a track.
   shift_ids?:         number[]
-  track_ids?:         number[]
+  // Replaces the old track_ids: a list of ids and a list of ids-with-location
+  // are two ways to write the same thing, and the pair would have to define
+  // which wins. Whole-set, and whole-set *within* each entry too — an entry
+  // with no `rooms` clears the rooms, an entry with no `needs` clears the
+  // needs. Leave a track out entirely to keep what it already has.
+  track_details?:     EventTrackDetail[]
 }
 
 export interface EventLoadDefaultsSkipped {
@@ -686,8 +729,10 @@ export const assignmentsApi = {
     id: number,
     body: { role_id?: number; tournament_shift_id?: number | null; tournament_track_id?: number | null },
   ) => api.patch<Assignment>(`/tournaments/${tournamentId}/assignments/${id}/`, body),
-  // Unassigning never revokes the role the assignment used — that grant is a
-  // fact about the member, not a detail of this placement.
+  // Since #83 a member's roles are derived from these rows, so removing the
+  // last one for a (role, track) does drop the role on that track. Intended:
+  // being staffed and holding the role are one fact, not two. A tournament-
+  // wide grant is a row of its own and is never touched by this.
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/assignments/${id}/`),
 };
@@ -884,6 +929,21 @@ export interface RoleWithMemberCount extends Role {
   member_count: number
 }
 
+/** Matches MemberRoleRead — a role as one *member* holds it. Its own type
+ *  rather than two more fields on Role, because Role is also the tournament's
+ *  role catalog, where "which tracks" isn't a question.
+ *
+ *  Since #83 a member's roles are derived from their track assignments rather
+ *  than stored: being staffed on a track *is* holding the role there. */
+export interface MemberRole extends Role {
+  /** Held across the whole tournament rather than on particular days. */
+  is_tournament_wide: boolean
+  /** Which tracks it's held on. Empty when tournament-wide — the role applies
+   *  everywhere, so listing today's tracks would read as a narrower claim.
+   *  This is what the roster's role chip hangs its track pill menu off. */
+  track_ids: number[]
+}
+
 // Matches MembershipJoinCodeInfo — resolved join-code info embedded on a
 // membership response (code/label + who created it). Only present when
 // source === "join_code". Codes are never hard-deleted, so this is always
@@ -957,7 +1017,7 @@ export interface MembershipBase {
   updated_at: string | null
   user:       UserFull | null
 
-  roles?:            Role[]
+  roles?:            MemberRole[]
   track_statuses?:   MembershipTrackStatus[]
   // Omitted (not null) unless the tournament collects the flag and the member
   // has consented — see gate_age_flags. Never treat `undefined` as `false`.
@@ -1173,8 +1233,18 @@ export const membersApi = {
     api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${id}/`, body),
   delete: (tournamentId: number, id: number) =>
     api.delete<void>(`/tournaments/${tournamentId}/members/${id}/`),
-  updateRoles: (tournamentId: number, membershipId: number, body: { add?: number[]; remove?: number[] }) =>
-    api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
+  // A grant has to say where it applies: exactly one of `track_id` or
+  // `is_tournament_wide`. The flag is explicit rather than inferred from a
+  // missing track_id — a forgotten field would otherwise silently grant a
+  // permission-bearing role across the whole tournament.
+  updateRoles: (
+    tournamentId: number,
+    membershipId: number,
+    body: { add?: number[]; remove?: number[] } & (
+      | { track_id: number; is_tournament_wide?: false }
+      | { is_tournament_wide: true; track_id?: null }
+    ),
+  ) => api.patch<MembershipFull>(`/tournaments/${tournamentId}/members/${membershipId}/roles/`, body),
 
   // ---- Self-service: what the member may change about themselves --------
   // One request backs the whole member edit page.
@@ -2053,6 +2123,175 @@ export const tournamentTracksApi = {
     api.post<TournamentTrack>(`/tournaments/${tournamentId}/tracks/${trackId}/restore/`, {}),
 }
 
+// -------------------------------------------------------------------------
+// Tournament Buildings — nested under /tournaments/{id}/buildings/
+// -------------------------------------------------------------------------
+// A tournament's venue catalog. Floors and rooms stay free text — only the
+// building is a row, because it's the one part worth picking rather than
+// retyping per event. All four routes are gated on manage_events.
+
+/** Ids rather than embedded track rows, unlike TournamentEvent.tracks: every
+ *  reader of a building already holds the track catalog, so embedding would
+ *  repeat the same handful of rows once per building. */
+export interface TournamentBuilding {
+  id: number
+  tournament_id: number
+  name: string
+  /** Which tracks this building is in use on. Empty is legal — a building
+   *  entered before the schedule is settled isn't available anywhere yet. */
+  track_ids: number[]
+  created_at: string
+  updated_at: string
+}
+
+export interface TournamentBuildingInput {
+  name: string
+  /** Whole-set, like an event's shift_ids: sending it replaces the tags. */
+  track_ids?: number[]
+}
+
+/** What the delete cost. A building still holding events can be removed, but
+ *  the number of event locations it blanked is reported rather than left to
+ *  be discovered. */
+export interface TournamentBuildingDeleteResult {
+  locations_cleared: number
+}
+
+export const buildingsApi = {
+  list: (tournamentId: number) =>
+    api.get<TournamentBuilding[]>(`/tournaments/${tournamentId}/buildings/`),
+  create: (tournamentId: number, body: TournamentBuildingInput) =>
+    api.post<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/`, body),
+  // Partial: omit a field to leave it alone. `track_ids: []` clears the tags,
+  // which blanks the location of every event placed here on an untagged track.
+  update: (tournamentId: number, buildingId: number, body: Partial<TournamentBuildingInput>) =>
+    api.patch<TournamentBuilding>(`/tournaments/${tournamentId}/buildings/${buildingId}/`, body),
+  // 200 with a body, not 204 — same as deleting a track.
+  delete: (tournamentId: number, buildingId: number) =>
+    api.delete<TournamentBuildingDeleteResult>(
+      `/tournaments/${tournamentId}/buildings/${buildingId}/`,
+    ),
+};
+
+// -------------------------------------------------------------------------
+// Tournament Zones — nested under /tournaments/{id}/zones/
+// -------------------------------------------------------------------------
+// A named area of one track that members can be staffed to, primarily for
+// runners. A zone stores *rules*, never an event list: its contents are
+// resolved on read, which is what makes moving an event to a building in
+// another zone move it between zones with no write to either.
+
+export type ZoneMemberKind = 'building' | 'floor' | 'event';
+
+/** One rule saying what a zone contains. Which fields are legal depends on
+ *  the kind:
+ *
+ *      building   building_id only
+ *      floor      building_id and floor
+ *      event      tournament_event_id only
+ *
+ *  Sending the wrong combination is a 422, not a silent correction. */
+export interface ZoneMember {
+  kind: ZoneMemberKind
+  building_id?: number | null
+  floor?: string | null
+  tournament_event_id?: number | null
+}
+
+export interface ZoneMemberRead extends ZoneMember {
+  id: number
+  building_name: string | null
+  event_name: string | null
+}
+
+export interface ZoneInput {
+  track_id: number
+  name: string
+  /** The role a drag onto this zone staffs someone in. Distinct from the
+   *  track's default role — a zone is usually one job. */
+  default_role_id?: number | null
+  /** Whole-set: sending it replaces the zone's rules. */
+  members?: ZoneMember[]
+}
+
+export interface Zone {
+  id: number
+  tournament_id: number
+  track_id: number
+  name: string
+  default_role_id: number | null
+  default_role_label: string | null
+  members: ZoneMemberRead[]
+  /** Resolved, not stored. Precedence is event > floor > building, so an
+   *  event added explicitly to this zone stays here even when another zone's
+   *  building rule also covers it. */
+  event_ids: number[]
+  created_at: string
+  updated_at: string
+}
+
+/** One track's whole zone picture in a single read — the /zones page renders
+ *  from exactly this. */
+export interface ZoneCoverage {
+  track_id: number
+  zones: Zone[]
+  /** Events on this track that no zone's rules reach. Flagged in the UI, not
+   *  an error — a tournament may deliberately zone only part of a venue. */
+  unzoned_event_ids: number[]
+  /** Events on this track with no building at all. Not a subset of
+   *  unzoned_event_ids: an explicit `event` rule zones an unplaced event. */
+  unplaced_event_ids: number[]
+}
+
+export interface ZoneAssignmentInput {
+  zone_id: number
+  membership_id: number
+  /** Omit to use the zone's default_role_id. A role is always required in the
+   *  end — if the zone has no default, this must name one. */
+  role_id?: number | null
+}
+
+/** Someone covering a zone for a whole track day. No shift and no target: a
+ *  zone assignment is "you have this area", not a slot to fill. */
+export interface ZoneAssignment {
+  id: number
+  zone_id: number
+  zone_name: string
+  track_id: number
+  member: PersonNameRef
+  role: PersonRole
+  created_at: string
+  updated_at: string
+}
+
+export const zonesApi = {
+  // track_id is required: zones are per track, and there is no cross-track
+  // view of them to ask for.
+  list: (tournamentId: number, trackId: number) =>
+    api.get<ZoneCoverage>(`/tournaments/${tournamentId}/zones/?track_id=${trackId}`),
+  create: (tournamentId: number, body: ZoneInput) =>
+    api.post<Zone>(`/tournaments/${tournamentId}/zones/`, body),
+  // track_id is not updatable — a zone's rules are scoped to its track, so
+  // moving one would mean revalidating every rule against a different venue.
+  update: (tournamentId: number, zoneId: number, body: Partial<Omit<ZoneInput, 'track_id'>>) =>
+    api.patch<Zone>(`/tournaments/${tournamentId}/zones/${zoneId}/`, body),
+  delete: (tournamentId: number, zoneId: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/zones/${zoneId}/`),
+};
+
+export const zoneAssignmentsApi = {
+  // Flat under the tournament rather than nested under a zone: the board
+  // wants every zone's coverage for a track in one read.
+  list: (tournamentId: number, opts: { trackId?: number } = {}) => {
+    const query = opts.trackId !== undefined ? `?track_id=${opts.trackId}` : "";
+    return api.get<ZoneAssignment[]>(`/tournaments/${tournamentId}/zone-assignments/${query}`);
+  },
+  create: (tournamentId: number, body: ZoneAssignmentInput) =>
+    api.post<ZoneAssignment>(`/tournaments/${tournamentId}/zone-assignments/`, body),
+  delete: (tournamentId: number, id: number) =>
+    api.delete<void>(`/tournaments/${tournamentId}/zone-assignments/${id}/`),
+};
+
 // Namespaced strings — "track:3", "lunch:3:entree", "event_pref:3",
 // "form_field:{id}" — see backend/app/core/tournament/display_config.py.
 // One panel section, in the order the TD arranged them. Built-in sections
@@ -2093,6 +2332,23 @@ export interface DisplayConfigSurface {
 }
 
 export type DisplayConfig = Record<string, DisplayConfigSurface>
+
+// The assignments board is tabbed per track, and each tab keeps its own
+// columns, filters and sort for both halves of the board. So its two surfaces
+// are a family of keys rather than one each — "assignments_events:all",
+// "assignments_events:track:3", and the same for the card.
+//
+// Encoded in the key rather than as a field inside the blob because the
+// storage is a flat surface -> config map, and every reader already keys off
+// that string. The bare "assignments_events" is no longer accepted: the All
+// tab is spelled ":all", and the migration moved existing blobs to it.
+export const ASSIGNMENTS_EVENTS_SURFACE = "assignments_events";
+export const ASSIGNMENT_CARD_SURFACE = "assignment_card";
+
+/** The stored key for one tab. Pass no track for the All tab. */
+export function tabSurface(base: string, trackId?: number | null): string {
+  return trackId == null ? `${base}:all` : `${base}:track:${trackId}`;
+}
 
 export interface DisplayConfigCatalogItem {
   key: string
