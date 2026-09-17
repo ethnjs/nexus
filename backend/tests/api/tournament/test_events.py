@@ -931,3 +931,191 @@ def test_track_details_sort_by_schedule_with_cosmetic_tracks_last(
         {"track_id": day1},
     ]).json()
     assert [d["track_id"] for d in body["track_details"]] == [day1, writing]
+
+
+# ---------------------------------------------------------------------------
+# Per-role staffing needs
+# ---------------------------------------------------------------------------
+
+def _role(client, tournament_id, label):
+    """A role by label from the tournament's own catalog — every tournament is
+    seeded with DEFAULT_ROLES."""
+    roles = client.get(f"/tournaments/{tournament_id}/roles/").json()
+    return next(r for r in roles if r["label"] == label)["id"]
+
+
+def test_needs_differ_per_track(client, db, td_user, td_tournament):
+    """What volunteers_needed could never say: 6 volunteers and 2 lead ESes on
+    Day 1, 8 and 2 on Day 2."""
+    login(client, "td@test.com", "tdpass")
+    day1 = primary_track_id(db, td_tournament.id)
+    day2 = client.post(
+        f"/tournaments/{td_tournament.id}/tracks/", json={"name": "Day 2"},
+    ).json()["id"]
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    lead = _role(client, td_tournament.id, "Lead Event Supervisor")
+
+    body = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": day1, "needs": [
+            {"role_id": volunteer, "count": 6}, {"role_id": lead, "count": 2},
+        ]},
+        {"track_id": day2, "needs": [
+            {"role_id": volunteer, "count": 8}, {"role_id": lead, "count": 2},
+        ]},
+    ]).json()
+
+    by_track = _details(body)
+    assert {n["role_id"]: n["count"] for n in by_track[day1]["needs"]} == {
+        volunteer: 6, lead: 2,
+    }
+    assert {n["role_id"]: n["count"] for n in by_track[day2]["needs"]} == {
+        volunteer: 8, lead: 2,
+    }
+
+
+def test_a_need_carries_its_role_label(client, db, td_user, td_tournament):
+    """Nothing else in an event response can name the role."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+
+    body = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 3}]},
+    ]).json()
+    assert _details(body)[track_id]["needs"][0]["role_label"] == "Volunteer"
+
+
+def test_a_count_below_one_is_rejected(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    assert _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 0}]},
+    ]).status_code == 422
+
+
+def test_naming_the_same_role_twice_on_one_track_is_rejected(
+    client, db, td_user, td_tournament,
+):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    response = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [
+            {"role_id": volunteer, "count": 1}, {"role_id": volunteer, "count": 2},
+        ]},
+    ])
+    assert response.status_code == 422
+    assert "same role twice" in str(response.json()["detail"])
+
+
+def test_a_role_from_another_tournament_is_rejected(
+    client, db, td_user, td_tournament, other_tournament,
+):
+    """The role FK isn't tournament-scoped, so this check is the only thing
+    stopping it."""
+    from app.models.models import TournamentRole
+
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    foreign_role = db.query(TournamentRole).filter(
+        TournamentRole.tournament_id == other_tournament.id,
+    ).first().id
+
+    response = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": foreign_role, "count": 2}]},
+    ])
+    assert response.status_code == 422
+    assert "Unknown role" in response.json()["detail"]
+
+
+def test_editing_a_count_keeps_the_other_needs(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    lead = _role(client, td_tournament.id, "Lead Event Supervisor")
+    created = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [
+            {"role_id": volunteer, "count": 6}, {"role_id": lead, "count": 2},
+        ]},
+    ]).json()
+
+    body = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"track_details": [{"track_id": track_id, "needs": [
+            {"role_id": volunteer, "count": 9}, {"role_id": lead, "count": 2},
+        ]}]},
+    ).json()
+    assert {n["role_id"]: n["count"] for n in _details(body)[track_id]["needs"]} == {
+        volunteer: 9, lead: 2,
+    }
+
+
+def test_an_entry_without_needs_clears_them(client, db, td_user, td_tournament):
+    """Whole-set within the entry: an explicit entry states what the event's
+    arrangement on that track *is*, needs included."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    created = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+    ]).json()
+
+    body = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"track_details": [{"track_id": track_id}]},
+    ).json()
+    assert _details(body)[track_id]["needs"] == []
+
+
+def test_leaving_a_track_out_of_a_patch_keeps_its_needs(client, db, td_user, td_tournament):
+    """The other half of the rule: omit the track entirely and nothing about
+    it changes."""
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    created = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+    ]).json()
+
+    body = client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"name": "Renamed"},
+    ).json()
+    assert _details(body)[track_id]["needs"][0]["count"] == 6
+
+
+def test_dropping_a_track_drops_its_needs(client, db, td_user, td_tournament):
+    """The composite FK cascades — no route code deletes these."""
+    from app.models.models import TournamentEventStaffingNeed
+
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    created = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+    ]).json()
+
+    client.patch(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/",
+        json={"track_details": []},
+    )
+    db.expire_all()
+    assert db.query(TournamentEventStaffingNeed).filter(
+        TournamentEventStaffingNeed.tournament_event_id == created["id"],
+    ).count() == 0
+
+
+def test_needs_ride_in_the_location_field_group(client, db, td_user, td_tournament):
+    login(client, "td@test.com", "tdpass")
+    track_id = primary_track_id(db, td_tournament.id)
+    volunteer = _role(client, td_tournament.id, "Volunteer")
+    created = _make_event(client, td_tournament.id, track_details=[
+        {"track_id": track_id, "needs": [{"role_id": volunteer, "count": 6}]},
+    ]).json()
+
+    row = client.get(
+        f"/tournaments/{td_tournament.id}/events/{created['id']}/?fields=location"
+    ).json()
+    assert row["track_details"][0]["needs"][0]["count"] == 6
+    assert "shifts" not in row

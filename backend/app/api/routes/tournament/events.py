@@ -12,11 +12,12 @@ from app.core.tournament.permissions import (
 from app.db.session import get_db
 from app.models.models import (
     SeasonEvent, TournamentBuilding, TournamentBuildingTrack, TournamentEvent,
-    TournamentEventTrack, TournamentShift, TournamentTrack, User,
+    TournamentEventStaffingNeed, TournamentEventTrack, TournamentRole, TournamentShift,
+    TournamentTrack, User,
 )
 from app.schemas.tournament.event import (
     EventCreate, EventLoadDefaultsResponse, EventLoadDefaultsSkipped, EventMemberRead, EventRead,
-    EventTrackDetail, EventUpdate,
+    EventStaffingNeed, EventTrackDetail, EventUpdate,
 )
 
 # Routes are nested: /tournaments/{tournament_id}/events/...
@@ -102,6 +103,7 @@ def _apply_shifts_and_tracks(
             )
         _validate_tracks(db, event, tournament_id, list(wanted))
         _validate_buildings(db, tournament_id, track_details)
+        _validate_need_roles(db, tournament_id, track_details)
     else:
         wanted = {detail.track_id: None for detail in event.track_details}
 
@@ -131,6 +133,7 @@ def _apply_shifts_and_tracks(
             # [] and None both mean "no rooms"; storing None keeps one answer
             # in the column rather than two that render identically.
             row.rooms = detail.rooms or None
+            _set_needs(row, detail.needs)
 
 
 def _validate_tracks(
@@ -202,6 +205,51 @@ def _validate_buildings(
                 f"Building {building_id} is not available on track {track_id}; "
                 f"tag it with that track first"
             ),
+        )
+
+
+def _set_needs(row: TournamentEventTrack, needs: list[EventStaffingNeed]) -> None:
+    """Replace this link's staffing needs, reusing the row for a role that
+    stays so a count edit is an update rather than a delete and an insert."""
+    wanted = {need.role_id: need.count for need in needs}
+    existing = {need.role_id: need for need in row.needs}
+
+    for role_id, need in existing.items():
+        if role_id not in wanted:
+            row.needs.remove(need)
+    for role_id, count in wanted.items():
+        need = existing.get(role_id)
+        if need is None:
+            row.needs.append(TournamentEventStaffingNeed(role_id=role_id, count=count))
+        else:
+            need.count = count
+
+
+def _validate_need_roles(
+    db: Session, tournament_id: int, details: list[EventTrackDetail],
+) -> None:
+    """Every role named by a need belongs to this tournament.
+
+    The role FK alone would accept another tournament's role — it points at
+    tournament_roles with no tournament scoping — so unlike the building rule
+    this is the *only* thing enforcing it, not a friendlier version of a
+    database check.
+    """
+    role_ids = {need.role_id for detail in details for need in detail.needs}
+    if not role_ids:
+        return
+
+    found = {
+        row_id for (row_id,) in db.query(TournamentRole.id).filter(
+            TournamentRole.tournament_id == tournament_id,
+            TournamentRole.id.in_(role_ids),
+        )
+    }
+    missing = sorted(role_ids - found)
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Unknown role {missing[0]}",
         )
 
 
