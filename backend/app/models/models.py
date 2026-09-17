@@ -904,6 +904,11 @@ class TournamentTrack(Base):
 
     __table_args__ = (
         UniqueConstraint("tournament_id", "name", name="uq_tournament_track_name"),
+        # Redundant on its own (id is the PK), and here only so a zone can
+        # carry a composite FK against it — that is what stops a zone naming
+        # a track from another tournament. Same device as
+        # uq_tournament_shift_id_track.
+        UniqueConstraint("id", "tournament_id", name="uq_tournament_track_id_tournament"),
     )
 
 
@@ -1269,6 +1274,226 @@ class TournamentEventAssignment(Base):
             "tournament_event_id", "membership_role_id", "tournament_track_id",
             unique=True,
             postgresql_where=(tournament_shift_id.is_(None)),
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentZone — a named area of one track that members can be staffed to.
+#
+# Built for runners, who cover a wing of a venue rather than an event. Scoped
+# to a track because "the north wing on Day 1" and "the north wing on Day 2"
+# are staffed separately even when they describe the same corridor.
+#
+# A zone carries no shifts and no staffing targets: a zone assignment covers
+# the track's whole day, and how many runners an area wants is a judgement
+# the TD makes while looking at the map, not a number to hit.
+# ---------------------------------------------------------------------------
+class TournamentZone(Base):
+    __tablename__ = "tournament_zones"
+
+    id = Column(Integer, primary_key=True, index=True)
+    # Denormalized from the track, and kept honest by the composite FK below.
+    # Present because every zone lookup is tournament-scoped
+    # (get_scoped_or_404 reads this attribute by name).
+    #
+    # Neither column carries an inline ForeignKey: the composite constraint in
+    # __table_args__ is the foreign key for both, and declaring an inline one
+    # as well would give SQLAlchemy two paths to tournament_tracks and leave
+    # the `track` relationship ambiguous.
+    tournament_id = Column(Integer, nullable=False, index=True)
+    track_id = Column(Integer, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+
+    # The role a drag onto this zone grants, distinct from the track's
+    # default: a competition day defaults to a general volunteer role, while
+    # a zone on that same day almost always wants Runner. SET NULL rather
+    # than a blocking FK, matching TournamentTrack.default_role_id.
+    default_role_id = Column(
+        Integer, ForeignKey("tournament_roles.id", ondelete="SET NULL"), nullable=True,
+    )
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    track = relationship("TournamentTrack")
+    default_role = relationship("TournamentRole")
+    members = relationship(
+        "TournamentZoneMember", back_populates="zone", cascade="all, delete-orphan",
+    )
+    assignments = relationship(
+        "TournamentZoneAssignment", back_populates="zone", cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        UniqueConstraint("track_id", "name", name="uq_tournament_zone_name"),
+        # The zone's own (id, track_id) is a foreign-key target: a member row
+        # copies track_id so its partial unique indexes can exist, and points
+        # back here as a pair so the copy cannot drift.
+        UniqueConstraint("id", "track_id", name="uq_tournament_zone_id_track"),
+        ForeignKeyConstraint(
+            ["track_id", "tournament_id"],
+            ["tournament_tracks.id", "tournament_tracks.tournament_id"],
+            name="fk_zone_track_tournament",
+            ondelete="CASCADE",
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentZoneMember — one rule saying what a zone contains.
+#
+# A zone is *not* a stored list of events. It holds rules — a whole building,
+# or one floor of one — plus events added by hand, and its event list is
+# computed on read (see core/tournament/zones.py). That is what makes moving
+# an event to a building in another zone move it between zones with no edit
+# to either: the rules still describe the space, and the space is where the
+# event now is.
+#
+# Three kinds, and the shape check below is what keeps each honest:
+#
+#   building   every room of a building
+#   floor      one (building, floor) pair
+#   event      one event, wherever it happens to be
+#
+# An explicit `event` member outranks both rules, which is why no "exclude"
+# kind exists: pulling one event out of a building-wide zone means adding it
+# to the zone it should be in instead. The cost, accepted when this was
+# designed: an event inside a rule'd building cannot be made zone-less.
+# ---------------------------------------------------------------------------
+class TournamentZoneMember(Base):
+    __tablename__ = "tournament_zone_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(Integer, nullable=False, index=True)
+    # Copied from the zone so the three partial unique indexes below can be
+    # expressed at all — they are what makes "one zone per event per track" a
+    # database guarantee rather than a route check two writers can race past.
+    track_id = Column(Integer, nullable=False, index=True)
+
+    kind = Column(String(16), nullable=False)          # building | floor | event
+
+    building_id = Column(Integer, nullable=True, index=True)
+    floor = Column(String(64), nullable=True)
+    tournament_event_id = Column(Integer, nullable=True, index=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    zone = relationship("TournamentZone", back_populates="members")
+    building = relationship(
+        "TournamentBuilding",
+        primaryjoin="TournamentZoneMember.building_id == TournamentBuilding.id",
+        foreign_keys="TournamentZoneMember.building_id",
+        viewonly=True,
+    )
+    tournament_event = relationship(
+        "TournamentEvent",
+        primaryjoin="TournamentZoneMember.tournament_event_id == TournamentEvent.id",
+        foreign_keys="TournamentZoneMember.tournament_event_id",
+        viewonly=True,
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["zone_id", "track_id"],
+            ["tournament_zones.id", "tournament_zones.track_id"],
+            name="fk_zone_member_zone",
+            ondelete="CASCADE",
+        ),
+        # A building rule names a building available on this track; an event
+        # rule names an event that runs on it. Both CASCADE: untagging the
+        # building or taking the event off the track removes a rule that has
+        # stopped describing anything. Unlike an event's own location, a rule
+        # is not something a TD typed in and would mourn.
+        ForeignKeyConstraint(
+            ["building_id", "track_id"],
+            ["tournament_building_tracks.building_id", "tournament_building_tracks.track_id"],
+            name="fk_zone_member_building",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["tournament_event_id", "track_id"],
+            ["tournament_event_tracks.tournament_event_id", "tournament_event_tracks.track_id"],
+            name="fk_zone_member_event",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint(
+            "(kind = 'building' AND building_id IS NOT NULL AND floor IS NULL "
+            "  AND tournament_event_id IS NULL) OR "
+            "(kind = 'floor' AND building_id IS NOT NULL AND floor IS NOT NULL "
+            "  AND tournament_event_id IS NULL) OR "
+            "(kind = 'event' AND tournament_event_id IS NOT NULL AND building_id IS NULL "
+            "  AND floor IS NULL)",
+            name="ck_zone_member_shape",
+        ),
+        # One zone per thing per track — the constraint the whole precedence
+        # rule rests on. Partial, because each kind uses different columns and
+        # a NULL in a plain unique index would let duplicates through.
+        Index(
+            "uq_zone_member_building", "track_id", "building_id",
+            unique=True, postgresql_where=text("kind = 'building'"),
+        ),
+        Index(
+            "uq_zone_member_floor", "track_id", "building_id", "floor",
+            unique=True, postgresql_where=text("kind = 'floor'"),
+        ),
+        Index(
+            "uq_zone_member_event", "track_id", "tournament_event_id",
+            unique=True, postgresql_where=text("kind = 'event'"),
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# TournamentZoneAssignment — one member covering one zone, in one role.
+#
+# Its own table rather than a nullable event on TournamentEventAssignment:
+# every assignment query, flag and lane would have had to learn that an
+# assignment might name no event, for a row that shares none of the event
+# assignment's behaviour — no shift to pin to, no staffing target to count
+# against, no overlap rule.
+#
+# The role is reached through tournament_membership_roles for the same reason
+# an event assignment does: "you can't be staffed in a role you don't hold"
+# is then a property of the schema rather than a check. There is no shift
+# column — a zone assignment covers the track's whole day.
+# ---------------------------------------------------------------------------
+class TournamentZoneAssignment(Base):
+    __tablename__ = "tournament_zone_assignments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zone_id = Column(
+        Integer, ForeignKey("tournament_zones.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    membership_id = Column(
+        Integer, ForeignKey("tournament_memberships.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    # No inline ForeignKey — the composite constraint below is this column's
+    # FK, pairing it with membership_id so the row cannot name a role held by
+    # somebody else.
+    membership_role_id = Column(Integer, nullable=False, index=True)
+
+    created_at = Column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    zone = relationship("TournamentZone", back_populates="assignments")
+    membership = relationship("TournamentMembership", overlaps="assignments")
+    membership_role = relationship(
+        "TournamentMembershipRole", lazy="joined", overlaps="membership",
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["membership_role_id", "membership_id"],
+            ["tournament_membership_roles.id", "tournament_membership_roles.membership_id"],
+            name="fk_zone_assignment_membership_role",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "zone_id", "membership_id", "membership_role_id",
+            name="uq_zone_assignment",
         ),
     )
 
