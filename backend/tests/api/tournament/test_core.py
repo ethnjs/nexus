@@ -668,6 +668,16 @@ def test_archived_tournament_rejects_delete(client, td_user, td_tournament):
     assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 403
 
 
+def test_archived_tournament_admin_can_delete(client, admin_user, td_tournament, db):
+    """Admin cleanup has to reach archived tournaments — the owner-facing
+    403 above is about not letting a TD erase a historical record."""
+    td_tournament.is_archived = True
+    db.commit()
+
+    login(client, "admin@test.com", "adminpass")
+    assert client.delete(f"/tournaments/{td_tournament.id}/").status_code == 204
+
+
 # ---------------------------------------------------------------------------
 # POST /tournaments/{id}/unarchive/ — owner or admin, admin-only once ended
 # ---------------------------------------------------------------------------

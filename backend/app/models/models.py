@@ -179,7 +179,14 @@ class User(Base):
     hashed_password = Column(String(255), nullable=True)   # null = cannot log in, must reset password and verify via email
     email_verified = Column(Boolean, nullable=False, default=False)
     role = Column(String(32), nullable=False, default="user")  # "admin" | "user"
-    status = Column(String(32), nullable=False, default="active")  # "active" | "invited" | "deactivated" | "locked"
+    # "active" | "invited" | "deactivated" | "locked". Login allows only
+    # "active", so every non-active status denies access identically — the
+    # deactivated/locked split records *who* did it: deactivated is the
+    # user's own choice (POST /users/me/deactivate/), locked is imposed by an
+    # admin. Both are currently admin-only to clear, since there is no
+    # logged-out reactivation path; the eventual intent is for deactivated to
+    # become self-reversible, which is the only reason the split exists.
+    status = Column(String(32), nullable=False, default="active")
 
     # if a student
     university_id = Column(Integer, ForeignKey("universities.id"), nullable=True)

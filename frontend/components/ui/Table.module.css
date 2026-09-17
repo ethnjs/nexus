@@ -1,0 +1,124 @@
+/*
+ * The app's one table shell. Every table — the roster, events, shifts, roles,
+ * invites, forms, and the admin tables — is this card-with-rows look, and it
+ * was previously re-declared inline on each page (and hand-copied, see the
+ * comment that used to sit in assignments/page.tsx).
+ *
+ * One grid owns the column tracks; header and rows are `subgrid` and inherit
+ * them. That is the load-bearing part: `grid-template-columns` is not
+ * compositable, so a container resize or a track change re-resolves every
+ * `fr` track. With a grid per row that work ran N times per frame; with
+ * subgrid it runs once and the rows place into it.
+ *
+ * `grid-template-columns` is always set inline — it belongs to each table's
+ * own columns, not here.
+ */
+.table {
+  display: grid;
+  column-gap: 10px;
+  /* The horizontal padding rows used to carry themselves. It sits here so the
+     tracks are defined once; rows bleed back out over it (see .row) to keep
+     their background and divider running the full card width. */
+  padding: 0 12px;
+}
+
+/* The header's typography alone, for a caller that wants the look without
+   the grid — the assignments board labels its columns this way and used to
+   keep a hand-copied CSSProperties object to do it. */
+.headerLabel {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.header {
+  composes: headerLabel;
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  margin: 0 -12px;
+  padding: 12px 12px;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: subgrid;
+  grid-column: 1 / -1;
+  align-items: center;
+  /* Negative margin plus equal padding sums to zero, which keeps the
+     subgrid's tracks aligned with the parent's: the spec subtracts a
+     subgrid's own margin/border/padding from its first and last track. The
+     background and border-bottom still bleed the full 12px outward. */
+  margin: 0 -12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+  transition: background 100ms ease;
+}
+
+.row:last-child {
+  border-bottom: none;
+}
+
+/* Hover as CSS rather than React state: the old inline version re-rendered a
+   row and its whole subtree on every mouse enter and leave, which is exactly
+   when a table is mid-animation.
+ *
+ * `data-active` is the row a panel, focus mode or a selection is currently
+ * on — every table marks that the same way, and it reads the same as hover
+ * deliberately. */
+.row:hover,
+.row[data-active="true"] {
+  background: var(--color-bg);
+}
+
+/* A row awaiting action, e.g. an event pending confirmation. Keeps its tint
+   on hover rather than reverting to the neutral hover background. */
+.row[data-pending="true"] {
+  background: var(--color-warning-subtle);
+}
+
+.row[data-pending="true"]:hover,
+.row[data-pending="true"][data-active="true"] {
+  background: var(--color-warning-subtle-hover);
+}
+
+/* Opt-in row pointer, for tables whose rows open something. */
+.clickable {
+  cursor: pointer;
+}
+
+/*
+ * Opt-in for the two tables whose columns *animate* — the roster (Select mode
+ * opening, a docked panel collapsing Roles) and events (Select mode). Applied
+ * to the .table element alongside the shell class.
+ *
+ * 220ms matches the panel slot's width transition (see LayoutPanelSlot) so a
+ * collapsing column moves in step with the panel sliding in. The events table
+ * used 200ms before this was shared; there was no reason for the difference.
+ */
+.animatedTracks {
+  transition: grid-template-columns 220ms ease;
+}
+
+/*
+ * A cell whose track animates to zero width rather than being added or
+ * removed — the Select checkbox in both tables. The track has to keep
+ * existing for grid-template-columns to interpolate at all
+ * (it only interpolates between lists of the same length and matching track
+ * types), so the cell stays mounted and its contents fade on the same clock.
+ */
+.collapsible {
+  overflow: hidden;
+  min-width: 0;
+  transition: opacity 150ms ease;
+}
+
+.collapsed {
+  opacity: 0;
+  pointer-events: none;
+}

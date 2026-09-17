@@ -12,6 +12,7 @@ import { useTournament } from "@/lib/useTournament";
 import { useArchiveLock } from "@/lib/useArchiveLock";
 import { useToast } from "@/lib/useToast";
 import { Card } from "@/components/ui/Card";
+import table from "@/components/ui/Table.module.css";
 import { Button } from "@/components/ui/Button";
 import { PendingTrackBanner } from "@/components/tournament/PendingTrackBanner";
 import { Spinner } from "@/components/ui/Spinner";
@@ -649,19 +650,17 @@ export default function EventsPage() {
           </div>
 
           <Card radius="lg" style={{ padding: "8px 12px" }}>
-            <div style={{
-              display: "grid", gridTemplateColumns: eventGridColumns(selectMode, tableColumns), gap: "10px",
-              transition: "grid-template-columns 200ms ease",
-              padding: "12px 12px", fontFamily: "var(--font-sans)", fontSize: "11px",
-              fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase",
-              color: "var(--color-text-tertiary)",
-            }}>
+            {/* One grid owns the tracks; header and rows are subgrids of it,
+                so toggling Select mode resolves the template once rather than
+                once per row (which is what this table did before). */}
+            <div
+              className={`${table.table} ${table.animatedTracks}`}
+              style={{ gridTemplateColumns: eventGridColumns(selectMode, tableColumns) }}
+            >
+            <div className={table.header}>
               <span
-                style={{
-                  display: "flex", justifyContent: "center", overflow: "hidden",
-                  opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-                  transition: "opacity 150ms ease",
-                }}
+                className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+                style={{ display: "flex", justifyContent: "center" }}
                 title={panelDirty ? "Save or discard your changes first" : undefined}
               >
                 <Checkbox
@@ -689,12 +688,11 @@ export default function EventsPage() {
             {visibleEvents.length === 0 ? (
               <EmptyState title="No matching events" description="Try adjusting your search or filters." />
             ) : (
-              visibleEvents.map((e, i) => (
+              visibleEvents.map((e) => (
                 <EventRow
                   key={e.id}
                   event={e}
                   columns={tableColumns}
-                  isLast={i === visibleEvents.length - 1}
                   canDelete={canManageEvents}
                   deleteLockedReason={archivedReason}
                   onFocus={() => focusEvent(e.id)}
@@ -708,6 +706,7 @@ export default function EventsPage() {
                 />
               ))
             )}
+            </div>
           </Card>
         </>
       )}
@@ -785,12 +784,11 @@ export default function EventsPage() {
 }
 
 function EventRow({
-  event, columns, isLast, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
+  event, columns, canDelete, deleteLockedReason, onFocus, onDelete, selectMode, selected, selectionLocked, onToggleSelect, focusActive, focused,
 }: {
   event: TournamentEvent;
   /** The viewer's configured columns, between Name and Actions. */
   columns: EventColumn[];
-  isLast: boolean;
   canDelete: boolean;
   /** Shown and disabled rather than hidden — archiving locks, it doesn't hide. */
   deleteLockedReason?: string;
@@ -806,7 +804,6 @@ function EventRow({
   /** This row is the one currently shown in the single-edit panel. */
   focused: boolean;
 }) {
-  const [hovered, setHovered] = useState(false);
   // Two different reasons a row might be clickable: toggling a checkbox in
   // Select mode, or switching which row the single-edit panel shows. Never
   // both at once — the two flows are mutually exclusive.
@@ -820,27 +817,16 @@ function EventRow({
 
   return (
     <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      className={table.row}
+      data-active={highlighted ? "true" : undefined}
+      data-pending={isPending ? "true" : undefined}
       onClick={clickable ? handleRowClick : undefined}
       title={(selectMode || focusActive) ? lockedTitle : undefined}
-      style={{
-        display: "grid", gridTemplateColumns: eventGridColumns(selectMode, columns), alignItems: "center",
-        gap: "10px", padding: "10px 12px",
-        borderBottom: isLast ? "none" : "1px solid var(--color-border)",
-        background: isPending
-          ? (highlighted || hovered ? "var(--color-warning-subtle-hover)" : "var(--color-warning-subtle)")
-          : (highlighted || hovered ? "var(--color-bg)" : "transparent"),
-        transition: "background 100ms ease, grid-template-columns 200ms ease",
-        cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default",
-      }}
+      style={{ cursor: clickable ? "pointer" : selectionLocked ? "not-allowed" : "default" }}
     >
       <span
-        style={{
-          display: "flex", justifyContent: "center", overflow: "hidden",
-          opacity: selectMode ? 1 : 0, pointerEvents: selectMode ? "auto" : "none",
-          transition: "opacity 150ms ease",
-        }}
+        className={`${table.collapsible} ${selectMode ? "" : table.collapsed}`}
+        style={{ display: "flex", justifyContent: "center" }}
         onClick={(e) => e.stopPropagation()}
       >
         <Checkbox checked={selected} locked={selectionLocked} onChange={onToggleSelect} />
