@@ -8,6 +8,7 @@ import {
   IconMembers,
   IconSettings,
   IconCalendar,
+  IconBuilding,
 } from "@/components/ui/Icons";
 import { Sidebar, SidebarItem } from "@/components/layout/Sidebar";
 import { TournamentDropdown } from "@/components/layout/TournamentDropdown";
@@ -46,6 +47,7 @@ export function TournamentSidebar({ onExpandedChange, tournamentId }: Tournament
     ...(canManageEvents ? [
       { key: "events",    href: `${base}/events`,      icon: <IconEvents />, label: "Events" },
       { key: "shifts",    href: `${base}/shifts`,      icon: <IconCalendar size={17} />, label: "Shifts" },
+      { key: "buildings", href: `${base}/buildings`,   icon: <IconBuilding size={17} />, label: "Buildings" },
     ] : []),
     // Matches the page's own view gate: staffing is part of reading the event
     // (manage_events) or deciding who does it (manage_members).
