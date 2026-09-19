@@ -353,6 +353,8 @@ function QuestionBody({ field, interactive, locked, value, onChange, error, shif
           size={19}
           fontSize="16px"
           gap="8px"
+          rowHeight="36px"
+          labelGap="16px"
         />
       )
     }
