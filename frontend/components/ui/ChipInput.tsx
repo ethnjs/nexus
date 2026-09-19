@@ -61,11 +61,13 @@ const SIZE_MAP: Record<ChipInputSize, { minHeight: string; paddingX: string; fon
 // Only xs/sm need it — a normal 24px chip already fits md/lg — and only for a
 // bordered field: a transparent row has no box, so there is no height for its
 // chips to fit inside and they keep their natural size.
-//   chip  = 16px line + 2 * chipPadY + 2px border
-//   field = chip + 2 * fieldPadY + 2px border  (= minHeight)
+//   chip  = 14px line + 2 * chipPadY + 2px border
+//   field = chip + 2 * fieldPadY + 2px border  (<= minHeight, which then holds)
+// 11px text rather than 12: at these sizes the chip is a tag inside a field,
+// and 12px made it nearly as loud as the field's own text.
 const COMPACT_CHIPS: Partial<Record<ChipInputSize, { fieldPadY: number; chipPadY: number }>> = {
-  xs: { fieldPadY: 2, chipPadY: 1 },  // 20px chip in a 26px field
-  sm: { fieldPadY: 2, chipPadY: 2 },  // 22px chip in a 28px field
+  xs: { fieldPadY: 2, chipPadY: 1 },  // 18px chip in a 26px field
+  sm: { fieldPadY: 2, chipPadY: 2 },  // 20px chip in a 28px field
 };
 
 // Splits on comma or newline — covers both typed Enter and pasted
@@ -203,9 +205,9 @@ export function ChipInput({
                 borderRadius: "var(--radius-sm)",
                 background: styles.background, color: styles.color,
                 border: `1px solid ${styles.border}`,
-                fontFamily: "var(--font-sans)", fontSize: "12px", fontWeight: 500,
+                fontFamily: "var(--font-sans)", fontSize: compact ? "11px" : "12px", fontWeight: 500,
                 // Pinned only where the height math depends on it.
-                lineHeight: compact ? "16px" : undefined,
+                lineHeight: compact ? "14px" : undefined,
               }}
             >
               {chipTooltip ? (
