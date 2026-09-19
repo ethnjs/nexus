@@ -54,11 +54,12 @@ import { useTournament } from '@/lib/useTournament'
 import { ARCHIVED_REASON } from '@/lib/useArchiveLock'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { FilterButton } from '@/components/ui/FilterButton'
 import { Card } from '@/components/ui/Card'
 import table from '@/components/ui/Table.module.css'
 import { EmptyState } from '@/components/ui/EmptyState'
 import {
-  IconClock, IconEvents, IconEye, IconFilter, IconLocation, IconLock,
+  IconClock, IconEvents, IconEye, IconLocation, IconLock,
   IconSearch, IconUser, IconWarning, IconX,
 } from '@/components/ui/Icons'
 import { Input } from '@/components/ui/Input'
@@ -1756,13 +1757,12 @@ export default function AssignmentsPage() {
               >
                 <IconEye size={14} />
               </Button>
-              <Button
-                type="button" variant={memberFilterActive ? 'primary' : 'secondary'}
-                size="sm" iconOnly title="Filter members"
-                onClick={() => setShowMemberFilterModal(true)}
-              >
-                <IconFilter size={14} />
-              </Button>
+              <FilterButton
+                size="sm" iconOnly label="Filter members"
+                active={memberFilterActive}
+                onOpen={() => setShowMemberFilterModal(true)}
+                onClear={() => applyMemberFilters(emptyMembersFilter())}
+              />
             </>
           }
         >
@@ -2111,13 +2111,11 @@ export default function AssignmentsPage() {
               font="sans"
               fullWidth
             />
-            <Button
-              size="md"
-              variant={eventFilterActive ? 'primary' : 'secondary'}
-              onClick={() => setShowEventFilterModal(true)}
-            >
-              <IconFilter size={14} /> Filter
-            </Button>
+            <FilterButton
+              active={eventFilterActive}
+              onOpen={() => setShowEventFilterModal(true)}
+              onClear={() => applyEventFilters(emptyFilterState(EVENTS_FILTER_KEYS))}
+            />
             <Button size="md" variant="secondary" onClick={() => setShowEventDisplayModal(true)}>
               <IconEye size={14} /> Display
             </Button>

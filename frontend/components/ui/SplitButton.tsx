@@ -18,13 +18,30 @@ export interface SplitButtonOption {
   disabledReason?: string
 }
 
+/** A right segment that acts on click rather than opening a menu — e.g. the
+ *  × that clears an applied filter. */
+export interface SplitButtonAction {
+  icon: ReactNode
+  /** Tooltip and accessible name; the segment itself is icon-only. */
+  label: string
+  onClick: () => void
+}
+
 interface SplitButtonProps {
   /** Label shown on the primary left segment */
   label: string
+  /** Rendered before the label on the primary segment. */
+  icon?: ReactNode
+  /** Primary segment shows only `icon`; `label` becomes its tooltip and
+   *  accessible name. For a compact spot like a panel header. */
+  iconOnly?: boolean
   /** Called when the primary left segment is clicked */
   onClick: () => void
   /** Dropdown options shown when the chevron is clicked — each fires its own action immediately. */
-  options: SplitButtonOption[]
+  options?: SplitButtonOption[]
+  /** Replaces the chevron and its menu with one direct action. Takes
+   *  precedence over `options` — a segment can't be both. */
+  action?: SplitButtonAction
   variant?: 'primary' | 'secondary' | 'ghost'
   size?: 'sm' | 'md'
   loading?: boolean
@@ -40,8 +57,11 @@ interface SplitButtonProps {
 // positioning from scratch.
 export function SplitButton({
   label,
+  icon,
+  iconOnly = false,
   onClick,
-  options,
+  options = [],
+  action,
   variant = 'secondary',
   size = 'sm',
   loading = false,
@@ -59,13 +79,30 @@ export function SplitButton({
         loading={loading}
         disabled={disabled || primaryDisabled}
         onClick={onClick}
+        iconOnly={iconOnly}
+        title={iconOnly ? label : undefined}
+        aria-label={iconOnly ? label : undefined}
         style={{ borderTopRightRadius: 0, borderBottomRightRadius: 0, borderRightWidth: 0 }}
       >
-        {label}
+        {iconOnly ? icon : <>{icon}{icon ? ' ' : null}{label}</>}
       </Button>
 
       <div style={{ width: '1px', background: dividerColor, flexShrink: 0 }} />
 
+      {action ? (
+        <Button
+          variant={variant}
+          size={size}
+          disabled={disabled || loading}
+          iconOnly
+          title={action.label}
+          aria-label={action.label}
+          onClick={action.onClick}
+          style={{ borderTopLeftRadius: 0, borderBottomLeftRadius: 0, borderLeftWidth: 0 }}
+        >
+          {action.icon}
+        </Button>
+      ) : (
       <Popover
         trigger={
           <Button
@@ -107,6 +144,7 @@ export function SplitButton({
           </div>
         )}
       />
+      )}
     </div>
   )
 }

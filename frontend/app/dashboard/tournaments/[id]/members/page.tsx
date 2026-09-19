@@ -14,6 +14,7 @@ import { useSetLayoutPanel } from "@/lib/useLayoutPanel";
 import { usePanelSelection } from "@/lib/usePanelSelection";
 import { useInitialPanelId, usePanelUrlSync } from "@/lib/usePanelUrl";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { FilterButton } from "@/components/ui/FilterButton";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
@@ -37,7 +38,7 @@ import { COLUMN_WIDTHS, MemberColumn, compactTrack, resolveColumns, rolesWidth }
 import styles from "@/components/tournament/MembersTable.module.css";
 import { useRefetchOnFocus } from "@/lib/useRefetchOnFocus";
 import { MEMBERS_TABLE } from "@/lib/displayConfigSurfaces";
-import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconFilter, IconX, IconEye } from "@/components/ui/Icons";
+import { IconLock, IconSearch, IconArrowDown, IconExpand, IconTrash, IconMembers, IconEye } from "@/components/ui/Icons";
 
 // Always present as a grid track (never conditionally added/removed) so its
 // width can transition between 0 and full instead of popping in — animating
@@ -628,7 +629,10 @@ export default function MembersPage() {
       ) : (
         <>
           <div style={{ display: "flex", alignItems: "flex-end", gap: "10px", marginBottom: "12px", flexWrap: "wrap" }}>
-            <div style={{ width: "350px" }}>
+            {/* Grows into the room the toolbar leaves and is the first thing to
+                give it back — a small basis with grow narrows the search before
+                anything else has to wrap. */}
+            <div style={{ flex: "1 1 220px", minWidth: "180px", maxWidth: "460px" }}>
               <Input
                 label="Search"
                 value={search}
@@ -642,20 +646,11 @@ export default function MembersPage() {
                 fullWidth
               />
             </div>
-            <Button
-              type="button" variant="secondary" size="md"
-              onClick={() => setShowFilterModal(true)}
-            >
-              <IconFilter size={16} /> Filter
-            </Button>
-            {isMembersFilterActive(filters) && (
-              <Button
-                type="button" variant="ghost" size="md"
-                onClick={() => applyFilters(emptyMembersFilter())}
-              >
-                <IconX size={16} /> Clear filters
-              </Button>
-            )}
+            <FilterButton
+              active={isMembersFilterActive(filters)}
+              onOpen={() => setShowFilterModal(true)}
+              onClear={() => applyFilters(emptyMembersFilter())}
+            />
             <Button
               type="button" variant="secondary" size="md"
               onClick={() => setShowTableColumnsModal(true)}
