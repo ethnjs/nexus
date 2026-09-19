@@ -246,7 +246,7 @@ export default function BuildingsPage() {
       return (
         <div style={{
           padding: "8px 10px", borderRadius: "var(--radius-md)",
-          border: "1px solid var(--color-accent)", background: "var(--color-surface)",
+          border: "1px solid var(--color-border-strong)", background: "var(--color-surface)",
           boxShadow: "var(--shadow-lg)",
           fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)",
         }}>
