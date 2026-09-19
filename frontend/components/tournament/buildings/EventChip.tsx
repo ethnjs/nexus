@@ -3,8 +3,9 @@
 import { useDraggable } from "@dnd-kit/core";
 import type { EventTrackDetailRead } from "@/lib/api";
 import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
 import { ChipInput } from "@/components/ui/ChipInput";
-import { IconGripVertical } from "@/components/ui/Icons";
+import { IconGripVertical, IconTrash } from "@/components/ui/Icons";
 
 /** The draggable id for one event chip. Parsed back out in the drop handler,
  *  so the two spellings live next to each other. */
@@ -33,8 +34,11 @@ export interface EventChipData {
  * never receives focus because dnd-kit has already claimed the event.
  */
 export function EventChip({
-  event, locked, placed, onFloorChange, onRoomsChange,
+  event, locked, placed, onFloorChange, onRoomsChange, onRemove,
 }: {
+  /** Placed chips only: clears the building and sends the event back to the
+   *  unplaced panel — the click twin of dragging it there. */
+  onRemove?: () => void;
   event: EventChipData;
   locked: boolean;
   /** Unplaced chips show the name only — there is no building for a floor or
@@ -79,6 +83,19 @@ export function EventChip({
         <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {event.name}
         </span>
+        {placed && onRemove && !locked && (
+          // stopPropagation so pressing it doesn't start a drag of the chip.
+          <span onPointerDown={(e) => e.stopPropagation()} style={{ marginLeft: "auto", display: "flex" }}>
+            <Button
+              type="button" variant="ghost" size="xs" iconOnly
+              onClick={onRemove}
+              title="Move back to unplaced"
+              aria-label={`Remove ${event.name} from its building`}
+            >
+              <IconTrash style={{ color: "var(--color-danger)" }} />
+            </Button>
+          </span>
+        )}
       </div>
 
       {placed && (
