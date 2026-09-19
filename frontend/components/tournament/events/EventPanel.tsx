@@ -458,7 +458,10 @@ export function EventPanel({
             hides its Members tab for an unsaved role. */}
         {!isNew && current && (
           <SettingsSection title="Shifts">
-            <SettingsRow label="Shifts" last>
+            {/* Straight in the section, no SettingsRow: the row's label only
+                repeated the section title, and its 60% control column left
+                the shift labels truncating in a panel with room to spare. */}
+            <div style={{ padding: "16px 0 20px" }}>
               {/* A list, not chips — shifts can share a label but differ
                   only by time, so each row needs room to show its own
                   start/end (condensed to time-of-day; the event's own
@@ -482,6 +485,10 @@ export function EventPanel({
                         }}>
                           {shift.label}
                         </span>
+                        {/* Same badge, same place as the Add-shift popover:
+                            labels only have to be unique within a track, so
+                            two "Morning" rows are ambiguous without it. */}
+                        {!simple && <Badge style={{ flexShrink: 0 }}>{trackNames.get(shift.track_id) ?? ""}</Badge>}
                         <span style={{ fontFamily: "var(--font-mono)", fontSize: "12px", color: "var(--color-text-tertiary)", flexShrink: 0 }}>
                           {formatTime(shift.start)}–{formatTime(shift.end)}
                         </span>
@@ -567,7 +574,7 @@ export function EventPanel({
                   {shiftError}
                 </p>
               )}
-            </SettingsRow>
+            </div>
           </SettingsSection>
         )}
 
