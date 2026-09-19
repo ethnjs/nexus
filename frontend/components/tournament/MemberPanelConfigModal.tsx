@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/Button";
 import { EditableText } from "@/components/ui/EditableText";
 import { Toggle } from "@/components/ui/Toggle";
 import { Checkbox } from "@/components/ui/Checkbox";
+import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { Popover } from "@/components/ui/Popover";
 import { Spinner } from "@/components/ui/Spinner";
@@ -312,15 +313,11 @@ export function MemberPanelConfigModal({ tournamentId, onClose, onSaved }: Membe
                           <div style={{ overflow: "hidden" }}>
                           <div style={{ padding: "0 10px 10px 44px", display: "flex", flexDirection: "column", gap: "6px" }}>
                             {/* The section's own static fields. */}
-                            {staticFields.map((field) => (
-                              <label key={field.key} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-                                <Checkbox
-                                  checked={fieldIsShown(section, field.key)}
-                                  onChange={() => toggleField(section, field.key)}
-                                />
-                                <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px" }}>{field.label}</span>
-                              </label>
-                            ))}
+                            <CheckboxList
+                              options={staticFields.map((field) => ({ value: field.key, label: field.label }))}
+                              value={staticFields.filter((field) => fieldIsShown(section, field.key)).map((field) => field.key)}
+                              onChange={(key) => toggleField(section, key)}
+                            />
 
                             {/* Tracks as chips: a tournament can have a dozen,
                                 and a chip row reads as "these are shown" far

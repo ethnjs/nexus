@@ -16,14 +16,21 @@ interface CheckboxListProps {
   /** Checkbox size in px. */
   size?: number
   fontSize?: string
+  /** Space between rows. */
   gap?: string
+  /** Minimum row height. Unset, a row is as tall as its label — set it for a
+   *  roomier list like a form question's. */
+  rowHeight?: string
+  /** Space between the box and its label. */
+  labelGap?: string
 }
-
-const ROW_HEIGHT = '36px'
 
 // Plain checkbox list — the fallback for multi-select when option labels
 // are too long for ButtonGroup's pill layout to read well.
-export function CheckboxList({ options, value, onChange, locked = false, size = 16, fontSize = '13px', gap = '8px' }: CheckboxListProps) {
+export function CheckboxList({
+  options, value, onChange, locked = false, size = 16, fontSize = '13px',
+  gap = '6px', rowHeight, labelGap = '8px',
+}: CheckboxListProps) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap }}>
       {options.map((opt) => (
@@ -34,6 +41,8 @@ export function CheckboxList({ options, value, onChange, locked = false, size = 
           locked={locked}
           size={size}
           fontSize={fontSize}
+          rowHeight={rowHeight}
+          labelGap={labelGap}
           onChange={() => !locked && onChange(opt.value)}
         />
       ))}
@@ -41,12 +50,14 @@ export function CheckboxList({ options, value, onChange, locked = false, size = 
   )
 }
 
-function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
+function CheckboxRow({ option, checked, locked, size, fontSize, rowHeight, labelGap, onChange }: {
   option: CheckboxListOption
   checked: boolean
   locked: boolean
   size: number
   fontSize: string
+  rowHeight?: string
+  labelGap: string
   onChange: () => void
 }) {
   return (
@@ -55,10 +66,10 @@ function CheckboxRow({ option, checked, locked, size, fontSize, onChange }: {
       // clicked (the form builder focuses that option's editor row).
       data-option-value={option.value}
       style={{
-        display: 'flex', alignItems: 'center', gap: '16px', boxSizing: 'border-box',
+        display: 'flex', alignItems: 'center', gap: labelGap, boxSizing: 'border-box',
         // minHeight, not height: a label long enough to wrap would
         // otherwise overflow a fixed-height row.
-        minHeight: ROW_HEIGHT,
+        minHeight: rowHeight,
         borderRadius: 'var(--radius-md)',
         background: 'var(--color-surface)',
         cursor: locked ? 'default' : 'pointer',
