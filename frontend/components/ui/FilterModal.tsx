@@ -4,7 +4,7 @@ import { ReactNode, useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { ButtonGroup } from "@/components/ui/ButtonGroup";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { CheckboxList } from "@/components/ui/CheckboxList";
 import { ChipInput } from "@/components/ui/ChipInput";
 import { IconPlus } from "@/components/ui/Icons";
 import { Popover } from "@/components/ui/Popover";
@@ -135,16 +135,11 @@ function toggled(selected: Set<string>, value: string): Set<string> {
 
 function CheckboxFilterBody({ options, selected, onChange }: FilterBodyProps) {
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-      {options.map((opt) => (
-        <label key={opt.value} style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
-          <Checkbox checked={selected.has(opt.value)} onChange={() => onChange(toggled(selected, opt.value))} />
-          <span style={{ fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--color-text-primary)" }}>
-            {opt.label}
-          </span>
-        </label>
-      ))}
-    </div>
+    <CheckboxList
+      options={options}
+      value={[...selected]}
+      onChange={(value) => onChange(toggled(selected, value))}
+    />
   );
 }
 
