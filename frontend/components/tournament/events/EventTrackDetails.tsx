@@ -64,6 +64,7 @@ export function EventTrackDetails({
     <div style={{ padding: "4px 0 8px" }}>
       {ordered.map(({ track, detail }, index) => {
         const needs = detail.needs ?? [];
+        const hasBuilding = detail.building_id != null || !!detail.new_building_name?.trim();
         const usedRoleIds = new Set(needs.map((n) => n.role_id));
         const spare = roles.filter((r) => !usedRoleIds.has(r.id));
 
@@ -91,61 +92,62 @@ export function EventTrackDetails({
               </div>
             )}
 
-            {/* md throughout, not sm: it matches the Details controls
-                directly above, and it is the size where a row of chips fits
-                inside the rooms field without the field growing. */}
-            <DetailRow label="Building">
-              <BuildingPicker
-                trackId={track.id}
-                buildingId={detail.building_id ?? null}
-                pendingName={detail.new_building_name ?? null}
-                buildings={buildings}
-                locked={locked}
-                onPick={(buildingId) => {
-                  if (buildingId === (detail.building_id ?? null) && !detail.new_building_name) return;
-                  // Floor and rooms describe a place inside the old building,
-                  // so they go with it — same rule as the buildings board.
-                  patchTrack(track.id, { building_id: buildingId, new_building_name: null, floor: null, rooms: [] });
-                }}
-                onPickNew={(name) => patchTrack(track.id, {
-                  building_id: null,
-                  new_building_name: name,
-                  // Cleared only when leaving a real building — not on every
-                  // keystroke of the new name, which would wipe a floor typed
-                  // while the name was still pending.
-                  ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
-                })}
-              />
-            </DetailRow>
+            {/* Building, floor and rooms side by side — they are one fact,
+                "where", read left to right like an address. */}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", padding: "8px 0" }}>
+              <StackedField label="Building" basis="180px" grow={1.3}>
+                <BuildingPicker
+                  trackId={track.id}
+                  buildingId={detail.building_id ?? null}
+                  pendingName={detail.new_building_name ?? null}
+                  buildings={buildings}
+                  locked={locked}
+                  onPick={(buildingId) => {
+                    if (buildingId === (detail.building_id ?? null) && !detail.new_building_name) return;
+                    // Floor and rooms describe a place inside the old building,
+                    // so they go with it — same rule as the buildings board.
+                    patchTrack(track.id, { building_id: buildingId, new_building_name: null, floor: null, rooms: [] });
+                  }}
+                  onPickNew={(name) => patchTrack(track.id, {
+                    building_id: null,
+                    new_building_name: name,
+                    // Cleared only when leaving a real building — not on every
+                    // keystroke of the new name, which would wipe a floor typed
+                    // while the name was still pending.
+                    ...(detail.building_id != null ? { floor: null, rooms: [] } : {}),
+                  })}
+                />
+              </StackedField>
 
-            {/* Both only mean something inside a building — a floor of
-                nowhere is not a place. */}
-            {(detail.building_id != null || !!detail.new_building_name?.trim()) && (
-              <>
-                <DetailRow label="Floor">
-                  <Input
-                    size="md" font="mono" locked={locked} placeholder="e.g. 2" fullWidth
-                    value={detail.floor ?? ""}
-                    // Raw, not trimmed per keystroke — that ate the space in
-                    // "2 East" before the E arrived. The backend strips it.
-                    onChange={(e) => patchTrack(track.id, { floor: e.target.value || null })}
-                  />
-                </DetailRow>
+              {/* Always rendered, locked until there is a building: hiding
+                  them made the row reflow the moment a building was picked.
+                  A floor of nowhere is still not a place, so they stay inert
+                  rather than accepting input. */}
+              <StackedField label="Floor" basis="80px" grow={0.5}>
+                <Input
+                  size="sm" font="mono" fullWidth placeholder="e.g. 2"
+                  locked={locked || !hasBuilding}
+                  value={detail.floor ?? ""}
+                  // Raw, not trimmed per keystroke — that ate the space in
+                  // "2 East" before the E arrived. The backend strips it.
+                  onChange={(e) => patchTrack(track.id, { floor: e.target.value || null })}
+                />
+              </StackedField>
 
-                <DetailRow label="Rooms">
-                  {/* The default filled variant, not transparent: an empty
-                      transparent field gave no hint it could be typed in. */}
-                  <ChipInput
-                    value={detail.rooms ?? []}
-                    onChange={(rooms) => patchTrack(track.id, { rooms })}
-                    locked={locked}
-                    size="md"
-                    fullWidth
-                    placeholder="Type a room, then Enter"
-                  />
-                </DetailRow>
-              </>
-            )}
+              <StackedField label="Rooms" basis="180px" grow={1.6}>
+                {/* The default filled variant, not transparent: an empty
+                    transparent field gave no hint it could be typed in. */}
+                <ChipInput
+                  value={detail.rooms ?? []}
+                  onChange={(rooms) => patchTrack(track.id, { rooms })}
+                  disabled={!hasBuilding}
+                  locked={locked}
+                  size="sm"
+                  fullWidth
+                  placeholder={hasBuilding ? "Type a room, then Enter" : undefined}
+                />
+              </StackedField>
+            </div>
 
             <DetailRow label="Staffing">
               <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: "flex-end" }}>
@@ -161,7 +163,7 @@ export function EventTrackDetails({
                           .filter((r) => r.id === need.role_id || !usedRoleIds.has(r.id))
                           .map((r) => ({ value: String(r.id), label: r.label }))}
                         locked={locked}
-                        size="md"
+                        size="sm"
                         fullWidth
                       />
                     </div>
@@ -253,7 +255,7 @@ function BuildingPicker({
         placeholder={onTrack.length === 0 ? "Type a building name" : "Unplaced"}
         emptyMessage="No buildings yet — type a name to create one"
         locked={locked}
-        size="md"
+        size="sm"
       />
       {pendingName?.trim() && (
         <span style={{ fontFamily: "var(--font-sans)", fontSize: "12px", color: "var(--color-text-tertiary)" }}>
@@ -286,7 +288,7 @@ function CountInput({ value, locked, onCommit }: {
 
   return (
     <Input
-      size="md" charset="numeric" locked={locked}
+      size="sm" charset="numeric" locked={locked}
       value={text}
       onChange={(e) => {
         setText(e.target.value);
@@ -296,6 +298,26 @@ function CountInput({ value, locked, onCommit }: {
       onBlur={() => { if (!(Number(text) >= 1)) setText(String(value)); }}
       style={{ width: "56px" }}
     />
+  );
+}
+
+/**
+ * One field of a horizontal group, label above control. The label reuses the
+ * Details row's own label class, so it matches DetailRow in weight and size.
+ * Flex rather than grid so a narrow panel wraps the fields instead of
+ * squeezing a building name down to an ellipsis.
+ */
+function StackedField({ label, basis, grow, children }: {
+  label: string;
+  basis: string;
+  grow: number;
+  children: ReactNode;
+}) {
+  return (
+    <div style={{ flex: `${grow} 1 ${basis}`, minWidth: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+      <div className={styles.rowLabelText}>{label}</div>
+      {children}
+    </div>
   );
 }
 
