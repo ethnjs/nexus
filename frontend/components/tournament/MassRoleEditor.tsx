@@ -149,6 +149,8 @@ export function MassRoleEditor({ tournamentId, memberships, allRoles, canTouchRo
       return membersApi.updateRoles(tournamentId, m.id, {
         add: add.length > 0 ? add : undefined,
         remove: remove.length > 0 ? remove : undefined,
+        // TODO(roles-scope): stub — replace with the shared scope picker.
+        is_tournament_wide: true,
       });
     }));
 

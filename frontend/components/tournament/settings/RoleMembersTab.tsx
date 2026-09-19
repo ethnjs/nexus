@@ -60,7 +60,8 @@ export function RoleMembersTab({ tournamentId, role, locked, onChanged }: RoleMe
     setRemovingId(membershipId);
     setError(undefined);
     try {
-      await membersApi.updateRoles(tournamentId, membershipId, { remove: [role.id] });
+      // TODO(roles-scope): stub — only removes the tournament-wide grant.
+      await membersApi.updateRoles(tournamentId, membershipId, { remove: [role.id], is_tournament_wide: true });
       refetch();
     } catch (err: unknown) {
       setError(err instanceof ApiError ? err.message : "Failed to remove member.");

@@ -61,7 +61,8 @@ export function AddRoleMembersModal({ tournamentId, roleId, roleLabel, onClose, 
     setError(undefined);
     try {
       await Promise.all(
-        [...selected].map((membershipId) => membersApi.updateRoles(tournamentId, membershipId, { add: [roleId] })),
+        [...selected].map((membershipId) => // TODO(roles-scope): stub — replace with the shared scope picker.
+        membersApi.updateRoles(tournamentId, membershipId, { add: [roleId], is_tournament_wide: true })),
       );
       onAdded();
     } catch (err: unknown) {
